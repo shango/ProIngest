@@ -18,7 +18,7 @@ from typing import Any
 from urllib.parse import unquote, urlparse
 
 from proingest.core import ffmpeg
-from proingest.core.models import FrameRate, MediaInfo
+from proingest.core.models import AudioInfo, FrameRate, MediaInfo
 
 SEQUENCE_PATTERN = re.compile(r"^(?P<base>.+)\.(?P<frame>\d{4,})$")
 
@@ -407,3 +407,28 @@ def probe_cached(
     info = probe(item, ffprobe_path, fallback_rate)
     cache[key] = info
     return info
+
+
+def probe_audio(path: Path, ffprobe_path: Path | None = None) -> AudioInfo:
+    """Probe an audio file for what sync checking needs.
+
+    Format is not constrained here. Duration is converted to samples so the later
+    comparison against a frame count stays integer.
+    """
+    raw = ffmpeg.probe_raw(path, ffprobe_path)
+    for stream in raw["streams"]:
+        if stream.get("codec_type") != "audio":
+            continue
+        sample_rate = int(stream.get("sample_rate", 0))
+        samples = stream.get("duration_ts")
+        if samples is None and stream.get("duration"):
+            samples = round(float(stream["duration"]) * sample_rate)
+        depth = int(stream.get("bits_per_raw_sample") or stream.get("bits_per_sample") or 0)
+        return AudioInfo(
+            path=path,
+            duration_samples=int(samples or 0),
+            sample_rate=sample_rate,
+            channels=int(stream.get("channels", 0)),
+            bit_depth=depth,
+        )
+    raise ffmpeg.FFprobeError(f"no audio stream in {path}")

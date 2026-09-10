@@ -194,6 +194,47 @@ class MediaInfo:
         )
 
 
+@dataclass
+class AudioInfo:
+    """One audio file, probed only for what sync checking needs.
+
+    Format is deliberately not constrained here: what matters is whether the audio
+    lines up with the picture. Duration is kept in samples so the comparison stays
+    integer and no float drift creeps in.
+    """
+
+    path: Path
+    duration_samples: int
+    sample_rate: int
+    channels: int = 0
+    bit_depth: int = 0
+
+    def duration_in_frames(self, rate: FrameRate) -> int:
+        """Length in project frames, rounded to the nearest whole frame."""
+        if self.sample_rate <= 0:
+            return 0
+        return round(self.duration_samples * rate.as_float() / self.sample_rate)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "path": str(self.path),
+            "duration_samples": self.duration_samples,
+            "sample_rate": self.sample_rate,
+            "channels": self.channels,
+            "bit_depth": self.bit_depth,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> AudioInfo:
+        return cls(
+            path=Path(data["path"]),
+            duration_samples=int(data["duration_samples"]),
+            sample_rate=int(data["sample_rate"]),
+            channels=int(data.get("channels", 0)),
+            bit_depth=int(data.get("bit_depth", 0)),
+        )
+
+
 @dataclass(frozen=True)
 class InOut:
     """An inclusive source frame range."""
@@ -300,6 +341,7 @@ class ShotRow:
     snapshot: InOut | None = None
     current: InOut | None = None
     audio_path: Path | None = None
+    audio: AudioInfo | None = None
     side_files: SideFiles = field(default_factory=SideFiles)
     notes: str = ""
     skipped: bool = False
@@ -346,6 +388,7 @@ class ShotRow:
             "snapshot": self.snapshot.to_dict() if self.snapshot else None,
             "current": self.current.to_dict() if self.current else None,
             "audio_path": str(self.audio_path) if self.audio_path else None,
+            "audio": self.audio.to_dict() if self.audio else None,
             "side_files": self.side_files.to_dict(),
             "notes": self.notes,
             "skipped": self.skipped,
@@ -371,6 +414,7 @@ class ShotRow:
             snapshot=InOut.from_dict(snapshot) if snapshot else None,
             current=InOut.from_dict(current) if current else None,
             audio_path=_as_path(data.get("audio_path")),
+            audio=AudioInfo.from_dict(data["audio"]) if data.get("audio") else None,
             side_files=SideFiles.from_dict(data.get("side_files", {})),
             notes=str(data.get("notes", "")),
             skipped=bool(data.get("skipped", False)),

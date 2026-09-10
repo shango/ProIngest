@@ -16,8 +16,8 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from proingest.core import ffmpeg, naming, qc, timeline
 from proingest.core import media as media_module
-from proingest.core import naming, timeline
 from proingest.core.models import (
     Batch,
     FrameRate,
@@ -116,13 +116,18 @@ def scan_turnover(
     turnover.timeline_path = chosen
 
     try:
-        loaded = timeline.load(chosen)
+        loaded = timeline.load(chosen, settings.project_rate)
     except timeline.DropFrameError as exc:
         turnover.qc.append(QCResult("QC-027", "error", "turnover", str(exc)))
+        return turnover, []
+    except timeline.EdlTimecodeError as exc:
+        turnover.qc.append(QCResult("QC-025", "error", "turnover", str(exc)))
         return turnover, []
     except timeline.TimelineError as exc:
         turnover.qc.append(QCResult("QC-002", "error", "turnover", str(exc)))
         return turnover, []
+
+    turnover.qc.extend(qc.check_timeline_rate(turnover, loaded.rate, settings.project_rate))
 
     if loaded.is_edl:
         turnover.qc.append(
@@ -189,6 +194,7 @@ def _build_row(
     _derive_ranges(row, clip)
     _attach_audio(row, clip, loaded, index)
     _attach_side_files(row, index)
+    qc.apply_row_rules(row, settings.project_rate)
     return row
 
 
@@ -266,8 +272,6 @@ def _probe_into(
     timeline_rate: FrameRate,
 ) -> None:
     """Probe and attach, turning a probe failure into QC-014 instead of an exception."""
-    from proingest.core import ffmpeg
-
     try:
         row.media = media_module.probe_cached(item, cache, fallback_rate=timeline_rate)
     except (ffmpeg.FFprobeError, ffmpeg.FFmpegNotFound) as exc:
@@ -320,17 +324,20 @@ def _attach_audio(
     what was found.
     """
     associated = loaded.audio_for(clip)
-    if associated:
-        first = associated[0]
-        if first.media_url:
-            row.audio_path = media_module.url_to_path(first.media_url)
-        return
-
-    if loaded.is_edl:
+    if associated and associated[0].media_url:
+        row.audio_path = media_module.url_to_path(associated[0].media_url)
+    elif loaded.is_edl:
         # FR-1: an EDL cannot associate audio, so fall back to a same-name search.
         by_name = index.audio_matching(clip.name)
         if len(by_name) == 1:
             row.audio_path = by_name[0].path
+
+    if row.audio_path is None or not row.audio_path.is_file():
+        return
+    try:
+        row.audio = media_module.probe_audio(row.audio_path)
+    except (ffmpeg.FFprobeError, ffmpeg.FFmpegNotFound) as exc:
+        row.qc.append(QCResult("QC-042", "error", "row", f"audio unreadable: {exc}"))
 
 
 def _attach_side_files(row: ShotRow, index: media_module.DirectoryIndex) -> None:

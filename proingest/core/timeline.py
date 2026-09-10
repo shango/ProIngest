@@ -28,6 +28,15 @@ class TimelineError(RuntimeError):
     """The timeline could not be parsed. Reported as QC-002."""
 
 
+class EdlTimecodeError(TimelineError):
+    """An EDL whose timecode does not add up.
+
+    An EDL carries no rate of its own, so it is read at the project rate. Record
+    timecode that overlaps or contradicts is the usual symptom of an EDL cut at a
+    different rate, which is why it is reported separately from a parse failure.
+    """
+
+
 class DropFrameError(TimelineError):
     """The timeline uses drop-frame timecode, which is QC-027.
 
@@ -104,16 +113,30 @@ def find_timeline_files(folder: Path) -> list[Path]:
     return sorted(found, key=lambda p: (p.suffix.lower() != ".otio", str(p)))
 
 
-def load(path: Path) -> Timeline:
-    """Load a timeline. Dispatches on extension; both routes go through otio."""
+def load(path: Path, project_rate: FrameRate | None = None) -> Timeline:
+    """Load a timeline. Dispatches on extension; both routes go through otio.
+
+    An EDL states no rate anywhere in the file, so the adapter has to be told one or
+    it silently assumes 24. The project rate is passed explicitly so a project at
+    any other rate does not misread every timecode in the file.
+    """
     if not path.is_file():
         raise TimelineError(f"timeline {path} does not exist")
+    rate = project_rate or FrameRate(24)
     is_edl = path.suffix.lower() == ".edl"
     if is_edl and _edl_is_drop_frame(path):
         raise DropFrameError(f"{path} uses drop-frame timecode (QC-027)")
     try:
-        timeline = otio.adapters.read_from_file(str(path))
+        if is_edl:
+            timeline = otio.adapters.read_from_file(str(path), rate=rate.as_float())
+        else:
+            timeline = otio.adapters.read_from_file(str(path))
     except Exception as exc:
+        if is_edl and _looks_like_timecode_mismatch(exc):
+            raise EdlTimecodeError(
+                f"{path} has timecode that does not add up when read at {rate} fps, "
+                f"which usually means the EDL was cut at a different rate: {exc}"
+            ) from exc
         raise TimelineError(f"could not parse {path}: {exc}") from exc
 
     video, audio = _extract_clips(timeline)
@@ -186,6 +209,11 @@ def _global_start(timeline: otio.schema.Timeline) -> int:
 
 
 _DROP_FRAME_TIMECODE = re.compile(r"\d{2}:\d{2}:\d{2};\d{2}")
+
+
+def _looks_like_timecode_mismatch(exc: BaseException) -> bool:
+    """Whether an adapter failure is about timecode rather than malformed syntax."""
+    return "timecode" in str(exc).lower() or type(exc).__name__ == "EDLParseError"
 
 
 def _edl_is_drop_frame(path: Path) -> bool:

@@ -2,7 +2,7 @@
 
 Durable handoff record. Updated after each chunk so work can resume from disk.
 
-## Current milestone: M1 Core -- COMPLETE (326 tests)
+## Current milestone: M1 Core -- COMPLETE (348 tests)
 
 Goal (PRD section 9): OTIO parse, clip name parse, media resolution, ffprobe cache,
 shot model, batch JSON, headless CLI `proingest scan <folder>`, tests.
@@ -61,8 +61,21 @@ M2 needs.
   QC-026 can report a disagreement. Frame counts still come from the file's own
   rate, because a file holds the frames it holds. See OQ-19 on QC-026 severity.
 
+- **Audio stays flexible.** Sample rate, bit depth and channel count are not
+  constrained. The one thing that matters is whether it syncs, so QC-043 compares
+  audio duration against the picture range in frames, in both directions, with one
+  frame of slack. Audio recorded against a different rate surfaces as drift here.
+- `core/qc.py` exists early, holding only the rate and sync rules. The full phase A
+  and B registries are still M4. Rules there are pure functions of the model and
+  re-run after every edit; `apply_row_rules` owns only the IDs it produces so the
+  scan's results survive.
+
 ## Findings worth keeping
 
+- An EDL states no frame rate anywhere in the file. The otio adapter silently
+  assumes 24, so the project rate is now passed explicitly, and a timecode
+  mismatch (the usual symptom of an EDL cut at another rate) is reported as
+  QC-025 rather than a generic QC-002 parse failure.
 - ffmpeg *does* have an `exr` encoder, contrary to what CLAUDE.md said. It only
   offers none/rle/zip1/zip16 and no `timeCode` attribute, so the OpenEXR bindings
   are still the right call. CLAUDE.md corrected.
