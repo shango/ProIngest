@@ -283,7 +283,7 @@
       <div class="stat-l">Milestones done</div>
     </div>
     <div class="stat">
-      <div class="stat-n good">525</div>
+      <div class="stat-n good">547</div>
       <div class="stat-l">Tests passing</div>
     </div>
     <div class="stat">
@@ -346,23 +346,25 @@
         <div class="ms-body">
           <div class="ms-head">
             <span class="ms-name">Render</span>
-            <span class="pill now">In progress &middot; Writer, decode and render done</span>
+            <span class="pill now">In progress &middot; Only the encodes left</span>
           </div>
           <p class="ms-goal">
             EXR writer, mp4 encoder, audio copy, side file copy, atomic writes, process pool,
             progress. CLI <code class="mono">proingest run &lt;batch&gt;</code>.
           </p>
           <div class="mods">
-            <span>exr.py</span><i>(write)</i><span>resize.py</span><i>/</i><span>color.py</span><i>/</i><span>render.py</span><i>/</i><span>ffmpeg.py</span><i>(encode)</i>
+            <span>exr.py</span><i>/</i><span>resize.py</span><i>/</i><span>color.py</span><i>/</i><span>render.py</span><i>/</i><span>ffmpeg.py</span>
           </div>
           <div class="gate">
             <b>OQ-17 answered, unblocked.</b> Today's turnovers carry a baked sRGB curve on
             every file, EXRs included, so the reference encode applies <b>no</b> transfer.
             The EXRs move to scene linear later, so the source colour space is a setting
-            with both options rather than an assumption. The EXR writer, the antialiased
-            HD reduction, the source decode and the atomic job executor are built and tested.
-            A deliverable now either lands complete or leaves nothing behind. The reference
-            encodes, the worker pool and the <code class="mono">run</code> CLI remain.
+            with both options rather than an assumption. A scanned turnover now renders end to
+            end: <code class="mono">proingest run</code> plans it, a process pool writes the raw
+            EXR sequences, the audio and the side files, and the batch records a checksum per
+            frame. A deliverable either lands complete or leaves nothing behind, and one bad row
+            cannot stop a hundred shot run. <b>The reference mp4 and stringout encodes are all
+            that is left of M3.</b>
           </div>
         </div>
       </div>
@@ -621,6 +623,24 @@
         </p>
       </div>
       <div class="note">
+        <h3>A failed job is a result, not an exception</h3>
+        <p>
+          A hundred shot run cannot stop because one row is broken, so every job comes back
+          with a record whatever happened: written, failed with a reason, or skipped because
+          the run was cancelled. The new <b>QC-100</b> carries the reason, and every other
+          post-render check reads NA behind it, because there is no file to check.
+        </p>
+      </div>
+      <div class="note">
+        <h3>The worker pool spawns on Linux too, deliberately</h3>
+        <p>
+          Windows can only spawn, and Windows is the target. Spawning on the dev machine as
+          well means the constraints on what can cross into a worker are identical in testing
+          and in the field, instead of a job that only works under fork passing every test
+          here and failing on the user's machine.
+        </p>
+      </div>
+      <div class="note">
         <h3>Atomic writes and ffmpeg's format guessing collide</h3>
         <p>
           Every deliverable is written to a <span class="mono">.part</span> name and renamed,
@@ -672,7 +692,7 @@
   <footer>
     <b>Source of truth</b> &middot; PROGRESS.md, docs/OPEN_QUESTIONS.md, PRD.md section 9<br>
     <b>Verify</b> &middot; pytest &middot; ruff check . &amp;&amp; mypy proingest &middot; python -m proingest scan &lt;folder&gt;<br>
-    <b>Last updated</b> &middot; 10 September 2026, after the atomic job executor landed
+    <b>Last updated</b> &middot; 10 September 2026, after the first end-to-end render
   </footer>
 
 </div>

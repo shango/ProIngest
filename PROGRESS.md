@@ -10,7 +10,7 @@ commit.
 
 **State at 2026-09-10.** M1 and M2 complete, M3 in progress (M3.1 to M3.4 done, only
 M3.5 left). Working tree clean apart from two deliberately untracked files (section 8).
-547 tests passing, `ruff` and `mypy --strict` clean.
+547 tests passing, `ruff` and `mypy --strict` clean. M3.4 landed as `0c349c9`.
 
 **Nothing is blocked.**
 
