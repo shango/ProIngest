@@ -1,0 +1,595 @@
+<title>ProIngest Build Track</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+
+<style>
+  /* Single dark world, deliberately: docs/UI_SPEC.md fixes the product's visual
+     language as near-black panels, 1px separators and one accent. This board uses
+     the same language as the tool it tracks. Every colour is painted explicitly so
+     the page holds on either host ground. */
+  :root {
+    --ground:  #0e0f12;
+    --panel:   #15171b;
+    --raised:  #1b1e23;
+    --line:    #262a31;
+    --line-sx: #333944;
+    --text:    #ced3db;
+    --dim:     #868d9a;
+    --faint:   #5c626d;
+    --accent:  #4d8fd6;
+    --done:    #58a97a;
+    --warn:    #cf9a3a;
+    --err:     #cf5a52;
+
+    --sans: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+    --cond: "IBM Plex Sans Condensed", "IBM Plex Sans", ui-sans-serif, sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    background: var(--ground);
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 15px;
+    line-height: 1.55;
+    margin: 0;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap {
+    max-width: 1080px;
+    margin: 0 auto;
+    padding: 40px 28px 72px;
+    display: flex;
+    flex-direction: column;
+    gap: 40px;
+  }
+
+  /* ---- masthead ---- */
+  .mast { display: flex; flex-direction: column; gap: 14px; }
+
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: .16em;
+    text-transform: uppercase;
+    color: var(--faint);
+  }
+
+  h1 {
+    font-family: var(--cond);
+    font-weight: 700;
+    font-size: 40px;
+    line-height: 1.05;
+    letter-spacing: -.01em;
+    margin: 0;
+    color: #eef1f5;
+    text-wrap: balance;
+  }
+
+  .standfirst { margin: 0; max-width: 64ch; color: var(--dim); }
+
+  /* ---- stat strip ---- */
+  .stats {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    border: 1px solid var(--line);
+    background: var(--panel);
+  }
+  .stat { padding: 16px 18px; border-right: 1px solid var(--line); }
+  .stat:last-child { border-right: 0; }
+  .stat-n {
+    font-family: var(--mono);
+    font-variant-numeric: tabular-nums;
+    font-size: 26px;
+    font-weight: 600;
+    line-height: 1.1;
+    color: #eef1f5;
+  }
+  .stat-n.good { color: var(--done); }
+  .stat-n.bad  { color: var(--err); }
+  .stat-l {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: .13em;
+    text-transform: uppercase;
+    color: var(--faint);
+    margin-top: 5px;
+  }
+
+  /* ---- section headings ---- */
+  h2 {
+    font-family: var(--cond);
+    font-weight: 600;
+    font-size: 13px;
+    letter-spacing: .17em;
+    text-transform: uppercase;
+    color: var(--dim);
+    margin: 0 0 14px;
+    padding-bottom: 9px;
+    border-bottom: 1px solid var(--line);
+  }
+  section { display: flex; flex-direction: column; }
+
+  /* ---- milestone spine ---- */
+  .track { display: flex; flex-direction: column; }
+
+  .ms {
+    display: grid;
+    grid-template-columns: 58px 1fr;
+    border: 1px solid var(--line);
+    border-bottom: 0;
+    background: var(--panel);
+  }
+  .ms:last-child { border-bottom: 1px solid var(--line); }
+
+  .ms-id {
+    font-family: var(--mono);
+    font-weight: 600;
+    font-size: 14px;
+    color: var(--faint);
+    padding: 16px 0 16px 14px;
+    border-left: 3px solid var(--line-sx);
+    background: var(--raised);
+  }
+  .ms.done  .ms-id { border-left-color: var(--done);   color: var(--done); }
+  .ms.now   .ms-id { border-left-color: var(--accent); color: var(--accent); }
+  .ms.block .ms-id { border-left-color: var(--err);    color: var(--err); }
+  .ms.part  .ms-id { border-left-color: var(--warn);   color: var(--warn); }
+
+  .ms-body { padding: 15px 18px 16px; display: flex; flex-direction: column; gap: 9px; }
+
+  .ms-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+  .ms-name {
+    font-family: var(--cond);
+    font-weight: 700;
+    font-size: 19px;
+    color: #eef1f5;
+    letter-spacing: .005em;
+  }
+
+  .pill {
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: .11em;
+    text-transform: uppercase;
+    padding: 2.5px 7px;
+    border: 1px solid currentColor;
+    color: var(--faint);
+    white-space: nowrap;
+  }
+  .pill.done  { color: var(--done); }
+  .pill.now   { color: var(--accent); }
+  .pill.block { color: var(--err); }
+  .pill.part  { color: var(--warn); }
+
+  .ms-goal { margin: 0; color: var(--dim); max-width: 68ch; }
+
+  .mods {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--faint);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 0;
+  }
+  .mods span { color: var(--text); }
+  .mods i { font-style: normal; color: var(--line-sx); padding: 0 7px; }
+
+  .gate {
+    font-size: 13.5px;
+    border-left: 2px solid var(--line-sx);
+    padding-left: 11px;
+    color: var(--dim);
+  }
+  .gate.block { border-left-color: var(--err); }
+  .gate b { color: var(--text); font-weight: 600; }
+  .gate code, .mono { font-family: var(--mono); font-size: .93em; }
+
+  /* ---- tables ---- */
+  .scroll { overflow-x: auto; border: 1px solid var(--line); background: var(--panel); }
+  table { border-collapse: collapse; width: 100%; min-width: 560px; }
+  th {
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: .13em;
+    text-transform: uppercase;
+    color: var(--faint);
+    text-align: left;
+    padding: 10px 14px;
+    background: var(--raised);
+    border-bottom: 1px solid var(--line);
+    white-space: nowrap;
+  }
+  td {
+    padding: 9px 14px;
+    border-bottom: 1px solid var(--line);
+    vertical-align: top;
+    font-size: 14px;
+  }
+  tr:last-child td { border-bottom: 0; }
+  td.id {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    font-variant-numeric: tabular-nums;
+    color: var(--dim);
+    white-space: nowrap;
+  }
+  td.st { white-space: nowrap; }
+  .tag {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--faint);
+  }
+  .tag.ok    { color: var(--done); }
+  .tag.hot   { color: var(--err); }
+  .tag.open  { color: var(--warn); }
+  tr.resolved td:not(.st) { color: var(--faint); }
+
+  /* ---- decisions ---- */
+  .notes { display: flex; flex-direction: column; border: 1px solid var(--line); background: var(--panel); }
+  .note { padding: 13px 18px; border-bottom: 1px solid var(--line); }
+  .note:last-child { border-bottom: 0; }
+  .note h3 {
+    font-family: var(--sans);
+    font-weight: 600;
+    font-size: 14.5px;
+    margin: 0 0 3px;
+    color: #eef1f5;
+  }
+  .note p { margin: 0; color: var(--dim); font-size: 14px; max-width: 74ch; }
+
+  footer {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: var(--faint);
+    border-top: 1px solid var(--line);
+    padding-top: 16px;
+    line-height: 1.8;
+  }
+  footer b { color: var(--dim); font-weight: 500; }
+
+  @media (max-width: 620px) {
+    .stats { grid-template-columns: repeat(2, 1fr); }
+    .stat:nth-child(2) { border-right: 0; }
+    .stat:nth-child(-n+2) { border-bottom: 1px solid var(--line); }
+    h1 { font-size: 31px; }
+    .ms { grid-template-columns: 46px 1fr; }
+  }
+</style>
+
+<div class="wrap">
+
+  <header class="mast">
+    <div class="eyebrow">VFX turnover ingest &middot; Windows v01</div>
+    <h1>ProIngest Build Track</h1>
+    <p class="standfirst">
+      Milestones M1 through M8 from <span class="mono">PRD.md</span> section 9, with what each
+      delivers and what gates it. <span class="mono">PROGRESS.md</span> in the repo stays the
+      source of truth and is updated at every commit; this board is the readable view of it.
+    </p>
+  </header>
+
+  <div class="stats">
+    <div class="stat">
+      <div class="stat-n">1<span style="color:var(--faint);font-size:17px">/8</span></div>
+      <div class="stat-l">Milestones done</div>
+    </div>
+    <div class="stat">
+      <div class="stat-n good">348</div>
+      <div class="stat-l">Tests passing</div>
+    </div>
+    <div class="stat">
+      <div class="stat-n">16<span style="color:var(--faint);font-size:17px">/19</span></div>
+      <div class="stat-l">Questions open</div>
+    </div>
+    <div class="stat">
+      <div class="stat-n bad">1</div>
+      <div class="stat-l">Active blocker</div>
+    </div>
+  </div>
+
+  <section>
+    <h2>Build order</h2>
+    <div class="track">
+
+      <div class="ms done">
+        <div class="ms-id">M1</div>
+        <div class="ms-body">
+          <div class="ms-head">
+            <span class="ms-name">Core</span>
+            <span class="pill done">Complete &middot; 348 tests</span>
+          </div>
+          <p class="ms-goal">
+            OTIO parse, clip name parse, media resolution, ffprobe cache, shot model, batch JSON.
+            Headless <code class="mono">proingest scan &lt;folder&gt;</code> prints the row table.
+          </p>
+          <div class="mods">
+            <span>naming</span><i>/</i><span>frames</span><i>/</i><span>models</span><i>/</i><span>ffmpeg</span><i>/</i><span>media</span><i>/</i><span>exr</span><i>/</i><span>timeline</span><i>/</i><span>batchfile</span><i>/</i><span>scan</span>
+          </div>
+          <div class="gate">
+            Ruff and <code>mypy --strict</code> clean. Core imports no Qt, so every module runs headless.
+          </div>
+        </div>
+      </div>
+
+      <div class="ms now">
+        <div class="ms-id">M2</div>
+        <div class="ms-body">
+          <div class="ms-head">
+            <span class="ms-name">Naming and planning</span>
+            <span class="pill now">Next up</span>
+          </div>
+          <p class="ms-goal">
+            Deliverable plan per clip type, versioning, path layout. Golden tests against the
+            spec examples.
+          </p>
+          <div class="mods"><span>planner.py</span></div>
+          <div class="gate">
+            <b>Unblocked.</b> <code>naming.py</code> already provides name building, output
+            parsing and <code>next_version</code>, so this is the type table from
+            NAMING_SPEC section 2 plus the delivery layout from section 5.
+          </div>
+        </div>
+      </div>
+
+      <div class="ms block">
+        <div class="ms-id">M3</div>
+        <div class="ms-body">
+          <div class="ms-head">
+            <span class="ms-name">Render</span>
+            <span class="pill block">Blocked &middot; OQ-17</span>
+          </div>
+          <p class="ms-goal">
+            EXR writer, mp4 encoder, audio copy, side file copy, atomic writes, process pool,
+            progress. CLI <code class="mono">proingest run &lt;batch&gt;</code>.
+          </p>
+          <div class="mods">
+            <span>exr.py</span><i>(write)</i><span>render.py</span><i>/</i><span>ffmpeg.py</span><i>(encode)</i>
+          </div>
+          <div class="gate block">
+            <b>OQ-17, the colour space conflict.</b> The shooters' spec PDF states
+            <code>Render Color Space: sRGB</code> while COLOR_AND_FORMAT assumes scene linear.
+            If the EXRs are display-referred, the reference encode double-applies the sRGB
+            curve and every mp4 comes out washed out. Needs a look at real delivered media,
+            not another read of the PDF. Raw EXR output is unaffected either way.
+          </div>
+        </div>
+      </div>
+
+      <div class="ms part">
+        <div class="ms-id">M4</div>
+        <div class="ms-body">
+          <div class="ms-head">
+            <span class="ms-name">QC and exports</span>
+            <span class="pill part">Started early</span>
+          </div>
+          <p class="ms-goal">
+            All rules, both phases, xlsx exports. CLI <code class="mono">proingest qc &lt;batch&gt;</code>.
+          </p>
+          <div class="mods"><span>qc.py</span><i>/</i><span>exports.py</span></div>
+          <div class="gate">
+            <code>qc.py</code> exists already holding <b>QC-025, QC-026 and QC-043</b>, because
+            everything downstream computes on the frame rate contract holding. The remaining
+            phase A and phase B registries are still M4. Tracker columns wait on
+            <b>OQ-2</b>; the layout loads from a template file so it can change without code.
+          </div>
+        </div>
+      </div>
+
+      <div class="ms">
+        <div class="ms-id">M5</div>
+        <div class="ms-body">
+          <div class="ms-head">
+            <span class="ms-name">User interface</span>
+            <span class="pill">Not started</span>
+          </div>
+          <p class="ms-goal">
+            Main window, shot list with the keyboard model, validation colouring, settings page,
+            log panel, batch open and save. PySide6 6.7+, LGPL.
+          </p>
+          <div class="mods">
+            <span>main_window</span><i>/</i><span>shot_model</span><i>/</i><span>delegates</span><i>/</i><span>docks</span><i>/</i><span>theme.qss</span>
+          </div>
+          <div class="gate">
+            Two decisions still unlogged. <b>Frozen left columns</b> have no built-in QTreeView
+            support and need the overlaid second-view trick. <b>Windows taskbar progress</b> lost
+            its API when QtWinExtras was removed in Qt 6, so it needs an
+            <code>ITaskbarList3</code> shim isolated in a Windows-only helper.
+          </div>
+        </div>
+      </div>
+
+      <div class="ms">
+        <div class="ms-id">M6</div>
+        <div class="ms-body">
+          <div class="ms-head">
+            <span class="ms-name">Stringout</span>
+            <span class="pill">Not started</span>
+          </div>
+          <p class="ms-goal">
+            One per turnover, timeline order, edited In/Out, no slate. 1920&times;1080 H.264
+            with <code class="mono">drawtext</code> burn-ins.
+          </p>
+          <div class="mods"><span>stringout.py</span></div>
+          <div class="gate">
+            Bundled ffmpeg has <code>libfreetype</code>, so <code>drawtext</code> is available.
+            <b>OQ-12</b> (include associated wavs) defaults to yes.
+          </div>
+        </div>
+      </div>
+
+      <div class="ms">
+        <div class="ms-id">M7</div>
+        <div class="ms-body">
+          <div class="ms-head">
+            <span class="ms-name">Packaging</span>
+            <span class="pill">Not started</span>
+          </div>
+          <p class="ms-goal">
+            PyInstaller onedir, Inno Setup installer, bundled ffmpeg, first-run experience, icon.
+          </p>
+          <div class="mods"><span>build/build.py</span><i>/</i><span>proingest.spec</span><i>/</i><span>installer.iss</span></div>
+          <div class="gate">
+            ffmpeg is settled: GPL v3 gyan.dev full build, pinned in
+            <code>build/ffmpeg.lock.json</code>, fetched not committed. Both binaries compress to
+            <b>111&nbsp;MB</b> against a 300&nbsp;MB installer budget. <b>OQ-9</b> code signing
+            still open; unsigned means a SmartScreen warning.
+          </div>
+        </div>
+      </div>
+
+      <div class="ms">
+        <div class="ms-id">M8</div>
+        <div class="ms-body">
+          <div class="ms-head">
+            <span class="ms-name">Polish</span>
+            <span class="pill">Not started</span>
+          </div>
+          <p class="ms-goal">
+            Pass against UI_SPEC, performance on a real turnover, docs.
+          </p>
+          <div class="mods"><span>&mdash;</span></div>
+          <div class="gate">
+            Target from PRD section 8: <b>100 shots</b> across a batch scanning in under
+            <b>60 seconds</b> from a warm G: mount.
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <section>
+    <h2>Open questions</h2>
+    <div class="scroll">
+      <table>
+        <thead>
+          <tr><th>ID</th><th>Question</th><th>State</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="id">OQ-17</td>
+            <td>Colour space: PDF says render space sRGB, docs assume scene linear</td>
+            <td class="st"><span class="tag hot">Blocks M3</span></td>
+          </tr>
+          <tr>
+            <td class="id">OQ-1</td>
+            <td>Turnover folder structure and desired delivery layout</td>
+            <td class="st"><span class="tag open">Open</span></td>
+          </tr>
+          <tr>
+            <td class="id">OQ-2</td>
+            <td>Shot tracker column layout, for the xlsx export</td>
+            <td class="st"><span class="tag open">Open</span></td>
+          </tr>
+          <tr>
+            <td class="id">OQ-3</td>
+            <td>What the consolidated media actually is; sets QC-020 and QC-021 severity</td>
+            <td class="st"><span class="tag open">Open</span></td>
+          </tr>
+          <tr>
+            <td class="id">OQ-4</td>
+            <td>How shooters name reference stills and BTS: timeline clips or side files</td>
+            <td class="st"><span class="tag open">Open</span></td>
+          </tr>
+          <tr>
+            <td class="id">OQ-5</td>
+            <td>Spec typos: 2161 and 2162 heights, witness cam without a frame range</td>
+            <td class="st"><span class="tag open">Confirmed real</span></td>
+          </tr>
+          <tr>
+            <td class="id">OQ-6</td>
+            <td>Display transform for refs: sRGB piecewise or Rec.709 OETF</td>
+            <td class="st"><span class="tag open">Open</span></td>
+          </tr>
+          <tr>
+            <td class="id">OQ-9</td>
+            <td>Code signing certificate available</td>
+            <td class="st"><span class="tag open">Open</span></td>
+          </tr>
+          <tr>
+            <td class="id">OQ-18</td>
+            <td>PDF marks HDRI and camData Required, QC-050 and QC-051 are only warnings</td>
+            <td class="st"><span class="tag open">Open</span></td>
+          </tr>
+          <tr class="resolved">
+            <td class="id">OQ-8</td>
+            <td>ffmpeg licensing &mdash; GPL v3 full build, never leaves the studio</td>
+            <td class="st"><span class="tag ok">Resolved</span></td>
+          </tr>
+          <tr class="resolved">
+            <td class="id">OQ-16</td>
+            <td>ffprobe.exe missing &mdash; pulled from the matching release</td>
+            <td class="st"><span class="tag ok">Resolved</span></td>
+          </tr>
+          <tr class="resolved">
+            <td class="id">OQ-19</td>
+            <td>QC-026 severity &mdash; stays an error; everything is 24 in Resolve</td>
+            <td class="st"><span class="tag ok">Resolved</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2>Corrections made to the spec</h2>
+    <div class="notes">
+      <div class="note">
+        <h3>ffmpeg does have an EXR encoder</h3>
+        <p>
+          CLAUDE.md said it did not. It does, but only none, rle, zip1 and zip16 compression, and
+          it cannot write a <span class="mono">timeCode</span> attribute. The conclusion, use the
+          OpenEXR bindings, was right; the reason was not.
+        </p>
+      </div>
+      <div class="note">
+        <h3>Two QC rule IDs pointed at the wrong rules</h3>
+        <p>
+          COLOR_AND_FORMAT cited QC-022 for 8&nbsp;bit sources (that is QC-020) and QC-040 for the
+          audio bit depth check (that is QC-044).
+        </p>
+      </div>
+      <div class="note">
+        <h3>QC-151 had no regex to check against</h3>
+        <p>
+          It requires every deliverable filename to re-parse, but only an input clip-name pattern
+          existed. NAMING_SPEC section 7 now carries the output grammar, one anchored pattern per
+          kind, verified against every example and against <span class="mono">.part</span> rejection.
+        </p>
+      </div>
+      <div class="note">
+        <h3>The timeline frame rate is authoritative</h3>
+        <p>
+          Shooters set all footage to 24 in Resolve, so a rate baked into a file may be stale camera
+          metadata. Frame math follows the timeline; what the media claims is kept separately so
+          QC-026 can name the file that escaped the conform. Frame counts still use the file's own
+          rate, because a file holds the frames it holds.
+        </p>
+      </div>
+      <div class="note">
+        <h3>Three things ffprobe does that the tests pinned down</h3>
+        <p>
+          It invents <span class="mono">25/1</span> for a single EXR frame; it exits 0 on a corrupt
+          EXR while reporting a 0&times;0 stream, so QC-014 cannot trust the exit code; and it
+          cannot state a frame count for an image sequence.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <b>Source of truth</b> &middot; PROGRESS.md, docs/OPEN_QUESTIONS.md, PRD.md section 9<br>
+    <b>Verify</b> &middot; pytest &middot; ruff check . &amp;&amp; mypy proingest &middot; python -m proingest scan &lt;folder&gt;<br>
+    <b>Last updated</b> &middot; 10 September 2026, after M1 and the frame rate conform work
+  </footer>
+
+</div>

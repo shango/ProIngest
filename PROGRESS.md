@@ -23,8 +23,9 @@ Unblocked.
 
 **Build track artifact** (readable M1-M8 status board, republish the same file path
 to update): https://claude.ai/code/artifact/c0e6b8ac-6673-4e28-833d-7d85b5f7273a
-Source file: `scratchpad/proingest-track.html` in this session's scratchpad; if that
-is gone, rebuild from PROGRESS.md and docs/OPEN_QUESTIONS.md.
+Source file: `build-track.html` at the repo root. It is a generated view of this
+file, not spec. To update it, edit that file and republish it with the artifact URL
+above passed as `url`.
 
 ## Modules built so far
 
