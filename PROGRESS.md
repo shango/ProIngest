@@ -280,11 +280,8 @@ exr 29, scan 25, qc 22, batchfile 18, resize 16, cli 8, color 6.
 - **Do not `git add docs/ROADMAP.md` or `docs/ROADMAP.docx`.** They are a manager-facing
   plan the user asked to keep outside git, and they are deliberately untracked. Stage
   files by name, never `git add -A`.
-- `build/md2docx.py` regenerates the .docx from the .md. It is also untracked, and it
-  needs `python-docx` installed outside the venv:
-  `uv pip install --python .venv/bin/python --target <tmp>/pylibs python-docx`, then
-  `PYTHONPATH=<tmp>/pylibs .venv/bin/python build/md2docx.py docs/ROADMAP.md docs/ROADMAP.docx`.
-  Ask before tracking it.
+  The .docx was generated from the .md with `python-docx`; no converter is kept in the
+  repo, so if the .md changes and a new .docx is wanted, write one and throw it away.
 - **Build track artifact**, a readable M1-M8 status board for the user:
   https://claude.ai/code/artifact/c0e6b8ac-6673-4e28-833d-7d85b5f7273a
   Source is `build-track.html` at the repo root, which *is* tracked. It is a generated
