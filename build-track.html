@@ -283,11 +283,11 @@
       <div class="stat-l">Milestones done</div>
     </div>
     <div class="stat">
-      <div class="stat-n good">465</div>
+      <div class="stat-n good">488</div>
       <div class="stat-l">Tests passing</div>
     </div>
     <div class="stat">
-      <div class="stat-n">16<span style="color:var(--faint);font-size:17px">/20</span></div>
+      <div class="stat-n">17<span style="color:var(--faint);font-size:17px">/21</span></div>
       <div class="stat-l">Questions open</div>
     </div>
     <div class="stat">
@@ -346,7 +346,7 @@
         <div class="ms-body">
           <div class="ms-head">
             <span class="ms-name">Render</span>
-            <span class="pill now">In progress &middot; EXR writer done</span>
+            <span class="pill now">In progress &middot; EXR writer and decode done</span>
           </div>
           <p class="ms-goal">
             EXR writer, mp4 encoder, audio copy, side file copy, atomic writes, process pool,
@@ -359,9 +359,9 @@
             <b>OQ-17 answered, unblocked.</b> Today's turnovers carry a baked sRGB curve on
             every file, EXRs included, so the reference encode applies <b>no</b> transfer.
             The EXRs move to scene linear later, so the source colour space is a setting
-            with both options rather than an assumption. The EXR writer and the antialiased
-            HD reduction are built and tested; the decode, the encodes, the pool and the
-            <code class="mono">run</code> CLI remain.
+            with both options rather than an assumption. The EXR writer, the antialiased
+            HD reduction and the source decode are built and tested; the encodes, the atomic
+            writer, the pool and the <code class="mono">run</code> CLI remain.
           </div>
         </div>
       </div>
@@ -615,6 +615,25 @@
         </p>
       </div>
       <div class="note">
+        <h3>ffmpeg's scaler quietly clamps float to 0-1</h3>
+        <p>
+          It was recorded as "swscale cannot carry float", which understated it. It accepts
+          float in and out and flattens everything above 1.0 to white: 4.0 in, 1.0 out. Harmless
+          today because every accepted source is integer and bounded, and a live hazard the day
+          the EXRs move to scene linear. It is why the EXR path resamples in numpy.
+        </p>
+      </div>
+      <div class="note">
+        <h3>Two ways a decode goes wrong without failing</h3>
+        <p>
+          The raw pixel format is planar <span class="mono">G, B, R</span>, so reading it in
+          order swaps red and blue on every deliverable. And unless ffmpeg is told to pass
+          frames through untouched, it may duplicate or drop them to hit a constant rate,
+          breaking the one-to-one mapping from source frame to delivered frame. Both are
+          pinned by tests that compare a range against a full decode of the same media.
+        </p>
+      </div>
+      <div class="note">
         <h3>Three things ffprobe does that the tests pinned down</h3>
         <p>
           It invents <span class="mono">25/1</span> for a single EXR frame; it exits 0 on a corrupt
@@ -628,7 +647,7 @@
   <footer>
     <b>Source of truth</b> &middot; PROGRESS.md, docs/OPEN_QUESTIONS.md, PRD.md section 9<br>
     <b>Verify</b> &middot; pytest &middot; ruff check . &amp;&amp; mypy proingest &middot; python -m proingest scan &lt;folder&gt;<br>
-    <b>Last updated</b> &middot; 10 September 2026, after the EXR writer and the colour space answer
+    <b>Last updated</b> &middot; 10 September 2026, after the source decode landed
   </footer>
 
 </div>
