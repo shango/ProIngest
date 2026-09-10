@@ -1,0 +1,40 @@
+# CLAUDE.md - ProIngest
+
+## What this is
+A single-user Windows desktop app (PySide6, Python 3.11+) that ingests VFX shot turnovers. It reads an OpenTimelineIO file exported from DaVinci Resolve, matches timeline clips to media in a turnover folder on a Google Drive mount (G:), lets the VFX editor adjust In/Out per shot, then transcodes and names all deliverables per the studio spec, runs automated QC, and exports spreadsheets.
+
+Read `PRD.md` first, then the docs it points to. The docs are the spec. When code and docs disagree, fix one and say which.
+
+## Ground rules
+- Core logic lives in `proingest/core/` and must not import Qt. The UI in `proingest/ui/` is a thin layer over core. Everything in core must be testable headless.
+- No rendering inside the UI thread. Long work runs in a worker process pool and reports progress through queues/signals.
+- Frame math is integer only. Never store or compare timecode as floats. Use `opentimelineio.opentime.RationalTime` at the boundary and integers internally.
+- Every deliverable is written atomically: render to a temp name in the destination folder, verify, then rename. A crash must never leave a file that looks finished.
+- Every check in `docs/QC_RULES.md` has a stable rule ID (e.g. `QC-012`). Log messages, row warnings, and spreadsheet exports reference the ID.
+- Output names come only from `proingest/core/naming.py`. No string formatting of filenames anywhere else.
+- Settings have sane defaults and are editable in the Settings page. Do not hardcode frame-length limits, handle expectations, or paths.
+- ffmpeg and ffprobe are called as subprocesses through `proingest/core/ffmpeg.py`. Never shell out from elsewhere. All commands are logged verbatim so the user can reproduce a render.
+- EXR output uses the `OpenEXR` Python bindings (3.2+ numpy API), not ffmpeg (ffmpeg has no EXR encoder).
+- Write tests alongside features. Synthetic test media is generated with ffmpeg in a pytest fixture, never committed.
+- Windows is the target. Use `pathlib` everywhere. Assume paths may be on a slow network mount; avoid repeated stat calls in loops (scan once, cache).
+
+## Style
+- Python 3.11, type hints everywhere, `ruff` and `mypy --strict` clean.
+- Dataclasses or pydantic for data models; batch files are JSON with a schema version.
+- Short functions, explicit names. Comments explain why, not what.
+- No em dashes in UI strings or docs.
+
+## Commands
+```
+uv sync                      # or: pip install -e .[dev]
+pytest
+ruff check . && mypy proingest
+python -m proingest          # run the app
+python build/build.py        # PyInstaller + Inno Setup (see docs/PACKAGING.md)
+```
+
+## Definition of done for a feature
+1. Core function with unit tests
+2. Wired into UI with a manual test note in the PR description
+3. QC rule IDs added to `docs/QC_RULES.md` if new checks were introduced
+4. `docs/OPEN_QUESTIONS.md` updated if you had to assume something

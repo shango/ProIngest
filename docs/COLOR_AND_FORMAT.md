@@ -1,0 +1,72 @@
+# Color and Format
+
+## 1. Color policy (v01)
+
+- Consolidated source media from the shooters is already scene linear, sRGB primaries, all grading baked in. The tool does not apply any color transform to raw EXR output. Pixels in, pixels out.
+- Reference mp4s and the stringout are display encodes. Linear data written straight into H.264 looks wrong, so the tool applies a fixed transfer on those outputs only: linear to sRGB piecewise curve (IEC 61966-2-1), primaries unchanged, Rec.709 matrix for YCbCr, tagged `bt709` primaries and matrix, `iec61966-2-1` transfer. Implemented with ffmpeg `zscale` (`transferin=linear:transfer=iec61966-2-1`) or `colorspace`/`lut3d` equivalent. Settings offers Rec.709 OETF as the alternative. OQ-6.
+- EXR metadata: write `chromaticities` for sRGB/Rec.709 primaries and a `proingest/colorspace` string attribute `scene_linear_sRGB`.
+
+## 2. Source formats accepted
+
+The tool must handle whatever Resolve can consolidate to that can carry linear float without damage. Accepted:
+
+- OpenEXR image sequences (preferred, any compression, half or float)
+- DPX sequences (10/12/16 bit, logged as QC-021 warning because integer containers with linear data lose shadow precision)
+- ProRes 4444 / 4444 XQ `.mov` (QC-021 warning, same reason)
+- Anything else decodable by ffmpeg is accepted with QC-020 error (8 bit or 4:2:0 sources cannot be legitimate linear plates)
+
+OQ-3: confirm what the consolidated media actually is so the warning levels can be tightened.
+
+## 3. Output formats
+
+| output | spec |
+|---|---|
+| raw EXR | OpenEXR 2 scanline, DWAA compression level 45, half float RGB (alpha dropped unless source has real alpha, then RGBA), data window = display window, frame numbers start 1001 |
+| ref mp4 4k | 3840x2160, H.264 High, yuv420p, CRF 18 (x264 `-preset slow`) or NVENC `-cq 19 -preset p5`, keyint 24, `-movflags +faststart`, AAC 192k if audio associated |
+| ref mp4 HD | same, 1920x1080 |
+| audio | as delivered. If the source is a wav, byte copy. If audio lives inside a container, extract to PCM 16 bit, same sample rate and channel count, no resampling. QC-044 if not 16 bit after extraction |
+| stringout | 1920x1080, H.264 High, CRF 20, burn-ins, audio from associated wavs mixed at unity |
+| HDRI, stills, lens grid, camData | byte copy with rename, checksum recorded |
+
+## 4. Resolution rules
+
+- 4k deliverables are exactly 3840x2160. HD deliverables are exactly 1920x1080.
+- Source must be 3840x2160 for a normal plate. Anything else: QC-023 error, row blocked, unless the user enables "allow non-4k source" in Settings, in which case the tool letterboxes/pillarboxes into 3840x2160 with black and logs QC-024 warning. No cropping ever.
+- HD is produced from the same decode by Lanczos downscale (`scale=1920:1080:flags=lanczos`), no sharpening.
+- Aspect other than 16:9 is QC-023 as above.
+
+## 5. Frame rate and timecode
+
+- Project fps default 24, editable. Timeline fps from the OTIO must equal project fps or QC-025 error.
+- Source clip fps must equal project fps or QC-026 error on the row. No retiming.
+- Timecode is non-drop only. Drop-frame OTIO: QC-027 error.
+- Source TC = media start timecode from the container or EXR header plus frame offset. If the media has no timecode, source TC is displayed as frames only and QC-028 warning is raised.
+
+## 6. Frame math
+
+Definitions, all integers:
+
+- `src_start`: first frame index of the media (0 for containers, first sequence number for sequences)
+- `src_len`: total frames in media
+- `in`, `out`: inclusive source frame indices chosen for the deliverable
+- `duration = out - in + 1`
+- `max_available_out = src_start + src_len - 1`
+
+Output frame numbering: output frame `1001 + k` corresponds to source frame `in + k` for `k` in `[0, duration)`.
+
+Editing:
+- Absolute frame typed into In/Out is a source frame index.
+- Timecode typed is converted with the source start TC (or record start TC when the toggle is on record).
+- Relative offset `+n`/`-n` adds to the current value.
+- Constraints enforced live: `src_start <= in <= out <= max_available_out`. Violations show max available and color the row (QC-031, QC-032) but the value is kept so the editor sees what they typed.
+
+## 7. EXR writing pipeline
+
+```
+ffmpeg -i <src> -f rawvideo -pix_fmt gbrpf32le - | numpy frames -> float16 -> OpenEXR (DWAA, level 45)
+```
+
+- One ffmpeg decode per resolution (4k pass writes 4k EXRs; HD pass adds the Lanczos scale filter). Two passes are simpler than a filtergraph split and cost one extra decode, acceptable at this scale.
+- EXR source sequences skip ffmpeg and are read with OpenEXR directly, downscaled with `numpy`/`scipy.ndimage.zoom` order 3 or OpenImageIO if available. Keep the downscale filter choice consistent with ffmpeg where possible; document the difference. OQ-7.
+- Checksum (xxhash64) of each written frame is recorded in the batch and the QC log.
+- Per-frame write is followed by an OpenEXR header re-read to confirm the file opens.

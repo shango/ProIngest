@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "_comment": "Pinned external binaries. These are NOT tracked in git. Run `python build/fetch_ffmpeg.py` to populate proingest/resources/ffmpeg/ from this file. See docs/PACKAGING.md and proingest/resources/ffmpeg/PROVENANCE.md.",
+  "ffmpeg": {
+    "version": "2026-03-01-git-862338fe31-full_build-www.gyan.dev",
+    "release_tag": "2026-03-01-git-862338fe31",
+    "release_page": "https://github.com/GyanD/codexffmpeg/releases/tag/2026-03-01-git-862338fe31",
+    "archive_url": "https://github.com/GyanD/codexffmpeg/releases/download/2026-03-01-git-862338fe31/ffmpeg-2026-03-01-git-862338fe31-full_build.zip",
+    "archive_size": 247425391,
+    "license": "GPL-3.0-or-later",
+    "dest_dir": "proingest/resources/ffmpeg",
+    "members": [
+      {
+        "dest_name": "ffmpeg.exe",
+        "archive_suffix": "bin/ffmpeg.exe",
+        "size": 223078400,
+        "sha256": "cce4074b7af8e71b4c63f17bec8d36ca3da9b7f84f5bcbb010476164a6cafa85"
+      },
+      {
+        "dest_name": "ffprobe.exe",
+        "archive_suffix": "bin/ffprobe.exe",
+        "size": 222872576,
+        "sha256": "44edce8f24543b17390e7f50e554349998541e6d6b0241f650df1073770d202a"
+      },
+      {
+        "dest_name": "LICENSE.ffmpeg.txt",
+        "archive_suffix": "LICENSE",
+        "size": 35147,
+        "sha256": "8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903"
+      }
+    ]
+  }
+}

@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Build output (note: build/ itself is source, only its output is ignored)
+/dist/
+
+# Bundled binaries. Not tracked: pinned in build/ffmpeg.lock.json and fetched with
+# `python build/fetch_ffmpeg.py`. See proingest/resources/ffmpeg/PROVENANCE.md.
+proingest/resources/ffmpeg/*.exe
+
+# Tooling caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# User data
+*.pibatch
+*.pibatch.bak
+
+# WSL NTFS alternate data stream artifacts
+*:Zone.Identifier
