@@ -48,6 +48,7 @@ Rule IDs never change meaning. New rules get new numbers.
 | QC-053 | info | row | camData parsed; N key/value pairs found |
 | QC-054 | warning | turnover | No lens grid clip in turnover |
 | QC-055 | warning | row | Aux still (colorChart, mirrorBall, greyBall, sizeRef) has more than one frame; first frame will be used |
+| QC-056 | warning | row | BTS still is not png, jpg or jpeg, so no delivery name exists for it and it is not planned |
 | QC-060 | warning | row | Existing deliverables found at version N; new render will be version N+1 |
 | QC-061 | info | row | Complete QC-passing set exists; row skipped (Force re-render off) |
 | QC-062 | error | row | Delivery destination not writable |

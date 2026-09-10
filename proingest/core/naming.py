@@ -96,6 +96,18 @@ def parse_clip_name(name: str, show_pattern: str = DEFAULT_SHOW_PATTERN) -> Shot
     )
 
 
+def parse_shot_code(code: str, show_pattern: str = DEFAULT_SHOW_PATTERN) -> tuple[str, str] | None:
+    """Split `MELT0001` into show and shot number.
+
+    Used when the editor corrects a shot code (NAMING_SPEC section 6): the correction
+    carries a new show and number, and every name is rebuilt from them.
+    """
+    match = re.match(rf"^(?P<show>{show_pattern})(?P<shot>\d{{4}})$", code)
+    if match is None:
+        return None
+    return match["show"], match["shot"]
+
+
 def parse_lens_grid_name(name: str) -> LensGridIdentity | None:
     """Parse a lens grid clip name, which uses a different pattern to shot clips."""
     match = LENS_GRID_PATTERN.match(name)
@@ -126,7 +138,16 @@ def raw_sequence_dir(identity: ShotIdentity, res: Resolution, version: int) -> s
 
 
 def raw_frame(identity: ShotIdentity, res: Resolution, version: int, frame: int) -> str:
-    return f"{raw_sequence_dir(identity, res, version)}.{frame:04d}.exr"
+    return frame_in_sequence(raw_sequence_dir(identity, res, version), frame)
+
+
+def frame_in_sequence(sequence_dir: str, frame: int) -> str:
+    """One frame inside a raw EXR folder. The folder name is the frame's stem.
+
+    Kept apart from `raw_frame` so a planned job, which knows only the folder it is
+    writing into, can still name its frames here rather than formatting them itself.
+    """
+    return f"{sequence_dir}.{frame:04d}.exr"
 
 
 def ref_mp4(identity: ShotIdentity, res: Resolution, version: int) -> str:

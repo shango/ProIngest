@@ -152,6 +152,28 @@ class TestScanTurnover:
         assert rows[0].side_files.hdri is not None
         assert rows[0].side_files.camdata is not None
 
+    def test_a_side_file_in_the_wrong_format_is_not_matched(self, tmp_path: Path) -> None:
+        """NAMING_SPEC section 2 matches `*HDRI*.exr`, not any file with HDRI in the name.
+
+        Delivery renames without converting, so a jpeg picked up here would ship under
+        an `.exr` name.
+        """
+        folder = tmp_path / GOOD_FOLDER
+        fixtures.make_turnover(folder, shots=1, frames=4)
+        (folder / "media" / "MELT0001_pl01_HDRI_preview.jpg").write_bytes(b"x")
+        (folder / "media" / "MELT0001_pl01_camData.pdf").write_bytes(b"x")
+        _, rows = scan.scan_turnover(folder, "t1")
+        assert rows[0].side_files.hdri is None
+        assert rows[0].side_files.camdata is None
+
+    def test_the_real_side_file_still_wins_beside_a_preview(self, tmp_path: Path) -> None:
+        folder = tmp_path / GOOD_FOLDER
+        fixtures.make_turnover(folder, shots=1, frames=4)
+        (folder / "media" / "MELT0001_pl01_HDRI.exr").write_bytes(b"x")
+        (folder / "media" / "MELT0001_pl01_HDRI_preview.jpg").write_bytes(b"x")
+        _, rows = scan.scan_turnover(folder, "t1")
+        assert rows[0].side_files.hdri == folder / "media" / "MELT0001_pl01_HDRI.exr"
+
     def test_no_side_files_leaves_them_none(self, tmp_path: Path) -> None:
         folder = tmp_path / GOOD_FOLDER
         fixtures.make_turnover(folder, shots=1, frames=4)

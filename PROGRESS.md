@@ -4,8 +4,8 @@ Durable handoff record. Updated after each chunk so work can resume from disk.
 
 ## Resume here
 
-**State at 2026-09-10:** M1 complete, working tree clean, 348 tests passing,
-ruff and `mypy --strict` clean. Nine commits on `main`. Verify with:
+**State at 2026-09-10:** M1 and M2 complete, 414 tests passing, ruff and
+`mypy --strict` clean. Verify with:
 
 ```
 .venv/bin/python -m pytest tests/ -q
@@ -13,19 +13,24 @@ ruff and `mypy --strict` clean. Nine commits on `main`. Verify with:
 .venv/bin/python -m proingest scan <turnover folder>
 ```
 
-**Next task: M2, `core/planner.py`.** ShotRow -> list[DeliverableJob] from the type
-table in NAMING_SPEC section 2, version resolved at plan time (not at scan), delivery
-layout from NAMING_SPEC section 5. `naming.py` already provides every name builder,
-`parse_output_name` and `next_version`, so M2 is the type table plus job construction.
-Unblocked.
+**Next task: M3, the render pipeline.** `core/render.py`, `core/exr.py` (writing),
+`core/ffmpeg.py` (encode commands), atomic writes, process pool, progress, and the
+`proingest run <batch>` CLI. `core/planner.py` already hands render a list of
+`DeliverableJob`s carrying source, destination, temp path, frame range and target
+size, so M3 is execution only, no naming and no layout decisions.
 
-**Do not start M3** until OQ-17 (colour space) is answered. See Blockers.
+**M3 is blocked on OQ-17 (colour space)** until a real turnover can be inspected.
+The EXR writer half is not blocked: raw EXR output is a straight pixel copy either
+way. Only the ref mp4 and stringout encodes depend on the answer.
 
 **Build track artifact** (readable M1-M8 status board, republish the same file path
 to update): https://claude.ai/code/artifact/c0e6b8ac-6673-4e28-833d-7d85b5f7273a
 Source file: `build-track.html` at the repo root. It is a generated view of this
 file, not spec. To update it, edit that file and republish it with the artifact URL
 above passed as `url`.
+
+**Manager-facing plan:** `docs/ROADMAP.md`, chunked feature list with build estimates.
+Deliberately untracked (the user asked for it outside git). Do not `git add` it.
 
 ## Modules built so far
 
@@ -40,10 +45,11 @@ above passed as `url`.
 | `core/timeline.py` | OTIO and EDL loading, audio association |
 | `core/scan.py` | turnover folder -> Turnover + ShotRows |
 | `core/batchfile.py` | `.pibatch` save/load, backup, filesystem reconciliation |
+| `core/planner.py` | type table, deliverable jobs, version resolution |
 | `core/qc.py` | rule registry; QC-025, QC-026, QC-043 so far |
 | `__main__.py` | `proingest scan` CLI |
 
-## Current milestone: M1 Core -- COMPLETE (348 tests)
+## M1 Core -- COMPLETE (348 tests)
 
 Goal (PRD section 9): OTIO parse, clip name parse, media resolution, ffprobe cache,
 shot model, batch JSON, headless CLI `proingest scan <folder>`, tests.
@@ -80,12 +86,16 @@ shot model, batch JSON, headless CLI `proingest scan <folder>`, tests.
 - Timecode counts at `nominal_rate(fps)` (23.976 counts at 24). The float fps is a
   playback rate and never enters frame math.
 
-## Next: M2 naming and planning
+## M2 Naming and planning -- COMPLETE (66 new tests, 414 total)
 
-`core/planner.py`: ShotRow -> list[DeliverableJob] from the type table in
-NAMING_SPEC section 2, version resolved at plan time, delivery layout from section 5.
-naming.py already provides the name building, output parsing and next_version that
-M2 needs.
+Goal (PRD section 9): deliverable plan per clip type, versioning, path layout, tested
+against the spec examples.
+
+| chunk | module | state |
+|---|---|---|
+| M2.1 | `core/planner.py` + `tests/test_planner.py` | done, 55 tests |
+| M2.2 | `naming.parse_shot_code`, `naming.frame_in_sequence` + tests | done |
+| M2.3 | side-file extension filter in `core/scan.py` + tests | done |
 
 ## Blockers
 
@@ -95,6 +105,12 @@ M2 needs.
   curve and every ref mp4 and the stringout come out washed out. Raw EXR output is a
   straight pixel copy and is unaffected either way. Resolve by inspecting real
   delivered media alongside OQ-3, not by re-reading the PDF.
+- **OQ-20, the lens grid deliverable, is not built.** It is the one row of the type
+  table M2 does not cover. Three things are undecided and none can be settled from the
+  docs: the scan does not recognise a lens grid clip at all (it fails the shot naming
+  regex and lands as QC-010), a lens grid is turnover-level so it carries no show to
+  place it under `_turnovers/`, and NAMING_SPEC section 4 versions per shot and says
+  nothing about a per camera/lens/mm deliverable. Nothing downstream depends on it.
 - Two M5 decisions still unlogged: frozen left columns in QTreeView (needs the
   overlaid second-view trick) and Windows taskbar progress (QtWinExtras was removed
   in Qt 6, so it needs an `ITaskbarList3` shim in a Windows-only UI helper).
@@ -141,3 +157,24 @@ M2 needs.
 - otio rejects a drop-frame timecode at a non-drop rate with a generic parse error.
   Drop frame is therefore detected from the EDL text before parsing, so the user
   gets QC-027 ("drop-frame timecode") rather than QC-002 ("failed to parse").
+
+## Findings worth keeping, M2
+
+- Version is scoped to the **shot folder**, not to the individual deliverable.
+  NAMING_SPEC section 4 said "per shot" and section 7 said "the kind being planned",
+  which contradicted each other. Section 4 wins because it is the one that explains
+  why (partial version sets confuse downstream), so section 7 was corrected to match.
+  Consequence: a shot whose `cp01` shipped at v01 starts its `pl01` at v02.
+- Job kinds deliberately reuse `naming.parse_output_name`'s vocabulary, so QC-151 in
+  M4 is a direct equality between the planned kind and the parsed filename rather
+  than a translation table. `tests/test_planner.py::TestOutputNamesReadBack` already
+  asserts the round trip for every planned name.
+- Side files were matched on the name fragment alone, so a `..._HDRI_preview.jpg`
+  could be picked up and then delivered under an `.exr` name, because delivery renames
+  without converting. The scan now filters to the extensions NAMING_SPEC section 2
+  states (`*HDRI*.exr`, `*camData*.txt|rtf`).
+- A BTS still that is not png/jpg/jpeg has no delivery name at all. Rather than drop
+  it silently, the planner raises the new QC-056 (warning) and plans nothing for it.
+- The planner replaces a row's deliverable list, so it must run immediately before a
+  run, not when a batch is opened: recorded render state belongs to the version that
+  produced it.

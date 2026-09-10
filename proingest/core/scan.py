@@ -34,7 +34,9 @@ TURNOVER_FOLDER_PATTERN = re.compile(
 )
 
 HDRI_FRAGMENT = "hdri"
+HDRI_EXTENSIONS = (".exr",)
 CAMDATA_FRAGMENT = "camdata"
+CAMDATA_EXTENSIONS = tuple(f".{ext}" for ext in naming.CAMDATA_EXTENSIONS)
 
 
 @dataclass
@@ -346,17 +348,25 @@ def _attach_side_files(row: ShotRow, index: media_module.DirectoryIndex) -> None
         return
     stem = row.identity.stem
     row.side_files = SideFiles(
-        hdri=_single_match(index, stem, HDRI_FRAGMENT),
-        camdata=_single_match(index, stem, CAMDATA_FRAGMENT),
+        hdri=_single_match(index, stem, HDRI_FRAGMENT, HDRI_EXTENSIONS),
+        camdata=_single_match(index, stem, CAMDATA_FRAGMENT, CAMDATA_EXTENSIONS),
     )
 
 
-def _single_match(index: media_module.DirectoryIndex, stem: str, fragment: str) -> Path | None:
-    """A side file must name both the element and the kind to count as a match."""
+def _single_match(
+    index: media_module.DirectoryIndex, stem: str, fragment: str, extensions: tuple[str, ...]
+) -> Path | None:
+    """A side file must name both the element and the kind, and be a form we can deliver.
+
+    The extension filter is what NAMING_SPEC section 2 states (`*HDRI*.exr`,
+    `*camData*.txt|rtf`). Without it a jpeg sitting beside the real HDRI would be
+    delivered under an `.exr` name, because the planner takes the extension from the
+    delivery template and not from the file.
+    """
     hits = [
         entry.path
         for entry in index.containing(fragment)
-        if stem.lower() in entry.name.lower()
+        if stem.lower() in entry.name.lower() and entry.suffix in extensions
     ]
     return hits[0] if len(hits) == 1 else None
 

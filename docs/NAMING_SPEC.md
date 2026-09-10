@@ -64,6 +64,7 @@ Note: the spec PDF has a few resolution typos (2161, 2162) and lists witness cam
 ## 4. Versioning
 
 - Version is per shot per run. Before rendering a shot, list existing `v??` for any of its deliverables in the destination; new version = max + 1, or 01 if none.
+- "Per shot" means per shot folder, so the scope of that listing is the whole `<delivery_root>/<show>/<shotcode>/` directory and every element of the shot in the run shares the result. A shot whose `cp01` was delivered at v01 therefore starts its `pl01` at v02. Element versions can skip numbers; a shot's deliverables never disagree.
 - All deliverables for that shot in this run get the same version, even if only one of them was missing. Partial version sets are confusing downstream.
 - Side-file copies (HDRI, camData, stills, lens grid) follow the same version as the shot in that run.
 - A `.part` file or folder is never counted as an existing version.
@@ -128,4 +129,4 @@ The `show` prefix pattern is the same configurable value as section 1, so a Sett
 
 Shooter name: the stringout pattern only accepts lowercase alphanumerics, so the builder normalizes the turnover-level shooter field (lowercase, strip everything outside `a-z0-9`) before substituting it. `Daniel Luckett` and `daniel-luckett` both become `danielluckett`. The unnormalized value is kept on the turnover for the tracker and QC log. See OQ-15.
 
-Version discovery (section 4) uses the same patterns: a destination entry counts as an existing version only if it matches the pattern for the kind being planned. This is what keeps a stray file from inflating the version number, and it is why `.part` names can never match.
+Version discovery (section 4) uses the same patterns: an entry in the shot folder counts as an existing version if it parses as any deliverable this tool writes, not only as the kind being planned, because section 4 versions the shot rather than the individual output. This is what keeps a stray file from inflating the version number, and it is why `.part` names can never match.

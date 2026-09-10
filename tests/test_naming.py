@@ -76,6 +76,24 @@ class TestParseClipName:
         assert naming.parse_clip_name("MELT0001_pl01", show_pattern=r"[A-Z]{2}") is None
 
 
+class TestParseShotCode:
+    """A shot code the editor corrected has to split back into show and number."""
+
+    def test_splits_show_and_number(self) -> None:
+        assert naming.parse_shot_code("MELT0001") == ("MELT", "0001")
+
+    def test_leading_zeros_survive(self) -> None:
+        parsed = naming.parse_shot_code("AB0007")
+        assert parsed is not None and parsed[1] == "0007"
+
+    @pytest.mark.parametrize("code", ["MELT001", "melt0001", "MELT0001_pl01", "0001", ""])
+    def test_rejects_anything_else(self, code: str) -> None:
+        assert naming.parse_shot_code(code) is None
+
+    def test_honours_the_configured_show_pattern(self) -> None:
+        assert naming.parse_shot_code("MELT0001", show_pattern=r"[A-Z]{2}") is None
+
+
 class TestParseLensGridName:
     def test_example_from_spec(self) -> None:
         assert naming.parse_lens_grid_name("SonyA7V_Tamron20-40_lensgrid_40mm") == LENS_GRID
@@ -92,6 +110,10 @@ class TestBuildNames:
 
     def test_raw_frame(self) -> None:
         assert naming.raw_frame(PLATE, "4k", 1, 1001) == "MELT0001_pl01_raw_4k_v01.1001.exr"
+
+    def test_frame_in_sequence_names_a_frame_from_its_folder(self) -> None:
+        folder = naming.raw_sequence_dir(PLATE, "HD", 2)
+        assert naming.frame_in_sequence(folder, 1234) == "MELT0001_pl01_raw_HD_v02.1234.exr"
 
     def test_raw_sequence_dir(self) -> None:
         assert naming.raw_sequence_dir(PLATE, "4k", 1) == "MELT0001_pl01_raw_4k_v01"
