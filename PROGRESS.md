@@ -2,6 +2,46 @@
 
 Durable handoff record. Updated after each chunk so work can resume from disk.
 
+## Resume here
+
+**State at 2026-09-10:** M1 complete, working tree clean, 348 tests passing,
+ruff and `mypy --strict` clean. Nine commits on `main`. Verify with:
+
+```
+.venv/bin/python -m pytest tests/ -q
+.venv/bin/python -m ruff check proingest tests && .venv/bin/python -m mypy proingest tests
+.venv/bin/python -m proingest scan <turnover folder>
+```
+
+**Next task: M2, `core/planner.py`.** ShotRow -> list[DeliverableJob] from the type
+table in NAMING_SPEC section 2, version resolved at plan time (not at scan), delivery
+layout from NAMING_SPEC section 5. `naming.py` already provides every name builder,
+`parse_output_name` and `next_version`, so M2 is the type table plus job construction.
+Unblocked.
+
+**Do not start M3** until OQ-17 (colour space) is answered. See Blockers.
+
+**Build track artifact** (readable M1-M8 status board, republish the same file path
+to update): https://claude.ai/code/artifact/c0e6b8ac-6673-4e28-833d-7d85b5f7273a
+Source file: `scratchpad/proingest-track.html` in this session's scratchpad; if that
+is gone, rebuild from PROGRESS.md and docs/OPEN_QUESTIONS.md.
+
+## Modules built so far
+
+| module | what it owns |
+|---|---|
+| `core/naming.py` | every output name, both directions; `next_version` |
+| `core/frames.py` | integer frame math, timecode, In/Out input grammar |
+| `core/models.py` | Batch, Turnover, ShotRow, MediaInfo, AudioInfo, FrameRate, QCResult |
+| `core/ffmpeg.py` | the only place anything shells out; tool lookup, ffprobe |
+| `core/media.py` | DirectoryIndex, sequence detection, path remap, probe cache |
+| `core/exr.py` | EXR header reading (writing is M3) |
+| `core/timeline.py` | OTIO and EDL loading, audio association |
+| `core/scan.py` | turnover folder -> Turnover + ShotRows |
+| `core/batchfile.py` | `.pibatch` save/load, backup, filesystem reconciliation |
+| `core/qc.py` | rule registry; QC-025, QC-026, QC-043 so far |
+| `__main__.py` | `proingest scan` CLI |
+
 ## Current milestone: M1 Core -- COMPLETE (348 tests)
 
 Goal (PRD section 9): OTIO parse, clip name parse, media resolution, ffprobe cache,
@@ -48,8 +88,15 @@ M2 needs.
 
 ## Blockers
 
-- OQ-17 (color space, PDF says sRGB render space vs docs assuming scene linear)
-  blocks M3 ref encoding, not M1.
+- **OQ-17, colour space. Blocks M3, nothing earlier.** The shooters' spec PDF says
+  `Render Color Space: sRGB`; COLOR_AND_FORMAT section 1 assumes scene linear. If the
+  delivered EXRs are display-referred, the reference encode double-applies the sRGB
+  curve and every ref mp4 and the stringout come out washed out. Raw EXR output is a
+  straight pixel copy and is unaffected either way. Resolve by inspecting real
+  delivered media alongside OQ-3, not by re-reading the PDF.
+- Two M5 decisions still unlogged: frozen left columns in QTreeView (needs the
+  overlaid second-view trick) and Windows taskbar progress (QtWinExtras was removed
+  in Qt 6, so it needs an `ITaskbarList3` shim in a Windows-only UI helper).
 
 ## Decisions taken (continued)
 
