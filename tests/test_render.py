@@ -12,13 +12,14 @@ point it is verified.
 
 from __future__ import annotations
 
+import multiprocessing
 from pathlib import Path
 
 import OpenEXR
 import pytest
 
 from proingest.core import color, exr, frames, media, naming, render
-from proingest.core.models import FrameRate
+from proingest.core.models import Batch, Deliverable, FrameRate, ShotRow
 from proingest.core.planner import DeliverableJob
 from tests.fixtures import media as fixtures
 
@@ -451,3 +452,126 @@ def test_a_digest_is_stable_and_content_dependent(tmp_path: Path) -> None:
     two.write_bytes(b"x" * (render.DIGEST_CHUNK + 17) + b"y")
     assert render.file_digest(one) == render.file_digest(one)
     assert render.file_digest(one) != render.file_digest(two)
+
+
+class TestHooks:
+    """The two seams the pool hangs off. Both are plain callables, so they are
+    tested here without a process in sight."""
+
+    def test_progress_counts_every_frame_in_order(self, tmp_path: Path) -> None:
+        seen: list[int] = []
+        render.render_job(raw_job(tmp_path, count=4), on_frame=seen.append)
+        assert seen == [1, 2, 3, 4]
+
+    def test_cancelling_before_the_start_writes_nothing_at_all(self, tmp_path: Path) -> None:
+        job = raw_job(tmp_path, count=4)
+        with pytest.raises(render.RenderCancelled, match="before it started"):
+            render.render_job(job, cancelled=lambda: True)
+        assert not job.destination.exists()
+        assert not job.temp.exists()
+
+    def test_cancelling_part_way_leaves_no_partial_sequence(self, tmp_path: Path) -> None:
+        job = raw_job(tmp_path, count=6)
+        written: list[int] = []
+
+        def stop_after_two() -> bool:
+            return len(written) >= 2
+
+        with pytest.raises(render.RenderCancelled, match="after 2 frames"):
+            render.render_job(job, on_frame=written.append, cancelled=stop_after_two)
+        assert not job.destination.exists()
+        assert not job.temp.exists()
+
+    def test_a_cancel_check_that_stays_false_renders_normally(self, tmp_path: Path) -> None:
+        job = raw_job(tmp_path, count=3)
+        deliverable = render.render_job(job, cancelled=lambda: False)
+        assert deliverable.status == "done"
+        assert deliverable.frame_count == 3
+
+
+class TestProgressMessage:
+    def test_a_fraction_needs_no_guard_against_a_job_with_no_frames(self) -> None:
+        assert render.Progress("copy", "done").fraction == 0.0
+
+    def test_a_fraction_is_clamped_and_proportional(self) -> None:
+        assert render.Progress("s", "frame", 5, 10).fraction == 0.5
+        assert render.Progress("s", "frame", 12, 10).fraction == 1.0
+
+
+class TestExecute:
+    def test_every_job_comes_back_in_the_order_it_was_given(self, tmp_path: Path) -> None:
+        jobs = [raw_job(tmp_path / f"j{index}", count=2) for index in range(4)]
+        results = render.execute(jobs, workers=2)
+        # Paths, not names: every job here delivers the same shot into its own root,
+        # so the names are identical and only the path tells them apart.
+        assert [d.path for d in results] == [job.destination for job in jobs]
+        assert all(d.status == "done" for d in results)
+        assert all(job.destination.is_dir() for job in jobs)
+
+    def test_no_jobs_is_not_an_error_and_starts_no_pool(self) -> None:
+        assert render.execute([]) == []
+
+    def test_one_failing_job_does_not_stop_the_others(self, tmp_path: Path) -> None:
+        good = raw_job(tmp_path / "good", count=2)
+        broken = raw_job(tmp_path / "broken", count=2)
+        broken.source.unlink()
+        results = render.execute([good, broken], workers=2)
+        statuses = {d.path: d.status for d in results}
+        assert statuses[good.destination] == "done"
+        assert statuses[broken.destination] == "failed"
+        assert good.destination.is_dir()
+        assert not broken.destination.exists()
+
+    def test_a_failure_carries_qc_100_and_the_reason(self, tmp_path: Path) -> None:
+        broken = raw_job(tmp_path, count=2)
+        broken.source.unlink()
+        failed = render.execute([broken], workers=1)[0]
+        assert [result.rule_id for result in failed.qc] == [render.RENDER_FAILED]
+        assert failed.qc[0].severity == "error"
+        assert failed.qc[0].scope == "deliverable"
+        assert broken.name in failed.qc[0].message
+
+    def test_progress_arrives_in_the_calling_process(self, tmp_path: Path) -> None:
+        seen: list[render.Progress] = []
+        job = raw_job(tmp_path, count=3)
+        render.execute([job], workers=1, on_progress=seen.append)
+        states = [message.state for message in seen]
+        assert states[0] == "started"
+        assert states[-1] == "done"
+        assert [m.frames_done for m in seen if m.state == "frame"] == [1, 2, 3]
+        assert all(m.name == job.name for m in seen)
+
+    def test_a_cancelled_run_writes_nothing_and_reports_skipped(self, tmp_path: Path) -> None:
+        context = multiprocessing.get_context("spawn")
+        cancel = context.Event()
+        cancel.set()
+        jobs = [raw_job(tmp_path / f"j{index}", count=2) for index in range(3)]
+        results = render.execute(jobs, workers=2, cancel=cancel)
+        assert {d.status for d in results} == {"skipped"}
+        assert not any(job.destination.exists() for job in jobs)
+        assert not any(job.temp.exists() for job in jobs)
+
+
+class TestApplyResults:
+    def test_executed_records_replace_the_planned_ones_on_their_row(self) -> None:
+        planned = Deliverable(kind="raw_dir", name="a", path=Path("/x/a"), version=1)
+        other = Deliverable(kind="audio", name="b", path=Path("/x/b"), version=1)
+        row = ShotRow(turnover_id="t1", clip_name="MELT0001_pl01")
+        row.deliverables = [planned, other]
+        batch = Batch(name="b", rows=[row])
+
+        done = Deliverable(kind="raw_dir", name="a", path=Path("/x/a"), version=1, status="done")
+        render.apply_results(batch, [done])
+
+        assert row.deliverables[0].status == "done"
+        assert row.deliverables[1] is other
+
+    def test_a_result_for_a_path_no_row_planned_is_ignored(self) -> None:
+        planned = Deliverable(kind="raw_dir", name="a", path=Path("/x/a"), version=1)
+        row = ShotRow(turnover_id="t1", clip_name="MELT0001_pl01")
+        row.deliverables = [planned]
+        batch = Batch(name="b", rows=[row])
+
+        stray = Deliverable(kind="audio", name="z", path=Path("/x/z"), version=1, status="done")
+        render.apply_results(batch, [stray])
+        assert row.deliverables == [planned]

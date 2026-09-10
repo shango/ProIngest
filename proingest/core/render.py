@@ -22,17 +22,23 @@ Reference mp4s and the stringout are not here yet; they are M3.5.
 from __future__ import annotations
 
 import logging
+import multiprocessing
 import shutil
-from collections.abc import Generator
+import threading
+from collections.abc import Callable, Generator, Sequence
+from concurrent.futures import ProcessPoolExecutor, as_completed
+from dataclasses import dataclass
+from multiprocessing.queues import Queue as MPQueue
+from multiprocessing.synchronize import Event as EventType
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import numpy as np
 import numpy.typing as npt
 import xxhash
 
 from proingest.core import color, exr, ffmpeg, media, resize
-from proingest.core.models import Deliverable
+from proingest.core.models import Batch, Deliverable, QCResult
 from proingest.core.planner import DeliverableJob
 
 log = logging.getLogger(__name__)
@@ -51,6 +57,14 @@ class RenderError(RuntimeError):
     """The job could not be produced. Nothing is left at the destination."""
 
 
+class RenderCancelled(RuntimeError):
+    """The run was cancelled while this job was in flight.
+
+    Deliberately not a RenderError: a cancelled job did not fail, it was never
+    finished, and it should not be reported as a defect in the source or the plan.
+    """
+
+
 def file_digest(path: Path) -> str:
     """xxhash64 of a file, read in chunks so a 4k frame never lands in memory twice."""
     digest = xxhash.xxh64()
@@ -63,6 +77,8 @@ def file_digest(path: Path) -> str:
 def render_job(
     job: DeliverableJob,
     colorspace: color.SourceColorSpace = color.DEFAULT_SOURCE_COLORSPACE,
+    on_frame: Callable[[int], None] | None = None,
+    cancelled: Callable[[], bool] | None = None,
 ) -> Deliverable:
     """Produce one deliverable and return the record of what was written.
 
@@ -70,14 +86,21 @@ def render_job(
     passed in rather than stored on the job: it is a Settings value about the whole
     turnover, not a fact about this source.
 
+    `on_frame` is called with the running frame count, and `cancelled` is checked
+    between frames. Both are plain callables rather than a queue and an event, so
+    this stays free of multiprocessing and both hooks are testable synchronously;
+    `execute` is what wraps the real queue and event around them.
+
     On any failure the temp is discarded and the exception propagates, so the caller
     sees the real reason and the destination stays absent.
     """
     deliverable = job.to_deliverable()
+    if cancelled is not None and cancelled():
+        raise RenderCancelled(f"{job.name} was cancelled before it started")
     _prepare(job)
     try:
         if job.kind == "raw_dir":
-            _render_sequence(job, deliverable, colorspace)
+            _render_sequence(job, deliverable, colorspace, on_frame, cancelled)
         elif job.kind == "aux_still":
             _render_still(job, deliverable, colorspace)
         elif job.kind == "audio":
@@ -134,9 +157,18 @@ def _record_file(deliverable: Deliverable, path: Path) -> None:
 
 
 def _render_sequence(
-    job: DeliverableJob, deliverable: Deliverable, colorspace: color.SourceColorSpace
+    job: DeliverableJob,
+    deliverable: Deliverable,
+    colorspace: color.SourceColorSpace,
+    on_frame: Callable[[int], None] | None = None,
+    cancelled: Callable[[], bool] | None = None,
 ) -> None:
-    """Write every frame of the range into the temp folder, hashing as it goes."""
+    """Write every frame of the range into the temp folder, hashing as it goes.
+
+    The frame boundary is where a run is interrupted. Checking between frames rather
+    than mid-frame means a cancelled job never leaves a half written EXR, and the
+    temp is discarded anyway on the way out.
+    """
     job.temp.mkdir(parents=True)
     written = 0
     stream = _source_pixels(job)
@@ -147,6 +179,10 @@ def _render_sequence(
             deliverable.frame_checksums.append(file_digest(path))
             deliverable.size += path.stat().st_size
             written += 1
+            if on_frame is not None:
+                on_frame(written)
+            if cancelled is not None and cancelled():
+                raise RenderCancelled(f"{job.name} cancelled after {written} frames")
     finally:
         # Closing rather than letting it fall out of scope: the decode owns an ffmpeg
         # process, and a short read must not leave it running until the next collection.
@@ -264,3 +300,170 @@ def _render_copy(job: DeliverableJob, deliverable: Deliverable) -> None:
     """
     shutil.copyfile(job.source, job.temp)
     _record_file(deliverable, job.temp)
+
+
+# --- Running a batch of jobs. ARCHITECTURE.md "Concurrency". ---
+
+ProgressState = Literal["started", "frame", "done", "failed", "cancelled"]
+
+RENDER_FAILED = "QC-100"
+"""The render did not complete. Every other QC-1xx is NA when this one fails."""
+
+DEFAULT_WORKERS = 4
+"""Capped rather than one per core on purpose.
+
+Each worker may run its own ffmpeg, and ffmpeg is already multi-threaded, so more
+workers than this mostly buys contention. It is a parameter because the right number
+depends on the machine and on whether the source is on a network mount; measuring it
+against a real turnover is M8.
+"""
+
+_DRAIN_TIMEOUT = 5.0
+
+
+@dataclass(frozen=True)
+class Progress:
+    """One message from a worker. Picklable, because it crosses a process boundary."""
+
+    name: str
+    state: ProgressState
+    frames_done: int = 0
+    frames_total: int = 0
+    message: str = ""
+
+    @property
+    def fraction(self) -> float:
+        """0.0 to 1.0, and 0.0 rather than a division error for a job with no frames."""
+        if self.frames_total <= 0:
+            return 0.0
+        return min(1.0, self.frames_done / self.frames_total)
+
+
+# Set once per worker process by the pool initializer. A module global rather than an
+# argument because a multiprocessing Queue cannot be pickled through a task submission;
+# it can only be handed over at process creation, which is what initargs does.
+_QUEUE: MPQueue[Progress | None] | None = None
+_CANCEL: EventType | None = None
+
+
+def _worker_init(queue: MPQueue[Progress | None], cancel: EventType) -> None:
+    global _QUEUE, _CANCEL
+    _QUEUE, _CANCEL = queue, cancel
+
+
+def _publish(message: Progress) -> None:
+    """Send progress, or do nothing when there is no pool. Never raises."""
+    if _QUEUE is not None:
+        _QUEUE.put(message)
+
+
+def _worker(job: DeliverableJob, colorspace: color.SourceColorSpace) -> Deliverable:
+    """Run one job in a worker process. Always returns a record, never raises.
+
+    A failure comes back as a `failed` Deliverable carrying QC-100, so one job going
+    wrong is a result the run reports rather than an exception that stops the rest.
+    """
+
+    def on_frame(done: int) -> None:
+        _publish(Progress(job.name, "frame", done, job.frame_count))
+
+    def cancelled() -> bool:
+        return _CANCEL is not None and _CANCEL.is_set()
+
+    _publish(Progress(job.name, "started", 0, job.frame_count))
+    try:
+        deliverable = render_job(job, colorspace, on_frame=on_frame, cancelled=cancelled)
+    except RenderCancelled:
+        skipped = job.to_deliverable()
+        skipped.status = "skipped"
+        _publish(Progress(job.name, "cancelled", 0, job.frame_count))
+        return skipped
+    except Exception as exc:
+        # Broad on purpose: one bad job is a result, not a reason to stop the run.
+        failed = job.to_deliverable()
+        failed.status = "failed"
+        failed.qc.append(QCResult(RENDER_FAILED, "error", "deliverable", f"{job.name}: {exc}"))
+        _publish(Progress(job.name, "failed", 0, job.frame_count, str(exc)))
+        return failed
+
+    _publish(Progress(job.name, "done", deliverable.frame_count, job.frame_count))
+    return deliverable
+
+
+def _drain(
+    queue: MPQueue[Progress | None], on_progress: Callable[[Progress], None] | None
+) -> None:
+    """Forward progress to the caller until the None sentinel arrives.
+
+    The queue carries `Progress | None` rather than a sentinel Progress value because
+    a queue round trip pickles, so an identity check would not survive it.
+    """
+    while True:
+        message = queue.get()
+        if message is None:
+            return
+        if on_progress is not None:
+            on_progress(message)
+
+
+def execute(
+    jobs: Sequence[DeliverableJob],
+    colorspace: color.SourceColorSpace = color.DEFAULT_SOURCE_COLORSPACE,
+    workers: int = DEFAULT_WORKERS,
+    on_progress: Callable[[Progress], None] | None = None,
+    cancel: EventType | None = None,
+) -> list[Deliverable]:
+    """Render every job, in parallel, and return one record per job.
+
+    Every job produces a Deliverable whatever happens: `done`, `failed` with QC-100,
+    or `skipped` when the run was cancelled. Results come back in job order rather
+    than completion order, so a caller can line them up against what it planned.
+
+    `cancel` is a `multiprocessing.Event` the caller keeps: setting it stops new jobs
+    being submitted and makes in-flight jobs stop at their next frame boundary.
+
+    `on_progress` is called on a drain thread in **this** process, not in a worker, so
+    a UI callback can marshal to the main thread the way it normally would.
+
+    The pool uses the spawn context on every platform. Windows has no other option and
+    is the target, so using it on the dev machine too means the pickling constraints
+    are the same in testing as in the field.
+    """
+    if not jobs:
+        return []
+
+    context = multiprocessing.get_context("spawn")
+    cancel = cancel or context.Event()
+    queue: MPQueue[Progress | None] = context.Queue()
+    drain = threading.Thread(target=_drain, args=(queue, on_progress), daemon=True)
+    drain.start()
+
+    results: dict[int, Deliverable] = {}
+    try:
+        with ProcessPoolExecutor(
+            max_workers=max(1, workers),
+            mp_context=context,
+            initializer=_worker_init,
+            initargs=(queue, cancel),
+        ) as pool:
+            futures = {
+                pool.submit(_worker, job, colorspace): index for index, job in enumerate(jobs)
+            }
+            for future in as_completed(futures):
+                results[futures[future]] = future.result()
+    finally:
+        queue.put(None)
+        drain.join(timeout=_DRAIN_TIMEOUT)
+
+    return [results[index] for index in sorted(results)]
+
+
+def apply_results(batch: Batch, deliverables: Sequence[Deliverable]) -> None:
+    """Write executed records back onto the rows that planned them.
+
+    Matched on destination path, which is unique across a run because the planner
+    resolves one version per shot and never names two deliverables the same.
+    """
+    executed = {deliverable.path: deliverable for deliverable in deliverables}
+    for row in batch.rows:
+        row.deliverables = [executed.get(planned.path, planned) for planned in row.deliverables]

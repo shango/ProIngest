@@ -8,9 +8,9 @@ commit.
 
 ## 1. Resume here
 
-**State at 2026-09-10.** M1 and M2 complete, M3 in progress (M3.1, M3.2 and M3.3 done).
-Working tree clean apart from two deliberately untracked files (section 8). 525 tests
-passing, `ruff` and `mypy --strict` clean.
+**State at 2026-09-10.** M1 and M2 complete, M3 in progress (M3.1 to M3.4 done, only
+M3.5 left). Working tree clean apart from two deliberately untracked files (section 8).
+547 tests passing, `ruff` and `mypy --strict` clean.
 
 **Nothing is blocked.**
 
@@ -19,35 +19,40 @@ Verify the state before changing anything:
 ```
 .venv/bin/python -m pytest tests/ -q
 .venv/bin/python -m ruff check proingest tests && .venv/bin/python -m mypy proingest tests
-.venv/bin/python -m proingest scan <turnover folder>
+.venv/bin/python -m proingest scan <turnover folder> --save <batch>
+.venv/bin/python -m proingest run <batch> --delivery-root <root>
 ```
 
-**Next task: M3.4, run a batch of jobs.**
+The last two are a real end to end run and they work today: a scanned turnover renders
+its raw EXR sequences, its audio and its side files, and reports the reference mp4s as
+QC-100 failures because M3.5 is not built. That is the expected output right now.
 
-`render.render_job(job)` produces one deliverable today, synchronously. M3.4 is the
-harness around it: a `ProcessPoolExecutor`, a progress queue, cancellation, and a
-`proingest run <batch>` CLI to drive the whole thing headless. ARCHITECTURE.md
-"Concurrency" is the spec. Notes for it:
+**Next task: M3.5, the reference encodes.**
 
-- `render_job` raises exactly one exception type, `RenderError`, so a worker has one
-  thing to catch. It cleans up on `BaseException`, not `Exception`, so a cancelled or
-  killed worker still leaves no `.part`.
-- **Progress and cancellation were deliberately left out of M3.3**, so the frame loop in
-  `_render_sequence` is where both hooks go: a callback per frame, and a check of a
-  shared `multiprocessing.Event` between frames. Nothing else needs to change.
-- A `DeliverableJob` is picklable and self contained: it carries source, destination,
-  temp, frame range, target size, source resolution, rate and start timecode. Do not
-  send the batch to a worker.
-- `colorspace` is a `render_job` argument rather than a job field, because it is one
-  Settings value for the whole run. The pool passes it to every job.
-- Jobs for one row can run in parallel, and the 4k and HD passes of one row are separate
-  jobs by design (two decodes, COLOR_AND_FORMAT section 7).
+`render.py` dispatches `ref_mp4` to a "not yet" error. Replacing that is the last chunk
+of M3. COLOR_AND_FORMAT section 3 has the encode settings and section 1 the colour
+policy. Notes for it:
 
-Then:
+- **Read the transfer decision from `color.display_transform(colorspace)`, never
+  re-derive it.** It returns the linear-to-sRGB filter for a scene linear source and
+  `None` for the baked sRGB source we actually get today. Getting it backwards does not
+  fail loudly, it washes out or crushes every reference (section 6).
+- Both outputs are tagged the same either way: `bt709` primaries and matrix,
+  `iec61966-2-1` transfer. Only the work to get there differs.
+- **State `-f mp4` explicitly.** The output is written to a `.part` path, so ffmpeg
+  cannot infer the muxer from the extension. This already bit the audio extract; see
+  section 7.
+- The encode reads the same source range as the raw pass. `ffmpeg.decode_command` shows
+  how the frame seek is built; an encode can use the same `trim` and `-start_number`
+  handling rather than piping raw frames back in.
+- `job.audio_source` carries the wav to mux, when the row has one. AAC 192k.
+- x264 CRF 18 `-preset slow`, or NVENC `-cq 19 -preset p5` when `ffmpeg.has_nvenc()`.
+  Keyint 24, `-movflags +faststart` (QC-115 checks the moov atom is at the head).
+- Cancellation and progress: an encode is one ffmpeg run, not a frame loop, so the
+  hooks work differently from `_render_sequence`. Parse ffmpeg's `-progress` output for
+  frame counts, and kill the child when the cancel event is set.
 
-- **M3.5** ref mp4 and stringout encodes. Read the transfer decision from
-  `color.display_transform`, never re-derive it (section 6). Note the `-f` rule in
-  section 7 below: an ffmpeg output written to a `.part` path must state its format.
+After M3.5, M3 is done and M4 (QC rules, both phases, xlsx exports) is next.
 
 ---
 
@@ -108,9 +113,9 @@ fix one and say which.**
 | `core/scan.py` | turnover folder -> Turnover + ShotRows | 388 |
 | `core/planner.py` | type table, deliverable jobs, version resolution | 440 |
 | `core/batchfile.py` | `.pibatch` save/load, backup, filesystem reconciliation | 86 |
-| `core/render.py` | executing one job: atomic writes, EXR frames, checksums, copies | 266 |
+| `core/render.py` | executing a job and a batch of them: atomic writes, pool, progress, cancel | 469 |
 | `core/qc.py` | rule registry; QC-025, QC-026, QC-043 so far | 120 |
-| `__main__.py` | `proingest scan` CLI | 140 |
+| `__main__.py` | `proingest scan` and `proingest run` CLI | 268 |
 
 Not built yet: `core/stringout.py`, `core/exports.py`, `core/settings.py`, and
 everything under `proingest/ui/`.
@@ -124,8 +129,12 @@ Entry points worth knowing:
   design.
 - `exr.write_frame(path, pixels, timecode_frames, fps, colorspace)` is the only way a
   delivery frame is written.
-- `render.render_job(job, colorspace=...) -> Deliverable` produces one deliverable. It
-  either lands complete or leaves nothing: no `.part`, no destination.
+- `render.render_job(job, colorspace=..., on_frame=..., cancelled=...) -> Deliverable`
+  produces one deliverable. It either lands complete or leaves nothing: no `.part`, no
+  destination. The two hooks are plain callables, so they test synchronously.
+- `render.execute(jobs, ...) -> list[Deliverable]` runs them in a process pool and
+  returns one record per job in job order, whatever happened to it. `apply_results`
+  writes those records back onto the rows that planned them.
 - `ffmpeg.decode_frames(source, source_size, in_frame, out_frame, ...)` is a generator of
   `(h, w, 3)` float32 RGB frames. `source` is whatever goes after `-i`, so a sequence passes
   `media.printf_pattern_for(first_frame)`. `ffmpeg.decode_command(...)` builds the same
@@ -153,11 +162,11 @@ M3 detail:
 | M3.1 | `exr.write_frame`, `exr.read_pixels`, `core/resize.py` | done, 45 tests |
 | M3.2 | container decode to numpy frames in `core/ffmpeg.py` | done, 25 tests |
 | M3.3 | `core/render.py`: execution, atomic writes, checksums, copies | done, 35 tests |
-| M3.4 | pool, progress, cancellation, `proingest run` CLI | **next** |
-| M3.5 | ref mp4 and stringout encodes | unblocked |
+| M3.4 | pool, progress, cancellation, `proingest run` CLI | done, 30 tests |
+| M3.5 | ref mp4 and stringout encodes | **next**, unblocked |
 
-Tests by file: naming 115, planner 55, frames 55, media 46, models 37, render 35,
-timeline 33, exr 29, ffmpeg 25, scan 25, qc 22, batchfile 18, resize 16, cli 8,
+Tests by file: naming 115, planner 55, frames 55, render 49, media 46, models 37,
+timeline 33, exr 29, ffmpeg 25, scan 25, qc 22, batchfile 18, resize 16, cli 16,
 color 6.
 
 ---
@@ -205,6 +214,31 @@ color 6.
 - Version is resolved at plan time, immediately before a run, never at scan time.
   `plan_batch` replaces each row's deliverable list, so recorded render state belongs
   to the version that produced it.
+
+**Running a batch (M3.4).**
+
+- **The pool uses the spawn context on every platform**, not just Windows. Windows has
+  no other option and is the target, so spawning on the Linux dev machine too means the
+  pickling constraints are identical in testing and in the field. A job that only works
+  under fork would otherwise pass every test here and fail on the user's machine.
+- **A failed job is a result, not an exception.** `execute` returns one Deliverable per
+  job whatever happened: `done`, `failed` carrying QC-100, or `skipped` when cancelled.
+  One bad row must not stop a 100 shot run. Results come back in job order, not
+  completion order, so a caller can line them up against what it planned.
+- **QC-100 is new**: "render did not complete". Every other QC-1xx is NA when it fires,
+  because there is no file to check. It is also the exception to the phase B rule that a
+  failed deliverable keeps its file with a `.failed` marker: a render failure leaves
+  nothing at all, by design.
+- Progress and cancellation cross the process boundary as a `multiprocessing.Queue` and
+  `Event` handed over in `initargs`. That is the only way: a Queue cannot be pickled
+  through a task submission, only inherited at process creation. `render_job` itself
+  takes two plain callables instead, so it stays free of multiprocessing and both hooks
+  are unit-testable without a pool.
+- `on_progress` is called on a drain thread in the **calling** process, so a UI callback
+  marshals to the main thread the way it normally would.
+- `DEFAULT_WORKERS` is 4, capped rather than one per core: each worker may run its own
+  ffmpeg and ffmpeg is already multi-threaded, so more mostly buys contention. Tuning it
+  against a real turnover is M8.
 
 **Rendering (M3.3).**
 
@@ -280,6 +314,14 @@ color 6.
   real reason the EXR path resamples in numpy, and it becomes a live hazard the day the
   shooters switch to scene linear. The container path is safe because every container
   format the spec accepts is integer and already bounded.
+
+**CLI progress (M3.4).**
+
+- Per-job progress lines redrawn in place are unreadable the moment two workers run:
+  they interleave into a wall of text, and `\r` does nothing useful in a redirected log.
+  The CLI prints **one aggregate line** (deliverables done, frames done, percent) and
+  only on a tty; a redirected run gets the per-deliverable result lines alone, which is
+  what a log wants. Found by running it, not by testing it, and now pinned by tests.
 
 **Writing through ffmpeg (M3.3).**
 

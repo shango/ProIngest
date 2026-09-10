@@ -58,8 +58,11 @@ Rule IDs never change meaning. New rules get new numbers.
 
 Run per deliverable immediately after its atomic rename. Any error marks the deliverable failed and leaves the row not-done; the file stays for inspection with a `.failed` marker sidecar.
 
+QC-100 is the exception to that: it reports a render that never produced a file at all, so there is nothing to keep and nothing to mark. A render failure leaves no `.part` and no destination, by design.
+
 | ID | severity | scope | check |
 |---|---|---|---|
+| QC-100 | error | deliverable | Render did not complete; the reason is recorded. Every other QC-1xx is NA when this one fails, because there is no file to check |
 | QC-101 | error | exr seq | Frame count equals duration |
 | QC-102 | error | exr seq | First frame is 1001, last is 1000 + duration, no gaps |
 | QC-103 | error | exr seq | Every frame opens with OpenEXR and header parses |
