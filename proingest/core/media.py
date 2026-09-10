@@ -99,6 +99,14 @@ class Sequence:
         return printf_pattern_for(self.first_path)
 
 
+def _split_frame(frame: Path) -> tuple[str, int]:
+    """A sequence frame's base name and its zero padding."""
+    match = SEQUENCE_PATTERN.match(frame.stem)
+    if match is None:
+        raise ValueError(f"{frame} is not a numbered sequence frame")
+    return match["base"], len(match["frame"])
+
+
 def printf_pattern_for(frame: Path) -> str:
     """The same pattern, rebuilt from any one frame of the sequence.
 
@@ -107,11 +115,19 @@ def printf_pattern_for(frame: Path) -> str:
     that worker names the ffmpeg input. Padding comes from the digits actually on
     the file, so a five digit sequence stays five digits.
     """
-    match = SEQUENCE_PATTERN.match(frame.stem)
-    if match is None:
-        raise ValueError(f"{frame} is not a numbered sequence frame")
-    padding = len(match["frame"])
-    return str(frame.with_name(f"{match['base']}.%0{padding}d{frame.suffix}"))
+    base, padding = _split_frame(frame)
+    return str(frame.with_name(f"{base}.%0{padding}d{frame.suffix}"))
+
+
+def frame_path_for(frame: Path, number: int) -> Path:
+    """Another frame of the same sequence, by number.
+
+    The EXR source path reads frames itself rather than going through ffmpeg, so it
+    needs real paths where the container path needs a printf pattern. Both come from
+    the same split, so they cannot disagree about padding.
+    """
+    base, padding = _split_frame(frame)
+    return frame.with_name(f"{base}.{number:0{padding}d}{frame.suffix}")
 
 
 @dataclass

@@ -287,6 +287,14 @@ class Deliverable:
     res: str | None = None
     status: DeliverableStatus = "planned"
     checksum: str | None = None
+    frame_checksums: list[str] = field(default_factory=list)
+    """xxhash64 per written frame, in output frame order, for QC-106.
+
+    A sequence has no single checksum, and QC-106 checks every frame, so the writer
+    records them all here. `checksum` stays the whole-file digest a single file gets.
+    Additive, so the schema version does not move: an older batch simply has none.
+    """
+
     frame_count: int = 0
     size: int = 0
     qc: list[QCResult] = field(default_factory=list)
@@ -300,6 +308,7 @@ class Deliverable:
             "res": self.res,
             "status": self.status,
             "checksum": self.checksum,
+            "frame_checksums": list(self.frame_checksums),
             "frame_count": self.frame_count,
             "size": self.size,
             "qc": [result.to_dict() for result in self.qc],
@@ -315,6 +324,7 @@ class Deliverable:
             res=data.get("res"),
             status=data.get("status", "planned"),
             checksum=data.get("checksum"),
+            frame_checksums=[str(value) for value in data.get("frame_checksums", [])],
             frame_count=int(data.get("frame_count", 0)),
             size=int(data.get("size", 0)),
             qc=[QCResult.from_dict(item) for item in data.get("qc", [])],

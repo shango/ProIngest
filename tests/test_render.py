@@ -1,0 +1,453 @@
+"""Executing one job.
+
+The invariant every test here circles is atomicity: after `render_job` either the
+destination exists complete, or it does not exist and no `.part` is left behind. A
+half written sequence that looks finished is the failure this module exists to
+prevent, so the failure paths get as much attention as the happy ones.
+
+Header assertions are deliberately the same ones QC-103 to QC-105 will make in M4. A
+frame is checked against the delivery spec at the point it is written, not only at the
+point it is verified.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import OpenEXR
+import pytest
+
+from proingest.core import color, exr, frames, media, naming, render
+from proingest.core.models import FrameRate
+from proingest.core.planner import DeliverableJob
+from tests.fixtures import media as fixtures
+
+FPS = FrameRate(24)
+ONE_HOUR = frames.timecode_to_frames("01:00:00:00", 24.0)
+SMALL = fixtures.SMALL
+HALF = (SMALL[0] // 2, SMALL[1] // 2)
+
+
+def sequence_job(
+    source: Path,
+    destination: Path,
+    in_frame: int,
+    out_frame: int,
+    kind: str = "raw_dir",
+    is_sequence: bool = True,
+    start_frame: int = 1001,
+    start_timecode: int | None = ONE_HOUR,
+    res: str | None = None,
+) -> DeliverableJob:
+    """A picture job pointed at test media, with the source facts a worker needs.
+
+    `res` is left off by default so no resample runs: the fixtures are tiny, and a job
+    with a resolution set would scale them to the real 4k or HD numbers.
+    """
+    job = DeliverableJob(
+        kind=kind,  # type: ignore[arg-type]
+        source=source,
+        destination=destination,
+        version=1,
+        shot_code="MELT0001",
+        elem="pl01",
+        in_frame=in_frame,
+        out_frame=out_frame,
+        source_is_sequence=is_sequence,
+        source_size=SMALL,
+        rate=FPS,
+        source_start_frame=start_frame,
+        source_start_timecode=start_timecode,
+        res=res,  # type: ignore[arg-type]
+    )
+    return job
+
+
+def raw_job(tmp_path: Path, count: int = 4, first: int = 1001, **kwargs: object) -> DeliverableJob:
+    fixture = fixtures.make_exr_sequence(tmp_path / "src", count=count, first=first)
+    destination = tmp_path / "out" / "MELT0001" / "MELT0001_pl01_raw_4k_v01"
+    return sequence_job(
+        fixture.path_for(first),
+        destination,
+        first,
+        first + count - 1,
+        start_frame=first,
+        **kwargs,  # type: ignore[arg-type]
+    )
+
+
+def frame_names(directory: Path) -> list[str]:
+    return sorted(path.name for path in directory.iterdir())
+
+
+class TestRawSequence:
+    def test_a_sequence_lands_with_one_frame_per_source_frame(self, tmp_path: Path) -> None:
+        job = raw_job(tmp_path, count=4)
+        deliverable = render.render_job(job)
+        assert job.destination.is_dir()
+        assert deliverable.frame_count == 4
+        assert frame_names(job.destination) == [
+            "MELT0001_pl01_raw_4k_v01.1001.exr",
+            "MELT0001_pl01_raw_4k_v01.1002.exr",
+            "MELT0001_pl01_raw_4k_v01.1003.exr",
+            "MELT0001_pl01_raw_4k_v01.1004.exr",
+        ]
+
+    def test_output_numbering_starts_at_1001_whatever_the_source_numbering(
+        self, tmp_path: Path
+    ) -> None:
+        job = raw_job(tmp_path, count=3, first=5000)
+        render.render_job(job)
+        assert frame_names(job.destination)[0].endswith(".1001.exr")
+
+    def test_a_sub_range_delivers_only_that_range(self, tmp_path: Path) -> None:
+        fixture = fixtures.make_exr_sequence(tmp_path / "src", count=8, first=1001)
+        job = sequence_job(
+            fixture.path_for(1001),
+            tmp_path / "out" / "MELT0001_pl01_raw_4k_v01",
+            1003,
+            1005,
+        )
+        deliverable = render.render_job(job)
+        assert deliverable.frame_count == 3
+        assert len(frame_names(job.destination)) == 3
+
+    def test_every_frame_is_dwaa_half_with_matching_windows(self, tmp_path: Path) -> None:
+        """QC-104 and QC-105, asserted where the frame is written."""
+        job = raw_job(tmp_path, count=2)
+        render.render_job(job)
+        for path in sorted(job.destination.iterdir()):
+            header = exr.read_header(path)
+            assert header.compression == "DWAA_COMPRESSION"
+            assert header.windows_match
+            assert header.resolution == SMALL
+
+    def test_each_frame_carries_its_own_timecode(self, tmp_path: Path) -> None:
+        job = raw_job(tmp_path, count=3, first=1001)
+        render.render_job(job)
+        written = sorted(job.destination.iterdir())
+        got = [exr.start_timecode_frames(path, 24.0) for path in written]
+        assert got == [ONE_HOUR, ONE_HOUR + 1, ONE_HOUR + 2]
+
+    def test_a_sub_range_timecode_counts_from_the_media_start_not_the_in_point(
+        self, tmp_path: Path
+    ) -> None:
+        """Source TC is the media's start plus the offset into the media (section 5)."""
+        fixture = fixtures.make_exr_sequence(tmp_path / "src", count=8, first=1001)
+        job = sequence_job(
+            fixture.path_for(1001), tmp_path / "out" / "MELT0001_pl01_raw_4k_v01", 1004, 1005
+        )
+        render.render_job(job)
+        first = sorted(job.destination.iterdir())[0]
+        assert exr.start_timecode_frames(first, 24.0) == ONE_HOUR + 3
+
+    def test_media_with_no_timecode_writes_frames_without_one(self, tmp_path: Path) -> None:
+        job = raw_job(tmp_path, count=2, start_timecode=None)
+        render.render_job(job)
+        assert exr.read_header(sorted(job.destination.iterdir())[0]).timecode is None
+
+    def test_the_colorspace_label_reaches_the_header(self, tmp_path: Path) -> None:
+        """It labels the file. Nothing here transforms the pixels either way."""
+        job = raw_job(tmp_path, count=1)
+        render.render_job(job, colorspace=color.SCENE_LINEAR_SRGB)
+        with OpenEXR.File(str(job.frame_path(1001))) as handle:
+            assert handle.header()[exr.COLORSPACE_ATTRIBUTE] == "scene_linear_sRGB"
+
+
+class TestChecksums:
+    def test_one_checksum_per_frame_in_output_order(self, tmp_path: Path) -> None:
+        job = raw_job(tmp_path, count=4)
+        deliverable = render.render_job(job)
+        assert len(deliverable.frame_checksums) == 4
+        for path, digest in zip(
+            sorted(job.destination.iterdir()), deliverable.frame_checksums, strict=True
+        ):
+            assert render.file_digest(path) == digest
+
+    def test_frames_of_different_content_hash_differently(self, tmp_path: Path) -> None:
+        """The fixture ramps per frame, so identical hashes would mean a stuck read."""
+        job = raw_job(tmp_path, count=4)
+        deliverable = render.render_job(job)
+        assert len(set(deliverable.frame_checksums)) == 4
+
+    def test_size_is_the_sum_of_the_frames(self, tmp_path: Path) -> None:
+        job = raw_job(tmp_path, count=3)
+        deliverable = render.render_job(job)
+        assert deliverable.size == sum(p.stat().st_size for p in job.destination.iterdir())
+
+    def test_a_re_render_of_the_same_pixels_hashes_the_same(self, tmp_path: Path) -> None:
+        """QC-106 only means anything if the encoder is deterministic. It is."""
+        first = render.render_job(raw_job(tmp_path / "a", count=2))
+        second = render.render_job(raw_job(tmp_path / "b", count=2))
+        assert first.frame_checksums == second.frame_checksums
+
+
+class TestAtomicity:
+    def test_nothing_is_left_at_the_destination_when_the_source_is_short(
+        self, tmp_path: Path
+    ) -> None:
+        fixture = fixtures.make_exr_sequence(tmp_path / "src", count=3, first=1001)
+        job = sequence_job(
+            fixture.path_for(1001), tmp_path / "out" / "MELT0001_pl01_raw_4k_v01", 1001, 1008
+        )
+        with pytest.raises(render.RenderError):
+            render.render_job(job)
+        assert not job.destination.exists()
+        assert not job.temp.exists()
+
+    def test_a_missing_source_frame_leaves_no_part_behind(self, tmp_path: Path) -> None:
+        fixture = fixtures.make_exr_sequence(tmp_path / "src", count=5, first=1001)
+        fixture.path_for(1003).unlink()
+        job = sequence_job(
+            fixture.path_for(1001), tmp_path / "out" / "MELT0001_pl01_raw_4k_v01", 1001, 1005
+        )
+        with pytest.raises(render.RenderError, match="missing"):
+            render.render_job(job)
+        assert not job.destination.exists()
+        assert not job.temp.exists()
+
+    def test_a_stale_part_from_a_previous_crash_is_replaced(self, tmp_path: Path) -> None:
+        job = raw_job(tmp_path, count=2)
+        job.temp.mkdir(parents=True)
+        (job.temp / "MELT0001_pl01_raw_4k_v01.1001.exr").write_bytes(b"half written")
+        render.render_job(job)
+        assert len(frame_names(job.destination)) == 2
+        assert not job.temp.exists()
+
+    def test_an_occupied_destination_is_refused_rather_than_overwritten(
+        self, tmp_path: Path
+    ) -> None:
+        job = raw_job(tmp_path, count=1)
+        job.destination.mkdir(parents=True)
+        with pytest.raises(render.RenderError, match="already exists"):
+            render.render_job(job)
+
+    def test_the_destination_appears_only_at_the_end(self, tmp_path: Path) -> None:
+        """The temp carries the final frame names, so only the rename makes it real."""
+        job = raw_job(tmp_path, count=2)
+        assert job.temp.name == job.destination.name + ".part"
+        render.render_job(job)
+        assert job.frame_path(1001).is_file()
+
+
+class TestContainerSource:
+    def test_a_mov_source_delivers_the_same_frame_count(self, tmp_path: Path) -> None:
+        source = fixtures.make_mov(tmp_path / "src" / "plate.mov", count=6)
+        job = sequence_job(
+            source,
+            tmp_path / "out" / "MELT0001_pl01_raw_4k_v01",
+            1,
+            4,
+            is_sequence=False,
+            start_frame=0,
+        )
+        deliverable = render.render_job(job)
+        assert deliverable.frame_count == 4
+        assert len(frame_names(job.destination)) == 4
+
+    def test_a_dpx_sequence_goes_through_ffmpeg_not_the_exr_reader(
+        self, tmp_path: Path
+    ) -> None:
+        directory = fixtures.make_dpx_sequence(tmp_path / "src", count=5, first=1001)
+        job = sequence_job(
+            directory / "MELT0002_pl01.1001.dpx",
+            tmp_path / "out" / "MELT0002_pl01_raw_4k_v01",
+            1001,
+            1003,
+        )
+        deliverable = render.render_job(job)
+        assert deliverable.frame_count == 3
+
+    def test_a_container_that_runs_out_leaves_nothing_behind(self, tmp_path: Path) -> None:
+        source = fixtures.make_mov(tmp_path / "src" / "plate.mov", count=3)
+        job = sequence_job(
+            source,
+            tmp_path / "out" / "MELT0001_pl01_raw_4k_v01",
+            0,
+            9,
+            is_sequence=False,
+            start_frame=0,
+        )
+        with pytest.raises(render.RenderError):
+            render.render_job(job)
+        assert not job.destination.exists()
+        assert not job.temp.exists()
+
+
+class TestResample:
+    """A job with a resolution set is resampled to exactly that size, never to the
+    source's. COLOR_AND_FORMAT section 4: the two delivery sizes are fixed numbers and
+    are never derived from the source."""
+
+    def test_an_exr_source_is_resampled_by_numpy(self, tmp_path: Path) -> None:
+        job = raw_job(tmp_path, count=2, res="HD")
+        render.render_job(job)
+        assert exr.read_header(job.frame_path(1001)).resolution == (1920, 1080)
+
+    def test_a_container_source_is_resampled_by_ffmpeg(self, tmp_path: Path) -> None:
+        source = fixtures.make_mov(tmp_path / "src" / "plate.mov", count=2)
+        job = sequence_job(
+            source,
+            tmp_path / "out" / "MELT0001_pl01_raw_HD_v01",
+            0,
+            1,
+            is_sequence=False,
+            start_frame=0,
+            res="HD",
+        )
+        render.render_job(job)
+        assert exr.read_header(job.frame_path(1001)).resolution == (1920, 1080)
+
+    def test_no_resolution_means_the_source_size_is_kept(self, tmp_path: Path) -> None:
+        job = raw_job(tmp_path, count=1)
+        render.render_job(job)
+        assert exr.read_header(job.frame_path(1001)).resolution == SMALL
+
+
+class TestAuxStill:
+    def test_an_aux_still_is_one_exr_file_not_a_folder(self, tmp_path: Path) -> None:
+        fixture = fixtures.make_exr_sequence(tmp_path / "src", count=4, first=1001)
+        job = sequence_job(
+            fixture.path_for(1001),
+            tmp_path / "out" / "MELT0001_pl01_colorChart_01_4k_v01.exr",
+            1002,
+            1002,
+            kind="aux_still",
+        )
+        deliverable = render.render_job(job)
+        assert job.destination.is_file()
+        assert deliverable.frame_count == 1
+        assert deliverable.checksum == render.file_digest(job.destination)
+        assert exr.start_timecode_frames(job.destination, 24.0) == ONE_HOUR + 1
+
+
+class TestAudio:
+    def test_a_wav_is_copied_byte_for_byte(self, tmp_path: Path) -> None:
+        source = fixtures.make_wav(tmp_path / "src" / "plate.wav", seconds=0.25)
+        job = DeliverableJob(
+            kind="audio",
+            source=source,
+            destination=tmp_path / "out" / "MELT0001_pl01_audio_v01.wav",
+            version=1,
+            shot_code="MELT0001",
+            elem="pl01",
+        )
+        deliverable = render.render_job(job)
+        assert job.destination.read_bytes() == source.read_bytes()
+        assert deliverable.checksum == render.file_digest(source)
+
+    def test_audio_inside_a_container_is_extracted_as_16_bit_pcm(self, tmp_path: Path) -> None:
+        source = fixtures.make_mov(tmp_path / "src" / "plate.mov", count=8, with_audio=True)
+        job = DeliverableJob(
+            kind="audio",
+            source=source,
+            destination=tmp_path / "out" / "MELT0001_pl01_audio_v01.wav",
+            version=1,
+            shot_code="MELT0001",
+            elem="pl01",
+        )
+        render.render_job(job)
+        info = media.probe_audio(job.destination)
+        assert info.bit_depth == 16
+        assert info.sample_rate == 48000
+        assert info.channels == 2
+
+    def test_a_source_with_no_audio_at_all_fails_and_leaves_nothing(
+        self, tmp_path: Path
+    ) -> None:
+        source = fixtures.make_mov(tmp_path / "src" / "plate.mov", count=4, with_audio=False)
+        job = DeliverableJob(
+            kind="audio",
+            source=source,
+            destination=tmp_path / "out" / "MELT0001_pl01_audio_v01.wav",
+            version=1,
+            shot_code="MELT0001",
+            elem="pl01",
+        )
+        with pytest.raises(render.RenderError):
+            render.render_job(job)
+        assert not job.destination.exists()
+        assert not job.temp.exists()
+
+
+class TestCopies:
+    @pytest.mark.parametrize(
+        ("kind", "name"),
+        [
+            ("hdri", "MELT0001_pl01_HDRI_v01.exr"),
+            ("camdata", "MELT0001_pl01_camData_v01.txt"),
+            ("bts", "MELT0001_pl01_BTS_01_v01.png"),
+        ],
+    )
+    def test_a_side_file_arrives_with_the_same_bytes_under_the_delivery_name(
+        self, tmp_path: Path, kind: str, name: str
+    ) -> None:
+        source = tmp_path / "src" / "whatever.bin"
+        source.parent.mkdir(parents=True)
+        source.write_bytes(b"camera: ARRI\nlens: 40mm\n" * 100)
+        job = DeliverableJob(
+            kind=kind,  # type: ignore[arg-type]
+            source=source,
+            destination=tmp_path / "out" / name,
+            version=1,
+            shot_code="MELT0001",
+            elem="pl01",
+        )
+        deliverable = render.render_job(job)
+        assert job.destination.read_bytes() == source.read_bytes()
+        assert deliverable.checksum == render.file_digest(source)
+        assert deliverable.status == "done"
+
+
+class TestNotYetBuilt:
+    def test_a_reference_mp4_says_which_milestone_it_is(self, tmp_path: Path) -> None:
+        source = fixtures.make_mov(tmp_path / "src" / "plate.mov", count=4)
+        job = sequence_job(
+            source,
+            tmp_path / "out" / "MELT0001_pl01_ref_4k_v01.mp4",
+            0,
+            3,
+            kind="ref_mp4",
+            is_sequence=False,
+            start_frame=0,
+        )
+        with pytest.raises(render.RenderError, match=r"M3\.5"):
+            render.render_job(job)
+
+
+class TestSequencePaths:
+    def test_a_frame_of_the_source_is_found_by_number(self, tmp_path: Path) -> None:
+        fixture = fixtures.make_exr_sequence(tmp_path / "src", count=4, first=1001)
+        found = media.frame_path_for(fixture.path_for(1001), 1003)
+        assert found == fixture.path_for(1003)
+        assert found.is_file()
+
+    def test_output_frames_start_at_the_first_output_frame(self, tmp_path: Path) -> None:
+        job = raw_job(tmp_path, count=3)
+        assert list(job.output_frames()) == [
+            naming.FIRST_OUTPUT_FRAME,
+            naming.FIRST_OUTPUT_FRAME + 1,
+            naming.FIRST_OUTPUT_FRAME + 2,
+        ]
+
+
+class TestUnwritablePixels:
+    def test_a_source_frame_that_will_not_read_leaves_nothing(self, tmp_path: Path) -> None:
+        fixture = fixtures.make_exr_sequence(tmp_path / "src", count=4, first=1001)
+        fixture.path_for(1002).write_bytes(b"not an exr")
+        job = sequence_job(
+            fixture.path_for(1001), tmp_path / "out" / "MELT0001_pl01_raw_4k_v01", 1001, 1004
+        )
+        with pytest.raises(exr.ExrError):
+            render.render_job(job)
+        assert not job.destination.exists()
+        assert not job.temp.exists()
+
+
+def test_a_digest_is_stable_and_content_dependent(tmp_path: Path) -> None:
+    one = tmp_path / "one.bin"
+    two = tmp_path / "two.bin"
+    one.write_bytes(b"x" * (render.DIGEST_CHUNK + 17))
+    two.write_bytes(b"x" * (render.DIGEST_CHUNK + 17) + b"y")
+    assert render.file_digest(one) == render.file_digest(one)
+    assert render.file_digest(one) != render.file_digest(two)

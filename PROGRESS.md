@@ -8,9 +8,9 @@ commit.
 
 ## 1. Resume here
 
-**State at 2026-09-10.** M1 and M2 complete, M3 in progress (M3.1 and M3.2 done). Working
-tree clean apart from two deliberately untracked files (section 8). 488 tests passing,
-`ruff` and `mypy --strict` clean. Fourteen commits on `main`; M3.2 landed as `0152e27`.
+**State at 2026-09-10.** M1 and M2 complete, M3 in progress (M3.1, M3.2 and M3.3 done).
+Working tree clean apart from two deliberately untracked files (section 8). 525 tests
+passing, `ruff` and `mypy --strict` clean.
 
 **Nothing is blocked.**
 
@@ -22,34 +22,32 @@ Verify the state before changing anything:
 .venv/bin/python -m proingest scan <turnover folder>
 ```
 
-**Next task: M3.3, execute one job.**
+**Next task: M3.4, run a batch of jobs.**
 
-`core/render.py` takes a `planner.DeliverableJob` and produces the deliverable. Everything
-it needs to decode is now there; what it adds is the writing side. Notes for it:
+`render.render_job(job)` produces one deliverable today, synchronously. M3.4 is the
+harness around it: a `ProcessPoolExecutor`, a progress queue, cancellation, and a
+`proingest run <batch>` CLI to drive the whole thing headless. ARCHITECTURE.md
+"Concurrency" is the spec. Notes for it:
 
-- **Atomic, always.** Render to `job.temp` (the `.part` path the job already carries),
-  verify, then rename onto `job.destination`. A crash must never leave a file that looks
-  finished. For `raw_dir` the whole folder is the `.part`, and `job.frame_path(n, temp=True)`
-  names a frame inside it.
-- Pick the source path by `job.source_is_sequence` and the extension: an EXR sequence reads
-  with `exr.read_pixels` plus `resize.lanczos_resize`, everything else decodes with
-  `ffmpeg.decode_frames`. Those are the two branches and they must land on the same pixels;
-  OQ-7 is the evidence that they do.
-- The container branch is one call: `ffmpeg.decode_frames(media.printf_pattern_for(job.source)
-  if job.source_is_sequence else str(job.source), size, job.in_frame, job.out_frame,
-  is_sequence=job.source_is_sequence, target_size=job.target_size)`. Iterate it, never listify
-  it.
-- Output frame numbering is `1001 + k`, and `job.source_frame(n)` inverts it. Each frame's
-  `timeCode` is the source start timecode plus the offset.
-- `xxhash64` per written frame, recorded on the Deliverable for QC-106.
-- Copies (HDRI, stills, camData) are byte copies with a rename, and audio is a wav byte copy
-  or a PCM extract. Same atomic discipline.
+- `render_job` raises exactly one exception type, `RenderError`, so a worker has one
+  thing to catch. It cleans up on `BaseException`, not `Exception`, so a cancelled or
+  killed worker still leaves no `.part`.
+- **Progress and cancellation were deliberately left out of M3.3**, so the frame loop in
+  `_render_sequence` is where both hooks go: a callback per frame, and a check of a
+  shared `multiprocessing.Event` between frames. Nothing else needs to change.
+- A `DeliverableJob` is picklable and self contained: it carries source, destination,
+  temp, frame range, target size, source resolution, rate and start timecode. Do not
+  send the batch to a worker.
+- `colorspace` is a `render_job` argument rather than a job field, because it is one
+  Settings value for the whole run. The pool passes it to every job.
+- Jobs for one row can run in parallel, and the 4k and HD passes of one row are separate
+  jobs by design (two decodes, COLOR_AND_FORMAT section 7).
 
-Then, in order:
+Then:
 
-- **M3.4** process pool, progress queue, cancellation, `proingest run <batch>` CLI.
 - **M3.5** ref mp4 and stringout encodes. Read the transfer decision from
-  `color.display_transform`, never re-derive it (section 6).
+  `color.display_transform`, never re-derive it (section 6). Note the `-f` rule in
+  section 7 below: an ffmpeg output written to a `.part` path must state its format.
 
 ---
 
@@ -99,22 +97,23 @@ fix one and say which.**
 | module | what it owns | lines |
 |---|---|---|
 | `core/naming.py` | every output name, both directions; `next_version`; clip and shot code parsing | 324 |
-| `core/frames.py` | integer frame math, timecode, In/Out input grammar | 169 |
-| `core/models.py` | Batch, Turnover, ShotRow, Deliverable, MediaInfo, AudioInfo, FrameRate, QCResult | 553 |
-| `core/ffmpeg.py` | the only place anything shells out; tool lookup, ffprobe, decode to numpy | 315 |
-| `core/media.py` | DirectoryIndex, sequence detection, path remap, probe cache | 448 |
+| `core/frames.py` | integer frame math, timecode, In/Out input grammar | 179 |
+| `core/models.py` | Batch, Turnover, ShotRow, Deliverable, MediaInfo, AudioInfo, FrameRate, QCResult | 563 |
+| `core/ffmpeg.py` | the only place anything shells out; tool lookup, ffprobe, decode, audio extract | 376 |
+| `core/media.py` | DirectoryIndex, sequence detection, path remap, probe cache | 465 |
 | `core/exr.py` | EXR header and pixel reading, delivery frame writing | 235 |
 | `core/resize.py` | antialiased Lanczos downscale for the EXR path | 96 |
 | `core/color.py` | source colour space setting; what each deliverable does about it | 61 |
 | `core/timeline.py` | OTIO and EDL loading, audio association | 233 |
 | `core/scan.py` | turnover folder -> Turnover + ShotRows | 388 |
-| `core/planner.py` | type table, deliverable jobs, version resolution | 394 |
+| `core/planner.py` | type table, deliverable jobs, version resolution | 440 |
 | `core/batchfile.py` | `.pibatch` save/load, backup, filesystem reconciliation | 86 |
+| `core/render.py` | executing one job: atomic writes, EXR frames, checksums, copies | 266 |
 | `core/qc.py` | rule registry; QC-025, QC-026, QC-043 so far | 120 |
 | `__main__.py` | `proingest scan` CLI | 140 |
 
-Not built yet: `core/render.py`, `core/stringout.py`, `core/exports.py`,
-`core/settings.py`, and everything under `proingest/ui/`.
+Not built yet: `core/stringout.py`, `core/exports.py`, `core/settings.py`, and
+everything under `proingest/ui/`.
 
 Entry points worth knowing:
 
@@ -125,6 +124,8 @@ Entry points worth knowing:
   design.
 - `exr.write_frame(path, pixels, timecode_frames, fps, colorspace)` is the only way a
   delivery frame is written.
+- `render.render_job(job, colorspace=...) -> Deliverable` produces one deliverable. It
+  either lands complete or leaves nothing: no `.part`, no destination.
 - `ffmpeg.decode_frames(source, source_size, in_frame, out_frame, ...)` is a generator of
   `(h, w, 3)` float32 RGB frames. `source` is whatever goes after `-i`, so a sequence passes
   `media.printf_pattern_for(first_frame)`. `ffmpeg.decode_command(...)` builds the same
@@ -150,13 +151,14 @@ M3 detail:
 | chunk | scope | state |
 |---|---|---|
 | M3.1 | `exr.write_frame`, `exr.read_pixels`, `core/resize.py` | done, 45 tests |
-| M3.2 | container decode to numpy frames in `core/ffmpeg.py` | done, 23 tests |
-| M3.3 | `core/render.py`: execution, atomic writes, checksums, copies | **next** |
-| M3.4 | pool, progress, cancellation, `proingest run` CLI | |
+| M3.2 | container decode to numpy frames in `core/ffmpeg.py` | done, 25 tests |
+| M3.3 | `core/render.py`: execution, atomic writes, checksums, copies | done, 35 tests |
+| M3.4 | pool, progress, cancellation, `proingest run` CLI | **next** |
 | M3.5 | ref mp4 and stringout encodes | unblocked |
 
-Tests by file: naming 115, planner 55, frames 55, media 46, models 37, timeline 33,
-exr 29, scan 25, ffmpeg 23, qc 22, batchfile 18, resize 16, cli 8, color 6.
+Tests by file: naming 115, planner 55, frames 55, media 46, models 37, render 35,
+timeline 33, exr 29, ffmpeg 25, scan 25, qc 22, batchfile 18, resize 16, cli 8,
+color 6.
 
 ---
 
@@ -203,6 +205,27 @@ exr 29, scan 25, ffmpeg 23, qc 22, batchfile 18, resize 16, cli 8, color 6.
 - Version is resolved at plan time, immediately before a run, never at scan time.
   `plan_batch` replaces each row's deliverable list, so recorded render state belongs
   to the version that produced it.
+
+**Rendering (M3.3).**
+
+- **A deliverable either exists complete or does not exist.** Every job writes to
+  `job.temp` and renames on success, and every failure path discards the temp. A render
+  failure therefore leaves nothing at all. That is deliberately different from a phase B
+  QC failure, which QC_RULES says keeps the file for inspection with a `.failed` marker:
+  a file that failed a check is evidence, a file that was never finished is garbage.
+- **An occupied destination is refused, never overwritten.** The planner resolves a free
+  version immediately before the run, so a destination that already exists means a
+  concurrent run or a bug. A delivered frame is not ours to replace.
+- `Deliverable.frame_checksums` holds the per frame xxhash64 QC-106 needs; `checksum`
+  stays the whole file digest a single file gets. The field is additive with a default,
+  so `SCHEMA_VERSION` stays 1: bumping it would reject every existing `.pibatch` with no
+  migration, for a field an older file simply does not have.
+- `DeliverableJob` gained `source_size`, `rate`, `source_start_frame` and
+  `source_start_timecode`. Reprobing in the worker was the alternative, and it would let
+  the render disagree with the scan about the source.
+- Source timecode counts from the **media start**, not from the In point:
+  `frames.timecode_frames_for(source_frame, source_start, source_start_timecode)`. A
+  sub range starting at 1004 of a sequence that starts at 1001 carries start TC plus 3.
 
 **Model and structure.**
 
@@ -257,6 +280,14 @@ exr 29, scan 25, ffmpeg 23, qc 22, batchfile 18, resize 16, cli 8, color 6.
   real reason the EXR path resamples in numpy, and it becomes a live hazard the day the
   shooters switch to scene linear. The container path is safe because every container
   format the spec accepts is integer and already bounded.
+
+**Writing through ffmpeg (M3.3).**
+
+- **An ffmpeg output written to a `.part` path must state `-f` explicitly.** ffmpeg infers
+  the muxer from the extension, and `.wav.part` tells it nothing: it fails with "Unable to
+  choose an output format". The atomic write discipline and format inference are in direct
+  conflict, and every ffmpeg written deliverable hits this, so M3.5's mp4 encodes need
+  `-f mp4` for the same reason. Found by a test, not by reading.
 
 **Decoding (M3.2).**
 
@@ -340,6 +371,13 @@ Nothing blocks the next task. These are live, in rough priority order:
   regex and lands as QC-010), a lens grid is turnover-level so it carries no show to
   place it under `_turnovers/`, and NAMING_SPEC section 4 versions per shot and says
   nothing about a per camera/lens/mm deliverable. Nothing downstream depends on it.
+- **Nothing stops a non 16:9 source being stretched.** `render._fit` resamples to the
+  target size, so a source of the wrong aspect would be squashed rather than
+  letterboxed. COLOR_AND_FORMAT section 4 says such a row is blocked by QC-023 and only
+  letterboxed when a Settings toggle allows it, but **QC-023 is not implemented** (qc.py
+  holds only QC-025, QC-026 and QC-043) and there is no Settings module yet, so today
+  nothing catches it. The fix belongs in qc.py with the rest of the rules, not as a
+  second check inside render.py; letterboxing waits on Settings. M4.
 - **OQ-21, alpha from a container source.** The EXR path preserves a source alpha;
   the container path decodes `gbrpf32le` and drops it. Two things are undecided and neither
   can be settled from the docs: what counts as a *real* alpha rather than the opaque one a

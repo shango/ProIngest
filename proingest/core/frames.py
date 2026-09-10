@@ -55,6 +55,16 @@ def source_frame_for(in_frame: int, output_frame: int) -> int:
     return in_frame + (output_frame - FIRST_OUTPUT_FRAME)
 
 
+def timecode_frames_for(source_frame: int, source_start: int, source_start_timecode: int) -> int:
+    """The timecode of one source frame, in frames. COLOR_AND_FORMAT section 5.
+
+    Source TC is the media's start timecode plus the offset into the media, so the
+    origin is `source_start`, which is the first sequence number or 0 for a container,
+    and not the In point.
+    """
+    return source_start_timecode + (source_frame - source_start)
+
+
 # --- Timecode. Non-drop only; drop-frame is QC-027. ---
 
 

@@ -19,7 +19,16 @@ from pathlib import Path
 from typing import Literal
 
 from proingest.core import frames, naming
-from proingest.core.models import Batch, Deliverable, InOut, MediaInfo, QCResult, ShotRow, SideFiles
+from proingest.core.models import (
+    Batch,
+    Deliverable,
+    FrameRate,
+    InOut,
+    MediaInfo,
+    QCResult,
+    ShotRow,
+    SideFiles,
+)
 from proingest.core.naming import Resolution, ShotIdentity
 
 TEMP_SUFFIX = ".part"
@@ -72,6 +81,23 @@ class DeliverableJob:
     audio_source: Path | None = None
     """The audio to mux into a reference mp4, when the row has any."""
 
+    source_size: tuple[int, int] | None = None
+    """The media's own resolution, which is what sizes the raw decode."""
+
+    rate: FrameRate | None = None
+    """The effective rate, so a worker converts timecode without reopening the source."""
+
+    source_start_frame: int = 0
+    """First frame index of the media: the first sequence number, or 0 for a container."""
+
+    source_start_timecode: int | None = None
+    """Start timecode of `source_start_frame`, or None when the media states none (QC-028).
+
+    These three are the last things a worker would otherwise have to reprobe. A job is
+    self contained on purpose, and reprobing in the worker would also mean the render
+    could disagree with the scan about the source.
+    """
+
     @property
     def name(self) -> str:
         return self.destination.name
@@ -97,6 +123,18 @@ class DeliverableJob:
         if self.in_frame is None:
             raise ValueError(f"{self.name} has no frame range")
         return frames.source_frame_for(self.in_frame, output_frame)
+
+    def timecode_for(self, output_frame: int) -> int | None:
+        """The source timecode an output frame carries, or None when there is none."""
+        if self.source_start_timecode is None:
+            return None
+        return frames.timecode_frames_for(
+            self.source_frame(output_frame), self.source_start_frame, self.source_start_timecode
+        )
+
+    def output_frames(self) -> range:
+        """The output frame numbers this job writes, 1001 first."""
+        return range(naming.FIRST_OUTPUT_FRAME, naming.FIRST_OUTPUT_FRAME + self.frame_count)
 
     def frame_path(self, output_frame: int, temp: bool = False) -> Path:
         """One frame inside a raw EXR sequence folder."""
@@ -290,6 +328,10 @@ def _picture_job(shot: _Shot, kind: JobKind, res: Resolution) -> DeliverableJob:
         out_frame=shot.current.out_frame,
         source_is_sequence=shot.media.is_sequence,
         audio_source=shot.audio if kind == "ref_mp4" else None,
+        source_size=shot.media.resolution,
+        rate=shot.media.rate,
+        source_start_frame=shot.media.start_frame,
+        source_start_timecode=shot.media.start_timecode,
     )
 
 
@@ -371,6 +413,10 @@ def _aux_plan(shot: _Shot) -> RowPlan:
                     in_frame=first,
                     out_frame=first,
                     source_is_sequence=shot.media.is_sequence,
+                    source_size=shot.media.resolution,
+                    rate=shot.media.rate,
+                    source_start_frame=shot.media.start_frame,
+                    source_start_timecode=shot.media.start_timecode,
                 )
             ]
         )

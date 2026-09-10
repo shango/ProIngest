@@ -72,6 +72,25 @@ class TestDecodeCommand:
         assert command[-5:] == ["-f", "rawvideo", "-pix_fmt", ffmpeg.DECODE_PIXEL_FORMAT, "-"]
 
 
+class TestExtractAudio:
+    def test_the_format_is_stated_because_the_output_is_a_part_path(self) -> None:
+        """A `.part` name tells ffmpeg nothing, so the muxer has to be named outright.
+
+        Without this ffmpeg refuses the output with "Unable to choose an output
+        format", which every deliverable written through ffmpeg would hit.
+        """
+        command = ffmpeg.extract_audio_command(
+            Path("plate.mov"), Path("MELT0001_pl01_audio_v01.wav.part")
+        )
+        assert command[command.index("-f") + 1] == "wav"
+
+    def test_nothing_resamples_or_remixes(self) -> None:
+        command = ffmpeg.extract_audio_command(Path("plate.mov"), Path("out.wav.part"))
+        assert "-ar" not in command
+        assert "-ac" not in command
+        assert command[command.index("-c:a") + 1] == "pcm_s16le"
+
+
 class TestDecodeContainer:
     def test_every_frame_arrives_as_float32_rgb(self, tmp_path: Path) -> None:
         source = fixtures.make_mov(tmp_path / "plate.mov", count=6)

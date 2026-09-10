@@ -329,3 +329,48 @@ def decode_frames(
                 process.kill()
             stdout.close()
             process.wait()
+
+
+# --- Extracting audio out of a container. COLOR_AND_FORMAT section 3. ---
+
+
+def extract_audio_command(
+    source: Path, destination: Path, ffmpeg: Path | None = None
+) -> list[str]:
+    """Pull the first audio stream out as PCM 16 bit.
+
+    Neither `-ar` nor `-ac` is passed, which is what "no resampling" means: the sample
+    rate and the channel count arrive on the output exactly as they were on the input,
+    and only the sample format changes. QC-044 reports a source that was not 16 bit
+    already.
+
+    **`-f wav` is not optional.** Every deliverable is written to a `.part` path and
+    renamed, so ffmpeg never sees the real extension and cannot infer a format from it.
+    Any ffmpeg output added later has to state its format the same way.
+    """
+    tool = ffmpeg or resolve_tool("ffmpeg")
+    return [
+        str(tool),
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-nostdin",
+        "-y",
+        "-i",
+        str(source),
+        "-vn",
+        "-map",
+        "0:a:0",
+        "-c:a",
+        "pcm_s16le",
+        "-f",
+        "wav",
+        str(destination),
+    ]
+
+
+def extract_audio(source: Path, destination: Path, ffmpeg: Path | None = None) -> None:
+    """Run the extract, raising FFmpegError with ffmpeg's own complaint on failure."""
+    result = run(extract_audio_command(source, destination, ffmpeg))
+    if result.returncode != 0:
+        raise FFmpegError(f"extracting audio from {source} failed: {result.stderr.strip()}")
