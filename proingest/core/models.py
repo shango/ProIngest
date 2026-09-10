@@ -109,6 +109,8 @@ class MediaInfo:
     width: int
     height: int
     rate: FrameRate
+    """Effective rate: what the timeline conforms this media to, and what frame math uses."""
+
     frame_count: int
     start_frame: int = 0
     start_timecode: int | None = None
@@ -119,6 +121,20 @@ class MediaInfo:
     audio_bit_depth: int = 0
     size: int = 0
     mtime: float = 0.0
+    stated_rate: FrameRate | None = None
+    """What the media itself claims, when it can claim anything.
+
+    An EXR sequence states this in its header and a container in its stream; a
+    sequence of stills states nothing, so this is None. Kept apart from `rate`
+    because shooters conform every clip to the project rate in Resolve, which makes
+    the timeline authoritative and can leave stale camera metadata behind. QC-026
+    compares this against the project rate; nothing computes with it.
+    """
+
+    @property
+    def rate_matches_timeline(self) -> bool:
+        """False only when the media states a rate and it disagrees (QC-026)."""
+        return self.stated_rate is None or self.stated_rate == self.rate
 
     @property
     def max_available_out(self) -> int:
@@ -150,6 +166,7 @@ class MediaInfo:
             "audio_bit_depth": self.audio_bit_depth,
             "size": self.size,
             "mtime": self.mtime,
+            "stated_rate": self.stated_rate.to_dict() if self.stated_rate else None,
         }
 
     @classmethod
@@ -171,6 +188,9 @@ class MediaInfo:
             audio_bit_depth=int(data["audio_bit_depth"]),
             size=int(data["size"]),
             mtime=float(data["mtime"]),
+            stated_rate=(
+                FrameRate.from_dict(data["stated_rate"]) if data.get("stated_rate") else None
+            ),
         )
 
 

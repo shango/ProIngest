@@ -258,3 +258,74 @@ class TestToolResolution:
     def test_version_string_is_recorded(self) -> None:
         """PACKAGING.md requires the ffmpeg version in every QC log."""
         assert "ffmpeg version" in ffmpeg.tool_info("ffmpeg").version.lower()
+
+
+class TestConformedRate:
+    """Shooters set every clip to the project rate in Resolve before exporting.
+
+    That makes the timeline authoritative and can leave stale camera metadata in the
+    media. Frame math must follow the timeline; QC-026 still needs to see the
+    disagreement, so what the media claims is kept separately.
+    """
+
+    def test_timeline_rate_wins_over_a_stale_exr_header(self, tmp_path: Path) -> None:
+        fixtures.make_exr_sequence(tmp_path, count=3, fps=24, header_fps=30)
+        sequence = media.index_directory(tmp_path).sequences[0]
+        info = media.probe(sequence, fallback_rate=RATE_24)
+        assert info.rate == RATE_24, "frame math follows the conformed timeline"
+
+    def test_the_stale_rate_is_still_recorded(self, tmp_path: Path) -> None:
+        """QC-026 needs the disagreement, even though nothing computes with it."""
+        fixtures.make_exr_sequence(tmp_path, count=3, fps=24, header_fps=30)
+        sequence = media.index_directory(tmp_path).sequences[0]
+        info = media.probe(sequence, fallback_rate=RATE_24)
+        assert info.stated_rate == FrameRate(30)
+        assert not info.rate_matches_timeline
+
+    def test_agreeing_rates_match(self, tmp_path: Path) -> None:
+        fixtures.make_exr_sequence(tmp_path, count=3, fps=24)
+        sequence = media.index_directory(tmp_path).sequences[0]
+        assert media.probe(sequence, fallback_rate=RATE_24).rate_matches_timeline
+
+    def test_media_that_states_nothing_matches_by_definition(self, tmp_path: Path) -> None:
+        """A DPX sequence claims no rate, so there is nothing to disagree with."""
+        fixtures.make_dpx_sequence(tmp_path, count=3)
+        sequence = media.index_directory(tmp_path).sequences[0]
+        info = media.probe(sequence, fallback_rate=RATE_24)
+        assert info.stated_rate is None
+        assert info.rate_matches_timeline
+
+    def test_timecode_is_read_at_the_conformed_rate(self, tmp_path: Path) -> None:
+        """Reading 01:00:00:00 at a stale 30 would be off by a quarter."""
+        fixtures.make_exr_sequence(tmp_path, count=3, timecode="01:00:00:00", header_fps=30)
+        sequence = media.index_directory(tmp_path).sequences[0]
+        info = media.probe(sequence, fallback_rate=RATE_24)
+        assert info.start_timecode == 86400, "3600 seconds at 24, not at 30"
+
+    def test_container_frame_count_uses_the_containers_own_rate(self, tmp_path: Path) -> None:
+        """A file holds the frames it holds, whatever the timeline plays it at."""
+        fixtures.make_mov(tmp_path / "a.mov", count=30, fps=30)
+        info = media.probe(tmp_path / "a.mov", fallback_rate=RATE_24)
+        assert info.rate == RATE_24
+        assert info.stated_rate == FrameRate(30)
+        assert info.frame_count == 30, "counting at 24 would have lost frames"
+
+    def test_scan_passes_the_timeline_rate_through(self, tmp_path: Path) -> None:
+        """The whole point: a scanned row uses the timeline's rate, not the media's."""
+        from proingest.core import scan
+
+        folder = tmp_path / "turnover001_02_23_2026_dan"
+        sequence = fixtures.make_exr_sequence(
+            folder / "media", base="MELT0001_pl01", count=6, fps=24, header_fps=30
+        )
+        fixtures.make_otio(
+            folder / "t.otio",
+            [("MELT0001_pl01", sequence.path_for(1001).as_uri())],
+            fps=24,
+            duration=6,
+            available_duration=6,
+        )
+        _, rows = scan.scan_turnover(folder, "t1")
+        assert rows[0].media is not None
+        assert rows[0].media.rate == RATE_24
+        assert rows[0].media.stated_rate == FrameRate(30)

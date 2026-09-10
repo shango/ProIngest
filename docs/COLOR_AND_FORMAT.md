@@ -38,7 +38,10 @@ OQ-3: confirm what the consolidated media actually is so the warning levels can 
 ## 5. Frame rate and timecode
 
 - Project fps default 24, editable. Timeline fps from the OTIO must equal project fps or QC-025 error.
-- Source clip fps must equal project fps or QC-026 error on the row. No retiming.
+- Shooters set every clip to the project rate in Resolve before exporting the stringout and the EDL, so **the timeline rate is authoritative**. It is what the media is actually played at and what all frame math and timecode conversion use.
+- A clip's media may still carry a rate of its own: an EXR sequence states one in its `framesPerSecond` header, a container in its stream. After a conform that value can be stale camera metadata. It is recorded as `MediaInfo.stated_rate` and compared against the project rate for QC-026, but nothing computes with it. Computing with a stale rate would misread the source timecode and block every row.
+- A frame count is a property of the file, so it is always counted at the file's own rate, never at the timeline's. A 30 fps container conformed to 24 still holds the frames it holds.
+- QC-026 therefore fires when the media states a rate and that rate differs from the project rate. Media that states no rate, such as a DPX sequence, cannot disagree. No retiming is ever performed. See OQ-19 on severity.
 - Timecode is non-drop only. Drop-frame OTIO: QC-027 error.
 - Source TC = media start timecode from the container or EXR header plus frame offset. If the media has no timecode, source TC is displayed as frames only and QC-028 warning is raised.
 

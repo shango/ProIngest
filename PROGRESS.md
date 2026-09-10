@@ -2,7 +2,7 @@
 
 Durable handoff record. Updated after each chunk so work can resume from disk.
 
-## Current milestone: M1 Core -- COMPLETE (319 tests)
+## Current milestone: M1 Core -- COMPLETE (326 tests)
 
 Goal (PRD section 9): OTIO parse, clip name parse, media resolution, ffprobe cache,
 shot model, batch JSON, headless CLI `proingest scan <folder>`, tests.
@@ -50,6 +50,16 @@ M2 needs.
 
 - OQ-17 (color space, PDF says sRGB render space vs docs assuming scene linear)
   blocks M3 ref encoding, not M1.
+
+## Decisions taken (continued)
+
+- **The timeline rate is authoritative.** Shooters set all footage to 24 fps in
+  Resolve before exporting the stringout and EDL, so the timeline is what the media
+  is played at. `MediaInfo.rate` is that effective rate and drives all frame math
+  and timecode conversion. `MediaInfo.stated_rate` records what the media itself
+  claims (EXR `framesPerSecond` header, or a container's stream rate) purely so
+  QC-026 can report a disagreement. Frame counts still come from the file's own
+  rate, because a file holds the frames it holds. See OQ-19 on QC-026 severity.
 
 ## Findings worth keeping
 

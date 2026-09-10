@@ -287,9 +287,14 @@ def probe(
     For a sequence the first frame is probed for its format and the frame range comes
     from the index, because probing the whole sequence would read every file.
 
-    A single image frame cannot state a frame rate, and ffprobe invents 25/1 for one.
-    So for a sequence the rate comes from the EXR header if present, then from
-    `fallback_rate` (the timeline's rate), and only then from ffprobe.
+    `fallback_rate` is the timeline's rate and wins whenever it is given. Shooters
+    conform every clip to the project rate in Resolve before making the stringout
+    and EDL, so the timeline is what the media is actually played at, and any rate
+    baked into the media may be stale camera metadata. Computing with that stale
+    value would misread timecode and block every row on QC-026.
+
+    What the media claims is kept separately as `stated_rate` so QC-026 can still
+    report a genuine mismatch. Nothing computes with it.
     """
     if isinstance(item, Sequence):
         target, size, mtime = item.first_path, item.size, item.mtime
@@ -301,15 +306,18 @@ def probe(
 
     raw = ffmpeg.probe_raw(target, ffprobe_path)
     stream = _video_stream(raw)
-    rate = _rate_from_string(stream.get("r_frame_rate", "24/1"))
-    if isinstance(item, Sequence):
-        rate = _sequence_rate(target, fallback_rate) or rate
     has_audio, channels, sample_rate, depth = _audio_fields(raw)
 
     if isinstance(item, Sequence):
+        # ffprobe invents 25/1 for a single frame, so it is never a source here.
+        stated = _exr_stated_rate(target)
         frame_count, start_frame = item.count, item.first
     else:
-        frame_count, start_frame = _container_frame_count(stream, rate), 0
+        stated = _rate_from_string(stream.get("r_frame_rate", "24/1"))
+        # Frame count is a property of the file, so it counts at the file's own rate.
+        frame_count, start_frame = _container_frame_count(stream, stated), 0
+
+    rate = fallback_rate or stated or FrameRate(24)
 
     return MediaInfo(
         path=target,
@@ -328,21 +336,21 @@ def probe(
         audio_bit_depth=depth,
         size=size,
         mtime=mtime,
+        stated_rate=stated,
     )
 
 
-def _sequence_rate(first_frame: Path, fallback: FrameRate | None) -> FrameRate | None:
-    """Rate for an image sequence, which no single frame's container can report."""
-    if first_frame.suffix.lower() == ".exr":
-        from proingest.core import exr
+def _exr_stated_rate(first_frame: Path) -> FrameRate | None:
+    """The rate an EXR sequence claims in its header, if it claims one at all."""
+    if first_frame.suffix.lower() != ".exr":
+        return None
+    from proingest.core import exr
 
-        try:
-            stated = exr.read_header(first_frame).frames_per_second
-        except exr.ExrError:
-            stated = None
-        if stated is not None:
-            return FrameRate(stated[0], stated[1])
-    return fallback
+    try:
+        stated = exr.read_header(first_frame).frames_per_second
+    except exr.ExrError:
+        return None
+    return FrameRate(stated[0], stated[1]) if stated is not None else None
 
 
 def _exr_timecode(path: Path, rate: FrameRate) -> int | None:

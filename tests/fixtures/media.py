@@ -61,6 +61,7 @@ def make_exr_sequence(
     size: tuple[int, int] = SMALL,
     timecode: str | None = "01:00:00:00",
     fps: int = FPS,
+    header_fps: int | None = None,
 ) -> SequenceFixture:
     """Write a half-float RGB EXR sequence.
 
@@ -77,7 +78,10 @@ def make_exr_sequence(
         value = OpenEXR.TimeCode()
         value.hours, value.minutes, value.seconds, value.frame = hours, minutes, seconds, frame
         header["timeCode"] = value
-    header["framesPerSecond"] = fps
+    # header_fps differs from fps to simulate stale camera metadata surviving a
+    # conform: the shooter set the clip to 24 in Resolve but the header still says
+    # what the camera shot.
+    header["framesPerSecond"] = fps if header_fps is None else header_fps
 
     for offset in range(count):
         pixels = np.zeros((height, width, 3), dtype=np.float16)
