@@ -2,7 +2,7 @@
 
 Durable handoff record. Updated after each chunk so work can resume from disk.
 
-## Current milestone: M1 Core
+## Current milestone: M1 Core -- COMPLETE (319 tests)
 
 Goal (PRD section 9): OTIO parse, clip name parse, media resolution, ffprobe cache,
 shot model, batch JSON, headless CLI `proingest scan <folder>`, tests.
@@ -15,8 +15,8 @@ shot model, batch JSON, headless CLI `proingest scan <folder>`, tests.
 | M1.4 | `core/models.py` + `tests/test_models.py` | done, 37 tests |
 | M1.5 | `core/ffmpeg.py`, `core/media.py`, `core/exr.py` + tests | done, 39 tests |
 | M1.6 | `core/timeline.py` + tests | done, 33 tests |
-| M1.7 | `core/batchfile.py`, `core/scan.py` + tests | in progress |
-| M1.8 | `__main__.py` scan CLI | todo |
+| M1.7 | `core/batchfile.py`, `core/scan.py` + tests | done, 49 tests |
+| M1.8 | `__main__.py` scan CLI + tests | done, 8 tests |
 | M1.9 | `tests/fixtures/media.py` synthetic media | done |
 
 ## Environment
@@ -38,6 +38,13 @@ shot model, batch JSON, headless CLI `proingest scan <folder>`, tests.
   floor in `requires-python` stays 3.11, which numpy genuinely supports.
 - Timecode counts at `nominal_rate(fps)` (23.976 counts at 24). The float fps is a
   playback rate and never enters frame math.
+
+## Next: M2 naming and planning
+
+`core/planner.py`: ShotRow -> list[DeliverableJob] from the type table in
+NAMING_SPEC section 2, version resolved at plan time, delivery layout from section 5.
+naming.py already provides the name building, output parsing and next_version that
+M2 needs.
 
 ## Blockers
 

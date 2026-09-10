@@ -11,6 +11,7 @@ proingest/
     naming.py            # parse clip names, build output names, delivery layout, versioning
     media.py             # ffprobe wrapper, sequence detection, probe cache
     frames.py            # integer frame math, TC conversion, input parsing
+    scan.py              # turnover folder -> Turnover + ShotRows (data flow steps 1-4)
     planner.py           # ShotRow -> list[DeliverableJob]
     ffmpeg.py            # subprocess wrapper, command builder, progress parsing, NVENC detection
     exr.py               # EXR read/write (OpenEXR), DWAA, header checks, downscale
@@ -43,7 +44,10 @@ build/
 2. `naming.parse_clip_name` attaches `ShotIdentity` or a QC-010 result.
 3. `media.resolve` and `media.probe` fill `MediaInfo`, cached.
 4. `frames.derive` computes source frame indices, max available, snapshots.
-5. `qc.run_phase_a(batch)` fills `row.qc`.
+5. `qc.run_phase_a(batch)` fills `row.qc`. Steps 1 to 4 are orchestrated by `scan.py`, which
+   raises only the results discovered while scanning (media missing, ambiguous, unreadable,
+   remapped). Rules that are pure functions of the model live in `qc.py` so they re-run after
+   every edit.
 6. UI edits mutate `ShotRow.in_frame/out_frame/shot_code/notes/skip`, then `qc.run_phase_a_row`.
 7. `planner.plan(row, settings, destination)` produces `DeliverableJob`s with final and temp paths, version resolved at plan time (right before render, not at scan).
 8. `render.execute(jobs)` runs in a `ProcessPoolExecutor`; each worker runs one job, streams progress via a `multiprocessing.Queue`, and on success calls `qc.run_phase_b(job)`.

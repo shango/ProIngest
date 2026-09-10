@@ -1,0 +1,222 @@
+"""Scanning a turnover folder into shot rows, and the QC the scan uncovers."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import pytest
+
+from proingest.core import scan
+from proingest.core.models import Batch, ShotRow
+from tests.fixtures import media as fixtures
+
+GOOD_FOLDER = "turnover001_02_23_2026_danielluckett"
+
+
+def rules(row: ShotRow) -> set[str]:
+    return {result.rule_id for result in row.qc}
+
+
+def turnover_rules(batch: Batch) -> set[str]:
+    return {result.rule_id for turnover in batch.turnovers for result in turnover.qc}
+
+
+class TestParseTurnoverFolder:
+    def test_parses_the_documented_pattern(self) -> None:
+        fields = scan.parse_turnover_folder(Path(f"/x/{GOOD_FOLDER}"))
+        assert fields is not None
+        assert (fields.number, fields.month, fields.day, fields.year) == (1, 2, 23, 2026)
+        assert fields.shooter == "danielluckett"
+
+    @pytest.mark.parametrize(
+        "name", ["messy", "turnover1_02_23_2026_dan", "turnover001_2_23_2026_dan", "turnover001"]
+    )
+    def test_rejects_other_names(self, name: str) -> None:
+        assert scan.parse_turnover_folder(Path(f"/x/{name}")) is None
+
+
+class TestScanTurnover:
+    def test_happy_path(self, tmp_path: Path) -> None:
+        folder = tmp_path / GOOD_FOLDER
+        fixtures.make_turnover(folder, shots=2, frames=6)
+        turnover, rows = scan.scan_turnover(folder, "t1")
+
+        assert turnover.number == 1
+        assert turnover.shooter == "danielluckett"
+        assert turnover.has_stringout_fields
+        assert turnover.qc == []
+        assert len(rows) == 2
+        assert all(row.qc == [] for row in rows)
+
+    def test_rows_carry_identity_media_and_ranges(self, tmp_path: Path) -> None:
+        folder = tmp_path / GOOD_FOLDER
+        fixtures.make_turnover(folder, shots=1, frames=6)
+        _, rows = scan.scan_turnover(folder, "t1")
+        row = rows[0]
+
+        assert row.shot_code == "MELT0001"
+        assert row.identity is not None and row.identity.elem == "pl01"
+        assert row.media is not None and row.media.is_sequence
+        assert row.current == row.snapshot, "a fresh scan has not been edited"
+        assert row.duration == 6
+        assert row.audio_path is not None
+
+    def test_snapshot_matches_the_timeline_range(self, tmp_path: Path) -> None:
+        """The snapshot is what the turnover arrived with; QC-035 compares against it."""
+        folder = tmp_path / GOOD_FOLDER
+        fixtures.make_turnover(folder, shots=1, frames=6)
+        _, rows = scan.scan_turnover(folder, "t1")
+        assert rows[0].snapshot is not None
+        assert rows[0].snapshot.duration == 6
+
+    def test_unparseable_clip_name_still_produces_a_row(self, tmp_path: Path) -> None:
+        """QC-010: the row must appear so the editor can fix the name in place."""
+        folder = tmp_path / GOOD_FOLDER
+        sequence = fixtures.make_exr_sequence(folder / "media", base="garbage", count=4)
+        fixtures.make_otio(
+            folder / "t.otio",
+            [("garbage", sequence.path_for(1001).as_uri())],
+            duration=4,
+            available_duration=4,
+        )
+        _, rows = scan.scan_turnover(folder, "t1")
+        assert len(rows) == 1
+        assert rows[0].identity is None
+        assert "QC-010" in rules(rows[0])
+
+    def test_missing_media_is_qc_012(self, tmp_path: Path) -> None:
+        folder = tmp_path / GOOD_FOLDER
+        folder.mkdir(parents=True)
+        fixtures.make_otio(
+            folder / "t.otio", [("MELT0001_pl01", "file:///nowhere/x.exr")], duration=4
+        )
+        _, rows = scan.scan_turnover(folder, "t1")
+        assert "QC-012" in rules(rows[0])
+        assert rows[0].media is None
+
+    def test_ambiguous_media_is_qc_013(self, tmp_path: Path) -> None:
+        folder = tmp_path / GOOD_FOLDER
+        fixtures.make_exr_sequence(folder / "a", base="MELT0001_pl01", count=4)
+        fixtures.make_exr_sequence(folder / "b", base="MELT0001_pl01", count=4)
+        fixtures.make_otio(
+            folder / "t.otio", [("MELT0001_pl01", "file:///nowhere/x.exr")], duration=4
+        )
+        _, rows = scan.scan_turnover(folder, "t1")
+        assert "QC-013" in rules(rows[0])
+
+    def test_sequence_gap_is_qc_015(self, tmp_path: Path) -> None:
+        folder = tmp_path / GOOD_FOLDER
+        sequence = fixtures.make_exr_sequence(folder / "media", base="MELT0001_pl01", count=6)
+        sequence.path_for(1003).unlink()
+        fixtures.make_otio(
+            folder / "t.otio",
+            [("MELT0001_pl01", sequence.path_for(1001).as_uri())],
+            duration=4,
+            available_duration=6,
+        )
+        _, rows = scan.scan_turnover(folder, "t1")
+        assert "QC-015" in rules(rows[0])
+
+    def test_range_beyond_the_media_is_qc_029(self, tmp_path: Path) -> None:
+        folder = tmp_path / GOOD_FOLDER
+        sequence = fixtures.make_exr_sequence(folder / "media", base="MELT0001_pl01", count=4)
+        fixtures.make_otio(
+            folder / "t.otio",
+            [("MELT0001_pl01", sequence.path_for(1001).as_uri())],
+            duration=100,
+            available_duration=100,
+        )
+        _, rows = scan.scan_turnover(folder, "t1")
+        assert "QC-029" in rules(rows[0])
+
+    def test_media_found_by_name_when_the_url_is_wrong(self, tmp_path: Path) -> None:
+        """FR-2: a unique filename match resolves silently."""
+        folder = tmp_path / GOOD_FOLDER
+        fixtures.make_exr_sequence(folder / "media", base="MELT0001_pl01", count=4)
+        fixtures.make_otio(
+            folder / "t.otio",
+            [("MELT0001_pl01", "file:///wrong/place/MELT0001_pl01.1001.exr")],
+            duration=4,
+            available_duration=4,
+        )
+        _, rows = scan.scan_turnover(folder, "t1")
+        assert rows[0].media is not None
+        assert "QC-012" not in rules(rows[0])
+
+    def test_side_files_are_discovered(self, tmp_path: Path) -> None:
+        folder = tmp_path / GOOD_FOLDER
+        fixtures.make_turnover(folder, shots=1, frames=4)
+        (folder / "media" / "MELT0001_pl01_HDRI.exr").write_bytes(b"x")
+        (folder / "media" / "MELT0001_pl01_camData.txt").write_text("iso: 800")
+        _, rows = scan.scan_turnover(folder, "t1")
+        assert rows[0].side_files.hdri is not None
+        assert rows[0].side_files.camdata is not None
+
+    def test_no_side_files_leaves_them_none(self, tmp_path: Path) -> None:
+        folder = tmp_path / GOOD_FOLDER
+        fixtures.make_turnover(folder, shots=1, frames=4)
+        _, rows = scan.scan_turnover(folder, "t1")
+        assert rows[0].side_files.hdri is None
+
+
+class TestTurnoverLevelProblems:
+    def test_no_timeline_is_qc_001(self, tmp_path: Path) -> None:
+        folder = tmp_path / GOOD_FOLDER
+        folder.mkdir(parents=True)
+        turnover, rows = scan.scan_turnover(folder, "t1")
+        assert {r.rule_id for r in turnover.qc} == {"QC-001"}
+        assert rows == []
+
+    def test_unparseable_timeline_is_qc_002(self, tmp_path: Path) -> None:
+        folder = tmp_path / GOOD_FOLDER
+        folder.mkdir(parents=True)
+        (folder / "broken.otio").write_text("{nope")
+        turnover, rows = scan.scan_turnover(folder, "t1")
+        assert "QC-002" in {r.rule_id for r in turnover.qc}
+        assert rows == []
+
+    def test_unmatched_folder_name_is_qc_005(self, tmp_path: Path) -> None:
+        folder = tmp_path / "messy"
+        fixtures.make_turnover(folder, shots=1, frames=4)
+        turnover, _ = scan.scan_turnover(folder, "t1")
+        assert "QC-005" in {r.rule_id for r in turnover.qc}
+        assert not turnover.has_stringout_fields
+
+    def test_a_bad_turnover_does_not_raise(self, tmp_path: Path) -> None:
+        """One bad folder must not take down a batch."""
+        folder = tmp_path / "empty"
+        folder.mkdir()
+        turnover, rows = scan.scan_turnover(folder, "t1")
+        assert rows == []
+        assert turnover.qc
+
+
+class TestScanBatch:
+    def test_scans_several_turnovers(self, tmp_path: Path) -> None:
+        first = tmp_path / "turnover001_02_23_2026_dan"
+        second = tmp_path / "turnover002_02_24_2026_sam"
+        fixtures.make_turnover(first, shots=2, frames=4)
+        fixtures.make_turnover(second, shots=1, frames=4)
+
+        batch = scan.scan_batch([first, second], name="melt")
+        assert len(batch.turnovers) == 2
+        assert len(batch.rows) == 3
+        assert len(batch.rows_for("t1")) == 2
+        assert len(batch.rows_for("t2")) == 1
+
+    def test_probe_cache_is_shared_across_turnovers(self, tmp_path: Path) -> None:
+        """FR-3 probes each media item once; the cache is per batch, not per turnover."""
+        folder = tmp_path / "turnover001_02_23_2026_dan"
+        fixtures.make_turnover(folder, shots=2, frames=4)
+        batch = scan.scan_batch([folder])
+        assert len(batch.probe_cache) == 2
+
+    def test_a_broken_turnover_does_not_stop_the_others(self, tmp_path: Path) -> None:
+        good = tmp_path / "turnover001_02_23_2026_dan"
+        broken = tmp_path / "turnover002_02_24_2026_sam"
+        fixtures.make_turnover(good, shots=1, frames=4)
+        broken.mkdir(parents=True)
+
+        batch = scan.scan_batch([good, broken])
+        assert len(batch.rows) == 1
+        assert "QC-001" in turnover_rules(batch)
