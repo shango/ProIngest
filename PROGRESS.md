@@ -14,8 +14,8 @@ shot model, batch JSON, headless CLI `proingest scan <folder>`, tests.
 | M1.3 | `core/frames.py` + `tests/test_frames.py` | done, 55 tests |
 | M1.4 | `core/models.py` + `tests/test_models.py` | done, 37 tests |
 | M1.5 | `core/ffmpeg.py`, `core/media.py`, `core/exr.py` + tests | done, 39 tests |
-| M1.6 | `core/timeline.py` + tests | in progress |
-| M1.7 | `core/batchfile.py` + tests | todo |
+| M1.6 | `core/timeline.py` + tests | done, 33 tests |
+| M1.7 | `core/batchfile.py`, `core/scan.py` + tests | in progress |
 | M1.8 | `__main__.py` scan CLI | todo |
 | M1.9 | `tests/fixtures/media.py` synthetic media | done |
 
@@ -58,3 +58,8 @@ shot model, batch JSON, headless CLI `proingest scan <folder>`, tests.
 - ffprobe exits 0 on a corrupt EXR and reports a 0x0 stream, logging the real
   complaint to stderr only. QC-014 cannot rely on the exit code, so zero dimensions
   are treated as unreadable.
+- The CMX3600 adapter left otio core at 0.17 and is now `otio-cmx3600-adapter`.
+  FR-1 needs it for the EDL fallback, so it is a real dependency.
+- otio rejects a drop-frame timecode at a non-drop rate with a generic parse error.
+  Drop frame is therefore detected from the EDL text before parsing, so the user
+  gets QC-027 ("drop-frame timecode") rather than QC-002 ("failed to parse").

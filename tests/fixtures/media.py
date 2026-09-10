@@ -167,3 +167,86 @@ def make_still(path: Path, size: tuple[int, int] = SMALL) -> Path:
         "-frames:v", "1", str(path),
     ])
     return path
+
+
+def make_otio(
+    path: Path,
+    clips: list[tuple[str, str]],
+    fps: int = FPS,
+    duration: int = 240,
+    source_start: int = 86400,
+    available_start: int = 86400,
+    available_duration: int = 300,
+    global_start: int = 864000,
+    audio_clips: list[tuple[str, str]] | None = None,
+) -> Path:
+    """Build a small OTIO timeline with the otio API, as ARCHITECTURE.md asks.
+
+    `clips` and `audio_clips` are (clip name, media url) pairs. Clips are laid end to
+    end in record order, which is what a consolidated turnover stringout looks like.
+    """
+    import opentimelineio as otio
+    from opentimelineio import opentime as ot
+
+    timeline = otio.schema.Timeline(name=path.stem)
+    timeline.global_start_time = ot.RationalTime(global_start, fps)
+
+    video_track = otio.schema.Track(name="V1", kind=otio.schema.TrackKind.Video)
+    timeline.tracks.append(video_track)
+    for name, url in clips:
+        reference = otio.schema.ExternalReference(
+            target_url=url,
+            available_range=ot.TimeRange(
+                ot.RationalTime(available_start, fps), ot.RationalTime(available_duration, fps)
+            ),
+        )
+        video_track.append(
+            otio.schema.Clip(
+                name=name,
+                media_reference=reference,
+                source_range=ot.TimeRange(
+                    ot.RationalTime(source_start, fps), ot.RationalTime(duration, fps)
+                ),
+            )
+        )
+
+    if audio_clips:
+        audio_track = otio.schema.Track(name="A1", kind=otio.schema.TrackKind.Audio)
+        timeline.tracks.append(audio_track)
+        for name, url in audio_clips:
+            audio_track.append(
+                otio.schema.Clip(
+                    name=name,
+                    media_reference=otio.schema.ExternalReference(target_url=url),
+                    source_range=ot.TimeRange(
+                        ot.RationalTime(0, fps), ot.RationalTime(duration, fps)
+                    ),
+                )
+            )
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    otio.adapters.write_to_file(timeline, str(path))
+    return path
+
+
+def make_turnover(root: Path, shots: int = 2, frames: int = 8) -> Path:
+    """A turnover folder: an EXR sequence and a wav per shot, plus the .otio."""
+    root.mkdir(parents=True, exist_ok=True)
+    clips: list[tuple[str, str]] = []
+    audio: list[tuple[str, str]] = []
+    for index in range(1, shots + 1):
+        name = f"MELT{index:04d}_pl01"
+        sequence = make_exr_sequence(root / "media", base=name, count=frames)
+        clips.append((name, sequence.path_for(sequence.first).as_uri()))
+        wav = make_wav(root / "media" / f"{name}.wav", seconds=frames / FPS)
+        audio.append((f"{name}_audio", wav.as_uri()))
+    make_otio(
+        root / "turnover001.otio",
+        clips,
+        duration=frames,
+        source_start=86400,
+        available_start=86400,
+        available_duration=frames,
+        audio_clips=audio,
+    )
+    return root

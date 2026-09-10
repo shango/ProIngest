@@ -5,6 +5,8 @@ description = "VFX turnover ingest and conform tool"
 requires-python = ">=3.11"
 dependencies = [
     "opentimelineio>=0.17",
+    # The CMX3600 adapter left otio core at 0.17; FR-1 needs it for the EDL fallback.
+    "otio-cmx3600-adapter>=0.2",
     "numpy>=1.26",
     "openexr>=3.2",
     "openpyxl>=3.1",
