@@ -9,8 +9,9 @@
 
 ## ffmpeg
 
-- Bundle an LGPL ffmpeg/ffprobe build (no x264 GPL build). Because x264 is GPL, H.264 encoding uses either NVENC (when present) or the LGPL `openh264` encoder, or the tool can be pointed at a user-installed full ffmpeg in Settings > Advanced. Document this in the About box. OQ-8.
+- Bundle the GPL v3 gyan.dev full build, which includes libx264, so H.264 encoding uses `libx264` with CRF as specified in `docs/COLOR_AND_FORMAT.md`. The tool is used inside the studio and is not distributed to third parties, so the GPL triggers no source offer; ProIngest calls ffmpeg as a subprocess and is not linked against it. Hardware encoders (`h264_nvenc`, `h264_amf`, `h264_qsv`, `h264_mf`) are also present. The Settings > Advanced override for a user-installed ffmpeg is retained. Note the license in the About box. OQ-8 resolved.
 - Binaries live in `resources/ffmpeg/`. `core/ffmpeg.py` resolves the bundled path first, then the Settings override, then PATH.
+- The binaries are ~426 MB and are **not tracked in git**. `build/ffmpeg.lock.json` pins the release, the archive URL and a sha256 per file; `python build/fetch_ffmpeg.py` downloads and verifies them into `resources/ffmpeg/`. Run it once after cloning and before `build/build.py`. Provenance and the GPL note are in `resources/ffmpeg/PROVENANCE.md`.
 - Record the ffmpeg version string in every QC log.
 
 ## Runtime locations

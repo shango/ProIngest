@@ -30,7 +30,7 @@ Regex (show prefix configurable, default `[A-Z]{2,6}`):
 | el | element plate | raw 4k, raw HD, ref 4k, ref HD |
 | wit | witness cam | raw 4k, raw HD, ref 4k, ref HD |
 | re | recon plate | raw 4k, raw HD, ref 4k, ref HD |
-| aux still | reference still on a plate | single 4k exr (BTS: png/jpg copy) |
+| aux still | reference still on a plate | single 4k exr (BTS: png/jpg/jpeg copy) |
 | lensgrid | lens distortion chart | png copy |
 
 Side files discovered next to the media (not on the timeline), matched by shot code and element id in the filename:
@@ -120,7 +120,7 @@ One anchored pattern per kind, tried in order. They are mutually exclusive becau
 | HDRI | `^<sc>_HDRI_v(?P<ver>\d{2})\.exr$` |
 | camData | `^<sc>_camData_v(?P<ver>\d{2})\.(?P<ext>txt\|rtf)$` |
 | aux still exr | `^<sc>_(?P<aux>colorChart\|mirrorBall\|greyBall\|sizeRef)_(?P<auxidx>\d{2})_4k_v(?P<ver>\d{2})\.exr$` |
-| BTS | `^<sc>_BTS_(?P<auxidx>\d{2})_v(?P<ver>\d{2})\.(?P<ext>png\|jpg)$` |
+| BTS | `^<sc>_BTS_(?P<auxidx>\d{2})_v(?P<ver>\d{2})\.(?P<ext>png\|jpg\|jpeg)$` |
 | lens grid | `^(?P<camera>[A-Za-z0-9]+)_(?P<lens>[A-Za-z0-9\-]+)_lensgrid_(?P<mm>\d+)mm_v(?P<ver>\d{2})\.png$` |
 | stringout | `^turnover(?P<tno>\d{3})_(?P<mm>\d{2})_(?P<dd>\d{2})_(?P<yyyy>\d{4})_(?P<shooter>[a-z0-9]+)_v(?P<ver>\d{2})\.mp4$` |
 
