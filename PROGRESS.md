@@ -10,7 +10,7 @@ commit.
 
 **State at 2026-09-10.** M1 and M2 complete, M3 in progress (M3.1 and M3.2 done). Working
 tree clean apart from two deliberately untracked files (section 8). 488 tests passing,
-`ruff` and `mypy --strict` clean. Thirteen commits on `main`, latest `3124ec5`.
+`ruff` and `mypy --strict` clean. Fourteen commits on `main`; M3.2 landed as `0152e27`.
 
 **Nothing is blocked.**
 
