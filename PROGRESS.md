@@ -12,8 +12,8 @@ shot model, batch JSON, headless CLI `proingest scan <folder>`, tests.
 | M1.1 | scaffolding: pyproject, venv, package skeleton | done |
 | M1.2 | `core/naming.py` + `tests/test_naming.py` | done, 106 tests |
 | M1.3 | `core/frames.py` + `tests/test_frames.py` | done, 55 tests |
-| M1.4 | `core/models.py` | in progress |
-| M1.5 | `core/ffmpeg.py`, `core/media.py` + tests | todo |
+| M1.4 | `core/models.py` + `tests/test_models.py` | done, 37 tests |
+| M1.5 | `core/ffmpeg.py`, `core/media.py` + tests | in progress |
 | M1.6 | `core/timeline.py` + tests | todo |
 | M1.7 | `core/batchfile.py` + tests | todo |
 | M1.8 | `__main__.py` scan CLI | todo |
