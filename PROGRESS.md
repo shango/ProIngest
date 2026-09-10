@@ -8,12 +8,11 @@ commit.
 
 ## 1. Resume here
 
-**State at 2026-09-10.** M1 and M2 complete, M3 in progress (M3.1 done). Working tree
-clean apart from two deliberately untracked files (section 8). 465 tests passing,
-`ruff` and `mypy --strict` clean. Twelve commits on `main`, latest `16763d6`.
+**State at 2026-09-10.** M1 and M2 complete, M3 in progress (M3.1 and M3.2 done). Working
+tree clean apart from two deliberately untracked files (section 8). 488 tests passing,
+`ruff` and `mypy --strict` clean. Thirteen commits on `main`, latest `3124ec5`.
 
-**Nothing is blocked.** OQ-17, the colour space question that held M3, was answered by
-the studio on 2026-09-10 (section 6).
+**Nothing is blocked.**
 
 Verify the state before changing anything:
 
@@ -23,26 +22,31 @@ Verify the state before changing anything:
 .venv/bin/python -m proingest scan <turnover folder>
 ```
 
-**Next task: M3.2, decode a container source into frames.**
+**Next task: M3.3, execute one job.**
 
-`core/ffmpeg.py` gains the decode side: build and run
-`ffmpeg -i <src> -f rawvideo -pix_fmt gbrpf32le -` for a chosen frame range, and
-yield `(h, w, 3)` float32 numpy arrays one frame at a time. COLOR_AND_FORMAT section 7
-describes the pipeline. Notes for it:
+`core/render.py` takes a `planner.DeliverableJob` and produces the deliverable. Everything
+it needs to decode is now there; what it adds is the writing side. Notes for it:
 
-- The EXR source path needs none of this. `exr.read_pixels` plus
-  `resize.lanczos_resize` already covers it, which is why M3.1 went first.
-- Two decodes per row, one per resolution, is the accepted design (section 7). Do not
-  build a filtergraph split.
-- Frame range: seek by frame, not by time. `planner.DeliverableJob` carries
-  `in_frame`, `out_frame` and `source_is_sequence`; a sequence's ffmpeg input is
-  `media.Sequence.printf_pattern()` with `-start_number`.
-- Stream the frames. A 4k float32 frame is 95 MB, so never accumulate a sequence.
+- **Atomic, always.** Render to `job.temp` (the `.part` path the job already carries),
+  verify, then rename onto `job.destination`. A crash must never leave a file that looks
+  finished. For `raw_dir` the whole folder is the `.part`, and `job.frame_path(n, temp=True)`
+  names a frame inside it.
+- Pick the source path by `job.source_is_sequence` and the extension: an EXR sequence reads
+  with `exr.read_pixels` plus `resize.lanczos_resize`, everything else decodes with
+  `ffmpeg.decode_frames`. Those are the two branches and they must land on the same pixels;
+  OQ-7 is the evidence that they do.
+- The container branch is one call: `ffmpeg.decode_frames(media.printf_pattern_for(job.source)
+  if job.source_is_sequence else str(job.source), size, job.in_frame, job.out_frame,
+  is_sequence=job.source_is_sequence, target_size=job.target_size)`. Iterate it, never listify
+  it.
+- Output frame numbering is `1001 + k`, and `job.source_frame(n)` inverts it. Each frame's
+  `timeCode` is the source start timecode plus the offset.
+- `xxhash64` per written frame, recorded on the Deliverable for QC-106.
+- Copies (HDRI, stills, camData) are byte copies with a rename, and audio is a wav byte copy
+  or a PCM extract. Same atomic discipline.
 
 Then, in order:
 
-- **M3.3** `core/render.py`: execute one job, atomic `.part` write then rename, per
-  frame `xxhash64`, side file copies, audio copy or extract.
 - **M3.4** process pool, progress queue, cancellation, `proingest run <batch>` CLI.
 - **M3.5** ref mp4 and stringout encodes. Read the transfer decision from
   `color.display_transform`, never re-derive it (section 6).
@@ -68,7 +72,7 @@ fix one and say which.**
 | `docs/QC_RULES.md` | every rule ID, severity and scope. IDs never change meaning |
 | `docs/ARCHITECTURE.md` | package layout, data flow, concurrency, batch file |
 | `docs/UI_SPEC.md` | the M5 interface, keyboard model, burn-ins |
-| `docs/OPEN_QUESTIONS.md` | OQ-1 to OQ-20, with defaults for the unanswered ones |
+| `docs/OPEN_QUESTIONS.md` | OQ-1 to OQ-21, with defaults for the unanswered ones |
 | `docs/PACKAGING.md` | M7, PyInstaller and Inno Setup |
 
 ---
@@ -97,8 +101,8 @@ fix one and say which.**
 | `core/naming.py` | every output name, both directions; `next_version`; clip and shot code parsing | 324 |
 | `core/frames.py` | integer frame math, timecode, In/Out input grammar | 169 |
 | `core/models.py` | Batch, Turnover, ShotRow, Deliverable, MediaInfo, AudioInfo, FrameRate, QCResult | 553 |
-| `core/ffmpeg.py` | the only place anything shells out; tool lookup, ffprobe | 174 |
-| `core/media.py` | DirectoryIndex, sequence detection, path remap, probe cache | 434 |
+| `core/ffmpeg.py` | the only place anything shells out; tool lookup, ffprobe, decode to numpy | 315 |
+| `core/media.py` | DirectoryIndex, sequence detection, path remap, probe cache | 448 |
 | `core/exr.py` | EXR header and pixel reading, delivery frame writing | 235 |
 | `core/resize.py` | antialiased Lanczos downscale for the EXR path | 96 |
 | `core/color.py` | source colour space setting; what each deliverable does about it | 61 |
@@ -121,6 +125,10 @@ Entry points worth knowing:
   design.
 - `exr.write_frame(path, pixels, timecode_frames, fps, colorspace)` is the only way a
   delivery frame is written.
+- `ffmpeg.decode_frames(source, source_size, in_frame, out_frame, ...)` is a generator of
+  `(h, w, 3)` float32 RGB frames. `source` is whatever goes after `-i`, so a sequence passes
+  `media.printf_pattern_for(first_frame)`. `ffmpeg.decode_command(...)` builds the same
+  command without running it, which is what the tests assert against.
 
 ---
 
@@ -142,13 +150,13 @@ M3 detail:
 | chunk | scope | state |
 |---|---|---|
 | M3.1 | `exr.write_frame`, `exr.read_pixels`, `core/resize.py` | done, 45 tests |
-| M3.2 | container decode to numpy frames in `core/ffmpeg.py` | **next** |
-| M3.3 | `core/render.py`: execution, atomic writes, checksums, copies | |
+| M3.2 | container decode to numpy frames in `core/ffmpeg.py` | done, 23 tests |
+| M3.3 | `core/render.py`: execution, atomic writes, checksums, copies | **next** |
 | M3.4 | pool, progress, cancellation, `proingest run` CLI | |
 | M3.5 | ref mp4 and stringout encodes | unblocked |
 
 Tests by file: naming 115, planner 55, frames 55, media 46, models 37, timeline 33,
-exr 29, scan 25, qc 22, batchfile 18, resize 16, cli 8, color 6.
+exr 29, scan 25, ffmpeg 23, qc 22, batchfile 18, resize 16, cli 8, color 6.
 
 ---
 
@@ -242,8 +250,34 @@ exr 29, scan 25, qc 22, batchfile 18, resize 16, cli 8, color 6.
 - ffprobe exits 0 on a corrupt EXR and reports a 0x0 stream, logging the real complaint
   to stderr only. QC-014 cannot rely on the exit code, so zero dimensions mean
   unreadable.
-- swscale cannot carry float pixel formats, which is why the EXR path resamples in
-  numpy instead of piping through `scale`.
+- **swscale takes float pixel formats and clamps them to 0-1.** An earlier note here said
+  it could not carry float at all, which is wrong and understates the danger: it accepts
+  `gbrpf32le` in and out and silently flattens everything above 1.0 to white and
+  everything below 0.0 to black. Measured: 4.0 in, 1.0 out; -0.5 in, 0.0 out. That is the
+  real reason the EXR path resamples in numpy, and it becomes a live hazard the day the
+  shooters switch to scene linear. The container path is safe because every container
+  format the spec accepts is integer and already bounded.
+
+**Decoding (M3.2).**
+
+- `gbrpf32le` is planar and stores **G, then B, then R**. RGB is planes 2, 0, 1. Nothing
+  errors if this is wrong; red and blue simply swap, on every deliverable. There is a flat
+  colour fixture and a test that pins it.
+- **Frame seeking.** A container seeks with `trim=start_frame=<in>:end_frame=<out+1>`, whose
+  end is exclusive. It counts frames after the decoder has reordered them, so it is exact on
+  a long GOP h.264 source; verified against a full decode. `-ss` is never used: it takes a
+  float number of seconds and lands on the wrong frame at 23.976. A sequence uses
+  `-start_number`, which is a real seek and never opens the frames ahead of the range.
+- `-fps_mode passthrough` is required. Without it ffmpeg is free to duplicate or drop frames
+  to hit a constant rate, which would quietly break the 1:1 source-to-output mapping that
+  COLOR_AND_FORMAT section 6 defines.
+- `-map 0:v:0 -an` is required too: a source with audio otherwise reaches the rawvideo muxer
+  as a second stream.
+- ffmpeg's stderr goes to a temp file, not a pipe. A decode that complains once per frame can
+  write more than a pipe buffer holds, and nothing is draining it while frames are being read.
+- The decode is a generator and owns the process. Its `finally` kills and reaps, so abandoning
+  a shot part way through does not leave ffmpeg running. That is why it is annotated
+  `Generator`, not `Iterator`: closing it is part of the contract.
 
 **Resampling (OQ-7, answered by building it).**
 
@@ -306,6 +340,13 @@ Nothing blocks the next task. These are live, in rough priority order:
   regex and lands as QC-010), a lens grid is turnover-level so it carries no show to
   place it under `_turnovers/`, and NAMING_SPEC section 4 versions per shot and says
   nothing about a per camera/lens/mm deliverable. Nothing downstream depends on it.
+- **OQ-21, alpha from a container source.** The EXR path preserves a source alpha;
+  the container path decodes `gbrpf32le` and drops it. Two things are undecided and neither
+  can be settled from the docs: what counts as a *real* alpha rather than the opaque one a
+  codec always carries, and whether a plate consolidated out of Resolve ever legitimately has
+  one. `MediaInfo` records no alpha field, so nothing could set a flag even if the decoder
+  took one. Decoding `gbrapf32le` instead is a one line change once there is something to
+  switch on.
 - **Nothing detects which colour space a turnover actually is.** When the shooters
   switch their EXRs to scene linear and the setting is stale, the references come out
   wrong in the other direction. A cheap heuristic exists (scene linear plates usually

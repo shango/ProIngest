@@ -16,16 +16,33 @@ import logging
 import os
 import shutil
 import subprocess
+import tempfile
+from collections.abc import Generator
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
-from typing import Any
+from typing import IO, Any
+
+import numpy as np
+import numpy.typing as npt
+
+from proingest.core import frames
 
 log = logging.getLogger(__name__)
 
 BUNDLED_DIR = Path(__file__).resolve().parent.parent / "resources" / "ffmpeg"
 
 DEFAULT_TIMEOUT = 120
+
+DECODE_TIMEOUT = 600
+"""Only bounds the wait after the last frame is read; the read itself is unbounded."""
+
+DECODE_PIXEL_FORMAT = "gbrpf32le"
+"""COLOR_AND_FORMAT section 7. Planar float32, so nothing quantises on the way out."""
+
+_PLANES = 3
+
+_RAW_DTYPE = np.dtype("<f4")
 
 
 class FFmpegNotFound(RuntimeError):
@@ -34,6 +51,10 @@ class FFmpegNotFound(RuntimeError):
 
 class FFprobeError(RuntimeError):
     """ffprobe ran but could not read the file. Reported as QC-014."""
+
+
+class FFmpegError(RuntimeError):
+    """ffmpeg ran and failed, or stopped short of the frames that were asked for."""
 
 
 def _platform_binary(tool: str) -> str:
@@ -172,3 +193,139 @@ def has_nvenc(ffmpeg: Path | None = None) -> bool:
     detection at startup, and an actual encode attempt is the only real proof.
     """
     return "h264_nvenc" in available_encoders(ffmpeg)
+
+
+# --- Decoding a container source to numpy frames. COLOR_AND_FORMAT section 7. ---
+
+
+def decode_command(
+    source: str,
+    in_frame: int,
+    out_frame: int,
+    is_sequence: bool,
+    target_size: tuple[int, int] | None = None,
+    ffmpeg: Path | None = None,
+) -> list[str]:
+    """The command that decodes `[in_frame, out_frame]` to raw float32 on stdout.
+
+    Built apart from running it so a caller can log or show it, and so the frame
+    seek can be tested without decoding anything.
+
+    Seeking is by frame in both branches, never by time. A sequence seeks with
+    `-start_number`, which skips the frames before `in_frame` without opening them.
+    A container has to decode from its start, so it seeks with the `trim` filter,
+    which counts frames; `-ss` would take a float number of seconds and land on the
+    wrong frame at 23.976.
+
+    `target_size` adds the Lanczos downscale COLOR_AND_FORMAT section 4 specifies, so
+    the HD pass is this same command with one more filter. That is the second decode
+    per row, and it is deliberate: a filtergraph split to write both resolutions at
+    once is more moving parts than the decode is worth.
+    """
+    tool = ffmpeg or resolve_tool("ffmpeg")
+    count = frames.duration(in_frame, out_frame)
+    command = [str(tool), "-hide_banner", "-loglevel", "error", "-nostdin"]
+
+    filters = []
+    if is_sequence:
+        command += ["-start_number", str(in_frame)]
+    else:
+        # end_frame is exclusive, so it is the first frame past the range.
+        filters.append(f"trim=start_frame={in_frame}:end_frame={out_frame + 1}")
+    command += ["-i", source]
+    if target_size is not None:
+        filters.append(f"scale={target_size[0]}:{target_size[1]}:flags=lanczos")
+    if filters:
+        command += ["-vf", ",".join(filters)]
+
+    # Map the video alone: a source with audio would otherwise reach the rawvideo
+    # muxer as a second stream. fps_mode passthrough stops ffmpeg inventing or
+    # dropping frames to hit a constant rate, which would break the 1:1 mapping
+    # between source and output frames that section 6 defines.
+    return [
+        *command,
+        "-map",
+        "0:v:0",
+        "-an",
+        "-frames:v",
+        str(count),
+        "-fps_mode",
+        "passthrough",
+        "-f",
+        "rawvideo",
+        "-pix_fmt",
+        DECODE_PIXEL_FORMAT,
+        "-",
+    ]
+
+
+def _frame_from_planes(
+    block: bytes, width: int, height: int
+) -> npt.NDArray[np.float32]:
+    """One `gbrpf32le` frame as `(h, w, 3)` RGB.
+
+    The pixel format stores whole planes in G, B, R order, so RGB is planes 2, 0, 1.
+    `np.stack` reorders and interleaves in a single copy.
+    """
+    planes = np.frombuffer(block, dtype=_RAW_DTYPE).reshape(_PLANES, height, width)
+    return np.stack((planes[2], planes[0], planes[1]), axis=-1)
+
+
+def _stderr_tail(handle: IO[bytes], limit: int = 2000) -> str:
+    handle.seek(0)
+    return handle.read().decode("utf-8", "replace").strip()[-limit:]
+
+
+def decode_frames(
+    source: str,
+    source_size: tuple[int, int],
+    in_frame: int,
+    out_frame: int,
+    is_sequence: bool = False,
+    target_size: tuple[int, int] | None = None,
+    ffmpeg: Path | None = None,
+    timeout: int = DECODE_TIMEOUT,
+) -> Generator[npt.NDArray[np.float32], None, None]:
+    """Yield each frame of `[in_frame, out_frame]` as `(h, w, 3)` float32 RGB.
+
+    `source` is what goes after `-i`: a file path, or a printf pattern for a
+    sequence. `source_size` is the media's own resolution, which is how the frame
+    size on the pipe is known; when `target_size` is given the frames arrive at that
+    size instead.
+
+    Frames are yielded one at a time and never accumulated. A 4k float32 frame is
+    95 MB, so a hundred-frame shot held in a list would be 9 GB.
+
+    Raises FFmpegError if ffmpeg fails or the stream ends early, and always leaves
+    the process dead: abandoning the generator part way through a shot kills it
+    rather than leaving a decode running.
+    """
+    width, height = target_size or source_size
+    frame_bytes = width * height * _PLANES * _RAW_DTYPE.itemsize
+    expected = frames.duration(in_frame, out_frame)
+    command = decode_command(source, in_frame, out_frame, is_sequence, target_size, ffmpeg)
+    log.info("running: %s", " ".join(command))
+
+    with tempfile.TemporaryFile() as errors:
+        # stderr goes to a file rather than a pipe nobody drains: a decode that fails
+        # on every frame can write more than a pipe buffer holds and deadlock.
+        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=errors)
+        stdout = process.stdout
+        assert stdout is not None
+        try:
+            for index in range(expected):
+                block = stdout.read(frame_bytes)
+                if len(block) != frame_bytes:
+                    process.wait(timeout)
+                    raise FFmpegError(
+                        f"{source} gave {index} of {expected} frames from "
+                        f"{in_frame}-{out_frame}: {_stderr_tail(errors)}"
+                    )
+                yield _frame_from_planes(block, width, height)
+            if process.wait(timeout) != 0:
+                raise FFmpegError(f"decoding {source} failed: {_stderr_tail(errors)}")
+        finally:
+            if process.poll() is None:
+                process.kill()
+            stdout.close()
+            process.wait()

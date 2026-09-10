@@ -162,6 +162,22 @@ def make_dpx_sequence(
     return directory
 
 
+def make_solid_dpx(path: Path, colour: str = "0x804020", size: tuple[int, int] = SMALL) -> Path:
+    """A single DPX frame of one flat colour, for pinning down channel order.
+
+    `gbrp10le` so the RGB values survive without a YUV round trip. lavfi's `color`
+    still lands a little off the requested value, so tests compare channels against
+    each other rather than against an exact number.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    _run([
+        "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
+        "-f", "lavfi", "-i", f"color=c={colour}:size={size[0]}x{size[1]}",
+        "-pix_fmt", "gbrp10le", "-frames:v", "1", str(path),
+    ])
+    return path
+
+
 def make_still(path: Path, size: tuple[int, int] = SMALL) -> Path:
     """A single image, used for BTS copies and for lone-numbered-file cases."""
     path.parent.mkdir(parents=True, exist_ok=True)

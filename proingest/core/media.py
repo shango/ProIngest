@@ -96,7 +96,22 @@ class Sequence:
 
     def printf_pattern(self) -> str:
         """`name.%04d.exr`, the form ffmpeg's image2 demuxer expects."""
-        return str(self.directory / f"{self.base}.%0{self.padding}d{self.ext}")
+        return printf_pattern_for(self.first_path)
+
+
+def printf_pattern_for(frame: Path) -> str:
+    """The same pattern, rebuilt from any one frame of the sequence.
+
+    `MediaInfo.path` for a sequence is its first frame, not its pattern, so a
+    DeliverableJob handed to a worker process carries a frame path and this is how
+    that worker names the ffmpeg input. Padding comes from the digits actually on
+    the file, so a five digit sequence stays five digits.
+    """
+    match = SEQUENCE_PATTERN.match(frame.stem)
+    if match is None:
+        raise ValueError(f"{frame} is not a numbered sequence frame")
+    padding = len(match["frame"])
+    return str(frame.with_name(f"{match['base']}.%0{padding}d{frame.suffix}"))
 
 
 @dataclass
