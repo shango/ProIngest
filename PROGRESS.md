@@ -13,11 +13,11 @@ shot model, batch JSON, headless CLI `proingest scan <folder>`, tests.
 | M1.2 | `core/naming.py` + `tests/test_naming.py` | done, 106 tests |
 | M1.3 | `core/frames.py` + `tests/test_frames.py` | done, 55 tests |
 | M1.4 | `core/models.py` + `tests/test_models.py` | done, 37 tests |
-| M1.5 | `core/ffmpeg.py`, `core/media.py` + tests | in progress |
-| M1.6 | `core/timeline.py` + tests | todo |
+| M1.5 | `core/ffmpeg.py`, `core/media.py`, `core/exr.py` + tests | done, 39 tests |
+| M1.6 | `core/timeline.py` + tests | in progress |
 | M1.7 | `core/batchfile.py` + tests | todo |
 | M1.8 | `__main__.py` scan CLI | todo |
-| M1.9 | `tests/fixtures/media.py` synthetic media | todo |
+| M1.9 | `tests/fixtures/media.py` synthetic media | done |
 
 ## Environment
 
@@ -43,3 +43,18 @@ shot model, batch JSON, headless CLI `proingest scan <folder>`, tests.
 
 - OQ-17 (color space, PDF says sRGB render space vs docs assuming scene linear)
   blocks M3 ref encoding, not M1.
+
+## Findings worth keeping
+
+- ffmpeg *does* have an `exr` encoder, contrary to what CLAUDE.md said. It only
+  offers none/rle/zip1/zip16 and no `timeCode` attribute, so the OpenEXR bindings
+  are still the right call. CLAUDE.md corrected.
+- `OpenEXR.File(header, channels)` takes the header FIRST. DWAA at
+  `dwaCompressionLevel` 45.0, a `timeCode` attribute and half-float RGB all
+  round-trip. The M3 EXR pipeline is validated ahead of time.
+- ffprobe reports `r_frame_rate` 25/1 for a single EXR frame, which is a guess, not
+  the truth. Sequence rate therefore comes from the EXR `framesPerSecond` header
+  first, then the timeline's rate, then ffprobe.
+- ffprobe exits 0 on a corrupt EXR and reports a 0x0 stream, logging the real
+  complaint to stderr only. QC-014 cannot rely on the exit code, so zero dimensions
+  are treated as unreadable.

@@ -14,7 +14,7 @@ Read `PRD.md` first, then the docs it points to. The docs are the spec. When cod
 - Output names come only from `proingest/core/naming.py`. No string formatting of filenames anywhere else.
 - Settings have sane defaults and are editable in the Settings page. Do not hardcode frame-length limits, handle expectations, or paths.
 - ffmpeg and ffprobe are called as subprocesses through `proingest/core/ffmpeg.py`. Never shell out from elsewhere. All commands are logged verbatim so the user can reproduce a render.
-- EXR output uses the `OpenEXR` Python bindings (3.2+ numpy API), not ffmpeg (ffmpeg has no EXR encoder).
+- EXR output uses the `OpenEXR` Python bindings (3.2+ numpy API), not ffmpeg. ffmpeg does have an `exr` encoder, but it only offers none/rle/zip1/zip16 compression and cannot write the DWAA the spec requires, nor a `timeCode` header attribute.
 - Write tests alongside features. Synthetic test media is generated with ffmpeg in a pytest fixture, never committed.
 - Windows is the target. Use `pathlib` everywhere. Assume paths may be on a slow network mount; avoid repeated stat calls in loops (scan once, cache).
 
