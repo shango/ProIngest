@@ -2,9 +2,36 @@
 
 ## 1. Color policy (v01)
 
-- Consolidated source media from the shooters is already scene linear, sRGB primaries, all grading baked in. The tool does not apply any color transform to raw EXR output. Pixels in, pixels out.
-- Reference mp4s and the stringout are display encodes. Linear data written straight into H.264 looks wrong, so the tool applies a fixed transfer on those outputs only: linear to sRGB piecewise curve (IEC 61966-2-1), primaries unchanged, Rec.709 matrix for YCbCr, tagged `bt709` primaries and matrix, `iec61966-2-1` transfer. Implemented with ffmpeg `zscale` (`transferin=linear:transfer=iec61966-2-1`) or `colorspace`/`lut3d` equivalent. Settings offers Rec.709 OETF as the alternative. OQ-6.
-- EXR metadata: write `chromaticities` for sRGB/Rec.709 primaries and a `proingest/colorspace` string attribute `scene_linear_sRGB`.
+**The source color space is a setting, not a constant.** OQ-17 is resolved: the turnovers
+arriving today have the sRGB curve **baked in on every file, the EXRs included**. They are
+display referred, not scene referred. The shooters are expected to move the EXRs to scene
+linear sRGB later, so both cases are supported and one setting selects between them. It
+lives in `core/color.py` and defaults to baked sRGB.
+
+| setting | what the source is | today |
+|---|---|---|
+| `srgb_display` | sRGB curve baked in, display referred | **the v01 default** |
+| `scene_linear_srgb` | scene linear, sRGB primaries | after the shooters change |
+
+- The tool applies no color transform to raw EXR output in either case. Pixels in, pixels out.
+- Reference mp4s and the stringout are display encodes and must end up in display sRGB.
+  - From a **baked sRGB** source, no transfer is applied. The pixels are already there.
+    Applying the linear-to-sRGB curve to a file that already carries it washes out every
+    reference deliverable, which is the failure OQ-17 was about.
+  - From a **scene linear** source, the tool applies the linear to sRGB piecewise curve
+    (IEC 61966-2-1) with ffmpeg `zscale` (`transferin=linear:transfer=iec61966-2-1`).
+  - Either way the output is tagged `bt709` primaries and matrix, `iec61966-2-1` transfer.
+    Only the work to get there differs. Settings offers Rec.709 OETF as the alternative
+    curve. OQ-6.
+- Primaries are the same in both cases: sRGB and Rec.709 share them, so nothing about the
+  primaries depends on this setting.
+- EXR metadata: write `chromaticities` for sRGB/Rec.709 primaries and a
+  `proingest/colorspace` string attribute stating what the pixels are, `sRGB_display` or
+  `scene_linear_sRGB`. It labels the file; it does not claim a conversion happened.
+- The HD downscale runs on the values as delivered, encoded curve and all, which is what
+  ffmpeg's `scale` does on the container path too. Resampling in linear light would be
+  defensible on a display referred source but would make the two paths disagree and would
+  change pixels in a deliverable that is meant to be a faithful reduction.
 
 ## 2. Source formats accepted
 

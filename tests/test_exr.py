@@ -13,7 +13,7 @@ import numpy as np
 import OpenEXR
 import pytest
 
-from proingest.core import exr, frames
+from proingest.core import color, exr, frames
 from tests.fixtures import media as fixtures
 
 FPS = 24.0
@@ -81,10 +81,25 @@ class TestWriteFrame:
 
 class TestWrittenMetadata:
     def test_colour_space_is_stated_in_the_file(self, tmp_path: Path) -> None:
+        """v01 sources carry a baked sRGB curve, so that is what the file says (OQ-17)."""
         path = tmp_path / "frame.exr"
         exr.write_frame(path, image())
         with OpenEXR.File(str(path)) as handle:
-            assert handle.header()[exr.COLORSPACE_ATTRIBUTE] == exr.COLORSPACE_VALUE
+            assert handle.header()[exr.COLORSPACE_ATTRIBUTE] == "sRGB_display"
+
+    def test_a_scene_linear_source_is_labelled_as_one(self, tmp_path: Path) -> None:
+        path = tmp_path / "frame.exr"
+        exr.write_frame(path, image(), colorspace=color.SCENE_LINEAR_SRGB)
+        with OpenEXR.File(str(path)) as handle:
+            assert handle.header()[exr.COLORSPACE_ATTRIBUTE] == "scene_linear_sRGB"
+
+    def test_the_label_does_not_change_the_pixels(self, tmp_path: Path) -> None:
+        """Raw output is never transformed, so the attribute is the only difference."""
+        display, linear = tmp_path / "d.exr", tmp_path / "l.exr"
+        source = image(value=0.75)
+        exr.write_frame(display, source, colorspace=color.SRGB_DISPLAY)
+        exr.write_frame(linear, source, colorspace=color.SCENE_LINEAR_SRGB)
+        assert np.array_equal(exr.read_pixels(display), exr.read_pixels(linear))
 
     def test_primaries_are_written(self, tmp_path: Path) -> None:
         path = tmp_path / "frame.exr"

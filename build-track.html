@@ -283,16 +283,16 @@
       <div class="stat-l">Milestones done</div>
     </div>
     <div class="stat">
-      <div class="stat-n good">414</div>
+      <div class="stat-n good">465</div>
       <div class="stat-l">Tests passing</div>
     </div>
     <div class="stat">
-      <div class="stat-n">17<span style="color:var(--faint);font-size:17px">/20</span></div>
+      <div class="stat-n">16<span style="color:var(--faint);font-size:17px">/20</span></div>
       <div class="stat-l">Questions open</div>
     </div>
     <div class="stat">
-      <div class="stat-n bad">1</div>
-      <div class="stat-l">Active blocker</div>
+      <div class="stat-n good">0</div>
+      <div class="stat-l">Active blockers</div>
     </div>
   </div>
 
@@ -341,26 +341,27 @@
         </div>
       </div>
 
-      <div class="ms block">
+      <div class="ms now">
         <div class="ms-id">M3</div>
         <div class="ms-body">
           <div class="ms-head">
             <span class="ms-name">Render</span>
-            <span class="pill block">Blocked &middot; OQ-17</span>
+            <span class="pill now">In progress &middot; EXR writer done</span>
           </div>
           <p class="ms-goal">
             EXR writer, mp4 encoder, audio copy, side file copy, atomic writes, process pool,
             progress. CLI <code class="mono">proingest run &lt;batch&gt;</code>.
           </p>
           <div class="mods">
-            <span>exr.py</span><i>(write)</i><span>render.py</span><i>/</i><span>ffmpeg.py</span><i>(encode)</i>
+            <span>exr.py</span><i>(write)</i><span>resize.py</span><i>/</i><span>color.py</span><i>/</i><span>render.py</span><i>/</i><span>ffmpeg.py</span><i>(encode)</i>
           </div>
-          <div class="gate block">
-            <b>OQ-17, the colour space conflict.</b> The shooters' spec PDF states
-            <code>Render Color Space: sRGB</code> while COLOR_AND_FORMAT assumes scene linear.
-            If the EXRs are display-referred, the reference encode double-applies the sRGB
-            curve and every mp4 comes out washed out. Needs a look at real delivered media,
-            not another read of the PDF. Raw EXR output is unaffected either way.
+          <div class="gate">
+            <b>OQ-17 answered, unblocked.</b> Today's turnovers carry a baked sRGB curve on
+            every file, EXRs included, so the reference encode applies <b>no</b> transfer.
+            The EXRs move to scene linear later, so the source colour space is a setting
+            with both options rather than an assumption. The EXR writer and the antialiased
+            HD reduction are built and tested; the decode, the encodes, the pool and the
+            <code class="mono">run</code> CLI remain.
           </div>
         </div>
       </div>
@@ -477,11 +478,6 @@
         </thead>
         <tbody>
           <tr>
-            <td class="id">OQ-17</td>
-            <td>Colour space: PDF says render space sRGB, docs assume scene linear</td>
-            <td class="st"><span class="tag hot">Blocks M3</span></td>
-          </tr>
-          <tr>
             <td class="id">OQ-1</td>
             <td>Turnover folder structure and desired delivery layout</td>
             <td class="st"><span class="tag open">Open</span></td>
@@ -525,6 +521,16 @@
             <td class="id">OQ-20</td>
             <td>Lens grid: not recognised by the scan, no show to file it under, no version scope</td>
             <td class="st"><span class="tag open">Open</span></td>
+          </tr>
+          <tr class="resolved">
+            <td class="id">OQ-17</td>
+            <td>Colour space &mdash; sources are display referred today, scene linear later; a setting, not an assumption</td>
+            <td class="st"><span class="tag ok">Resolved</span></td>
+          </tr>
+          <tr class="resolved">
+            <td class="id">OQ-7</td>
+            <td>EXR downscale &mdash; Lanczos in numpy, matching ffmpeg's filter; no scipy</td>
+            <td class="st"><span class="tag ok">Resolved</span></td>
           </tr>
           <tr class="resolved">
             <td class="id">OQ-8</td>
@@ -591,6 +597,24 @@
         </p>
       </div>
       <div class="note">
+        <h3>The reference encode was about to be inverted</h3>
+        <p>
+          Both docs assumed scene linear sources and applied a linear-to-sRGB curve to every
+          reference mp4. The files actually arrive with that curve already baked in, so the
+          transfer is applied only when the source is scene linear, which today it is not.
+          The failure mode was silent: correct EXRs, washed out references.
+        </p>
+      </div>
+      <div class="note">
+        <h3>DWAA is lossy, so "pixels in, pixels out" has a limit</h3>
+        <p>
+          At level 45 a written frame comes back about a tenth of a percent off, proportionally.
+          It means no colour transform is applied, not that the file is a byte copy. QC hashes
+          the written file instead of comparing pixels, which holds because the encoder is
+          byte-deterministic.
+        </p>
+      </div>
+      <div class="note">
         <h3>Three things ffprobe does that the tests pinned down</h3>
         <p>
           It invents <span class="mono">25/1</span> for a single EXR frame; it exits 0 on a corrupt
@@ -604,7 +628,7 @@
   <footer>
     <b>Source of truth</b> &middot; PROGRESS.md, docs/OPEN_QUESTIONS.md, PRD.md section 9<br>
     <b>Verify</b> &middot; pytest &middot; ruff check . &amp;&amp; mypy proingest &middot; python -m proingest scan &lt;folder&gt;<br>
-    <b>Last updated</b> &middot; 10 September 2026, after M2, the deliverable planner
+    <b>Last updated</b> &middot; 10 September 2026, after the EXR writer and the colour space answer
   </footer>
 
 </div>

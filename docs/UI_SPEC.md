@@ -93,7 +93,7 @@ Rendered with ffmpeg `drawtext`, monospace font bundled with the app, white text
 - Top right: fps, resolution (`24 fps  3840x2160`)
 - Bottom left: source TC (running)
 - Bottom center: record TC (running)
-- Bottom right: frame `1001 + k` of duration, then color label (`scene linear sRGB` or the LUT name from Settings)
+- Bottom right: frame `1001 + k` of duration, then color label. The label is the source color space from Settings (`sRGB display` or `scene linear sRGB`, see COLOR_AND_FORMAT section 1), or the LUT name when one is set
 
 Each burn-in is a toggle in Settings. Text size scales with a single Settings value.
 

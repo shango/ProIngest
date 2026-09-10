@@ -21,7 +21,7 @@ import numpy as np
 import numpy.typing as npt
 import OpenEXR
 
-from proingest.core import frames
+from proingest.core import color, frames
 
 DWA_COMPRESSION_LEVEL = 45.0
 """Required by COLOR_AND_FORMAT section 3. Written as a float attribute."""
@@ -34,11 +34,12 @@ reader knows the primaries the linear data is in without being told.
 """
 
 COLORSPACE_ATTRIBUTE = "proingest/colorspace"
-COLORSPACE_VALUE = "scene_linear_sRGB"
 """What the pixels are, stated in the file. COLOR_AND_FORMAT section 1.
 
-The tool applies no transform to raw output, so this records the source's colour
-space rather than claiming a conversion happened. See OQ-17.
+The tool applies no transform to raw output, so the value records the source's colour
+space rather than claiming a conversion happened. Which value that is comes from
+`core/color.py`, because it is a setting: today's turnovers carry a baked sRGB curve
+and tomorrow's are expected to be scene linear.
 """
 
 RGB_CHANNELS = "RGB"
@@ -182,12 +183,16 @@ def write_frame(
     timecode_frames: int | None = None,
     fps: float = 24.0,
     compression_level: float = DWA_COMPRESSION_LEVEL,
+    colorspace: color.SourceColorSpace = color.DEFAULT_SOURCE_COLORSPACE,
 ) -> None:
     """Write one delivery frame: DWAA, half float, data window equal to display window.
 
     `pixels` is `(h, w, 3)` or `(h, w, 4)` in any float type; it is stored as half
     (OQ-13). The data window comes from the array shape, so the two windows always
     agree and QC-104 cannot fail for a frame this function wrote.
+
+    `colorspace` is stated in the header and nothing else. The values are written
+    exactly as they arrive, so this labels the file rather than changing it.
 
     The file is not read back here. Every frame is opened again by QC-103 after the
     sequence lands, and doing it twice would double the IO for nothing.
@@ -200,7 +205,7 @@ def write_frame(
         "dwaCompressionLevel": float(compression_level),
         "type": OpenEXR.scanlineimage,
         "chromaticities": CHROMATICITIES,
-        COLORSPACE_ATTRIBUTE: COLORSPACE_VALUE,
+        COLORSPACE_ATTRIBUTE: color.exr_attribute(colorspace),
     }
     if timecode_frames is not None:
         header["timeCode"] = _timecode_attribute(timecode_frames, fps)

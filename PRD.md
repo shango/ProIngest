@@ -26,7 +26,7 @@ Goals
 - Installs from a single Windows installer with no Python setup.
 
 Non-goals for v01
-- Color transforms of plates (source is already scene linear sRGB; see `docs/COLOR_AND_FORMAT.md`).
+- Color transforms of plates. Raw output is never transformed; the only transfer the tool ever applies is on the reference encodes, and only when the source is scene linear (see `docs/COLOR_AND_FORMAT.md` section 1).
 - Lidar deliverables.
 - Frame viewer (v02).
 - Any Google Drive API use. G: is a normal mounted drive.
@@ -37,7 +37,7 @@ Non-goals for v01
 Per turnover, in one folder on G: (structure configurable in Settings, see `docs/OPEN_QUESTIONS.md` OQ-1):
 
 - One `.otio` exported from Resolve (required). CMX3600 `.edl` accepted as fallback with reduced validation.
-- Consolidated media: one file or image sequence per timeline clip, scene linear sRGB, with extra frames beyond the timeline In/Out (handles are already in the timeline range; the extra frames only exist so Out can be extended).
+- Consolidated media: one file or image sequence per timeline clip, with the sRGB curve baked in today and scene linear sRGB expected later (`docs/COLOR_AND_FORMAT.md` section 1), with extra frames beyond the timeline In/Out (handles are already in the timeline range; the extra frames only exist so Out can be extended).
 - Audio clips synced on the timeline, referenced by the OTIO on audio tracks.
 - Optional per shot: HDRI `.exr`, camera data `.txt`/`.rtf`, lens grid `.png`, BTS stills, reference stills (color chart, mirror ball, grey ball, size reference).
 

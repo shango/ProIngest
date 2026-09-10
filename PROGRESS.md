@@ -4,8 +4,8 @@ Durable handoff record. Updated after each chunk so work can resume from disk.
 
 ## Resume here
 
-**State at 2026-09-10:** M1, M2 and M3.1 complete, 457 tests passing, ruff and
-`mypy --strict` clean. Verify with:
+**State at 2026-09-10:** M1, M2 and M3.1 complete, 465 tests passing, ruff and
+`mypy --strict` clean. **OQ-17 is answered, so nothing is blocked.** Verify with:
 
 ```
 .venv/bin/python -m pytest tests/ -q
@@ -20,8 +20,11 @@ arrays for a container source; the EXR source path is already covered by
 job execution, atomic `.part` writes, per-frame xxhash64, side file copies. M3.4 is
 the pool, progress, cancellation and the `proingest run <batch>` CLI.
 
-**Still blocked on OQ-17 (colour space):** the ref mp4 and stringout encodes only.
-Everything on the raw EXR path is unaffected, which is why M3 was started there.
+**OQ-17 answered by the studio on 2026-09-10.** Everything the turnovers carry today
+has the sRGB curve **baked in, the EXRs included**, so the source is display referred.
+The EXRs are expected to move to scene linear sRGB later, so the source colour space
+is a setting in `core/color.py` defaulting to `srgb_display`, and the ref encode
+applies **no** transfer from a baked source. Nothing is blocked now.
 
 **Build track artifact** (readable M1-M8 status board, republish the same file path
 to update): https://claude.ai/code/artifact/c0e6b8ac-6673-4e28-833d-7d85b5f7273a
@@ -111,16 +114,12 @@ writes, pool, progress. CLI `proingest run <batch>`.
 | M3.2 | container decode to numpy frames in `core/ffmpeg.py` | next |
 | M3.3 | `core/render.py`: job execution, atomic writes, checksums, copies | |
 | M3.4 | process pool, progress, cancellation, `proingest run` CLI | |
-| M3.5 | ref mp4 and stringout encodes | held by OQ-17 |
+| M3.5 | ref mp4 and stringout encodes | unblocked, OQ-17 answered |
 
 ## Blockers
 
-- **OQ-17, colour space. Blocks M3, nothing earlier.** The shooters' spec PDF says
-  `Render Color Space: sRGB`; COLOR_AND_FORMAT section 1 assumes scene linear. If the
-  delivered EXRs are display-referred, the reference encode double-applies the sRGB
-  curve and every ref mp4 and the stringout come out washed out. Raw EXR output is a
-  straight pixel copy and is unaffected either way. Resolve by inspecting real
-  delivered media alongside OQ-3, not by re-reading the PDF.
+None blocking. Open items:
+
 - **OQ-20, the lens grid deliverable, is not built.** It is the one row of the type
   table M2 does not cover. Three things are undecided and none can be settled from the
   docs: the scan does not recognise a lens grid clip at all (it fails the shot naming
@@ -222,3 +221,28 @@ writes, pool, progress. CLI `proingest run <batch>`.
 - The .docx of the roadmap was produced with a throwaway `md2docx.py` in the session
   scratchpad using `python-docx` installed with `--target` outside the venv, so the
   project's dependency list is untouched. Nothing in the repo depends on it.
+
+## Decisions taken, colour
+
+- **OQ-17: today's sources are display referred.** Everything the shooters deliver,
+  EXRs included, has the sRGB curve baked in. The EXRs are expected to become scene
+  linear sRGB later, so `core/color.py` holds a two-value setting rather than a
+  constant, defaulting to `srgb_display`.
+- The rule that matters is the reference encode, and it is inverted from what the docs
+  assumed: a baked source gets **no** transfer, a scene linear source gets the
+  linear-to-sRGB curve. Both outputs are tagged the same (`bt709` primaries and
+  matrix, `iec61966-2-1` transfer); only the work to get there differs. Getting this
+  backwards does not fail loudly, it just washes out or crushes every reference
+  deliverable, which is why the rule is read from `color.py` and never re-derived.
+- Raw EXR output is untransformed in both cases and states which it is in
+  `proingest/colorspace` (`sRGB_display` or `scene_linear_sRGB`). The attribute labels
+  the file; it never claims a conversion happened.
+- The HD downscale stays on the delivered values, curve and all. Resampling in linear
+  light would be defensible for a display referred source, but ffmpeg's `scale` on the
+  container path is gamma-unaware, so linearizing only the EXR path would make the two
+  paths disagree. Noted in COLOR_AND_FORMAT section 1.
+- Not built, worth considering when the shooters switch: nothing detects which of the
+  two a turnover actually is. A cheap heuristic exists (scene linear plates usually
+  carry values above 1.0, display referred ones are bounded at 1.0), but it needs the
+  scan to read a frame's pixels, not just its header, and it is false-positive prone
+  on a dark plate.

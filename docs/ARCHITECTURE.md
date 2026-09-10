@@ -16,6 +16,7 @@ proingest/
     ffmpeg.py            # subprocess wrapper, command builder, progress parsing, NVENC detection
     exr.py               # EXR read/write (OpenEXR), DWAA, header checks
     resize.py            # antialiased Lanczos downscale for the EXR path
+    color.py             # source color space setting; what each deliverable does about it
     render.py            # job execution, process pool, atomic writes, cancellation
     qc.py                # rule registry, phase A and B checks
     stringout.py         # concat plan and drawtext filter builder
