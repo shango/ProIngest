@@ -70,6 +70,9 @@ ffmpeg -i <src> -f rawvideo -pix_fmt gbrpf32le - | numpy frames -> float16 -> Op
 ```
 
 - One ffmpeg decode per resolution (4k pass writes 4k EXRs; HD pass adds the Lanczos scale filter). Two passes are simpler than a filtergraph split and cost one extra decode, acceptable at this scale.
-- EXR source sequences skip ffmpeg and are read with OpenEXR directly, downscaled with `numpy`/`scipy.ndimage.zoom` order 3 or OpenImageIO if available. Keep the downscale filter choice consistent with ffmpeg where possible; document the difference. OQ-7.
+- EXR source sequences skip ffmpeg and are read with OpenEXR directly, then downscaled by `core/resize.py`, an antialiased Lanczos-3 in numpy. That is the same filter the container path gets from `flags=lanczos`, so the two paths do not disagree: on a hard edge they are identical, and on smooth content they are within one 8 bit level. OQ-7, resolved.
+- **DWAA is lossy.** At level 45 a written frame comes back about a tenth of a percent off the value that went in, proportionally, at every brightness. "Pixels in, pixels out" in section 1 means no colour transform is applied, not that the file is a byte copy of the source. QC therefore never compares a rendered frame to its source by equality.
+- The encoder is deterministic: the same pixels and header produce the same bytes, which is what makes the QC-106 per-frame hash meaningful across a re-render.
+- `framesPerSecond` is **not** written on output. The OpenEXR Python bindings cannot write a `Rational` attribute, and writing an int or a string under that name would be the wrong attribute type for any reader expecting a rate. Delivered frames carry a per-frame `timeCode` instead, which the bindings do write correctly.
 - Checksum (xxhash64) of each written frame is recorded in the batch and the QC log.
-- Per-frame write is followed by an OpenEXR header re-read to confirm the file opens.
+- The writer does not read each frame back. QC-103 opens every frame of the finished sequence anyway, and the sequence is not renamed off its `.part` name until that passes, so a second read at write time would double the IO to learn nothing new.

@@ -1,9 +1,11 @@
-"""OpenEXR reading.
+"""OpenEXR reading and writing.
 
-Writing arrives with the render pipeline in M3. What is needed now is the header,
-because an EXR sequence carries its start timecode in a `timeCode` attribute that
-ffprobe does not surface, and COLOR_AND_FORMAT section 5 says source timecode comes
-from the container or the EXR header.
+Reading exists because an EXR sequence carries its start timecode in a `timeCode`
+attribute that ffprobe does not surface, and COLOR_AND_FORMAT section 5 says source
+timecode comes from the container or the EXR header.
+
+Writing is the raw deliverable, COLOR_AND_FORMAT section 3: scanline, DWAA at level
+45, half float, data window equal to display window, frames numbered from 1001.
 
 The bindings take the header first and the channel dict second:
 `OpenEXR.File(header, {"RGB": pixels})`.
@@ -15,12 +17,32 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+import numpy as np
+import numpy.typing as npt
 import OpenEXR
 
 from proingest.core import frames
 
 DWA_COMPRESSION_LEVEL = 45.0
 """Required by COLOR_AND_FORMAT section 3. Written as a float attribute."""
+
+CHROMATICITIES = (0.64, 0.33, 0.30, 0.60, 0.15, 0.06, 0.3127, 0.3290)
+"""sRGB and Rec.709 primaries with a D65 white point, COLOR_AND_FORMAT section 1.
+
+Written as the eight floats the attribute is defined as, red through white, so a
+reader knows the primaries the linear data is in without being told.
+"""
+
+COLORSPACE_ATTRIBUTE = "proingest/colorspace"
+COLORSPACE_VALUE = "scene_linear_sRGB"
+"""What the pixels are, stated in the file. COLOR_AND_FORMAT section 1.
+
+The tool applies no transform to raw output, so this records the source's colour
+space rather than claiming a conversion happened. See OQ-17.
+"""
+
+RGB_CHANNELS = "RGB"
+RGBA_CHANNELS = "RGBA"
 
 
 class ExrError(RuntimeError):
@@ -115,3 +137,94 @@ def start_timecode_frames(path: Path, fps: float) -> int | None:
     if header.is_drop_frame:
         raise ExrError(f"{path} carries drop-frame timecode (QC-027)")
     return frames.timecode_to_frames(header.timecode, fps)
+
+
+# --- Reading pixels, for the EXR source path. COLOR_AND_FORMAT section 7. ---
+
+
+def read_pixels(path: Path) -> npt.NDArray[np.float32]:
+    """Read one EXR's colour channels as float32 `(h, w, channels)`.
+
+    Float32 rather than the file's own type because everything downstream, the
+    resample in particular, works in float and half would lose precision twice.
+    Any extra channel the file carries is dropped: a plate delivers RGB, or RGBA
+    when the source has a real alpha.
+    """
+    try:
+        with OpenEXR.File(str(path)) as handle:
+            channels = handle.parts[0].channels
+            for grouped in (RGBA_CHANNELS, RGB_CHANNELS):
+                if grouped in channels:
+                    return np.array(channels[grouped].pixels, dtype=np.float32)
+            names = _colour_channel_names(channels, path)
+            return np.stack(
+                [np.asarray(channels[name].pixels, dtype=np.float32) for name in names], axis=-1
+            )
+    except ExrError:
+        raise
+    except Exception as exc:  # the bindings raise several unrelated types
+        raise ExrError(f"could not read pixels from {path}: {exc}") from exc
+
+
+def _colour_channel_names(channels: Any, path: Path) -> tuple[str, ...]:
+    """R, G, B and A when they are separate channels rather than one grouped array."""
+    if not all(name in channels for name in RGB_CHANNELS):
+        raise ExrError(f"{path} has no RGB channels (found {sorted(channels)})")
+    return tuple(RGBA_CHANNELS) if "A" in channels else tuple(RGB_CHANNELS)
+
+
+# --- Writing the raw deliverable. COLOR_AND_FORMAT section 3. ---
+
+
+def write_frame(
+    path: Path,
+    pixels: npt.NDArray[Any],
+    timecode_frames: int | None = None,
+    fps: float = 24.0,
+    compression_level: float = DWA_COMPRESSION_LEVEL,
+) -> None:
+    """Write one delivery frame: DWAA, half float, data window equal to display window.
+
+    `pixels` is `(h, w, 3)` or `(h, w, 4)` in any float type; it is stored as half
+    (OQ-13). The data window comes from the array shape, so the two windows always
+    agree and QC-104 cannot fail for a frame this function wrote.
+
+    The file is not read back here. Every frame is opened again by QC-103 after the
+    sequence lands, and doing it twice would double the IO for nothing.
+    """
+    if pixels.ndim != 3 or pixels.shape[2] not in (3, 4):
+        raise ValueError(f"expected an (h, w, 3) or (h, w, 4) image, got shape {pixels.shape}")
+
+    header: dict[str, Any] = {
+        "compression": OpenEXR.DWAA_COMPRESSION,
+        "dwaCompressionLevel": float(compression_level),
+        "type": OpenEXR.scanlineimage,
+        "chromaticities": CHROMATICITIES,
+        COLORSPACE_ATTRIBUTE: COLORSPACE_VALUE,
+    }
+    if timecode_frames is not None:
+        header["timeCode"] = _timecode_attribute(timecode_frames, fps)
+
+    key = RGB_CHANNELS if pixels.shape[2] == 3 else RGBA_CHANNELS
+    half = np.ascontiguousarray(pixels, dtype=np.float16)
+    try:
+        with OpenEXR.File(header, {key: half}) as handle:
+            handle.write(str(path))
+    except Exception as exc:  # the bindings raise several unrelated types
+        raise ExrError(f"could not write {path}: {exc}") from exc
+
+
+def _timecode_attribute(total_frames: int, fps: float) -> Any:
+    """A `timeCode` attribute for one frame.
+
+    Built through the shared timecode formatter rather than repeating the modulo
+    arithmetic, so an output frame's timecode is derived exactly as a source frame's
+    is. The bindings expose no constructor that takes the four fields, so an empty
+    value is filled in.
+    """
+    hours, minutes, seconds, frame = (
+        int(part) for part in frames.frames_to_timecode(total_frames, fps).split(":")
+    )
+    value = OpenEXR.TimeCode()
+    value.hours, value.minutes, value.seconds, value.frame = hours, minutes, seconds, frame
+    return value

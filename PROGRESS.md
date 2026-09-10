@@ -4,7 +4,7 @@ Durable handoff record. Updated after each chunk so work can resume from disk.
 
 ## Resume here
 
-**State at 2026-09-10:** M1 and M2 complete, 414 tests passing, ruff and
+**State at 2026-09-10:** M1, M2 and M3.1 complete, 457 tests passing, ruff and
 `mypy --strict` clean. Verify with:
 
 ```
@@ -13,15 +13,15 @@ Durable handoff record. Updated after each chunk so work can resume from disk.
 .venv/bin/python -m proingest scan <turnover folder>
 ```
 
-**Next task: M3, the render pipeline.** `core/render.py`, `core/exr.py` (writing),
-`core/ffmpeg.py` (encode commands), atomic writes, process pool, progress, and the
-`proingest run <batch>` CLI. `core/planner.py` already hands render a list of
-`DeliverableJob`s carrying source, destination, temp path, frame range and target
-size, so M3 is execution only, no naming and no layout decisions.
+**Next task: M3.2, decoding a source into frames.** `core/ffmpeg.py` gains the decode
+command (`-f rawvideo -pix_fmt gbrpf32le`) and a frame reader that yields numpy
+arrays for a container source; the EXR source path is already covered by
+`exr.read_pixels` plus `resize.lanczos_resize`. After that, M3.3 is `core/render.py`:
+job execution, atomic `.part` writes, per-frame xxhash64, side file copies. M3.4 is
+the pool, progress, cancellation and the `proingest run <batch>` CLI.
 
-**M3 is blocked on OQ-17 (colour space)** until a real turnover can be inspected.
-The EXR writer half is not blocked: raw EXR output is a straight pixel copy either
-way. Only the ref mp4 and stringout encodes depend on the answer.
+**Still blocked on OQ-17 (colour space):** the ref mp4 and stringout encodes only.
+Everything on the raw EXR path is unaffected, which is why M3 was started there.
 
 **Build track artifact** (readable M1-M8 status board, republish the same file path
 to update): https://claude.ai/code/artifact/c0e6b8ac-6673-4e28-833d-7d85b5f7273a
@@ -29,8 +29,10 @@ Source file: `build-track.html` at the repo root. It is a generated view of this
 file, not spec. To update it, edit that file and republish it with the artifact URL
 above passed as `url`.
 
-**Manager-facing plan:** `docs/ROADMAP.md`, chunked feature list with build estimates.
-Deliberately untracked (the user asked for it outside git). Do not `git add` it.
+**Manager-facing plan:** `docs/ROADMAP.md` and `docs/ROADMAP.docx`, a chunked feature
+list with build estimates. Deliberately untracked (the user asked for them outside
+git). Do not `git add` them. The .docx is generated from the .md; regenerate it with
+the throwaway converter noted in the M3 findings if the .md changes.
 
 ## Modules built so far
 
@@ -41,7 +43,8 @@ Deliberately untracked (the user asked for it outside git). Do not `git add` it.
 | `core/models.py` | Batch, Turnover, ShotRow, MediaInfo, AudioInfo, FrameRate, QCResult |
 | `core/ffmpeg.py` | the only place anything shells out; tool lookup, ffprobe |
 | `core/media.py` | DirectoryIndex, sequence detection, path remap, probe cache |
-| `core/exr.py` | EXR header reading (writing is M3) |
+| `core/exr.py` | EXR header and pixel reading, delivery frame writing |
+| `core/resize.py` | antialiased Lanczos downscale for the EXR path |
 | `core/timeline.py` | OTIO and EDL loading, audio association |
 | `core/scan.py` | turnover folder -> Turnover + ShotRows |
 | `core/batchfile.py` | `.pibatch` save/load, backup, filesystem reconciliation |
@@ -96,6 +99,19 @@ against the spec examples.
 | M2.1 | `core/planner.py` + `tests/test_planner.py` | done, 55 tests |
 | M2.2 | `naming.parse_shot_code`, `naming.frame_in_sequence` + tests | done |
 | M2.3 | side-file extension filter in `core/scan.py` + tests | done |
+
+## M3 Render -- IN PROGRESS
+
+Goal (PRD section 9): EXR writer, mp4 encoder, audio copy, side file copy, atomic
+writes, pool, progress. CLI `proingest run <batch>`.
+
+| chunk | module | state |
+|---|---|---|
+| M3.1 | `core/exr.py` write, `core/resize.py` + tests | done, 43 tests |
+| M3.2 | container decode to numpy frames in `core/ffmpeg.py` | next |
+| M3.3 | `core/render.py`: job execution, atomic writes, checksums, copies | |
+| M3.4 | process pool, progress, cancellation, `proingest run` CLI | |
+| M3.5 | ref mp4 and stringout encodes | held by OQ-17 |
 
 ## Blockers
 
@@ -178,3 +194,31 @@ against the spec examples.
 - The planner replaces a row's deliverable list, so it must run immediately before a
   run, not when a batch is opened: recorded render state belongs to the version that
   produced it.
+
+## Findings worth keeping, M3
+
+- **DWAA is lossy**, which the docs did not say. At level 45 a frame comes back about
+  0.1% off proportionally at every brightness (0.5 -> 0.0005 out, 64.0 -> 0.0625 out).
+  "Pixels in, pixels out" means no colour transform, not a byte copy. QC-106 hashes
+  the written file rather than comparing pixels to the source, which is sound because
+  the encoder is byte-deterministic for the same input. Both facts are now tested.
+- The OpenEXR bindings **cannot write a `Rational` attribute**, so `framesPerSecond`
+  cannot be written correctly. An int or a string is accepted under that name but is
+  the wrong attribute type for a reader expecting a rate, so output carries a
+  per-frame `timeCode` and no rate. Reading a rate still works, which is all QC-026
+  needs.
+- `chromaticities` wants an **8-tuple** (red, green, blue, white). The binding's error
+  message says "expected a 6-tuple", which is wrong and cost a few minutes.
+- `OpenEXR.TimeCode` has no four-argument constructor: build an empty one and assign
+  `hours`, `minutes`, `seconds`, `frame`.
+- **OQ-7 answered by building it.** `core/resize.py` is antialiased Lanczos-3 in
+  numpy. Checked directly against `scale=...:flags=lanczos`: on a hard edge the two
+  outputs are *identical*, on a gradient they differ by under one 8 bit level, and on
+  full-bandwidth random noise they diverge (mean 7/255) because swscale quantizes its
+  kernel into fixed point. Structured content, which is what a plate is, agrees. Both
+  comparisons are now tests. scipy was rejected: `ndimage.zoom` is a cubic spline with
+  no antialiasing, so a 2:1 reduction of fine texture aliases instead of averaging,
+  and it is a large dependency against a 300 MB installer budget.
+- The .docx of the roadmap was produced with a throwaway `md2docx.py` in the session
+  scratchpad using `python-docx` installed with `--target` outside the venv, so the
+  project's dependency list is untouched. Nothing in the repo depends on it.

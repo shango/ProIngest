@@ -14,7 +14,8 @@ proingest/
     scan.py              # turnover folder -> Turnover + ShotRows (data flow steps 1-4)
     planner.py           # ShotRow -> list[DeliverableJob]
     ffmpeg.py            # subprocess wrapper, command builder, progress parsing, NVENC detection
-    exr.py               # EXR read/write (OpenEXR), DWAA, header checks, downscale
+    exr.py               # EXR read/write (OpenEXR), DWAA, header checks
+    resize.py            # antialiased Lanczos downscale for the EXR path
     render.py            # job execution, process pool, atomic writes, cancellation
     qc.py                # rule registry, phase A and B checks
     stringout.py         # concat plan and drawtext filter builder
@@ -74,4 +75,4 @@ JSON, `schema_version: 1`. Top level: settings overrides, delivery root, turnove
 
 ## Third-party
 
-`opentimelineio`, `OpenEXR` (3.2+), `numpy`, `openpyxl`, `PySide6`, `xxhash`, `pydantic` (or dataclasses + `cattrs`), `ffmpeg`/`ffprobe` binaries (bundled). Optional: `OpenImageIO` wheels for EXR downscale if available on Windows; fall back to scipy.
+`opentimelineio`, `OpenEXR` (3.2+), `numpy`, `openpyxl`, `PySide6`, `xxhash`, `pydantic` (or dataclasses + `cattrs`), `ffmpeg`/`ffprobe` binaries (bundled). The EXR downscale is plain numpy (`core/resize.py`), so neither `scipy` nor `OpenImageIO` is a dependency. See OQ-7.
