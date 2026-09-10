@@ -283,7 +283,7 @@
       <div class="stat-l">Milestones done</div>
     </div>
     <div class="stat">
-      <div class="stat-n good">488</div>
+      <div class="stat-n good">525</div>
       <div class="stat-l">Tests passing</div>
     </div>
     <div class="stat">
@@ -346,7 +346,7 @@
         <div class="ms-body">
           <div class="ms-head">
             <span class="ms-name">Render</span>
-            <span class="pill now">In progress &middot; EXR writer and decode done</span>
+            <span class="pill now">In progress &middot; Writer, decode and render done</span>
           </div>
           <p class="ms-goal">
             EXR writer, mp4 encoder, audio copy, side file copy, atomic writes, process pool,
@@ -360,8 +360,9 @@
             every file, EXRs included, so the reference encode applies <b>no</b> transfer.
             The EXRs move to scene linear later, so the source colour space is a setting
             with both options rather than an assumption. The EXR writer, the antialiased
-            HD reduction and the source decode are built and tested; the encodes, the atomic
-            writer, the pool and the <code class="mono">run</code> CLI remain.
+            HD reduction, the source decode and the atomic job executor are built and tested.
+            A deliverable now either lands complete or leaves nothing behind. The reference
+            encodes, the worker pool and the <code class="mono">run</code> CLI remain.
           </div>
         </div>
       </div>
@@ -620,6 +621,25 @@
         </p>
       </div>
       <div class="note">
+        <h3>Atomic writes and ffmpeg's format guessing collide</h3>
+        <p>
+          Every deliverable is written to a <span class="mono">.part</span> name and renamed,
+          so ffmpeg never sees the real extension and refuses the output: it picks a muxer
+          from the extension, and <span class="mono">.wav.part</span> tells it nothing. Every
+          ffmpeg-written deliverable has to name its format outright. Found by a test.
+        </p>
+      </div>
+      <div class="note">
+        <h3>The witness cam rows really are missing their frame range</h3>
+        <p>
+          Checked against the source PDF. Every other raw sequence row shows a frame range and
+          two subfolder-naming columns; the witness cam raw rows show a bare filename with
+          neither, which reads as a single file rather than a sequence. The 3840&times;2162 and
+          3840&times;2161 heights are real typos in the same table. OQ-5, treated as a sequence
+          like the others.
+        </p>
+      </div>
+      <div class="note">
         <h3>ffmpeg's scaler quietly clamps float to 0-1</h3>
         <p>
           It was recorded as "swscale cannot carry float", which understated it. It accepts
@@ -652,7 +672,7 @@
   <footer>
     <b>Source of truth</b> &middot; PROGRESS.md, docs/OPEN_QUESTIONS.md, PRD.md section 9<br>
     <b>Verify</b> &middot; pytest &middot; ruff check . &amp;&amp; mypy proingest &middot; python -m proingest scan &lt;folder&gt;<br>
-    <b>Last updated</b> &middot; 10 September 2026, after the source decode landed
+    <b>Last updated</b> &middot; 10 September 2026, after the atomic job executor landed
   </footer>
 
 </div>
