@@ -14,7 +14,8 @@ This repo starts as a PRD package intended to be handed to Claude Code for imple
 6. `docs/UI_SPEC.md` - screens, list view behavior, keyboard model, theme
 7. `docs/ARCHITECTURE.md` - module layout, data model, render pipeline, testing
 8. `docs/PACKAGING.md` - installer, ffmpeg bundling, settings and log locations
-9. `docs/OPEN_QUESTIONS.md` - items still to confirm with the studio. Claude Code should treat these as blockers only where marked.
+9. `docs/MAC_SESSION.md` - the residue that cannot be checked without a Mac, and the plan for it
+10. `docs/OPEN_QUESTIONS.md` - items still to confirm with the studio. Claude Code should treat these as blockers only where marked.
 
 ## Source documents
 

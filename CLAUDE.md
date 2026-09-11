@@ -18,6 +18,7 @@ Read `PRD.md` first, then the docs it points to. The docs are the spec. When cod
 - Write tests alongside features. Synthetic test media is generated with ffmpeg in a pytest fixture, never committed.
 - macOS on Apple Silicon is the target for v01; Windows moved to v02. Use `pathlib` everywhere. Assume paths may be on a slow network mount; avoid repeated stat calls in loops (scan once, cache).
 - Never hardcode a platform path. There is no `G:`: the Google Drive mount is discovered, and settings and logs go to `~/Library/Application Support/ProIngest` and `~/Library/Logs/ProIngest`. See `docs/PACKAGING.md`.
+- CI runs the full suite on an arm64 macOS runner, so most work needs no Mac. If you write something whose behaviour can only be confirmed by a person on a Mac, add a line to `docs/MAC_SESSION.md` **in the same commit**. A checklist assembled later from memory is what that file exists to prevent.
 
 ## Style
 - Python 3.11, type hints everywhere, `ruff` and `mypy --strict` clean.

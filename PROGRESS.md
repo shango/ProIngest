@@ -94,6 +94,7 @@ fix one and say which.**
 | `docs/UI_SPEC.md` | the M5 interface, keyboard model, burn-ins |
 | `docs/OPEN_QUESTIONS.md` | OQ-1 to OQ-21, with defaults for the unanswered ones |
 | `docs/PACKAGING.md` | M7, the `.app` and dmg, ffmpeg bundling, Gatekeeper |
+| `docs/MAC_SESSION.md` | the only work that needs a real Mac, and what to do on the day |
 
 ---
 

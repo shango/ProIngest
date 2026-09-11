@@ -452,9 +452,13 @@
             ffmpeg is settled again for macOS: GPL v3 <b>martin-riedl.de arm64</b> build of 9.0.1,
             pinned in <code>build/ffmpeg.lock.json</code>, fetched not committed. The pair
             compresses to <b>57&nbsp;MB</b> against a 300&nbsp;MB budget, down from 111&nbsp;MB on
-            Windows. Two real gates remain: <b>OQ-22</b>, a Mac application can only be built on a
-            Mac and there is no Mac, and <b>OQ-9</b>, an unsigned app is <b>refused</b> by
-            Gatekeeper rather than warned about the way an unsigned Windows installer was.
+            Windows. The build itself is no longer a gate: the same CI runner that tests on Apple
+            Silicon can package the app, so nothing has to be uploaded anywhere to be compiled.
+            What remains is <b>OQ-9</b>, an unsigned app being <b>refused</b> by Gatekeeper rather
+            than warned about the way an unsigned Windows installer was, and one planned day on a
+            rented Mac to look at the things only a person can check. That day costs about
+            <b>EUR 3</b>, so preparation rather than price is what matters: the running checklist
+            is <code>docs/MAC_SESSION.md</code>.
         </div>
       </div>
 

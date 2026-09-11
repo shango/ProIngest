@@ -42,7 +42,12 @@ Two things CI cannot do, and they are why a real Mac is still needed eventually:
 - **M7 packaging.** The job is not written because `build/build.py` and `build/proingest.spec`
   do not exist yet. It lands with M7 and is a natural fit for the same runner.
 - **M8 validation.** The turnovers live on the editor's Google Drive and no runner can judge
-  whether a reference encode looks right. That needs the editor's own Mac, or a rented one.
+  whether a reference encode looks right. That needs the editor's own Mac.
+
+`docs/MAC_SESSION.md` holds the running checklist for both, so a rented day is execution
+rather than exploration. A rented Apple Silicon machine is about EUR 3 for the 24 hour
+minimum lease Apple's licence forces, which makes preparation, not price, the thing worth
+optimising.
 
 Everything else in this document is still written from the documentation rather than from a
 machine anyone has used. Assumptions that need a Mac to settle are flagged as OQ-22 to OQ-25.
