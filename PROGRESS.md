@@ -128,7 +128,9 @@ are the stringout's and belong to M6.**
   OQ-25 and OQ-27, all written up in section 6. **OQ-28 is new**, raised by M4.1: no doc
   has ever stated how many handle frames a turnover carries, and QC-030 needs a number.
   **17 of 28 questions remain open**; none of them blocks M4.3.
-- **The last commits are not pushed.** Pushing is the user's call, not an automatic step.
+- **Everything is pushed and CI is green on both runners**, including the M3.5 and OQ work
+  that had been sitting unpushed. Run 34566217430: macOS arm64 in 56s, Linux in 1m17s.
+  Pushing is still the user's call rather than an automatic step.
 
 ## 2. What this is, and what to read
 
