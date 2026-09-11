@@ -160,6 +160,26 @@ def count_frames(path: Path, ffprobe: Path | None = None) -> int:
     return int(streams[0]["nb_read_frames"])
 
 
+def container_frame_count(path: Path, ffprobe: Path | None = None) -> int:
+    """Frames the container says its video stream holds, read from the index.
+
+    The cheap counterpart to `count_frames`, which decodes. It is enough to verify a
+    file this tool just wrote, and it costs nothing on a 4k reference where a decode
+    would cost minutes.
+
+    Raises FFprobeError when the stream states no count, rather than reporting zero:
+    the caller uses this to prove a delivery is complete, and an unknown count must
+    never read as a verified one.
+    """
+    for stream in probe_raw(path, ffprobe).get("streams", []):
+        if stream.get("codec_type") != "video":
+            continue
+        if "nb_frames" not in stream:
+            raise FFprobeError(f"{path} states no frame count")
+        return int(stream["nb_frames"])
+    raise FFprobeError(f"no video stream in {path}")
+
+
 @dataclass(frozen=True)
 class ToolInfo:
     """Recorded in every QC log, per docs/PACKAGING.md."""
@@ -381,3 +401,150 @@ def extract_audio(source: Path, destination: Path, ffmpeg: Path | None = None) -
     result = run(extract_audio_command(source, destination, ffmpeg))
     if result.returncode != 0:
         raise FFmpegError(f"extracting audio from {source} failed: {result.stderr.strip()}")
+
+
+# --- Encoding a reference mp4. COLOR_AND_FORMAT section 3. ---
+
+ENCODE_TIMEOUT = 1800
+"""A 4k CRF 18 `preset slow` encode of a long shot is minutes, not seconds."""
+
+REFERENCE_CRF = "18"
+REFERENCE_PRESET = "slow"
+REFERENCE_KEYINT = "24"
+"""One keyframe a second at 24. The spec pins the number, not the duration."""
+
+REFERENCE_PIXEL_FORMAT = "yuv420p"
+REFERENCE_AUDIO_BITRATE = "192k"
+
+REFERENCE_TAGS = [
+    "-color_primaries", "bt709",
+    "-colorspace", "bt709",
+    "-color_trc", "iec61966-2-1",
+]
+"""How the output is labelled, whatever the source was.
+
+COLOR_AND_FORMAT section 1: a reference is a display encode and ends up in display
+sRGB either way. `-colorspace` is the matrix, and sRGB and Rec.709 share primaries, so
+only the transfer names sRGB.
+"""
+
+
+def encode_command(
+    source: str,
+    destination: Path,
+    in_frame: int,
+    out_frame: int,
+    is_sequence: bool,
+    rate: str,
+    target_size: tuple[int, int] | None = None,
+    display_filter: str | None = None,
+    audio: Path | None = None,
+    audio_skip: float = 0.0,
+    ffmpeg: Path | None = None,
+) -> list[str]:
+    """The command that encodes `[in_frame, out_frame]` to one reference mp4.
+
+    The seek is `decode_command`'s, for the same reasons: `-start_number` for a
+    sequence, the frame-counting `trim` filter for a container, never `-ss`, which
+    would take seconds and land on the wrong frame at 23.976.
+
+    Three things here are load bearing and none of them fail loudly:
+
+    - **`rate` is passed as `-framerate` before a sequence input.** The image2 demuxer
+      states no rate of its own and defaults to **25**, so without this every reference
+      built from an EXR or DPX sequence plays 4% fast with nothing in the log.
+    - **`setpts=PTS-STARTPTS` follows the trim.** `trim` keeps the source timestamps,
+      so the first delivered frame lands at its original offset and the mp4 opens with
+      a gap that long. Measured: four frames at 24 came out 0.25s instead of 0.17s.
+    - **`-f mp4` is stated.** The output is a `.part` path, so there is no extension to
+      infer a muxer from. This is the same trap `extract_audio_command` documents.
+
+    `display_filter` is whatever `color.display_transform` returned, applied after the
+    scale so the resample runs on the values as delivered (section 4). `audio_skip`
+    drops that many seconds off the front of the audio, which is how sound stays with
+    the picture when the editor delivers a sub-range.
+    """
+    tool = ffmpeg or resolve_tool("ffmpeg")
+    count = frames.duration(in_frame, out_frame)
+    command = [str(tool), "-hide_banner", "-loglevel", "error", "-nostdin", "-y"]
+
+    filters = []
+    if is_sequence:
+        command += ["-framerate", rate, "-start_number", str(in_frame)]
+    else:
+        # end_frame is exclusive, so it is the first frame past the range.
+        filters += [
+            f"trim=start_frame={in_frame}:end_frame={out_frame + 1}",
+            "setpts=PTS-STARTPTS",
+        ]
+    command += ["-i", source]
+
+    if audio is not None:
+        if audio_skip > 0:
+            command += ["-ss", f"{audio_skip:.6f}"]
+        command += ["-i", str(audio)]
+
+    if target_size is not None:
+        filters.append(f"scale={target_size[0]}:{target_size[1]}:flags=lanczos")
+    if display_filter is not None:
+        filters.append(display_filter)
+    if filters:
+        command += ["-vf", ",".join(filters)]
+
+    # fps_mode passthrough for the same reason the decode passes it: ffmpeg must not
+    # invent or drop frames to reach a constant rate, because section 6 maps output
+    # frame 1001 + k onto source frame in + k and nothing may break that.
+    command += ["-map", "0:v:0"]
+    command += ["-map", "1:a:0"] if audio is not None else ["-an"]
+    command += [
+        "-frames:v", str(count),
+        "-fps_mode", "passthrough",
+        "-c:v", "libx264",
+        "-profile:v", "high",
+        "-preset", REFERENCE_PRESET,
+        "-crf", REFERENCE_CRF,
+        "-g", REFERENCE_KEYINT,
+        "-pix_fmt", REFERENCE_PIXEL_FORMAT,
+        *REFERENCE_TAGS,
+    ]
+    if audio is not None:
+        # -shortest so a wav covering the whole clip cannot outrun a delivered range.
+        command += ["-c:a", "aac", "-b:a", REFERENCE_AUDIO_BITRATE, "-shortest"]
+    return [*command, "-movflags", "+faststart", "-f", "mp4", str(destination)]
+
+
+def encode_reference(
+    source: str,
+    destination: Path,
+    in_frame: int,
+    out_frame: int,
+    is_sequence: bool,
+    rate: str,
+    target_size: tuple[int, int] | None = None,
+    display_filter: str | None = None,
+    audio: Path | None = None,
+    audio_skip: float = 0.0,
+    ffmpeg: Path | None = None,
+) -> None:
+    """Run the reference encode, raising FFmpegError with ffmpeg's own complaint.
+
+    One pass over the source, unlike the raw path: x264 wants the frames anyway, so
+    there is nothing to gain by decoding them into this process first, and a good deal
+    to lose in copying 95 MB a frame across a pipe.
+    """
+    command = encode_command(
+        source,
+        destination,
+        in_frame,
+        out_frame,
+        is_sequence,
+        rate,
+        target_size,
+        display_filter,
+        audio,
+        audio_skip,
+        ffmpeg,
+    )
+    result = run(command, timeout=ENCODE_TIMEOUT)
+    if result.returncode != 0:
+        raise FFmpegError(f"encoding {destination.name} failed: {result.stderr.strip()}")

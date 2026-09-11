@@ -218,3 +218,123 @@ class TestPrintfPattern:
     def test_a_file_with_no_frame_number_is_not_a_sequence(self, tmp_path: Path) -> None:
         with pytest.raises(ValueError, match="not a numbered sequence frame"):
             media.printf_pattern_for(tmp_path / "MELT0001_pl01.exr")
+
+
+class TestEncodeCommand:
+    """The reference encode's argv. COLOR_AND_FORMAT section 3.
+
+    Three of these pin traps that produce a plausible file rather than an error, which
+    is why they are asserted on the command rather than left to an eye on the output.
+    """
+
+    def test_a_sequence_states_its_rate_because_image2_would_invent_25(self) -> None:
+        """No `-framerate` and every sequence reference plays 4% fast, silently."""
+        command = ffmpeg.encode_command(
+            "plate.%04d.exr", Path("out.mp4.part"), 1001, 1004, is_sequence=True, rate="24/1"
+        )
+        assert command.index("-framerate") < command.index("-i")
+        assert command[command.index("-framerate") + 1] == "24/1"
+        assert command[command.index("-start_number") + 1] == "1001"
+
+    def test_the_rate_is_exact_rather_than_rounded(self) -> None:
+        """23.976 is 24000/1001, and a decimal there would drift against the timecode."""
+        command = ffmpeg.encode_command(
+            "plate.%04d.exr", Path("out.mp4.part"), 1001, 1004, is_sequence=True, rate="24000/1001"
+        )
+        assert command[command.index("-framerate") + 1] == "24000/1001"
+
+    def test_a_container_trims_by_frame_and_rebases_the_timestamps(self) -> None:
+        """Without setpts the mp4 opens with a gap as long as the trim offset."""
+        command = ffmpeg.encode_command(
+            "plate.mov", Path("out.mp4.part"), 2, 5, is_sequence=False, rate="24/1"
+        )
+        filters = command[command.index("-vf") + 1]
+        assert filters == "trim=start_frame=2:end_frame=6,setpts=PTS-STARTPTS"
+        assert "-framerate" not in command
+        assert command[command.index("-frames:v") + 1] == "4"
+
+    def test_the_format_is_stated_because_the_output_is_a_part_path(self) -> None:
+        command = ffmpeg.encode_command(
+            "plate.mov", Path("MELT0001_pl01_ref_4k_v01.mp4.part"), 0, 3,
+            is_sequence=False, rate="24/1",
+        )
+        assert command[-3:] == ["-f", "mp4", "MELT0001_pl01_ref_4k_v01.mp4.part"]
+
+    def test_the_encode_is_the_one_the_spec_pins(self) -> None:
+        command = ffmpeg.encode_command(
+            "plate.mov", Path("out.mp4.part"), 0, 3, is_sequence=False, rate="24/1"
+        )
+        assert command[command.index("-c:v") + 1] == "libx264"
+        assert command[command.index("-profile:v") + 1] == "high"
+        assert command[command.index("-crf") + 1] == "18"
+        assert command[command.index("-preset") + 1] == "slow"
+        assert command[command.index("-g") + 1] == "24"
+        assert command[command.index("-pix_fmt") + 1] == "yuv420p"
+        assert command[command.index("-movflags") + 1] == "+faststart"
+
+    def test_the_output_is_tagged_bt709_with_an_srgb_transfer(self) -> None:
+        """Section 1: both colour branches land here, so the tags never vary."""
+        command = ffmpeg.encode_command(
+            "plate.mov", Path("out.mp4.part"), 0, 3, is_sequence=False, rate="24/1"
+        )
+        assert command[command.index("-color_primaries") + 1] == "bt709"
+        assert command[command.index("-colorspace") + 1] == "bt709"
+        assert command[command.index("-color_trc") + 1] == "iec61966-2-1"
+
+    def test_the_display_transform_runs_after_the_scale(self) -> None:
+        """Section 4: the downscale runs on the values as delivered, curve and all."""
+        command = ffmpeg.encode_command(
+            "plate.mov", Path("out.mp4.part"), 0, 3, is_sequence=False, rate="24/1",
+            target_size=(1920, 1080), display_filter="zscale=transferin=linear:transfer=iec61966-2-1",
+        )
+        filters = command[command.index("-vf") + 1].split(",")
+        assert filters[-2:] == [
+            "scale=1920:1080:flags=lanczos",
+            "zscale=transferin=linear:transfer=iec61966-2-1",
+        ]
+
+    def test_a_baked_srgb_source_gets_no_transfer_at_all(self) -> None:
+        """`display_transform` returns None there, and None must mean no filter."""
+        command = ffmpeg.encode_command(
+            "plate.%04d.exr", Path("out.mp4.part"), 1001, 1004, is_sequence=True, rate="24/1"
+        )
+        assert "-vf" not in command
+
+    def test_no_audio_means_the_stream_is_dropped_not_silent(self) -> None:
+        command = ffmpeg.encode_command(
+            "plate.mov", Path("out.mp4.part"), 0, 3, is_sequence=False, rate="24/1"
+        )
+        assert "-an" in command
+        assert "aac" not in command
+        assert command.count("-i") == 1
+
+    def test_audio_is_a_second_input_mapped_and_encoded_at_192k(self) -> None:
+        command = ffmpeg.encode_command(
+            "plate.mov", Path("out.mp4.part"), 0, 3, is_sequence=False, rate="24/1",
+            audio=Path("MELT0001_pl01.wav"),
+        )
+        assert command.count("-i") == 2
+        assert "-map" in command
+        assert command[command.index("0:v:0") - 1] == "-map"
+        assert command[command.index("1:a:0") - 1] == "-map"
+        assert command[command.index("-c:a") + 1] == "aac"
+        assert command[command.index("-b:a") + 1] == "192k"
+        assert "-shortest" in command
+
+    def test_an_audio_skip_seeks_the_audio_input_and_not_the_picture(self) -> None:
+        """-ss binds to the input that follows it, so its position is the whole point."""
+        command = ffmpeg.encode_command(
+            "plate.mov", Path("out.mp4.part"), 0, 3, is_sequence=False, rate="24/1",
+            audio=Path("a.wav"), audio_skip=0.5,
+        )
+        assert command[command.index("-ss") + 1] == "0.500000"
+        assert command[command.index("-ss") + 2] == "-i"
+        assert command[command.index("-ss") + 3] == "a.wav"
+        assert command.index("-ss") > command.index("plate.mov")
+
+    def test_an_untrimmed_shot_seeks_the_audio_not_at_all(self) -> None:
+        command = ffmpeg.encode_command(
+            "plate.mov", Path("out.mp4.part"), 0, 3, is_sequence=False, rate="24/1",
+            audio=Path("a.wav"),
+        )
+        assert "-ss" not in command

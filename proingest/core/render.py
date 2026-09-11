@@ -16,7 +16,10 @@ against. It is a digest of the written file, not of the pixels: DWAA is lossy, s
 frame does not read back byte-identical to what went in, but the encoder is
 deterministic, which makes the file hash stable across a re-render of the same pixels.
 
-Reference mp4s and the stringout are not here yet; they are M3.5.
+The reference mp4 is the one deliverable this module does not build frame by frame.
+It hands the source to ffmpeg and lets x264 read it directly, so there is no progress
+between its start and its finish, and a cancelled run waits for an encode already in
+flight rather than stopping it. The stringout is not here at all; it is M6.
 """
 
 from __future__ import annotations
@@ -105,10 +108,12 @@ def render_job(
             _render_still(job, deliverable, colorspace)
         elif job.kind == "audio":
             _render_audio(job, deliverable)
+        elif job.kind == "ref_mp4":
+            _render_reference(job, deliverable, colorspace)
         elif job.kind in COPY_KINDS:
             _render_copy(job, deliverable)
         else:
-            raise RenderError(f"{job.kind} cannot be rendered yet: reference encodes are M3.5")
+            raise RenderError(f"no renderer for a {job.kind} job")
     except ffmpeg.FFmpegError as exc:
         # One exception type out of here, so a worker pool has one thing to catch.
         _discard(job.temp)
@@ -272,6 +277,80 @@ def _fit(
     if target is None or pixels.shape[:2] == (target[1], target[0]):
         return pixels
     return resize.lanczos_resize(pixels, target[0], target[1])
+
+
+# --- Reference mp4. COLOR_AND_FORMAT section 3. ---
+
+
+def _render_reference(
+    job: DeliverableJob, deliverable: Deliverable, colorspace: color.SourceColorSpace
+) -> None:
+    """Encode the delivered range to a reference mp4, audio included when there is any.
+
+    One ffmpeg pass reading the source itself, rather than the decode-and-write loop
+    the raw path uses. x264 needs every frame anyway, so pulling them into this process
+    first would copy 95 MB a frame across a pipe to hand straight back.
+
+    The consequence is that this is the only job kind with no per-frame progress and no
+    mid-job cancellation: ffmpeg is running, and the job is over when it returns.
+
+    **The transfer is read from `color.display_transform`, never re-derived here.** It
+    returns a filter for a scene linear source and None for the baked sRGB source the
+    turnovers actually carry today, and applying the curve to pixels that already have
+    it washes out every reference without failing.
+    """
+    if job.in_frame is None or job.out_frame is None:
+        raise RenderError(f"{job.name} has no frame range")
+    if job.rate is None:
+        raise RenderError(f"{job.name} has no frame rate, so the reference would play wrong")
+
+    source = media.printf_pattern_for(job.source) if job.source_is_sequence else str(job.source)
+    # Same rule as the raw path: only scale when the size actually changes, so a 4k
+    # reference off a 4k source never touches a resampler.
+    scale = job.target_size if job.target_size != job.source_size else None
+    ffmpeg.encode_reference(
+        source,
+        job.temp,
+        job.in_frame,
+        job.out_frame,
+        is_sequence=job.source_is_sequence,
+        rate=f"{job.rate.numerator}/{job.rate.denominator}",
+        target_size=scale,
+        display_filter=color.display_transform(colorspace),
+        audio=job.audio_source,
+        audio_skip=_audio_skip(job),
+    )
+    if not job.temp.is_file():
+        raise RenderError(f"{job.name}: the encode reported success and wrote nothing")
+
+    # ffmpeg exits 0 when the source runs out before the range does: asked for 100
+    # frames of a 4 frame plate it writes 4 and says nothing. The raw path catches the
+    # same case by counting what it wrote, and a short reference recorded as done is
+    # exactly the delivery this module exists to prevent.
+    written = ffmpeg.container_frame_count(job.temp)
+    if written != job.frame_count:
+        raise RenderError(
+            f"{job.name} wanted {job.frame_count} frames and the encode wrote {written}"
+        )
+    _record_file(deliverable, job.temp)
+    deliverable.frame_count = written
+
+
+def _audio_skip(job: DeliverableJob) -> float:
+    """Seconds of audio to drop so the sound stays with the picture.
+
+    The wav covers the whole clip and the picture may be a trimmed range of it, so
+    without this a shot the editor trimmed in delivers a reference whose sound runs
+    ahead of it by the length of the trim. Computed from integer frames and converted
+    only here, at the ffmpeg boundary.
+
+    It assumes the audio starts where the picture media starts, which is what a
+    consolidated turnover produces but has never been checked against a real one. OQ-27.
+    """
+    if job.audio_source is None or job.in_frame is None or job.rate is None:
+        return 0.0
+    offset = job.in_frame - job.source_start_frame
+    return max(0, offset) / job.rate.as_float()
 
 
 # --- Audio and byte copies. ---

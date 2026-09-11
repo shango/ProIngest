@@ -13,12 +13,13 @@ point it is verified.
 from __future__ import annotations
 
 import multiprocessing
+from dataclasses import replace
 from pathlib import Path
 
 import OpenEXR
 import pytest
 
-from proingest.core import color, exr, frames, media, naming, render
+from proingest.core import color, exr, ffmpeg, frames, media, naming, render
 from proingest.core.models import Batch, Deliverable, FrameRate, ShotRow
 from proingest.core.planner import DeliverableJob
 from tests.fixtures import media as fixtures
@@ -400,20 +401,141 @@ class TestCopies:
         assert deliverable.status == "done"
 
 
-class TestNotYetBuilt:
-    def test_a_reference_mp4_says_which_milestone_it_is(self, tmp_path: Path) -> None:
-        source = fixtures.make_mov(tmp_path / "src" / "plate.mov", count=4)
-        job = sequence_job(
-            source,
-            tmp_path / "out" / "MELT0001_pl01_ref_4k_v01.mp4",
-            0,
-            3,
-            kind="ref_mp4",
-            is_sequence=False,
-            start_frame=0,
+def ref_job(
+    tmp_path: Path,
+    source: Path,
+    in_frame: int,
+    out_frame: int,
+    is_sequence: bool = False,
+    start_frame: int = 0,
+    audio: Path | None = None,
+    res: str | None = None,
+) -> DeliverableJob:
+    """A reference mp4 job. The destination carries the `.mp4` the name spec gives it."""
+    job = sequence_job(
+        source,
+        tmp_path / "out" / "MELT0001_pl01_ref_4k_v01.mp4",
+        in_frame,
+        out_frame,
+        kind="ref_mp4",
+        is_sequence=is_sequence,
+        start_frame=start_frame,
+        res=res,
+    )
+    return job if audio is None else replace(job, audio_source=audio)
+
+
+def streams(path: Path) -> list[dict[str, object]]:
+    probed: list[dict[str, object]] = ffmpeg.probe_raw(path)["streams"]
+    return probed
+
+
+def video_stream(path: Path) -> dict[str, object]:
+    return next(s for s in streams(path) if s["codec_type"] == "video")
+
+
+class TestReferenceMp4:
+    """COLOR_AND_FORMAT section 3. One ffmpeg pass, and the file has to be real.
+
+    These assert on the encoded file rather than the command because the command is
+    already pinned in test_ffmpeg; what is worth proving here is that the pieces meet.
+    """
+
+    def test_a_container_source_delivers_the_range_as_a_playable_mp4(
+        self, tmp_path: Path
+    ) -> None:
+        source = fixtures.make_mov(tmp_path / "src" / "plate.mov", count=8)
+        job = ref_job(tmp_path, source, 0, 3)
+        deliverable = render.render_job(job)
+        assert job.destination.is_file()
+        assert ffmpeg.count_frames(job.destination) == 4
+        assert video_stream(job.destination)["codec_name"] == "h264"
+        assert deliverable.status == "done"
+
+    def test_an_exr_sequence_reference_plays_at_the_timeline_rate(
+        self, tmp_path: Path
+    ) -> None:
+        """The image2 demuxer defaults to 25, so this is the `-framerate` trap."""
+        fixture = fixtures.make_exr_sequence(tmp_path / "src", count=6, first=1001)
+        job = ref_job(
+            tmp_path, fixture.path_for(1001), 1001, 1004, is_sequence=True, start_frame=1001
         )
-        with pytest.raises(render.RenderError, match=r"M3\.5"):
+        render.render_job(job)
+        assert video_stream(job.destination)["r_frame_rate"] == "24/1"
+        assert ffmpeg.count_frames(job.destination) == 4
+
+    def test_a_sub_range_delivers_only_that_range(self, tmp_path: Path) -> None:
+        source = fixtures.make_mov(tmp_path / "src" / "plate.mov", count=8)
+        job = ref_job(tmp_path, source, 2, 4)
+        deliverable = render.render_job(job)
+        assert ffmpeg.count_frames(job.destination) == 3
+        assert deliverable.frame_count == 3
+
+    def test_the_record_carries_a_checksum_and_a_size(self, tmp_path: Path) -> None:
+        source = fixtures.make_mov(tmp_path / "src" / "plate.mov", count=4)
+        deliverable = render.render_job(ref_job(tmp_path, source, 0, 3))
+        assert deliverable.checksum
+        assert deliverable.size > 0
+
+    def test_a_resolution_scales_the_output_exactly(self, tmp_path: Path) -> None:
+        source = fixtures.make_mov(tmp_path / "src" / "plate.mov", count=2)
+        job = ref_job(tmp_path, source, 0, 1, res="HD")
+        render.render_job(job)
+        stream = video_stream(job.destination)
+        assert (stream["width"], stream["height"]) == (1920, 1080)
+
+    def test_associated_audio_is_muxed_as_aac(self, tmp_path: Path) -> None:
+        source = fixtures.make_mov(tmp_path / "src" / "plate.mov", count=8)
+        wav = fixtures.make_wav(tmp_path / "src" / "MELT0001_pl01.wav", seconds=8 / 24)
+        job = ref_job(tmp_path, source, 0, 7, audio=wav)
+        render.render_job(job)
+        audio = [s for s in streams(job.destination) if s["codec_type"] == "audio"]
+        assert [s["codec_name"] for s in audio] == ["aac"]
+
+    def test_audio_in_the_source_does_not_reach_a_row_that_delivers_none(
+        self, tmp_path: Path
+    ) -> None:
+        """`-an`, not silence. The mov's timecode track does ride along, deliberately."""
+        source = fixtures.make_mov(tmp_path / "src" / "plate.mov", count=4, with_audio=True)
+        job = ref_job(tmp_path, source, 0, 3)
+        render.render_job(job)
+        kinds = [s["codec_type"] for s in streams(job.destination)]
+        assert "audio" not in kinds
+        assert "video" in kinds
+
+    def test_a_source_that_cannot_be_read_leaves_nothing_behind(self, tmp_path: Path) -> None:
+        job = ref_job(tmp_path, tmp_path / "src" / "missing.mov", 0, 3)
+        with pytest.raises(render.RenderError):
             render.render_job(job)
+        assert not job.destination.exists()
+        assert not job.temp.exists()
+
+    def test_a_range_past_the_end_of_the_media_leaves_nothing_behind(
+        self, tmp_path: Path
+    ) -> None:
+        """ffmpeg exits 0 having written fewer frames, so the count is what catches it."""
+        source = fixtures.make_mov(tmp_path / "src" / "plate.mov", count=4)
+        job = ref_job(tmp_path, source, 0, 99)
+        with pytest.raises(render.RenderError):
+            render.render_job(job)
+        assert not job.destination.exists()
+        assert not job.temp.exists()
+
+
+class TestAudioAlignment:
+    """OQ-27: the wav covers the clip, the picture may be a trimmed part of it."""
+
+    def test_an_untrimmed_shot_skips_no_audio(self, tmp_path: Path) -> None:
+        job = ref_job(tmp_path, tmp_path / "p.mov", 1001, 1004, start_frame=1001, audio=Path("a.wav"))
+        assert render._audio_skip(job) == 0.0
+
+    def test_a_trimmed_shot_skips_the_length_of_the_trim(self, tmp_path: Path) -> None:
+        job = ref_job(tmp_path, tmp_path / "p.mov", 1013, 1016, start_frame=1001, audio=Path("a.wav"))
+        assert render._audio_skip(job) == pytest.approx(0.5)
+
+    def test_a_row_with_no_audio_has_nothing_to_skip(self, tmp_path: Path) -> None:
+        job = ref_job(tmp_path, tmp_path / "p.mov", 1013, 1016, start_frame=1001)
+        assert render._audio_skip(job) == 0.0
 
 
 class TestSequencePaths:
