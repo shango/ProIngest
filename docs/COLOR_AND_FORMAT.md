@@ -45,11 +45,23 @@ where the pixel is or what is around it, and none of that survives being written
 A session that used one would export a CLF that silently omits it, and the tool would deliver
 a grade that is not the grade that was approved.
 
-Per shot, the session exports:
+The session exports:
 
-- a **`.clf`**, encoding `ACEScct in > CDL + look > linear ACEScg out`
-- an **EDL or XML**, for timecode and shot identity
-- a **reference ProRes QT** with the look and burn-ins
+- the **updated final EDL**, carrying timecode, shot identity and the approved grade as
+  `*ASC_SOP` / `*ASC_SAT` comment lines. This supersedes the shooters' offline EDL and their
+  offline CDL, and it is the conform the tool works from.
+- a **`.clf` per shot**, encoding `ACEScct in > CDL + look > linear ACEScg out`, **if the grade
+  is more than a CDL can express**. See below.
+- the **stringout**, a ProRes QT with the look and burn-ins. The tool does not build one.
+
+**Whether the grade arrives as a CDL or as a CLF is OQ-40 and it is not settled.** A CDL says
+slope, offset and power per channel plus one saturation, and nothing else. That is very close
+to the primary only constraint above, which is why a CDL may well be sufficient here. It is not
+the whole of a Resolve primary though: curves, log wheels and hue/saturation curves are primary
+tools and none of them survives being written as a CDL, while a CLF carries all of them exactly.
+Until it is answered, everything below that says "the grade" means whichever of the two is
+carrying it, and the pipeline shape is identical either way: one OCIO transform, applied in
+ACEScct, between the input transform and the branch.
 
 ### What arrives
 
@@ -167,8 +179,9 @@ was done to it.
   different hash, and the deliverable that was rendered from the old one is findable.
 - `proingest/tool_version`, the shot ID, the frame range and the source timecode, per the
   proposal's header list.
-- The CDL attributes from the previous policy are **not written**. The CDL is an offline
-  artifact now and the look that shipped is the CLF.
+- **What was applied is written, whichever it was** (OQ-40): a CLF by name and hash, a CDL by
+  its slope, offset, power and saturation values and by its original text. The point is the
+  same either way, which is that the file says what was done to it.
 
 ### OpenColorIO
 

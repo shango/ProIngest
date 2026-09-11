@@ -38,6 +38,13 @@ The mechanics survived both rewrites almost intact: ACEScg working space, OCIO f
 transform, the plate branch unbounded in numpy, the view branch bounded in ACEScct and
 collapsed into one 3D LUT. What kept changing is **where colour is authored and by whom**.
 
+### What the tool is for
+
+**Checking all media, running QC, and producing every turnover output.** The user said it in
+those words on 2026-09-12. It does not author colour, it does not cut a stringout, and it
+decides nothing creative. Everything it writes is either a deliverable named from the spec or
+a report about one.
+
 ### What the workflow is now
 
 The user described it on 2026-09-12 and it is written up in `docs/COLOR_AND_FORMAT.md`
@@ -53,7 +60,9 @@ included, and the plate is therefore delivered graded.
 | decision | where it lives |
 |---|---|
 | Colour is finished before ingest; the tool applies, never authors | COLOR_AND_FORMAT section 1, PRD section 3 |
-| One CLF per shot is the grade; no CDL anywhere in the tool | COLOR_AND_FORMAT section 1, PRD FR-15 |
+| The colour session's grade is what ships; the shooters' is superseded | COLOR_AND_FORMAT section 1, PRD FR-15 |
+| Whether that grade is a CDL or a CLF is **not settled** | OQ-40 |
+| The session's **updated final EDL** is the conform the run uses | COLOR_AND_FORMAT section 1, PRD section 4 |
 | **The plate is graded**, reversing 2026-09-11 | COLOR_AND_FORMAT section 1, PRD section 5 |
 | Sources are one **studio standard log**, camera agnostic | COLOR_AND_FORMAT sections 1 and 2, OQ-39 |
 | **The four colour controls are removed** | PRD section 3 and FR-16, UI_SPEC section 14 |
@@ -95,14 +104,20 @@ What changed in M4.5 is what it reads. It no longer parses CDL out of an EDL and
 models AD notes, which between them were most of M4.5.2 and all of M4.5.3. It gains a sidecar
 reader and a CLF matcher. Net it is smaller.
 
-**Two questions are open and both are cheap to answer**, and the user has them:
+**Three questions are open and the user has all of them:**
 
+- **OQ-40, is the grade a CDL in the final EDL or a CLF per shot?** Raised at the end of the
+  session, when the user said the colour session produces "the updated final EDL, CDL and
+  stringout" having earlier specified a CLF. Both are coherent. A CDL is enough if Ben stays
+  inside slope, offset, power and saturation, which is close to the primary only constraint
+  already on the session but is not the whole of a Resolve primary: curves, log wheels and hue
+  curves are primary tools and none of them survives being written as a CDL. **This decides
+  most of what M4.5.2 is**, and it swings OQ-30 and OQ-33 with it.
 - **OQ-39, which log encoding is the studio standard.** ACEScct makes the input transform
   identity, which is the whole of M4.5.1. Anything else costs one fixed transform. Either way
   M4.5.1 can be written against a constant.
-- **OQ-33, what the sidecar actually is.** This one genuinely blocks M4.5.2: it is a reader,
-  and there is no format to read yet. The default is JSON from a small export script in the
-  colour session, with an EDL plus a CLF folder as the fallback.
+- **OQ-33, what the sidecar actually is.** Only live if OQ-40 lands on the CLF: a CDL inside
+  the EDL needs no sidecar, because the EDL already says which event is which.
 
 **OQ-35 is open and does not block anything**: frame numbers at 1001, as the studio spec sheet
 and QC-102 say, or derived from source timecode as the user's proposal said. The default is
@@ -128,9 +143,10 @@ and QC-102 say, or derived from source timecode as the user's proposal said. The
   `macos-latest` arm64 runner on every push, against the bundled ffmpeg 9.0.1 rather than this
   machine's Ubuntu 6.1.1. `h264_videotoolbox` was confirmed to open and encode there, which
   answered half of OQ-23.
-- **39 open questions, 17 of them still open.** Closed on 2026-09-12: OQ-12, OQ-15, OQ-32,
-  OQ-34, OQ-37, OQ-38, and OQ-30 superseded. New: OQ-33, OQ-35, OQ-36, OQ-39. OQ-29 is mostly
-  answered, since the colour session pins ACES 1.3.
+- **40 open questions, 18 of them still open.** Closed on 2026-09-12: OQ-12, OQ-15, OQ-32,
+  OQ-34, OQ-37, OQ-38, and OQ-30 superseded (and OQ-30 comes back if OQ-40 lands on the CDL).
+  New: OQ-33, OQ-35, OQ-36, OQ-39, OQ-40. OQ-29 is mostly answered, since the colour session
+  pins ACES 1.3.
 - **Everything through 2026-09-11 is pushed and CI is green on both runners.** Run
   34566217430: macOS arm64 in 56s, Linux in 1m17s. Pushing is still the user's call rather
   than an automatic step.

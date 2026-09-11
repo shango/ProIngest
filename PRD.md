@@ -40,10 +40,10 @@ Non-goals for v01
 
 Per turnover, in one folder on the Google Drive mount (structure configurable in Settings, see `docs/OPEN_QUESTIONS.md` OQ-1):
 
-- One `.otio` exported from Resolve (required), with an `.edl` accepted as a reduced fallback. It conforms the timeline: clip names, ranges and audio association.
+- One `.otio` exported from Resolve (required), with an `.edl` accepted as a reduced fallback. It conforms the timeline: clip names, ranges and audio association. **The colour session supersedes it** with an updated final EDL (below), which is the conform the run actually uses.
 - Consolidated media: one file or image sequence per timeline clip, **ProRes 4444 in the studio standard log encoding**, the same encoding on every file whatever anybody shot on (`docs/COLOR_AND_FORMAT.md` sections 1 and 2, OQ-39), with extra frames beyond the timeline In/Out (handles are already in the timeline range; the extra frames only exist so Out can be extended).
-- **The colour session package, required before anything final renders** (`docs/COLOR_AND_FORMAT.md` section 1): one **`.clf` per shot** carrying the approved grade, and a **sidecar** naming per shot the source path, TC in and out, handles, fps, shot ID and CLF path (OQ-33). Scan and review work without it; Run does not.
-- The shooter's offline **string-out and CDL** may also be present. They are a record of intent and a starting point for the colour session. **The tool reads neither and renders from neither.**
+- **The colour session package, required before anything final renders** (`docs/COLOR_AND_FORMAT.md` section 1): the **updated final EDL**, carrying timecode, shot identity and the approved grade as `*ASC_SOP` / `*ASC_SAT` lines, and where the grade exceeds what a CDL can say, a **`.clf` per shot** with a sidecar mapping it to shots (OQ-40, OQ-33). Scan and review work without it; Run does not.
+- The shooter's offline **string-out and CDL** may also be present. They are a record of intent and the starting point for the colour session, and both are superseded by its final versions. **The tool reads neither and renders from neither.**
 - Audio clips synced on the timeline, referenced by the OTIO on audio tracks.
 - Optional per shot: HDRI `.exr`, camera data `.txt`/`.rtf`, lens grid `.png`, BTS stills, reference stills (color chart, mirror ball, grey ball, size reference).
 
@@ -145,7 +145,8 @@ FR-15 Colour pipeline
 - The plate branch converts to linear ACEScg and resizes unbounded in numpy. The view branch stays in ACEScct and collapses the CLF and the ACES output transform into **one 3D LUT per shot**, generated in core, applied by ffmpeg `lut3d` for the reference and in numpy by the viewers. One definition, two consumers, so they cannot disagree.
 - The EXR header records the source encoding, the CLF name and the **CLF hash**, so the grade that is in a delivered plate can be identified later without the colour session.
 - **A CLF that contains a display rendering is refused**, QC-039: it would produce a display referred file that claims to be scene linear, and nothing downstream would notice until the comp was wrong.
-- A row with no CLF cannot render. QC-009, error, not a warning: an ungraded plate is not a lesser deliverable here, it is the wrong pixels under the right filename.
+- A row with no grade cannot render. QC-009, error, not a warning: an ungraded plate is not a lesser deliverable here, it is the wrong pixels under the right filename.
+- **Whether the grade arrives as a CDL in the final EDL or as a CLF per shot is OQ-40.** The pipeline is the same shape either way: one OCIO transform applied in ACEScct between the input transform and the branch. What differs is the reader, and whether a sidecar is needed at all.
 
 FR-16 Viewers
 - **Three viewers sit above the shot list**: In, Out and Center, for the selected row. Center is `in + duration // 2`, integer, tracking the current In/Out rather than the turnover snapshot.
