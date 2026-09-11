@@ -305,8 +305,39 @@ Four sliders for the selected row: **exposure, saturation, warm to cool, tint**.
 AD notes layer. They sit on top of the shooter's CDL, are applied in ACEScct alongside it, and
 bake into the references and the stringout only, never the plate.
 
-- Each slider has a numeric field beside it and a reset affordance. Double clicking a slider
-  returns it to neutral.
+**Every control is three controls.** Colour notes are adjusted, compared and typed in from
+a sheet, and a slider alone serves only the first of those. Each row therefore carries a
+drag, a nudge pair and a typed field, all editing the same value:
+
+```
+  Exposure                    +0.25 EV
+  [-] ---------o------------ [+]
+```
+
+- **The typed field is the one you read.** It sits next to the name at full weight, shows
+  the value to the control's own precision, and accepts a typed number. Enter or focus loss
+  commits, Escape abandons. The field holds what is typed as text while it has focus, so a
+  half finished `-0.` is not parsed and thrown away mid-keystroke.
+- **The nudge pair is the fine control.** A click moves one fine step; Shift moves one
+  coarse step. Up and down arrows in the typed field do the same, with the same Shift
+  behaviour, so a value can be walked without leaving the keyboard. One control does both
+  "creep" and "get me roughly there" without a mode to be in.
+- **The slider is for finding the neighbourhood**, which is why it gets the full width of
+  the panel rather than sharing a line with the label. Double clicking it returns that
+  control to neutral.
+- Every path quantises to the control's own precision, so repeated nudges cannot drift a
+  value to `0.15000000000000002` and put a number in the QC log that nobody typed.
+- The nudge buttons disable at the ends of the range. The slider and the field clamp.
+
+| control | range | fine | coarse | shown |
+|---|---|---|---|---|
+| Exposure | -2 to +2 | 0.05 | 0.25 | 2 dp, signed, `EV` |
+| Saturation | 0 to 2 | 0.01 | 0.10 | 2 dp |
+| Warm / cool | -100 to +100 | 1 | 10 | integer, signed |
+| Tint | -100 to +100 | 1 | 10 | integer, signed |
+
+Those numbers are a starting point and OQ-32 is the question of whether they are the right
+ones. The ranges are Settings values, not constants.
 - **Neutral is exactly identity.** With all four at their defaults no grade stage is built at
   all, so an untouched clip's deliverables are bit for bit what they would have been without
   the feature existing.
