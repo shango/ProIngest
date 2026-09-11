@@ -97,9 +97,18 @@ fix one and say which.**
   There is no `pip` inside the venv: use `uv pip install --python .venv/bin/python`.
 - otio 0.18.1, OpenEXR 3.4.15 (numpy File API present), numpy 2.5.3.
 - Dev machine is Linux/WSL; the target is **macOS on Apple Silicon**, and there is no Mac
-  available (OQ-22). Nothing has ever run on the target platform. Everything in core is
-  verifiable headless on Linux, which is why the switch was cheap, but M7 cannot be built
-  here at all and the reference encodes cannot be quality-checked here either.
+  available (OQ-22). Everything in core is verifiable headless on Linux, which is why the
+  platform switch was cheap.
+- **CI runs the suite on the target platform.** `.github/workflows/ci.yml` has two jobs: Linux
+  for a fast contrast signal, and `macos-latest` (macOS 26, arm64, a standard runner on
+  included minutes) for the real thing. The macOS job fetches the pinned ffmpeg and **puts it
+  on PATH before pytest**, which matters twice over: `tests/fixtures/media.py` shells out to a
+  bare `ffmpeg`, and `ffmpeg_available()` uses `shutil.which`, so without it `conftest` would
+  skip the entire suite and the job would report green having run nothing. It also means CI
+  exercises the shipping ffmpeg 9.0.1 rather than the Ubuntu 6.1.1 this machine has.
+- **The repo is private** (github.com/shango/ProIngest). It carries the shooters' spec PDF and
+  the client's naming conventions, so public was declined deliberately: private to public is
+  one click, public to private does not un-publish. Revisit only if macOS minutes bite.
 - **`core/ffmpeg.py` skips the bundled binary unless `sys.platform == "darwin"`.** This
   guard is load bearing, not tidiness. The Windows bundle was `ffmpeg.exe`, so a Linux
   lookup for `ffmpeg` missed it and fell through to PATH by accident. The macOS binary is
@@ -507,11 +516,13 @@ Nothing blocks the next task. These are live, in rough priority order:
 - **OQ-2 (tracker columns) and OQ-3 (what the consolidated media actually is)** are
   still open and both want a real turnover. Neither blocks: OQ-2 has a default template
   loaded from a file, OQ-3 only tunes QC-020 and QC-021 severity.
-- **Nothing has ever run on macOS or on arm64.** No Mac is available (OQ-22). The suite is
-  green on Linux and that is genuinely most of the value, because core is where the logic
-  is, but the reference encodes cannot be quality-checked here, `h264_videotoolbox` cannot
-  be proven to open, the Dock and menu-bar behaviour in UI_SPEC section 11 is unverified,
-  and M7 cannot start. A `macos-14` CI runner is the cheapest way to close most of that.
+- **A Mac is still needed, but for less than before.** CI now runs the suite on arm64 macOS
+  every push (section 3), which was the larger half of OQ-22. What a runner still cannot do:
+  judge whether a reference encode looks right, exercise the Dock and menu-bar behaviour in
+  UI_SPEC section 11, or run M8 against turnovers that live on the editor's Drive. M7
+  packaging is not wired up because `build/build.py` and `proingest.spec` do not exist yet;
+  it belongs on the same runner when they do. Renting an hourly Mac is the cheap answer for
+  the M5 UI work where someone has to actually look at it.
 - **The Google Drive mount path on the editor's machine is unknown** (OQ-25). Everything
   that used to say `G:` now says "discover it", and the discovery is written from the
   documented Google Drive conventions rather than from a machine anyone has looked at.

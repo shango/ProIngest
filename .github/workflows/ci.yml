@@ -1,0 +1,102 @@
+# Two jobs on purpose. Linux is where this has always been developed and is the fast,
+# cheap signal; macOS on Apple Silicon is the actual target and, until this workflow
+# existed, no line of this code had ever run there (OQ-22). Running both means a macOS
+# failure can be read immediately as platform-specific or not.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.12"
+
+jobs:
+  linux:
+    name: Linux (x86-64)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install ffmpeg
+        # The fixtures shell out to a bare `ffmpeg`, so it has to be on PATH. On Linux
+        # the distro build is fine: this job exists to check the logic, not the bundle.
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
+      - uses: astral-sh/setup-uv@v5
+      - name: Create the environment
+        run: |
+          uv venv --python ${{ env.PYTHON_VERSION }}
+          uv pip install -e ".[dev]"
+
+      - name: Lint and type check
+        run: |
+          .venv/bin/python -m ruff check .
+          .venv/bin/python -m mypy proingest tests
+
+      - name: Tests
+        run: .venv/bin/python -m pytest tests/ -q
+
+  macos:
+    name: macOS (Apple Silicon)
+    # macos-latest is macos-26 and is arm64, which is the deployment target. It is a
+    # standard runner, so it draws on included minutes rather than larger-runner billing.
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache the pinned ffmpeg
+        uses: actions/cache@v4
+        with:
+          path: proingest/resources/ffmpeg
+          key: ffmpeg-${{ runner.os }}-${{ hashFiles('build/ffmpeg.lock.json') }}
+
+      - name: Fetch the pinned ffmpeg
+        # 132 MB of arm64 Mach-O, verified by sha256 against build/ffmpeg.lock.json.
+        # A stale cache cannot slip through: the script re-verifies every file it keeps.
+        run: python3 build/fetch_ffmpeg.py
+
+      - name: Put the bundled ffmpeg on PATH, and prove it runs
+        # This is the whole point of the job. The dev machine tests against whatever
+        # ffmpeg the distro ships (6.1.1 on Ubuntu); the product ships 9.0.1 from
+        # martin-riedl.de and nothing had ever executed it. Bare `ffmpeg -version` here
+        # also fails the job loudly rather than letting tests/conftest.py skip the whole
+        # suite for a missing binary and report green, which is what `shutil.which`
+        # returning None would otherwise cause.
+        run: |
+          echo "$GITHUB_WORKSPACE/proingest/resources/ffmpeg" >> "$GITHUB_PATH"
+          "$GITHUB_WORKSPACE/proingest/resources/ffmpeg/ffmpeg" -hide_banner -version | head -1
+          "$GITHUB_WORKSPACE/proingest/resources/ffmpeg/ffprobe" -hide_banner -version | head -1
+
+      - uses: astral-sh/setup-uv@v5
+      - name: Create the environment
+        run: |
+          uv venv --python ${{ env.PYTHON_VERSION }}
+          uv pip install -e ".[dev]"
+
+      - name: Lint and type check
+        run: |
+          .venv/bin/python -m ruff check .
+          .venv/bin/python -m mypy proingest tests
+
+      - name: Tests
+        run: .venv/bin/python -m pytest tests/ -q
+
+      - name: Does h264_videotoolbox actually open a session
+        # OQ-23. Presence in the build is not proof the encoder initialises on real
+        # hardware, and that is only answerable on an actual Mac. Informational: a
+        # failure here is an answer, not a broken build.
+        continue-on-error: true
+        run: |
+          ffmpeg -hide_banner -loglevel error \
+            -f lavfi -i testsrc=size=640x360:rate=24:duration=1 \
+            -c:v h264_videotoolbox -q:v 65 -f mp4 -y /tmp/vt-probe.mp4 \
+            && echo "h264_videotoolbox encoded 24 frames" \
+            && ffprobe -hide_banner -v error -show_entries stream=codec_name,width,height \
+                 -of default=noprint_wrappers=1 /tmp/vt-probe.mp4

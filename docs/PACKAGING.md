@@ -25,17 +25,27 @@ for why it cannot start on the current dev machine.
 
 ## The build machine problem
 
-**PyInstaller cannot cross-build.** A macOS `.app` must be produced on a Mac. The dev machine
-is Linux/WSL and there is no Mac available, so M7 cannot be completed or verified here at all.
-Two ways forward, neither chosen yet (OQ-22):
+**PyInstaller cannot cross-build.** A macOS `.app` must be produced on a Mac: PyInstaller
+bundles the interpreter that is running it plus the compiled extension modules for the host, and
+PySide6, numpy, OpenEXR and xxhash all ship platform-specific binaries. There is no
+`GOOS=darwin` equivalent, and the same is true of py2app, Briefcase and Nuitka.
 
-- A GitHub Actions `macos-14` runner (arm64) builds the `.app` and runs the test suite. This
-  also gives the first real execution of the test suite on the target architecture, which
-  nothing has done yet.
-- Build on the editor's own Mac when the tool is ready to hand over.
+**Resolved for correctness, still open for packaging.** `.github/workflows/ci.yml` runs lint,
+type checking and the full suite on a GitHub Actions `macos-latest` runner (macOS 26, arm64) on
+every push. That covers the larger half: until it existed, no line of this code had ever run on
+the target platform, and the dev machine tests against whatever ffmpeg the distro ships while
+the product ships 9.0.1. The macOS job puts the bundled arm64 binary on PATH first, so the
+suite exercises the configuration that actually ships.
 
-Until one of these exists, everything in this document is written from the documentation and
-is **unverified**. Assumptions that need a Mac to settle are flagged as OQ-22 to OQ-25.
+Two things CI cannot do, and they are why a real Mac is still needed eventually:
+
+- **M7 packaging.** The job is not written because `build/build.py` and `build/proingest.spec`
+  do not exist yet. It lands with M7 and is a natural fit for the same runner.
+- **M8 validation.** The turnovers live on the editor's Google Drive and no runner can judge
+  whether a reference encode looks right. That needs the editor's own Mac, or a rented one.
+
+Everything else in this document is still written from the documentation rather than from a
+machine anyone has used. Assumptions that need a Mac to settle are flagged as OQ-22 to OQ-25.
 
 ## ffmpeg
 
