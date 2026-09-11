@@ -26,8 +26,8 @@ it cost, which was much less than it might have been because core never imported
 never hardcoded a Windows path. Windows moved to the v02 backlog. Read that entry before
 touching packaging, settings paths or the reference encodes.
 
-**Nothing is blocked.** OQ-5, OQ-20, OQ-25 and OQ-27 were all answered by the user on
-2026-09-11 and are in section 6. Two of them removed planned work rather than adding any;
+**Nothing is blocked.** OQ-5, OQ-20, OQ-24, OQ-25 and OQ-27 were all answered by the user
+on 2026-09-11 and are in section 6. Two of them removed planned work rather than adding any;
 OQ-20 added one new QC rule ID, QC-057, to be built with the rest in M4; and OQ-27 found a
 real bug in the encode that had already shipped. **573 tests.**
 
@@ -216,6 +216,19 @@ color 6.
 ---
 
 ## 6. Decisions taken
+
+**Apple Silicon only, Windows 11 a v02 intention (OQ-24, confirmed 2026-09-11).**
+
+- The arm64 bundle stands. No universal2 build, no second lock entry, no installer budget
+  spent on an Intel Mac that is not in scope.
+- **No runtime architecture guard, deliberately.** macOS refuses to launch an arm64-only
+  `.app` on Intel with a better message than this tool could print. The leak is running
+  from source on an Intel Mac: `resolve_tool` tests `is_file`, not whether this machine
+  can execute the file, so the first ffprobe call fails with `Exec format error`. A
+  developer's problem on a machine confirmed not to exist.
+- The v02 Windows build will have to revisit `BUNDLED_PLATFORM`, which is pinned to
+  `darwin`, and `_platform_binary`, which already knows about `.exe`. That is why the
+  `.exe` branch stays rather than being cleaned away as dead.
 
 **Audio runs cut point to cut point (OQ-27, answered 2026-09-11).**
 
