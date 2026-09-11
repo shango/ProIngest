@@ -288,7 +288,7 @@
       <div class="stat-l">Tests, Linux + macOS</div>
     </div>
     <div class="stat">
-      <div class="stat-n">17<span style="color:var(--faint);font-size:17px">/28</span></div>
+      <div class="stat-n">19<span style="color:var(--faint);font-size:17px">/32</span></div>
       <div class="stat-l">Questions open</div>
     </div>
     <div class="stat">
@@ -405,6 +405,36 @@
         </div>
       </div>
 
+      <div class="ms now">
+        <div class="ms-id">M4.5</div>
+        <div class="ms-body">
+          <div class="ms-head">
+            <span class="ms-name">Colour pipeline</span>
+            <span class="pill now">Next &middot; Specified, not built</span>
+          </div>
+          <p class="ms-goal">
+            Log encoded sources in, scene linear ungraded plates and graded viewing copies out.
+            Core only, no interface.
+          </p>
+          <div class="mods"><span>color.py</span><i>/</i><span>preview.py</span><i>/</i><span>render.py</span><i>/</i><span>exr.py</span></div>
+          <div class="gate">
+            <b>New, and it corrects something that was recorded as settled.</b> The tool was
+            built believing the footage arrives already looking the way it should. It does not:
+            it arrives <b>log encoded</b>, which looks flat and washed out until a transform is
+            applied. The reference videos shipped today would have looked wrong, and no test
+            could have caught it, because the tests check that the code does what it was told
+            to do rather than whether it was told the right thing.
+            <b>What changes:</b> shooters work from a studio template project and deliver one
+            format no matter what camera they shot on, which removes an entire class of
+            per-camera problems before it starts. The plate the vendor receives is
+            <b>untouched</b>, with the shooter's colour decisions carried alongside it as
+            metadata rather than burned in, so the look can still change later. The videos
+            people actually watch get the full treatment. It is one definition of the colour,
+            used by the render and the new on-screen viewers alike, so the two cannot disagree.
+          </div>
+        </div>
+      </div>
+
       <div class="ms">
         <div class="ms-id">M5</div>
         <div class="ms-body">
@@ -413,14 +443,21 @@
             <span class="pill">Not started</span>
           </div>
           <p class="ms-goal">
-            Main window, shot list with the keyboard model, <b>metadata pane</b>, validation
-            colouring, settings page, log panel, batch open and save. PySide6 6.7+, LGPL.
+            Main window, shot list with the keyboard model, <b>three frame viewers</b>,
+            <b>per shot colour controls</b>, metadata pane, validation colouring, settings page,
+            log panel, batch open and save. PySide6 6.7+, LGPL.
           </p>
           <div class="mods">
             <span>main_window</span><i>/</i><span>shot_model</span><i>/</i><span>delegates</span><i>/</i><span>docks</span><i>/</i><span>metadata_pane</span><i>/</i><span>theme.qss</span>
           </div>
           <div class="gate">
-            <b>New scope: the metadata pane</b>, added at the user's request and now FR-14 with a
+            <b>Newer scope: three viewers and colour controls</b>, added 2026-09-11 and now FR-16.
+            The editor sees the first frame, the middle and the last of whichever shot is
+            selected, and steps through them to find the right cut point. <b>Stepping a viewer
+            trims the shot</b>, so judging a cut and making it are the same action rather than
+            two. Four controls per shot handle the colour notes that come out of the AD meeting.
+            All of it rests on M4.5, which is why that is built first and headless.
+            <b>Earlier scope: the metadata pane</b>, added at the user's request and now FR-14 with a
             full field list in UI_SPEC section 12. Selecting a clip fills a read-only panel on the
             right with everything known about it, which is what the AD and supervisor read during
             review. It needs nothing from core, so it costs M5 time and nothing earlier.
@@ -507,6 +544,31 @@
         </thead>
         <tbody>
           <tr>
+            <td class="id">OQ-31</td>
+            <td>The shooters' template project does not exist yet. Everything about colour rests on it</td>
+            <td class="st"><span class="tag hot">New</span></td>
+          </tr>
+          <tr>
+            <td class="id">OQ-30</td>
+            <td>How a colour decision in the edit list is matched to the right clip. Matching the wrong one looks plausible and is wrong</td>
+            <td class="st"><span class="tag hot">New</span></td>
+          </tr>
+          <tr>
+            <td class="id">OQ-29</td>
+            <td>Which version of the industry colour standard the viewing copies use. Two versions look visibly different</td>
+            <td class="st"><span class="tag hot">New</span></td>
+          </tr>
+          <tr>
+            <td class="id">OQ-32</td>
+            <td>What the four colour controls range over. The AD is the person who knows what "a touch warmer" means</td>
+            <td class="st"><span class="tag open">New</span></td>
+          </tr>
+          <tr>
+            <td class="id">OQ-28</td>
+            <td>How many spare frames a turnover carries beyond each cut; a warning needs a number</td>
+            <td class="st"><span class="tag open">Open</span></td>
+          </tr>
+          <tr>
             <td class="id">OQ-1</td>
             <td>Turnover folder structure and desired delivery layout</td>
             <td class="st"><span class="tag open">Open</span></td>
@@ -516,21 +578,13 @@
             <td>Shot tracker column layout, for the xlsx export</td>
             <td class="st"><span class="tag open">Open</span></td>
           </tr>
-          <tr>
-            <td class="id">OQ-3</td>
-            <td>What the consolidated media actually is; sets QC-020 and QC-021 severity</td>
-            <td class="st"><span class="tag open">Open</span></td>
-          </tr>
+
           <tr>
             <td class="id">OQ-4</td>
             <td>How shooters name reference stills and BTS: timeline clips or side files</td>
             <td class="st"><span class="tag open">Open</span></td>
           </tr>
-          <tr>
-            <td class="id">OQ-6</td>
-            <td>Display transform for refs: sRGB piecewise or Rec.709 OETF</td>
-            <td class="st"><span class="tag open">Open</span></td>
-          </tr>
+
           <tr>
             <td class="id">OQ-9</td>
             <td>Apple Developer ID: unsigned apps are refused by Gatekeeper, not just warned</td>
@@ -567,6 +621,16 @@
             <td class="st"><span class="tag open">Open</span></td>
           </tr>
           <tr class="resolved">
+            <td class="id">OQ-3</td>
+            <td>What the media actually is - answered by specifying it rather than surveying it</td>
+            <td class="st"><span class="tag ok">Resolved</span></td>
+          </tr>
+          <tr class="resolved">
+            <td class="id">OQ-6</td>
+            <td>Which display curve the references use - superseded; the industry standard transform replaces the question</td>
+            <td class="st"><span class="tag ok">Superseded</span></td>
+          </tr>
+          <tr class="resolved">
             <td class="id">OQ-24</td>
             <td>Apple Silicon only - the arm64 bundle stands, Windows 11 is a v02 intention</td>
             <td class="st"><span class="tag ok">Resolved</span></td>
@@ -591,10 +655,10 @@
             <td>Spec table defects - witness cam is a normal clip, and the odd heights are typos for 2160</td>
             <td class="st"><span class="tag ok">Resolved</span></td>
           </tr>
-          <tr class="resolved">
+          <tr>
             <td class="id">OQ-17</td>
-            <td>Colour space - sources are display referred today, scene linear later; a setting, not an assumption</td>
-            <td class="st"><span class="tag ok">Resolved</span></td>
+            <td><b style="color:var(--text)">Was resolved, and was wrong.</b> Sources are log encoded, not display referred. Superseded 11 Sep; the colour document was rewritten</td>
+            <td class="st"><span class="tag hot">Reversed</span></td>
           </tr>
           <tr class="resolved">
             <td class="id">OQ-7</td>
@@ -677,6 +741,62 @@
         </p>
       </div>
     <div class="notes">
+      <div class="note">
+        <h3>A settled decision about colour turned out to be wrong</h3>
+        <p>
+          A fortnight ago the question of what the footage looks like when it arrives was asked,
+          answered and closed. This week it was researched properly and the answer was the
+          opposite of what had been recorded. The footage arrives <b>log encoded</b>: a flat,
+          low contrast form that holds far more detail than a normal picture and is meant to
+          have a transform applied before anyone looks at it.
+        </p>
+        <p>
+          <b>The consequence was already shipped.</b> The reference videos the tool produces
+          apply no transform at all, which was correct under the old belief and produces a
+          washed out picture under the true one. No test caught it and none could have: every
+          test checks that the code does what it was told, and the instruction itself was wrong.
+          It was found by asking the question again rather than by anything going bang.
+        </p>
+        <p>
+          The colour document was <b>rewritten rather than patched</b>, deliberately. Amending
+          it would have left two readings side by side, and the wrong one was the one that read
+          as settled. The handoff record now opens with a warning that anything written before
+          this week about colour should be distrusted.
+        </p>
+      </div>
+      <div class="note">
+        <h3>The camera question was removed instead of answered</h3>
+        <p>
+          Log encoding differs by manufacturer, and by camera generation within a manufacturer,
+          and for some cameras by the sensitivity the operator dialled in on the day. Supporting
+          that properly means knowing which camera shot every clip, and coping with a shoot that
+          mixed two.
+        </p>
+        <p>
+          The shooters are converting their footage anyway before sending it, so they will be
+          given a <b>template project</b> that converts to one camera-neutral format. The
+          camera-specific step happens at their end, where the camera information actually
+          exists. <b>Three problems disappear rather than being solved</b>, and the tool has one
+          input format forever, whatever anyone buys next year.
+        </p>
+      </div>
+      <div class="note">
+        <h3>The obvious choice of working format would have quietly destroyed colour</h3>
+        <p>
+          The natural instinct is to deliver plates in the same colour range as an ordinary
+          television picture, since that is what everything is eventually viewed in. Cameras
+          capture considerably more saturated colour than that range can hold, and squeezing the
+          wider set into the narrower one pushes the excess into <b>impossible values</b> that
+          behave badly in compositing software.
+        </p>
+        <p>
+          It is worse than a one-off loss: merely <b>resizing</b> such an image manufactures more
+          of them, and this tool resizes every plate to make the HD version. The industry
+          standard wide working space avoids the problem entirely and costs nothing extra, so
+          that is what is being used. The film industry maintains a whole published specification
+          for repairing this damage after the fact; not causing it is cheaper.
+        </p>
+      </div>
       <div class="note">
         <h3>Writing the checks corrected the checklist twice</h3>
         <p>
@@ -932,7 +1052,7 @@
   <footer>
     <b>Source of truth</b> &middot; PROGRESS.md, docs/OPEN_QUESTIONS.md, PRD.md section 9<br>
     <b>Verify</b> &middot; pytest &middot; ruff check . &amp;&amp; mypy proingest &middot; python -m proingest scan &lt;folder&gt;<br>
-    <b>Last updated</b> &middot; 11 September 2026, every QC rule implemented and verified end to end. Next: M4.3, the spreadsheets and the headless <span class="mono">qc</span> command
+    <b>Last updated</b> &middot; 11 September 2026, colour pipeline specified and a settled decision corrected. Next: M4.5, the colour pipeline, core first and headless
   </footer>
 
 </div>
