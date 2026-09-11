@@ -596,6 +596,14 @@ is useful rather than not, but a test asserting "one stream" will fail on it.
   Source is `build-track.html` at the repo root, which *is* tracked. It is a generated
   view of this file, not spec. To update it, edit that file and republish it with the
   artifact URL above passed as `url`.
+- **Interface preview**, a front-end mock of `docs/UI_SPEC.md` for showing producers what
+  the tool will look like before M5 exists:
+  https://claude.ai/code/artifact/a9efaeb7-f890-4f24-a6a3-4bd92ad844eb
+  Source is `preview/index.html`, one file, React from a CDN, no build step. Its data is
+  entirely invented and it is wired to nothing in `proingest/`. It is a picture of the
+  spec, never a statement of behaviour: if the two disagree, `docs/UI_SPEC.md` wins and the
+  mock is stale. `preview/README.md` lists which parts are taken from the spec and which
+  are made up.
 - Commit messages: say what changed and why, name the rule or doc section involved, and
   flag anything a reader would otherwise have to rediscover. No em dashes anywhere,
   in any file (user's global rule).
