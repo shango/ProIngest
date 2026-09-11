@@ -8,14 +8,17 @@ rule is a pure function of the model, so it re-runs after every edit.
 
 from __future__ import annotations
 
+import shutil
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
-from proingest.core import naming, qc
+from proingest.core import naming, qc, render
 from proingest.core.models import (
     AudioInfo,
     Batch,
+    Deliverable,
     FrameRate,
     InOut,
     MediaInfo,
@@ -24,6 +27,7 @@ from proingest.core.models import (
     SideFiles,
     Turnover,
 )
+from proingest.core.planner import DeliverableJob
 from tests.fixtures import media as fixtures
 
 RATE_24 = FrameRate(24)
@@ -638,3 +642,426 @@ class TestPreflight:
         qc.apply_batch_rules(batch)
         qc.preflight(batch)
         assert "QC-040" in ids(batch.rows[0].qc)
+
+
+def test_a_digest_is_stable_and_content_dependent(tmp_path: Path) -> None:
+    """QC-106 and QC-130 both rest on this, so it is asserted across a chunk boundary."""
+    one = tmp_path / "one.bin"
+    two = tmp_path / "two.bin"
+    one.write_bytes(b"x" * (qc.DIGEST_CHUNK + 17))
+    two.write_bytes(b"x" * (qc.DIGEST_CHUNK + 17) + b"y")
+    assert qc.file_digest(one) == qc.file_digest(one)
+    assert qc.file_digest(one) != qc.file_digest(two)
+
+
+# --- phase B ----------------------------------------------------------------------
+
+ONE_HOUR = 86400
+
+
+def picture_job(
+    source: Path,
+    destination: Path,
+    in_frame: int,
+    out_frame: int,
+    kind: str = "raw_dir",
+    **extra: object,
+) -> DeliverableJob:
+    """A job pointed at fixture media, sized so nothing is resampled."""
+    return DeliverableJob(
+        kind=kind,  # type: ignore[arg-type]
+        source=source,
+        destination=destination,
+        version=1,
+        shot_code="MELT0001",
+        elem="pl01",
+        in_frame=in_frame,
+        out_frame=out_frame,
+        source_is_sequence=True,
+        source_size=fixtures.SMALL,
+        rate=RATE_24,
+        source_start_frame=in_frame,
+        source_start_timecode=ONE_HOUR,
+        **extra,  # type: ignore[arg-type]
+    )
+
+
+def rendered_sequence(tmp_path: Path, count: int = 4) -> tuple[DeliverableJob, Deliverable]:
+    """A real delivered sequence, already through phase B once and clean."""
+    fixture = fixtures.make_exr_sequence(tmp_path / "src", count=count, first=1001)
+    job = picture_job(
+        fixture.path_for(1001),
+        tmp_path / "out" / "MELT0001_pl01_raw_4k_v01",
+        1001,
+        1000 + count,
+    )
+    deliverable = render.render_job(job)
+    assert deliverable.status == "done", "the fixture render itself has to be clean"
+    return job, deliverable
+
+
+def fabricated_sequence(tmp_path: Path, sizes: dict[int, int]) -> DeliverableJob:
+    """A destination folder built by hand, so a single check can be cornered.
+
+    Real renders cannot be made to fail one rule at a time; this can, and the files
+    are plain bytes because the rules under test only count and stat them.
+    """
+    destination = tmp_path / "out" / "MELT0001_pl01_raw_4k_v01"
+    destination.mkdir(parents=True)
+    for frame, size in sizes.items():
+        (destination / f"MELT0001_pl01_raw_4k_v01.{frame}.exr").write_bytes(b"x" * size)
+    job = picture_job(tmp_path / "src" / "x.1001.exr", destination, 1001, 1004)
+    return job
+
+
+def empty_deliverable(job: DeliverableJob) -> Deliverable:
+    return job.to_deliverable()
+
+
+class TestPhaseBSequence:
+    def test_a_clean_sequence_passes_everything(self, tmp_path: Path) -> None:
+        job, deliverable = rendered_sequence(tmp_path)
+        assert qc.run_phase_b(job, deliverable) == []
+        assert deliverable.qc == []
+
+    def test_a_missing_frame_is_qc_101_and_qc_102(self, tmp_path: Path) -> None:
+        job, deliverable = rendered_sequence(tmp_path, count=4)
+        job.frame_path(1003).unlink()
+        found = ids(qc.run_phase_b(job, deliverable))
+        assert "QC-101" in found and "QC-102" in found
+
+    def test_numbering_must_start_at_1001(self, tmp_path: Path) -> None:
+        job = fabricated_sequence(tmp_path, {frame: 1000 for frame in (1002, 1003, 1004, 1005)})
+        results = qc.run_phase_b(job, empty_deliverable(job))
+        assert "QC-102" in ids(results)
+
+    def test_a_stray_file_in_the_folder_is_qc_102(self, tmp_path: Path) -> None:
+        job, deliverable = rendered_sequence(tmp_path)
+        (job.destination / "notes.exr").write_bytes(b"")
+        assert "QC-102" in ids(qc.run_phase_b(job, deliverable))
+
+    def test_an_unreadable_frame_is_qc_103(self, tmp_path: Path) -> None:
+        job, deliverable = rendered_sequence(tmp_path)
+        job.frame_path(1002).write_bytes(b"not an exr at all")
+        results = qc.run_phase_b(job, deliverable)
+        assert "QC-103" in ids(results)
+        assert "1002" in next(r for r in results if r.rule_id == "QC-103").message
+
+    def test_the_wrong_compression_is_qc_105(self, tmp_path: Path) -> None:
+        """Fixture media is ZIP; the delivery spec pins DWAA."""
+        job, deliverable = rendered_sequence(tmp_path)
+        zipped = fixtures.make_exr_sequence(tmp_path / "zip", base="other", count=1, first=1001)
+        shutil.copyfile(zipped.path_for(1001), job.frame_path(1002))
+        assert "QC-105" in ids(qc.run_phase_b(job, deliverable))
+
+    def test_a_changed_frame_is_qc_106(self, tmp_path: Path) -> None:
+        """DWAA is lossy but deterministic, so the written file's digest is stable."""
+        job, deliverable = rendered_sequence(tmp_path)
+        original = job.frame_path(1002).read_bytes()
+        job.frame_path(1002).write_bytes(original[:-8] + b"\x00" * 8)
+        assert "QC-106" in ids(qc.run_phase_b(job, deliverable))
+
+    def test_a_batch_with_no_recorded_checksums_skips_qc_106(self, tmp_path: Path) -> None:
+        """An older batch carries none, and a missing record is not a mismatch."""
+        job, deliverable = rendered_sequence(tmp_path)
+        deliverable.frame_checksums = []
+        assert "QC-106" not in ids(qc.run_phase_b(job, deliverable))
+
+    def test_a_tiny_frame_is_a_qc_107_warning(self, tmp_path: Path) -> None:
+        sizes = {1001: 10_000, 1002: 10_000, 1003: 10_000, 1004: 50}
+        job = fabricated_sequence(tmp_path, sizes)
+        results = qc.run_phase_b(job, empty_deliverable(job))
+        small = [result for result in results if result.rule_id == "QC-107"]
+        assert len(small) == 1
+        assert small[0].severity == "warning"
+        assert "1004" in small[0].message
+
+    def test_even_sized_frames_raise_no_qc_107(self, tmp_path: Path) -> None:
+        job = fabricated_sequence(tmp_path, {frame: 10_000 for frame in range(1001, 1005)})
+        assert "QC-107" not in ids(qc.run_phase_b(job, empty_deliverable(job)))
+
+    def test_a_destination_that_is_not_there_is_qc_100(self, tmp_path: Path) -> None:
+        job = picture_job(tmp_path / "src.exr", tmp_path / "gone", 1001, 1004)
+        results = qc.run_phase_b(job, empty_deliverable(job))
+        assert ids(results) == ["QC-100"]
+
+    def test_a_failed_render_is_not_checked_again(self, tmp_path: Path) -> None:
+        """QC-100 already said there is no file; every other rule is NA."""
+        job = picture_job(tmp_path / "src.exr", tmp_path / "gone", 1001, 1004)
+        deliverable = empty_deliverable(job)
+        deliverable.status = "failed"
+        assert qc.run_phase_b(job, deliverable) == []
+
+
+class TestPhaseBStill:
+    def test_a_clean_still_passes(self, tmp_path: Path) -> None:
+        fixture = fixtures.make_exr_sequence(tmp_path / "src", count=4, first=1001)
+        job = picture_job(
+            fixture.path_for(1001),
+            tmp_path / "out" / "MELT0001_pl01_colorChart_01_4k_v01.exr",
+            1002,
+            1002,
+            kind="aux_still",
+        )
+        deliverable = render.render_job(job)
+        assert qc.run_phase_b(job, deliverable) == []
+
+    def test_a_tampered_still_is_qc_106(self, tmp_path: Path) -> None:
+        fixture = fixtures.make_exr_sequence(tmp_path / "src", count=4, first=1001)
+        job = picture_job(
+            fixture.path_for(1001),
+            tmp_path / "out" / "MELT0001_pl01_greyBall_01_4k_v01.exr",
+            1002,
+            1002,
+            kind="aux_still",
+        )
+        deliverable = render.render_job(job)
+        job.destination.write_bytes(job.destination.read_bytes()[:-4] + b"\x00\x00\x00\x00")
+        assert "QC-106" in ids(qc.run_phase_b(job, deliverable))
+
+
+class TestPhaseBReference:
+    def reference(self, tmp_path: Path, audio: Path | None = None) -> tuple[DeliverableJob, Deliverable]:
+        fixture = fixtures.make_exr_sequence(tmp_path / "src", count=6, first=1001)
+        job = picture_job(
+            fixture.path_for(1001),
+            tmp_path / "out" / "MELT0001_pl01_ref_4k_v01.mp4",
+            1001,
+            1006,
+            kind="ref_mp4",
+            audio_source=audio,
+        )
+        return job, render.render_job(job)
+
+    def test_a_clean_reference_passes_everything(self, tmp_path: Path) -> None:
+        job, deliverable = self.reference(tmp_path)
+        assert qc.run_phase_b(job, deliverable) == []
+
+    def test_a_reference_with_audio_passes_qc_114(self, tmp_path: Path) -> None:
+        wav = fixtures.make_wav(tmp_path / "src" / "plate.wav", seconds=0.25)
+        job, deliverable = self.reference(tmp_path, audio=wav)
+        assert qc.run_phase_b(job, deliverable) == []
+
+    def test_expected_audio_that_is_missing_is_qc_114(self, tmp_path: Path) -> None:
+        """The job says there was audio to mux and the file has none, so it is silent."""
+        job, deliverable = self.reference(tmp_path)
+        claims_audio = replace(job, audio_source=tmp_path / "src" / "plate.wav")
+        results = qc.run_phase_b(claims_audio, deliverable)
+        assert ids(results) == ["QC-114"]
+        assert results[0].severity == "warning"
+
+    def test_the_wrong_frame_count_is_qc_111(self, tmp_path: Path) -> None:
+        job, deliverable = self.reference(tmp_path)
+        longer = replace(job, out_frame=1020)
+        results = qc.run_phase_b(longer, deliverable)
+        assert "QC-111" in ids(results)
+
+    def test_the_wrong_resolution_is_qc_112(self, tmp_path: Path) -> None:
+        job, deliverable = self.reference(tmp_path)
+        claims_4k = replace(job, res="4k")
+        assert "QC-112" in ids(qc.run_phase_b(claims_4k, deliverable))
+
+    def test_the_wrong_rate_is_qc_113(self, tmp_path: Path) -> None:
+        job, deliverable = self.reference(tmp_path)
+        claims_ntsc = replace(job, rate=NTSC)
+        assert "QC-113" in ids(qc.run_phase_b(claims_ntsc, deliverable))
+
+    def test_a_file_that_will_not_open_is_qc_110(self, tmp_path: Path) -> None:
+        job, deliverable = self.reference(tmp_path)
+        job.destination.write_bytes(b"not an mp4")
+        assert ids(qc.run_phase_b(job, deliverable)) == ["QC-110"]
+
+    def test_the_moov_atom_is_at_the_head(self, tmp_path: Path) -> None:
+        """QC-115: `-movflags +faststart` is a request, so the boxes are read back."""
+        job, _ = self.reference(tmp_path)
+        boxes = qc._top_level_boxes(job.destination)
+        assert "moov" in boxes
+        assert boxes.index("moov") < boxes.index("mdat")
+
+    def test_a_trailing_moov_is_qc_115(self, tmp_path: Path) -> None:
+        job, deliverable = self.reference(tmp_path)
+        plain = tmp_path / "out" / "trailing.mp4"
+        fixtures.make_mp4(plain, count=6)
+        moved = replace(job, destination=plain)
+        boxes = qc._top_level_boxes(plain)
+        if boxes.index("moov") < boxes.index("mdat"):
+            pytest.skip("this ffmpeg writes a leading moov even without faststart")
+        assert "QC-115" in ids(qc.run_phase_b(moved, deliverable))
+
+
+class TestPhaseBAudio:
+    def wav_job(self, tmp_path: Path) -> tuple[DeliverableJob, Deliverable]:
+        source = fixtures.make_wav(tmp_path / "src" / "plate.wav", seconds=0.25)
+        job = DeliverableJob(
+            kind="audio",
+            source=source,
+            destination=tmp_path / "out" / "MELT0001_pl01_audio_v01.wav",
+            version=1,
+            shot_code="MELT0001",
+            elem="pl01",
+        )
+        return job, render.render_job(job)
+
+    def test_a_byte_copied_wav_passes(self, tmp_path: Path) -> None:
+        job, deliverable = self.wav_job(tmp_path)
+        assert qc.run_phase_b(job, deliverable) == []
+
+    def test_a_delivered_wav_that_differs_is_qc_120(self, tmp_path: Path) -> None:
+        job, deliverable = self.wav_job(tmp_path)
+        job.destination.write_bytes(job.destination.read_bytes() + b"\x00\x00")
+        assert "QC-120" in ids(qc.run_phase_b(job, deliverable))
+
+    def test_audio_extracted_from_a_container_passes(self, tmp_path: Path) -> None:
+        source = fixtures.make_mov(tmp_path / "src" / "plate.mov", count=8, with_audio=True)
+        job = DeliverableJob(
+            kind="audio",
+            source=source,
+            destination=tmp_path / "out" / "MELT0001_pl01_audio_v01.wav",
+            version=1,
+            shot_code="MELT0001",
+            elem="pl01",
+        )
+        deliverable = render.render_job(job)
+        assert qc.run_phase_b(job, deliverable) == []
+
+    def test_a_wav_that_is_not_pcm16_is_reported(self, tmp_path: Path) -> None:
+        """A 24 bit source is delivered as it is, so QC-121 says so without blocking."""
+        source = fixtures.make_wav(tmp_path / "src" / "deep.wav", seconds=0.25, bit_depth=24)
+        job = DeliverableJob(
+            kind="audio",
+            source=source,
+            destination=tmp_path / "out" / "MELT0001_pl01_audio_v01.wav",
+            version=1,
+            shot_code="MELT0001",
+            elem="pl01",
+        )
+        deliverable = render.render_job(job)
+        results = qc.run_phase_b(job, deliverable)
+        assert ids(results) == ["QC-121"]
+        assert results[0].severity == "warning"
+
+
+class TestPhaseBCopy:
+    def copy_job(self, tmp_path: Path) -> tuple[DeliverableJob, Deliverable]:
+        source = tmp_path / "src" / "cam.txt"
+        source.parent.mkdir(parents=True, exist_ok=True)
+        source.write_text("lens: 40mm\n" * 100, encoding="utf-8")
+        job = DeliverableJob(
+            kind="camdata",
+            source=source,
+            destination=tmp_path / "out" / "MELT0001_pl01_camData_v01.txt",
+            version=1,
+            shot_code="MELT0001",
+            elem="pl01",
+        )
+        return job, render.render_job(job)
+
+    def test_a_faithful_copy_passes(self, tmp_path: Path) -> None:
+        job, deliverable = self.copy_job(tmp_path)
+        assert qc.run_phase_b(job, deliverable) == []
+
+    def test_a_copy_that_differs_is_qc_130(self, tmp_path: Path) -> None:
+        job, deliverable = self.copy_job(tmp_path)
+        job.destination.write_text("tampered", encoding="utf-8")
+        assert ids(qc.run_phase_b(job, deliverable)) == ["QC-130"]
+
+    def test_a_source_that_vanished_is_qc_130(self, tmp_path: Path) -> None:
+        job, deliverable = self.copy_job(tmp_path)
+        job.source.unlink()
+        assert ids(qc.run_phase_b(job, deliverable)) == ["QC-130"]
+
+
+def delivered(name: str, kind: str, version: int = 1, res: str | None = None) -> Deliverable:
+    return Deliverable(
+        kind=kind, name=name, path=Path("/d") / name, version=version, res=res, status="done"
+    )
+
+
+class TestRowComplete:
+    def test_a_row_whose_deliverables_all_landed_is_clean(self) -> None:
+        target = row()
+        target.deliverables = [delivered("MELT0001_pl01_audio_v01.wav", "audio")]
+        assert qc.check_row_complete(target) == []
+
+    def test_an_unfinished_deliverable_is_qc_150(self) -> None:
+        target = row()
+        item = delivered("MELT0001_pl01_audio_v01.wav", "audio")
+        item.status = "failed"
+        target.deliverables = [item]
+        results = qc.check_row_complete(target)
+        assert ids(results) == ["QC-150"]
+        assert results[0].severity == "error"
+
+    def test_a_deliverable_that_failed_its_own_checks_is_qc_150(self) -> None:
+        target = row()
+        item = delivered("MELT0001_pl01_audio_v01.wav", "audio")
+        item.qc.append(QCResult("QC-120", "error", "deliverable", "does not match"))
+        target.deliverables = [item]
+        assert ids(qc.check_row_complete(target)) == ["QC-150"]
+
+    def test_a_row_that_planned_nothing_is_not_incomplete(self) -> None:
+        assert qc.check_row_complete(row()) == []
+
+
+class TestNamesReparse:
+    def batch_with(self, *items: Deliverable) -> Batch:
+        target = row()
+        target.deliverables = list(items)
+        return Batch(rows=[target])
+
+    def test_every_planned_name_reads_back(self) -> None:
+        batch = self.batch_with(
+            delivered("MELT0001_pl01_raw_4k_v01", "raw_dir", res="4k"),
+            delivered("MELT0001_pl01_ref_HD_v01.mp4", "ref_mp4", res="HD"),
+            delivered("MELT0001_pl01_audio_v01.wav", "audio"),
+        )
+        assert qc.check_names_reparse(batch) == []
+
+    def test_a_name_that_does_not_parse_is_qc_151(self) -> None:
+        batch = self.batch_with(delivered("MELT0001_plate_4k.exr", "raw_dir"))
+        results = qc.check_names_reparse(batch)
+        assert ids(results) == ["QC-151"]
+        assert results[0].scope == "batch"
+
+    def test_a_well_formed_name_for_the_wrong_version_is_qc_151(self) -> None:
+        """The shape is right and the content is wrong, which is what this catches."""
+        batch = self.batch_with(delivered("MELT0001_pl01_audio_v02.wav", "audio", version=1))
+        results = qc.check_names_reparse(batch)
+        assert ids(results) == ["QC-151"]
+        assert "v02" in results[0].message
+
+    def test_a_name_at_the_wrong_resolution_is_qc_151(self) -> None:
+        batch = self.batch_with(delivered("MELT0001_pl01_raw_HD_v01", "raw_dir", res="4k"))
+        assert ids(qc.check_names_reparse(batch)) == ["QC-151"]
+
+    def test_a_deliverable_that_never_landed_is_not_asked(self) -> None:
+        """QC-150 owns an unwritten deliverable; this rule is about delivered names."""
+        item = delivered("nonsense", "raw_dir")
+        item.status = "planned"
+        assert qc.check_names_reparse(self.batch_with(item)) == []
+
+
+class TestApplyPhaseB:
+    def test_it_records_both_rules(self) -> None:
+        target = row()
+        target.deliverables = [delivered("nonsense", "raw_dir")]
+        batch = Batch(rows=[target])
+        qc.apply_phase_b(batch)
+        assert ids(batch.qc) == ["QC-151"]
+        assert ids(target.qc) == []
+
+    def test_rerunning_does_not_duplicate(self) -> None:
+        target = row()
+        item = delivered("MELT0001_pl01_audio_v01.wav", "audio")
+        item.status = "failed"
+        target.deliverables = [item]
+        batch = Batch(rows=[target])
+        qc.apply_phase_b(batch)
+        qc.apply_phase_b(batch)
+        assert ids(target.qc) == ["QC-150"]
+
+    def test_phase_a_results_survive(self) -> None:
+        target = row()
+        qc.apply_row_rules(target, RATE_24)
+        qc.apply_phase_b(Batch(rows=[target]))
+        assert "QC-040" in ids(target.qc)

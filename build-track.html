@@ -284,11 +284,11 @@
       <div class="stat-l">Milestones done</div>
     </div>
     <div class="stat">
-      <div class="stat-n good">573</div>
+      <div class="stat-n good">718</div>
       <div class="stat-l">Tests, Linux + macOS</div>
     </div>
     <div class="stat">
-      <div class="stat-n">17<span style="color:var(--faint);font-size:17px">/27</span></div>
+      <div class="stat-n">17<span style="color:var(--faint);font-size:17px">/28</span></div>
       <div class="stat-l">Questions open</div>
     </div>
     <div class="stat">
@@ -373,22 +373,34 @@
         </div>
       </div>
 
-      <div class="ms now">
+      <div class="ms part">
         <div class="ms-id">M4</div>
         <div class="ms-body">
           <div class="ms-head">
             <span class="ms-name">QC and exports</span>
-            <span class="pill now">Next &middot; Partly started</span>
+            <span class="pill part">Rules done &middot; exports next</span>
           </div>
           <p class="ms-goal">
             All rules, both phases, xlsx exports. CLI <code class="mono">proingest qc &lt;batch&gt;</code>.
           </p>
           <div class="mods"><span>qc.py</span><i>/</i><span>exports.py</span></div>
           <div class="gate">
-            <code>qc.py</code> exists already holding <b>QC-025, QC-026 and QC-043</b>, because
-            everything downstream computes on the frame rate contract holding. The remaining
-            phase A and phase B registries are still M4. Tracker columns wait on
-            <b>OQ-2</b>; the layout loads from a template file so it can change without code.
+            <b>Every QC rule in the spec now runs.</b> Phase A checks the turnover before
+            anything is written - format, resolution, ranges, handles, audio, side files - and
+            re-runs after every edit the editor makes, because the rules read the model rather
+            than the disk. Phase B checks each delivered file against the job that planned it,
+            in the worker, the instant it lands: frame counts and numbering, every EXR header,
+            a hash per frame, the reference's real decoded length, size, rate and sound, and a
+            byte comparison on every copy. <b>A file that fails is kept</b> with a marker saying
+            which rule, because a file that failed a check is evidence; a file that was never
+            finished is deleted. Proved end to end: <b>14 deliverables written, 0 failed</b>,
+            every one verified. Thresholds are settings rather than constants, so the studio's
+            numbers replace the defaults without a code change.
+            <b>What is left is the spreadsheets</b>: the QC log, the shot tracker whose columns
+            wait on <b>OQ-2</b>, and a headless <code class="mono">qc</code> command. Three rules
+            are deliberately unbuilt and each is written down: a letterboxed source needs pixels
+            rather than a header, camera data needs the parser that fills its sheet, and a
+            re-render skip needs a setting that does not exist yet.
           </div>
         </div>
       </div>
@@ -523,6 +535,11 @@
             <td class="id">OQ-9</td>
             <td>Apple Developer ID: unsigned apps are refused by Gatekeeper, not just warned</td>
             <td class="st"><span class="tag open">Open</span></td>
+          </tr>
+          <tr>
+            <td class="id">OQ-28</td>
+            <td>How many handle frames a turnover carries beyond each cut; QC-030 needs a number</td>
+            <td class="st"><span class="tag open">New</span></td>
           </tr>
           <tr>
             <td class="id">OQ-18</td>
@@ -660,6 +677,35 @@
         </p>
       </div>
     <div class="notes">
+      <div class="note">
+        <h3>Writing the checks corrected the checklist twice</h3>
+        <p>
+          The rules document is the specification, so building from it is also the first real
+          reading of it. Two rows did not survive. <b>The delivery-folder writability check was
+          filed as a per-shot check</b>, which would mean one question asked a hundred times over
+          a network drive for a single answer, and it also refused a destination folder that does
+          not exist yet - which is the normal case, since the run creates it.
+        </p>
+        <p>
+          <b>The 16 bit audio check was an outright failure in every case</b>, but a sound file
+          that arrives as a wav is delivered as an exact copy by design, so a 24 bit source
+          delivers 24 bit and failing it would fail a deliverable that is precisely what the spec
+          asks for. It is a warning there, and the warning is already raised earlier anyway. Both
+          rows were corrected in the document with the reasoning attached, rather than the code
+          being bent to match them.
+        </p>
+      </div>
+      <div class="note">
+        <h3>The test turnovers had been quietly failing the real standards</h3>
+        <p>
+          Synthetic test media is 64 by 36 pixels and four frames long, because generating real
+          4k plates per test would take minutes. Once the rules existed, that media legitimately
+          failed them: not 4k, far too short, no handles, no HDRI. <b>The temptation is to soften
+          the rules so the tests stay green.</b> Instead the thresholds became settings the tests
+          state out loud, which is what the settings page needed anyway, and the headless command
+          gained a way to be pointed at a studio's own numbers.
+        </p>
+      </div>
       <div class="note">
         <h3>Answering a question about sound found a bug in the picture</h3>
         <p>
@@ -886,7 +932,7 @@
   <footer>
     <b>Source of truth</b> &middot; PROGRESS.md, docs/OPEN_QUESTIONS.md, PRD.md section 9<br>
     <b>Verify</b> &middot; pytest &middot; ruff check . &amp;&amp; mypy proingest &middot; python -m proingest scan &lt;folder&gt;<br>
-    <b>Last updated</b> &middot; 11 September 2026, M3 complete, five questions closed. Next: M4, QC rules and exports
+    <b>Last updated</b> &middot; 11 September 2026, every QC rule implemented and verified end to end. Next: M4.3, the spreadsheets and the headless <span class="mono">qc</span> command
   </footer>
 
 </div>

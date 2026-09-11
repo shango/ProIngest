@@ -19,8 +19,8 @@ from pathlib import Path
 import OpenEXR
 import pytest
 
-from proingest.core import color, exr, ffmpeg, frames, media, naming, render
-from proingest.core.models import Batch, Deliverable, FrameRate, ShotRow
+from proingest.core import batchfile, color, exr, ffmpeg, frames, media, naming, qc, render
+from proingest.core.models import Batch, Deliverable, FrameRate, QCResult, ShotRow
 from proingest.core.planner import DeliverableJob
 from tests.fixtures import media as fixtures
 
@@ -80,6 +80,10 @@ def raw_job(tmp_path: Path, count: int = 4, first: int = 1001, **kwargs: object)
 
 def frame_names(directory: Path) -> list[str]:
     return sorted(path.name for path in directory.iterdir())
+
+
+def ids(results: list[QCResult]) -> list[str]:
+    return [result.rule_id for result in results]
 
 
 class TestRawSequence:
@@ -591,15 +595,6 @@ class TestUnwritablePixels:
         assert not job.temp.exists()
 
 
-def test_a_digest_is_stable_and_content_dependent(tmp_path: Path) -> None:
-    one = tmp_path / "one.bin"
-    two = tmp_path / "two.bin"
-    one.write_bytes(b"x" * (render.DIGEST_CHUNK + 17))
-    two.write_bytes(b"x" * (render.DIGEST_CHUNK + 17) + b"y")
-    assert render.file_digest(one) == render.file_digest(one)
-    assert render.file_digest(one) != render.file_digest(two)
-
-
 class TestHooks:
     """The two seams the pool hangs off. Both are plain callables, so they are
     tested here without a process in sight."""
@@ -721,3 +716,69 @@ class TestApplyResults:
         stray = Deliverable(kind="audio", name="z", path=Path("/x/z"), version=1, status="done")
         render.apply_results(batch, [stray])
         assert row.deliverables == [planned]
+
+
+class TestPostRenderQC:
+    """Phase B runs inside `render_job`, immediately after the atomic rename."""
+
+    def test_a_clean_render_carries_no_qc_results(self, tmp_path: Path) -> None:
+        deliverable = render.render_job(raw_job(tmp_path, count=3))
+        assert deliverable.status == "done"
+        assert deliverable.qc == []
+
+    def test_a_failed_check_marks_the_deliverable_and_keeps_the_file(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """QC_RULES phase B: a file that failed a check is evidence, so it stays."""
+        job = raw_job(tmp_path, count=2)
+        monkeypatch.setattr(
+            qc,
+            "run_phase_b",
+            lambda _job, _deliverable: [QCResult("QC-105", "error", "deliverable", "wrong")],
+        )
+        deliverable = render.render_job(job)
+
+        assert deliverable.status == "failed"
+        assert job.destination.is_dir(), "the file stays for inspection"
+        marker = job.destination.with_name(job.destination.name + batchfile.FAILED_MARKER)
+        assert marker.is_file()
+        assert "QC-105" in marker.read_text()
+
+    def test_the_marker_is_what_a_reopened_batch_reads(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A crash after the check still reopens as failed rather than as done."""
+        job = raw_job(tmp_path, count=2)
+        monkeypatch.setattr(
+            qc,
+            "run_phase_b",
+            lambda _job, _deliverable: [QCResult("QC-106", "error", "deliverable", "changed")],
+        )
+        deliverable = render.render_job(job)
+        deliverable.status = "done"  # as a stale batch file would have it
+        batch = Batch(rows=[ShotRow(turnover_id="t1", clip_name="x", deliverables=[deliverable])])
+        batchfile.reconcile_with_filesystem(batch)
+        assert batch.rows[0].deliverables[0].status == "failed"
+
+    def test_a_warning_alone_does_not_fail_the_deliverable(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        job = raw_job(tmp_path, count=2)
+        monkeypatch.setattr(
+            qc,
+            "run_phase_b",
+            lambda _job, _deliverable: [QCResult("QC-107", "warning", "deliverable", "dark")],
+        )
+        deliverable = render.render_job(job)
+        assert deliverable.status == "done"
+        assert ids(deliverable.qc) == ["QC-107"]
+
+    def test_apply_results_runs_the_row_and_batch_rules(self, tmp_path: Path) -> None:
+        """QC-150 and QC-151 cannot run in a worker: one sees a job, not a batch."""
+        job = raw_job(tmp_path, count=2)
+        deliverable = render.render_job(job)
+        deliverable.name = "nonsense"
+        row = ShotRow(turnover_id="t1", clip_name="x", deliverables=[job.to_deliverable()])
+        batch = Batch(rows=[row])
+        render.apply_results(batch, [deliverable])
+        assert "QC-151" in ids(batch.qc)

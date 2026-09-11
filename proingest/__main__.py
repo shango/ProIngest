@@ -235,7 +235,9 @@ def _report_run(written: list[Deliverable], batch_path: Path) -> int:
     skipped = [d for d in written if d.status == "skipped"]
 
     print(f"\n{len(done)} written, {len(failed)} failed, {len(skipped)} skipped")
-    for deliverable in failed:
+    # Every deliverable that has anything to say, not only the failed ones: phase B
+    # warnings such as QC-107 and QC-114 land on a deliverable that is still done.
+    for deliverable in written:
         for result in deliverable.qc:
             print(f"  {result.severity.upper():7} {result.rule_id}  {result.message}")
     print(f"wrote {batch_path.with_suffix(batchfile.SUFFIX)}")

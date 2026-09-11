@@ -66,24 +66,24 @@ QC-100 is the exception to that: it reports a render that never produced a file 
 | QC-100 | error | deliverable | Render did not complete; the reason is recorded. Every other QC-1xx is NA when this one fails, because there is no file to check |
 | QC-101 | error | exr seq | Frame count equals duration |
 | QC-102 | error | exr seq | First frame is 1001, last is 1000 + duration, no gaps |
-| QC-103 | error | exr seq | Every frame opens with OpenEXR and header parses |
-| QC-104 | error | exr seq | Data window and display window equal target resolution |
-| QC-105 | error | exr seq | Compression is DWAA, channels are R,G,B (or R,G,B,A) half |
-| QC-106 | error | exr seq | Per-frame xxhash64 matches what the writer recorded |
-| QC-107 | warning | exr seq | Frame file size below 10% of median (likely black or empty frame) |
+| QC-103 | error | exr seq | Every frame opens with OpenEXR and header parses. Also applied to an aux still, which is one EXR written by the same function: a mirror ball delivered unreadable is the same defect |
+| QC-104 | error | exr seq | Data window and display window equal target resolution. Also applied to an aux still |
+| QC-105 | error | exr seq | Compression is DWAA, channels are R,G,B (or R,G,B,A) half. Also applied to an aux still. One result per rule for the whole sequence, naming the first offender: 240 identical rows would bury the rest of the report |
+| QC-106 | error | exr seq | Per-frame xxhash64 matches what the writer recorded. An aux still is compared against the single whole-file checksum instead. A batch that recorded no checksums (an older one) is not a mismatch, so the rule stays silent |
+| QC-107 | warning | exr seq | Frame file size below 10% of median (likely black or empty frame). Median, not mean: a handful of black frames would drag a mean down far enough to hide themselves. Not applied to a sequence under three frames, which has no meaningful median |
 | QC-110 | error | mp4 | ffprobe opens file, stream count as expected |
-| QC-111 | error | mp4 | Frame count equals duration (probed with `-count_frames`) |
+| QC-111 | error | mp4 | Frame count equals duration (probed with `-count_frames`, which decodes). The render already compared the container's own index; this decodes, because an index can say 240 over a file that stops at 12 and the delivered reference is what the vendor plays |
 | QC-112 | error | mp4 | Resolution equals target |
 | QC-113 | error | mp4 | fps equals project fps |
 | QC-114 | warning | mp4 | Audio stream present iff audio was associated |
-| QC-115 | error | mp4 | faststart moov atom at head |
+| QC-115 | error | mp4 | faststart moov atom at head. Read from the file's top level box order, not from the `-movflags +faststart` that asked for it: the flag is a request, and a file that fell back to a trailing moov plays locally and stalls over a Drive link, which is where these go |
 | QC-120 | error | wav | Duration in samples matches source audio (byte copy: checksum equal) |
-| QC-121 | error | wav | 16 bit PCM |
+| QC-121 | error | wav | 16 bit PCM. **Error only when the audio was extracted from a container**, where the extraction was supposed to produce 16 bit and did not. A wav source is delivered as a byte copy per COLOR_AND_FORMAT section 3, so a 24 bit source delivers 24 bit by design and this is a warning there; QC-044 already said so at scan time |
 | QC-130 | error | copy | Checksum of copied side file equals source |
 | QC-140 | error | stringout | Frame count equals sum of durations of included rows |
 | QC-141 | warning | stringout | Any burn-in field was empty for any clip |
-| QC-150 | error | row | Every planned deliverable for the row exists and passed |
-| QC-151 | error | batch | Filename of every deliverable re-parses with the naming regex to the same shot/elem/kind/res/ver |
+| QC-150 | error | row | Every planned deliverable for the row exists and passed. Run by `render.apply_results`, not in a worker: a worker sees one job |
+| QC-151 | error | batch | Filename of every deliverable re-parses with the naming regex to the same shot/elem/kind/res/ver. Compared against the plan rather than merely checked for parsing, which is what catches a name that is well formed and wrong. Only delivered names are asked; one that never landed is QC-150's |
 
 ## QC log structure
 

@@ -26,8 +26,19 @@ from dataclasses import dataclass, fields
 from pathlib import Path
 from typing import Any
 
-from proingest.core import exr, ffmpeg
-from proingest.core.models import Batch, FrameRate, QCResult, Severity, ShotRow, Turnover
+import xxhash
+
+from proingest.core import exr, ffmpeg, media, naming
+from proingest.core.models import (
+    Batch,
+    Deliverable,
+    FrameRate,
+    QCResult,
+    Severity,
+    ShotRow,
+    Turnover,
+)
+from proingest.core.planner import DeliverableJob
 
 SYNC_TOLERANCE_FRAMES = 1
 """How far audio may run from picture before it is called a sync problem.
@@ -41,6 +52,9 @@ LENS_GRID_FRAGMENT = "lensgrid"
 
 AUDIO_BIT_DEPTH = 16
 """What the delivered wav is. A source that is not this is extracted down to it."""
+
+EXR_SUFFIX = ".exr"
+WAV_SUFFIX = ".wav"
 
 PICTURE_DELIVERABLES_PER_ROW = 4
 """Raw and reference at both resolutions. `planner.PICTURE_DELIVERABLES`, for QC-063."""
@@ -819,3 +833,493 @@ def preflight(batch: Batch, decoders: frozenset[str] | None = None) -> None:
         row.qc.extend(check_hdri_header(row))
 
 
+
+
+# --- phase B: verifying what was written ------------------------------------------
+
+RENDER_FAILED = "QC-100"
+"""The render did not complete. Every other QC-1xx is NA when this one fires.
+
+It is also the exception to phase B's keep-the-file rule: a render failure leaves
+nothing at all, so there is no file to mark and nothing to inspect.
+"""
+
+DIGEST_CHUNK = 1 << 20
+
+EXR_COMPRESSION = "DWAA_COMPRESSION"
+"""What COLOR_AND_FORMAT section 3 pins, and what `exr.write_frame` writes."""
+
+EXR_PIXEL_TYPE = "float16"
+"""Half float (OQ-13), as `numpy` spells it back from the header."""
+
+EXR_CHANNEL_SETS = (("R", "G", "B"), ("R", "G", "B", "A"))
+
+SMALL_FRAME_RATIO = 0.10
+"""QC-107: a frame under this share of the sequence median is probably black."""
+
+WAV_BIT_DEPTH = 16
+WAV_CODEC = "pcm_s16le"
+
+COPY_KINDS = frozenset({"hdri", "camdata", "bts"})
+"""Byte copies under a delivery name. `render.COPY_KINDS`, NAMING_SPEC section 2."""
+
+
+def file_digest(path: Path) -> str:
+    """xxhash64 of a file, read in chunks so a 4k frame never lands in memory twice."""
+    digest = xxhash.xxh64()
+    with path.open("rb") as handle:
+        while block := handle.read(DIGEST_CHUNK):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def _failure(rule_id: str, message: str, severity: Severity = "error") -> QCResult:
+    return QCResult(rule_id, severity, "deliverable", message)
+
+
+def run_phase_b(job: DeliverableJob, deliverable: Deliverable) -> list[QCResult]:
+    """Verify one deliverable against the job that planned it, after the rename.
+
+    The job is the expectation and the file on disk is the claim, which is why this
+    takes both: everything phase B checks (frame count, target size, rate, the source
+    to compare a copy against) is on the job, and the checksums the writer recorded
+    are on the deliverable.
+
+    ARCHITECTURE.md calls this `qc.run_phase_b(job)`; it takes the deliverable too
+    because QC-106 and QC-120 compare against what the writer recorded, which a job
+    cannot know.
+
+    Nothing here raises. A check that cannot be made because the file will not open is
+    reported as the failure it is, so one unreadable deliverable cannot stop a run.
+    """
+    if deliverable.status == "failed":
+        # QC-100 already said the render did not complete; there is no file to check.
+        return []
+    verifier = {
+        "raw_dir": _verify_sequence,
+        "aux_still": _verify_still,
+        "ref_mp4": _verify_reference,
+        "audio": _verify_audio,
+    }.get(job.kind, _verify_copy if job.kind in COPY_KINDS else None)
+    if verifier is None:
+        return [_failure(RENDER_FAILED, f"{job.name}: no phase B checks for a {job.kind} job")]
+    if not job.destination.exists():
+        return [_failure(RENDER_FAILED, f"{job.name}: nothing was written to {job.destination}")]
+    return verifier(job, deliverable)
+
+
+# --- QC-101 to QC-107: a delivered EXR sequence -----------------------------------
+
+
+def _verify_sequence(job: DeliverableJob, deliverable: Deliverable) -> list[QCResult]:
+    """Every check the delivered sequence owes, in rule ID order.
+
+    The frames are listed once and every later check reads that list, because this
+    runs on a network mount and a second listing of a 240 frame folder costs real
+    time for an answer already in hand.
+    """
+    results: list[QCResult] = []
+    paths = sorted(job.destination.glob(f"*{EXR_SUFFIX}"))
+
+    if len(paths) != job.frame_count:
+        results.append(
+            _failure("QC-101", f"{job.name} holds {len(paths)} frames, not {job.frame_count}")
+        )
+    results.extend(_check_numbering(job, paths))
+    results.extend(_check_frame_headers(job, paths))
+    results.extend(_check_frame_digests(deliverable, paths))
+    results.extend(_check_frame_sizes(paths))
+    return results
+
+
+def _check_numbering(job: DeliverableJob, paths: list[Path]) -> list[QCResult]:
+    """QC-102: 1001 first, no gaps, nothing extra.
+
+    The frame number is read back out of each filename rather than assumed from the
+    position in the sorted list, so a missing frame shows up as the gap it is instead
+    of shifting every later frame's identity.
+    """
+    found = [naming.parse_output_name(path.name) for path in paths]
+    numbers = [parsed.frame for parsed in found if parsed is not None and parsed.frame is not None]
+    unparsed = [path.name for path, parsed in zip(paths, found, strict=True) if parsed is None]
+    expected = list(job.output_frames())
+    if unparsed:
+        return [
+            _failure("QC-102", f"{job.name} holds files that are not delivery frames: {unparsed[0]}")
+        ]
+    if numbers == expected:
+        return []
+    missing = sorted(set(expected) - set(numbers))
+    extra = sorted(set(numbers) - set(expected))
+    detail = f"missing {missing[:5]}" if missing else f"unexpected {extra[:5]}"
+    return [
+        _failure(
+            "QC-102",
+            f"{job.name} should run {expected[0]} to {expected[-1]} with no gaps: {detail}",
+        )
+    ]
+
+
+def _check_frame_headers(job: DeliverableJob, paths: list[Path]) -> list[QCResult]:
+    """QC-103, QC-104 and QC-105: every frame opens and says what it should.
+
+    One result per rule rather than one per frame: a sequence whose every frame is the
+    wrong compression is one defect, and 240 identical rows would bury the rest of the
+    report. The first offender is named, which is what someone opening a file needs.
+    """
+    results: list[QCResult] = []
+    unreadable: tuple[Path, str] | None = None
+    bad_window: Path | None = None
+    bad_format: tuple[Path, str] | None = None
+
+    for path in paths:
+        try:
+            header = exr.read_header(path)
+        except (exr.ExrError, OSError) as error:
+            unreadable = unreadable or (path, str(error))
+            continue
+        if bad_window is None and (
+            not header.windows_match
+            or (job.target_size is not None and header.resolution != job.target_size)
+        ):
+            bad_window = path
+        if bad_format is None:
+            bad_format = _frame_format_fault(path, header)
+
+    if unreadable is not None:
+        results.append(_failure("QC-103", f"{unreadable[0].name} did not open: {unreadable[1]}"))
+    if bad_window is not None:
+        results.append(
+            _failure(
+                "QC-104",
+                f"{bad_window.name} does not have both windows at {job.target_size}",
+            )
+        )
+    if bad_format is not None:
+        results.append(_failure("QC-105", f"{bad_format[0].name} {bad_format[1]}"))
+    return results
+
+
+def _frame_format_fault(path: Path, header: exr.ExrHeader) -> tuple[Path, str] | None:
+    """QC-105's complaint about one frame, or None when it is what the spec pins."""
+    if header.compression != EXR_COMPRESSION:
+        return path, f"is {header.compression}, not {EXR_COMPRESSION}"
+    if header.channels not in EXR_CHANNEL_SETS:
+        return path, f"has channels {header.channels}, not R,G,B or R,G,B,A"
+    if header.pixel_type != EXR_PIXEL_TYPE:
+        return path, f"is {header.pixel_type}, not {EXR_PIXEL_TYPE}"
+    return None
+
+
+def _check_frame_digests(deliverable: Deliverable, paths: list[Path]) -> list[QCResult]:
+    """QC-106: every frame still hashes to what the writer recorded.
+
+    DWAA is lossy, so a frame does not read back byte-identical to the pixels that
+    went in; the encoder is deterministic, so the written file's digest is stable.
+    This catches a frame changed or truncated between the write and the rename.
+    """
+    recorded = deliverable.frame_checksums
+    if not recorded:
+        return []
+    if len(recorded) != len(paths):
+        return [
+            _failure(
+                "QC-106",
+                f"{len(paths)} frames on disk against {len(recorded)} checksums recorded",
+            )
+        ]
+    for path, expected in zip(paths, recorded, strict=True):
+        if file_digest(path) != expected:
+            return [_failure("QC-106", f"{path.name} does not match the checksum recorded for it")]
+    return []
+
+
+def _check_frame_sizes(paths: list[Path]) -> list[QCResult]:
+    """QC-107: a frame far smaller than its neighbours, which usually means black.
+
+    A warning, not an error: a genuinely dark frame at the head of a shot is legal and
+    common. The median is the comparison because a handful of black frames would drag
+    a mean down far enough to hide themselves.
+    """
+    if len(paths) < 3:
+        return []
+    sizes = [path.stat().st_size for path in paths]
+    middle = sorted(sizes)[len(sizes) // 2]
+    small = [
+        path.name
+        for path, size in zip(paths, sizes, strict=True)
+        if size < middle * SMALL_FRAME_RATIO
+    ]
+    if not small:
+        return []
+    shown = ", ".join(small[:3])
+    more = f" and {len(small) - 3} more" if len(small) > 3 else ""
+    return [
+        _failure(
+            "QC-107",
+            f"{len(small)} frames are under {int(SMALL_FRAME_RATIO * 100)}% of the median "
+            f"size and may be black: {shown}{more}",
+            severity="warning",
+        )
+    ]
+
+
+def _verify_still(job: DeliverableJob, deliverable: Deliverable) -> list[QCResult]:
+    """An aux still is one EXR, so it owes the header checks and nothing about counts.
+
+    QC_RULES scopes QC-103 to QC-105 at "exr seq". A still is written by the same
+    function into the same format, and a mirror ball delivered as ZIP RGBA float would
+    be the same defect, so the same three rules are applied to it.
+    """
+    results = _check_frame_headers(job, [job.destination])
+    if deliverable.checksum and file_digest(job.destination) != deliverable.checksum:
+        results.append(_failure("QC-106", f"{job.name} does not match the checksum recorded for it"))
+    return results
+
+
+# --- QC-110 to QC-115: a delivered reference mp4 ----------------------------------
+
+
+def _verify_reference(job: DeliverableJob, deliverable: Deliverable) -> list[QCResult]:
+    """The reference has to be playable, complete, the right size and in sync."""
+    try:
+        probed = ffmpeg.probe_raw(job.destination)
+    except (ffmpeg.FFprobeError, ffmpeg.FFmpegNotFound) as error:
+        return [_failure("QC-110", f"{job.name} did not open: {error}")]
+
+    streams = probed.get("streams", [])
+    video = [stream for stream in streams if stream.get("codec_type") == "video"]
+    audio = [stream for stream in streams if stream.get("codec_type") == "audio"]
+    if len(video) != 1:
+        return [_failure("QC-110", f"{job.name} has {len(video)} video streams, not one")]
+
+    results: list[QCResult] = []
+    results.extend(_check_reference_frames(job))
+    results.extend(_check_reference_video(job, video[0]))
+    results.extend(_check_reference_audio(job, audio))
+    results.extend(_check_faststart(job))
+    return results
+
+
+def _check_reference_frames(job: DeliverableJob) -> list[QCResult]:
+    """QC-111: the frame count by decode, not by the container's own index.
+
+    The render already compared the index; this decodes, because an index can say 240
+    over a file that stops at 12 and the delivered reference is what the vendor plays.
+    """
+    try:
+        counted = ffmpeg.count_frames(job.destination)
+    except (ffmpeg.FFprobeError, ffmpeg.FFmpegNotFound) as error:
+        return [_failure("QC-111", f"{job.name} could not be counted: {error}")]
+    if counted == job.frame_count:
+        return []
+    return [_failure("QC-111", f"{job.name} decodes {counted} frames, not {job.frame_count}")]
+
+
+def _check_reference_video(job: DeliverableJob, stream: dict[str, Any]) -> list[QCResult]:
+    """QC-112 and QC-113: the size and the rate the vendor will conform against."""
+    results: list[QCResult] = []
+    size = (int(stream.get("width", 0)), int(stream.get("height", 0)))
+    if job.target_size is not None and size != job.target_size:
+        results.append(
+            _failure("QC-112", f"{job.name} is {size[0]}x{size[1]}, not {job.target_size}")
+        )
+    if job.rate is not None:
+        stated = str(stream.get("r_frame_rate", ""))
+        expected = f"{job.rate.numerator}/{job.rate.denominator}"
+        if stated != expected:
+            results.append(_failure("QC-113", f"{job.name} plays at {stated}, not {expected}"))
+    return results
+
+
+def _check_reference_audio(job: DeliverableJob, audio: list[dict[str, Any]]) -> list[QCResult]:
+    """QC-114: an audio stream exactly when the row had audio to mux.
+
+    Both directions are defects. A missing stream is a silent reference; an unexpected
+    one means the encode picked up sound from somewhere the plan did not know about.
+    """
+    wanted = job.audio_source is not None
+    if wanted == bool(audio):
+        return []
+    complaint = "has no audio stream" if wanted else "has an audio stream nothing planned"
+    return [_failure("QC-114", f"{job.name} {complaint}", severity="warning")]
+
+
+def _check_faststart(job: DeliverableJob) -> list[QCResult]:
+    """QC-115: the moov atom ahead of the media data, so the file streams.
+
+    Read from the box headers rather than trusting the `-movflags +faststart` that
+    asked for it: the flag is a request, and a file that fell back to a trailing moov
+    still plays locally and stalls over a Drive link, which is exactly where these go.
+    """
+    try:
+        order = _top_level_boxes(job.destination)
+    except OSError as error:
+        return [_failure("QC-115", f"{job.name} could not be read: {error}")]
+    if "moov" not in order:
+        return [_failure("QC-115", f"{job.name} has no moov atom")]
+    if "mdat" in order and order.index("mdat") < order.index("moov"):
+        return [_failure("QC-115", f"{job.name} has its moov atom after the media data")]
+    return []
+
+
+def _top_level_boxes(path: Path, limit: int = 32) -> list[str]:
+    """The names of an mp4's top level boxes, in file order.
+
+    Only the 8 or 16 byte header of each box is read, so this costs a few seeks
+    whatever the file weighs.
+    """
+    names: list[str] = []
+    with path.open("rb") as handle:
+        while len(names) < limit:
+            header = handle.read(8)
+            if len(header) < 8:
+                break
+            size = int.from_bytes(header[:4], "big")
+            name = header[4:8].decode("ascii", errors="replace")
+            names.append(name)
+            if size == 1:
+                # A 64 bit size lives in the eight bytes after the name.
+                extended = handle.read(8)
+                if len(extended) < 8:
+                    break
+                size = int.from_bytes(extended, "big")
+                handle.seek(size - 16, 1)
+            elif size == 0:
+                break  # Runs to the end of the file, so there is nothing after it.
+            else:
+                handle.seek(size - 8, 1)
+    return names
+
+
+# --- QC-120, QC-121 and QC-130: audio and byte copies -----------------------------
+
+
+def _verify_audio(job: DeliverableJob, deliverable: Deliverable) -> list[QCResult]:
+    """QC-120 and QC-121: the delivered wav against the source it came from."""
+    results: list[QCResult] = []
+    if job.source.suffix.lower() == WAV_SUFFIX:
+        # A wav is delivered as a byte copy, so the digest is the whole check.
+        if file_digest(job.destination) != file_digest(job.source):
+            results.append(_failure("QC-120", f"{job.name} does not match {job.source.name}"))
+    else:
+        results.extend(_check_extracted_duration(job))
+
+    try:
+        probed = ffmpeg.probe_raw(job.destination)
+    except (ffmpeg.FFprobeError, ffmpeg.FFmpegNotFound) as error:
+        return [*results, _failure("QC-121", f"{job.name} did not open: {error}")]
+    for stream in probed.get("streams", []):
+        if stream.get("codec_type") != "audio":
+            continue
+        depth = int(stream.get("bits_per_raw_sample") or stream.get("bits_per_sample") or 0)
+        if stream.get("codec_name") != WAV_CODEC or depth != WAV_BIT_DEPTH:
+            results.append(
+                _failure(
+                    "QC-121",
+                    f"{job.name} is {stream.get('codec_name')} at {depth} bit, not "
+                    f"{WAV_CODEC} at {WAV_BIT_DEPTH} bit",
+                    severity="warning" if job.source.suffix.lower() == WAV_SUFFIX else "error",
+                )
+            )
+        return results
+    return [*results, _failure("QC-121", f"{job.name} has no audio stream")]
+
+
+def _check_extracted_duration(job: DeliverableJob) -> list[QCResult]:
+    """QC-120 for audio pulled out of a container, where no byte copy happened.
+
+    Sample rate and channel count are preserved by the extraction, so the sample count
+    is directly comparable and a resample would show up here as the drift it is.
+    """
+    try:
+        source = media.probe_audio(job.source)
+        written = media.probe_audio(job.destination)
+    except (ffmpeg.FFprobeError, ffmpeg.FFmpegNotFound) as error:
+        return [_failure("QC-120", f"{job.name} could not be compared to its source: {error}")]
+    if source.duration_samples == written.duration_samples:
+        return []
+    return [
+        _failure(
+            "QC-120",
+            f"{job.name} holds {written.duration_samples} samples against the source's "
+            f"{source.duration_samples}",
+        )
+    ]
+
+
+def _verify_copy(job: DeliverableJob, deliverable: Deliverable) -> list[QCResult]:
+    """QC-130: a copied side file is the same bytes under a different name."""
+    if not job.source.is_file():
+        return [_failure("QC-130", f"{job.name}: the source {job.source} is gone")]
+    if file_digest(job.destination) == file_digest(job.source):
+        return []
+    return [_failure("QC-130", f"{job.name} does not match {job.source.name}")]
+
+
+# --- QC-150 and QC-151: the row and the batch -------------------------------------
+
+OWNED_PHASE_B_ROW_RULES = frozenset({"QC-150"})
+OWNED_PHASE_B_BATCH_RULES = frozenset({"QC-151"})
+
+
+def check_row_complete(row: ShotRow) -> list[QCResult]:
+    """QC-150: every deliverable this row planned exists and passed its own checks."""
+    if not row.deliverables:
+        return []
+    unfinished = [item.name for item in row.deliverables if item.status != "done"]
+    failed = [
+        item.name
+        for item in row.deliverables
+        if any(result.severity == "error" for result in item.qc)
+    ]
+    broken = sorted(set(unfinished) | set(failed))
+    if not broken:
+        return []
+    shown = ", ".join(broken[:3])
+    more = f" and {len(broken) - 3} more" if len(broken) > 3 else ""
+    return [
+        QCResult("QC-150", "error", "row", f"{len(broken)} deliverables are not done: {shown}{more}")
+    ]
+
+
+def check_names_reparse(batch: Batch, show_pattern: str = naming.DEFAULT_SHOW_PATTERN) -> list[QCResult]:
+    """QC-151: every delivered filename reads back as the thing that was planned.
+
+    The naming spec is the contract with the vendor, and the parser is the only thing
+    that can say a name honours it. Comparing the parse against the plan rather than
+    merely checking that it parses is what catches a name that is well formed and
+    wrong: the right shape with the wrong shot code, resolution or version.
+    """
+    results: list[QCResult] = []
+    for row in batch.rows:
+        for item in row.deliverables:
+            if item.status != "done":
+                continue
+            parsed = naming.parse_output_name(item.name, show_pattern)
+            fault = _name_fault(item, parsed)
+            if fault is not None:
+                results.append(QCResult("QC-151", "error", "batch", f"{item.name}: {fault}"))
+    return results
+
+
+def _name_fault(item: Deliverable, parsed: naming.ParsedOutput | None) -> str | None:
+    """What a delivered name says that the plan does not, or None when they agree."""
+    if parsed is None:
+        return "does not parse as a delivery name"
+    if parsed.kind != item.kind:
+        return f"reads as a {parsed.kind}, but a {item.kind} was planned"
+    if parsed.version != item.version:
+        return f"reads as v{parsed.version:02d}, but v{item.version:02d} was planned"
+    if item.res is not None and parsed.res is not None and parsed.res != item.res:
+        return f"reads as {parsed.res}, but {item.res} was planned"
+    return None
+
+
+def apply_phase_b(batch: Batch, show_pattern: str = naming.DEFAULT_SHOW_PATTERN) -> None:
+    """Re-run QC-150 and QC-151 across a batch, after a run or on reopening one."""
+    batch.qc = [result for result in batch.qc if result.rule_id not in OWNED_PHASE_B_BATCH_RULES]
+    batch.qc.extend(check_names_reparse(batch, show_pattern))
+    for row in batch.rows:
+        row.qc = [result for result in row.qc if result.rule_id not in OWNED_PHASE_B_ROW_RULES]
+        row.qc.extend(check_row_complete(row))

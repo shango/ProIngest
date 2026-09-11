@@ -38,22 +38,22 @@ from typing import Any, Literal
 
 import numpy as np
 import numpy.typing as npt
-import xxhash
 
-from proingest.core import color, exr, ffmpeg, media, resize
+from proingest.core import batchfile, color, exr, ffmpeg, media, qc, resize
 from proingest.core.models import Batch, Deliverable, QCResult
 from proingest.core.planner import DeliverableJob
 
 log = logging.getLogger(__name__)
 
-DIGEST_CHUNK = 1 << 20
-
-COPY_KINDS = frozenset({"hdri", "camdata", "bts"})
+COPY_KINDS = qc.COPY_KINDS
 """Byte copies under a delivery name. NAMING_SPEC section 2."""
 
-WAV_SUFFIX = ".wav"
+WAV_SUFFIX = qc.WAV_SUFFIX
 
-EXR_SUFFIX = ".exr"
+EXR_SUFFIX = qc.EXR_SUFFIX
+
+file_digest = qc.file_digest
+"""Moved to `qc.py` with the phase B checks that compare against it. Same function."""
 
 
 class RenderError(RuntimeError):
@@ -66,15 +66,6 @@ class RenderCancelled(RuntimeError):
     Deliberately not a RenderError: a cancelled job did not fail, it was never
     finished, and it should not be reported as a defect in the source or the plan.
     """
-
-
-def file_digest(path: Path) -> str:
-    """xxhash64 of a file, read in chunks so a 4k frame never lands in memory twice."""
-    digest = xxhash.xxh64()
-    with path.open("rb") as handle:
-        while block := handle.read(DIGEST_CHUNK):
-            digest.update(block)
-    return digest.hexdigest()
 
 
 def render_job(
@@ -126,6 +117,12 @@ def render_job(
     job.temp.replace(job.destination)
     deliverable.status = "done"
     log.info("wrote %s", job.destination)
+
+    deliverable.qc.extend(qc.run_phase_b(job, deliverable))
+    if any(result.severity == "error" for result in deliverable.qc):
+        deliverable.status = "failed"
+        _mark_failed(job.destination, deliverable)
+        log.warning("%s failed post-render QC", job.destination)
     return deliverable
 
 
@@ -151,6 +148,19 @@ def _discard(temp: Path) -> None:
         shutil.rmtree(temp, ignore_errors=True)
     elif temp.exists():
         temp.unlink(missing_ok=True)
+
+
+def _mark_failed(destination: Path, deliverable: Deliverable) -> None:
+    """Leave a `.failed` sidecar naming what went wrong, per QC_RULES phase B.
+
+    The file itself stays: a deliverable that failed a check is evidence, and someone
+    has to be able to open it and see what the check saw. The marker is what
+    `batchfile.reconcile_with_filesystem` reads back, so a crash after this point
+    still reopens as failed rather than as done.
+    """
+    lines = [f"{result.rule_id} {result.severity}: {result.message}" for result in deliverable.qc]
+    marker = destination.with_name(destination.name + batchfile.FAILED_MARKER)
+    marker.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 def _record_file(deliverable: Deliverable, path: Path) -> None:
@@ -387,7 +397,7 @@ def _render_copy(job: DeliverableJob, deliverable: Deliverable) -> None:
 
 ProgressState = Literal["started", "frame", "done", "failed", "cancelled"]
 
-RENDER_FAILED = "QC-100"
+RENDER_FAILED = qc.RENDER_FAILED
 """The render did not complete. Every other QC-1xx is NA when this one fails."""
 
 DEFAULT_WORKERS = 4
@@ -540,11 +550,16 @@ def execute(
 
 
 def apply_results(batch: Batch, deliverables: Sequence[Deliverable]) -> None:
-    """Write executed records back onto the rows that planned them.
+    """Write executed records back onto the rows that planned them, then re-run QC-150.
 
     Matched on destination path, which is unique across a run because the planner
     resolves one version per shot and never names two deliverables the same.
+
+    QC-150 and QC-151 are the only phase B rules that cannot run in a worker: one asks
+    whether a whole row landed and the other reads every name in the batch, and a
+    worker sees one job. They run here, where the results have just been collected.
     """
     executed = {deliverable.path: deliverable for deliverable in deliverables}
     for row in batch.rows:
         row.deliverables = [executed.get(planned.path, planned) for planned in row.deliverables]
+    qc.apply_phase_b(batch)

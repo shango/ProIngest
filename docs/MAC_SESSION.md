@@ -93,6 +93,11 @@ Treat it as a working session with the editor rather than a delivery.
 - [ ] Scan a real turnover from each of the three shooters. OQ-1 folder structure, OQ-3 what
       the consolidated media actually is, OQ-4 how stills and BTS are named.
 - [ ] 100 shots scanned in under 60 seconds from a warm mount. `PRD.md` section 8.
+- [ ] **Time QC-111 on a real reference.** It runs `ffmpeg -count_frames`, a full decode, once
+      per delivered mp4, and that is two decodes of a 240 frame plate per row on top of the
+      encodes. On fixture media it is free; on real media nobody has measured it. If it costs
+      real minutes across a hundred shots, the answer is a setting, not a silent downgrade to
+      the container index the render already checked. PROGRESS.md section 9.
 - [ ] A full run end to end, then read the QC log and tracker with the editor. OQ-2 tracker
       columns, OQ-11 camData format.
 - [ ] OQ-21 container alpha, explicitly deferred until a real turnover existed.
