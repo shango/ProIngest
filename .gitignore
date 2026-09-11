@@ -26,6 +26,11 @@ proingest/resources/ffmpeg/*
 *.pibatch
 *.pibatch.bak
 
+# Manager-facing plan the user keeps outside git. Was untracked by convention alone until
+# a `git add docs/` swept it in; convention is not enforcement.
+/docs/ROADMAP.md
+/docs/ROADMAP.docx
+
 # Front-end mock of the UI, for showing producers. Deliberately untracked at the user's
 # request: it is a picture of docs/UI_SPEC.md, never a second implementation, and the spec
 # is what the repo carries. Still on disk, still published as an artifact; see PROGRESS

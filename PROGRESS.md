@@ -8,67 +8,77 @@ commit.
 
 ## 1. Resume here
 
-**State at 2026-09-11. M3 is complete.** M1, M2 and M3 are done; M4 is next and has
-not been started. Working tree clean apart from two deliberately untracked files
-(section 8). 573 tests passing, `ruff` and `mypy --strict` clean. M3.5, the reference
-encodes, landed first, then four open questions were answered in a row; the only one that
-changed code was OQ-27, which fixed an encode bug M3.5 had shipped.
+**State at 2026-09-10. M1, M2 and M3 are complete. M4 is next and has not been started.**
+573 tests passing, `ruff` and `mypy --strict` clean, working tree clean apart from the
+deliberately untracked files in section 8. **Nothing is blocked.**
 
-**The suite now runs on the target platform.** First green CI run on a `macos-latest`
-arm64 runner: 547 passed in 16.85s, lint and types clean, against the bundled
-martin-riedl ffmpeg 9.0.1 rather than this machine's Ubuntu 6.1.1. The pinned arm64
-binaries were confirmed to actually execute, and `h264_videotoolbox` opened a session
-and encoded, which answers half of OQ-23.
+### First five minutes
 
-**The target platform changed on 2026-09-10: v01 is now macOS on Apple Silicon, not
-Windows.** The primary user turned out to be on a Mac. Section 6 has the decision and what
-it cost, which was much less than it might have been because core never imported Qt and
-never hardcoded a Windows path. Windows moved to the v02 backlog. Read that entry before
-touching packaging, settings paths or the reference encodes.
-
-**Nothing is blocked.** OQ-5, OQ-20, OQ-24, OQ-25 and OQ-27 were all answered by the user
-on 2026-09-11 and are in section 6. Two of them removed planned work rather than adding any;
-OQ-20 added one new QC rule ID, QC-057, to be built with the rest in M4; and OQ-27 found a
-real bug in the encode that had already shipped. **573 tests.**
-
-Verify the state before changing anything:
+Run this before changing anything. If it does not come back clean, fix that before
+starting anything new:
 
 ```
 .venv/bin/python -m pytest tests/ -q
 .venv/bin/python -m ruff check proingest tests && .venv/bin/python -m mypy proingest tests
+```
+
+A real end to end run, which works today and is the fastest way to see what the tool does:
+
+```
 .venv/bin/python -m proingest scan <turnover folder> --save <batch>
 .venv/bin/python -m proingest run <batch> --delivery-root <root>
 ```
 
-The last two are a real end to end run and they now go all the way: a scanned turnover
-renders its raw EXR sequences, its reference mp4s at both resolutions with audio muxed,
+A scanned turnover renders its raw EXR sequences, both reference mp4s with audio muxed,
 its audio and its side files. Verified on a two shot synthetic turnover: **10 written, 0
-failed, 0 skipped**, and the references came back 3840x2160 and 1920x1080, H.264 High,
-yuv420p, `bt709` primaries, `iec61966-2-1` transfer, 24/1, with AAC at 193 kbit/s. No
-`.part` left anywhere. That is the expected output now.
+failed, 0 skipped**, references at 3840x2160 and 1920x1080, H.264 High, yuv420p, `bt709`
+primaries, `iec61966-2-1` transfer, 24/1, AAC at 193 kbit/s, and no `.part` left anywhere.
+`tests/fixtures/media.py::make_turnover` builds a turnover to try it on.
 
-**Next task: M4, QC and exports.**
+### Next task: M4, QC and exports
 
-Nothing is half done behind it. `qc.py` already holds QC-025, QC-026 and QC-043 and the
-rest of both phases is unwritten; `exports.py` does not exist. Two things M3 left that M4
-is the right place for, both in section 9: QC-023 (a non 16:9 or non 4k source is not
-caught by anything today) and the post-render QC-1xx family, which is what
-`Deliverable.checksum`, `frame_checksums` and the new container frame count were recorded
-for.
-- **x264 CRF 18 `-preset slow` is what shipped, and hardware encoding stayed out.**
-  NVENC went with the Windows target; the macOS hardware encoder is
-  `h264_videotoolbox`, which has no CRF and whose `-q:v` scale is uncalibrated (OQ-23).
-  `ffmpeg.has_nvenc()` is dead code that nothing calls. Shipping a quality setting nobody
-  has measured was not worth it: hardware encode is a Settings toggle in M5 at the
-  earliest and needs a real Mac to calibrate. Keyint 24 and `-movflags +faststart` are
-  in the command; QC-115 will check the moov atom is at the head.
-- **M3.5 deliberately did not build the two things the plan for it named last.** It said
-  to parse ffmpeg's `-progress` for frame counts and to kill the child on cancel. Neither
-  is there: a reference goes from started to done with nothing in between, and a cancelled
-  run finishes the encodes in flight. The reasoning is in section 6 and the gap is in
-  section 9, so this is a decision to revisit rather than an oversight to rediscover.
+Nothing is half done behind it. `qc.py` holds QC-025, QC-026 and QC-043 and the rest of
+both phases is unwritten; `exports.py` does not exist. `docs/QC_RULES.md` is the
+specification and every ID in it is stable.
 
----
+Four things already waiting for M4, rather than new scope:
+
+- **QC-023 is not implemented and nothing catches a non 4k or non 16:9 source today.**
+  `render._fit` would resample it to the target size, squashing it. The check belongs in
+  `qc.py` with the rest, not as a second guard inside `render.py`. Section 9.
+- **The post-render QC-1xx family** is what `Deliverable.checksum`, `frame_checksums` and
+  `ffmpeg.container_frame_count` were recorded for. None of it is consumed yet.
+- **QC-057 is new and unimplemented**, added when OQ-20 was answered: info, turnover
+  scope, a lens grid folder is present and v01 does not deliver it.
+- **QC-054 was reworded** from "no lens grid clip" to "no lens grid folder". Same ID, same
+  severity.
+
+### Two M3 decisions to revisit rather than rediscover
+
+- **A reference encode reports no progress and cannot be cancelled mid-encode.** It is one
+  ffmpeg process, so a job goes from started to done with nothing in between and a
+  cancelled run finishes the encodes in flight. The plan for M3.5 said to parse
+  `-progress` and kill the child; neither was built, deliberately. Sections 6 and 9.
+- **x264 CRF 18 `-preset slow` is what shipped and hardware encoding stayed out.**
+  `h264_videotoolbox` has no CRF and an uncalibrated `-q:v` (OQ-23). `ffmpeg.has_nvenc()`
+  is dead code nothing calls. Hardware encode is an M5 Settings toggle at the earliest and
+  needs a real Mac to calibrate.
+
+### Context a cold reader needs before touching anything
+
+- **v01 is macOS on Apple Silicon, decided 2026-09-10.** Not Windows, and not Intel
+  (OQ-24). Windows 11 is a v02 intention. Read the section 6 entry before touching
+  packaging, settings paths or the reference encodes.
+- **The suite runs on the target platform.** CI runs lint, types and the full suite on a
+  `macos-latest` arm64 runner on every push, against the bundled ffmpeg 9.0.1 rather than
+  this machine's Ubuntu 6.1.1. `h264_videotoolbox` was confirmed to open and encode there,
+  which answered half of OQ-23.
+- **Five open questions were answered by the user on 2026-09-10**: OQ-5, OQ-20, OQ-24,
+  OQ-25 and OQ-27, all written up in section 6. Two of them deleted planned work, one
+  added QC-057, and OQ-27 exposed a real bug in an encode that had already shipped. **17
+  of 27 questions remain open**; none of them blocks M4.
+- **The last commits are not pushed.** CI has not seen M3.5, the five answers, or the
+  `apad` fix. Pushing is the user's call, not an automatic step.
 
 ## 2. What this is, and what to read
 
@@ -217,7 +227,7 @@ color 6.
 
 ## 6. Decisions taken
 
-**Apple Silicon only, Windows 11 a v02 intention (OQ-24, confirmed 2026-09-11).**
+**Apple Silicon only, Windows 11 a v02 intention (OQ-24, confirmed 2026-09-10).**
 
 - The arm64 bundle stands. No universal2 build, no second lock entry, no installer budget
   spent on an Intel Mac that is not in scope.
@@ -230,7 +240,7 @@ color 6.
   `darwin`, and `_platform_binary`, which already knows about `.exe`. That is why the
   `.exe` branch stays rather than being cleaned away as dead.
 
-**Audio runs cut point to cut point (OQ-27, answered 2026-09-11).**
+**Audio runs cut point to cut point (OQ-27, answered 2026-09-10).**
 
 - If a clip has audio the wav starts where the picture starts and ends where it ends.
   `render._audio_skip` assumed exactly that and is confirmed rather than changed.
@@ -247,7 +257,7 @@ color 6.
   different things: before an edit a malformed turnover, after an edit the editor's own
   trim, since the wav deliverable is a byte copy and is never trimmed.
 
-**The lens grid is manual in v01 (OQ-20, answered 2026-09-11).**
+**The lens grid is manual in v01 (OQ-20, answered 2026-09-10).**
 
 - It arrives as **a folder in the turnover package**, not a clip on the timeline, and the
   editor moves it to the delivery root and renames its files themselves. The tool neither
@@ -266,7 +276,7 @@ color 6.
   are the spelling the editor now types by hand, and a tool that can check a name it no
   longer writes costs nothing to keep.
 
-**The tool asks where the files are; it does not look (OQ-25, answered 2026-09-11).**
+**The tool asks where the files are; it does not look (OQ-25, answered 2026-09-10).**
 
 - The editor points at a **source root** and a **delivery root**, a folder chooser each, and
   both happen to be on a Google Drive mount. Nothing probes
@@ -307,7 +317,7 @@ color 6.
   the sound stays with a trimmed picture. That the wav starts where the picture media
   starts is an assumption, logged as OQ-27.
 
-**Witness cam is a normal deliverable (confirmed by the user 2026-09-11).**
+**Witness cam is a normal deliverable (confirmed by the user 2026-09-10).**
 
 - The spec PDF lists the two `wit` raw rows with a bare filename, no frame range and no
   subfolder columns, where every other raw sequence row has all three. It reads as though
@@ -588,8 +598,9 @@ is useful rather than not, but a test asserting "one stream" will fail on it.
 
 - **Three things are deliberately untracked**, all at the user's request: `docs/ROADMAP.md`
   and `docs/ROADMAP.docx`, a manager-facing plan, and the whole of `preview/`. The ROADMAP
-  pair is untracked by convention alone, so stage files by name and never `git add -A`;
-  `preview/` is in `.gitignore` as well. All three are still on disk.
+  All three are in `.gitignore`, and all three are still on disk. The ROADMAP pair was
+  held by convention alone until a `git add docs/` swept it in, so it is enforced now.
+  Stage files by name anyway: `git add -A` and `git add <dir>` are both how this happens.
   The .docx was generated from the .md with `python-docx`; no converter is kept in the
   repo, so if the .md changes and a new .docx is wanted, write one and throw it away.
 - **Build track artifact**, a readable M1-M8 status board for the user:

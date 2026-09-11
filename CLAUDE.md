@@ -3,7 +3,11 @@
 ## What this is
 A single-user macOS desktop app (PySide6, Python 3.11+) that ingests VFX shot turnovers. It reads an OpenTimelineIO file exported from DaVinci Resolve, matches timeline clips to media in a turnover folder on a Google Drive mount, lets the VFX editor adjust In/Out per shot, then transcodes and names all deliverables per the studio spec, runs automated QC, and exports spreadsheets.
 
-Read `PRD.md` first, then the docs it points to. The docs are the spec. When code and docs disagree, fix one and say which.
+Read `PROGRESS.md` section 1 first: it is the handoff record, it says what is built, what is next and what was decided, and it is written to be picked up cold. Then `PRD.md` and the docs it points to.
+
+The docs are the spec. `PROGRESS.md` is the state. When code and docs disagree, fix one and say which; when `PROGRESS.md` disagrees with either, it is the one that is stale.
+
+**Update `PROGRESS.md` in the same commit as the work it describes.** A handoff written from memory at the end of a session is the thing it exists to prevent.
 
 ## Ground rules
 - Core logic lives in `proingest/core/` and must not import Qt. The UI in `proingest/ui/` is a thin layer over core. Everything in core must be testable headless.

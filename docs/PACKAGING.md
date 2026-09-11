@@ -18,7 +18,7 @@ for why it cannot start on the current dev machine.
   `.pibatch` files through its own dialogs, not through Launch Services.
 - `LSApplicationCategoryType` is `public.app-category.video`.
 - **The build is arm64 only, and that is now a decision rather than an assumption** (OQ-24,
-  confirmed 2026-09-11). Do not spend installer budget on a universal2 build. An Intel Mac
+  confirmed 2026-09-10). Do not spend installer budget on a universal2 build. An Intel Mac
   cannot run it, and needs no handling here: macOS refuses to launch an arm64-only bundle
   itself, with a better message than this tool could print. The one place the architecture
   leaks is running from source on an Intel Mac, where `resolve_tool` hands back the bundled
@@ -127,7 +127,7 @@ also per-user and need no elevated permissions, which matches the single-user de
 
 ## First run
 
-- **Do not detect the Google Drive mount.** OQ-25 was resolved by the user on 2026-09-11:
+- **Do not detect the Google Drive mount.** OQ-25 was resolved by the user on 2026-09-10:
   the editor points at a source root and a delivery root with a folder chooser each, both of
   which happen to be on a Drive mount, and the tool asks rather than guesses. Nothing probes
   `~/Library/CloudStorage/GoogleDrive-*/My Drive` or `/Volumes/GoogleDrive`, and there is no
