@@ -10,9 +10,9 @@ commit.
 
 **State at 2026-09-11. M3 is complete.** M1, M2 and M3 are done; M4 is next and has
 not been started. Working tree clean apart from two deliberately untracked files
-(section 8). 570 tests passing, `ruff` and `mypy --strict` clean. M3.5, the reference
-encodes, landed last; the witness cam half of OQ-5 was answered by the user and recorded
-in `3dd41ca`, which changed docs and a docstring only.
+(section 8). 573 tests passing, `ruff` and `mypy --strict` clean. M3.5, the reference
+encodes, landed first, then four open questions were answered in a row; the only one that
+changed code was OQ-27, which fixed an encode bug M3.5 had shipped.
 
 **The suite now runs on the target platform.** First green CI run on a `macos-latest`
 arm64 runner: 547 passed in 16.85s, lint and types clean, against the bundled
@@ -26,8 +26,10 @@ it cost, which was much less than it might have been because core never imported
 never hardcoded a Windows path. Windows moved to the v02 backlog. Read that entry before
 touching packaging, settings paths or the reference encodes.
 
-**Nothing is blocked.** OQ-25 was answered by the user on 2026-09-11 and is in section 6;
-it removed a first-run feature rather than adding one.
+**Nothing is blocked.** OQ-5, OQ-20, OQ-25 and OQ-27 were all answered by the user on
+2026-09-11 and are in section 6. Two of them removed planned work rather than adding any;
+OQ-20 added one new QC rule ID, QC-057, to be built with the rest in M4; and OQ-27 found a
+real bug in the encode that had already shipped. **573 tests.**
 
 Verify the state before changing anything:
 
@@ -207,13 +209,49 @@ M3 detail:
 The stringout moved off this table: it is M6 and always was. The M3.5 row said "ref
 mp4 and stringout" and that was a mistake in the row, not a change of plan.
 
-Tests by file: naming 115, render 60, planner 55, frames 55, media 46, models 37,
-ffmpeg 37, timeline 33, exr 29, scan 25, qc 22, batchfile 18, resize 16, cli 16,
+Tests by file: naming 115, render 62, planner 55, frames 55, media 46, ffmpeg 38,
+models 37, timeline 33, exr 29, scan 25, qc 22, batchfile 18, resize 16, cli 16,
 color 6.
 
 ---
 
 ## 6. Decisions taken
+
+**Audio runs cut point to cut point (OQ-27, answered 2026-09-11).**
+
+- If a clip has audio the wav starts where the picture starts and ends where it ends.
+  `render._audio_skip` assumed exactly that and is confirmed rather than changed.
+- **The half that mattered was "ends with".** The wav does not run past the delivered
+  range, so extending Out into the handles outruns it, and FR-5 says extending Out is how
+  a shot gets longer. `-shortest` ends the output at whichever stream finishes first, so
+  that truncated the picture: 24 frames asked for, 12 delivered, measured. The M3.5 frame
+  count check caught it, but it would have failed a legitimate render.
+- `-af apad` with `-shortest` is one idiom, not two options. The pad makes the audio
+  endless so the shortest stream is always the picture, which `-frames:v` bounds. Audio
+  that runs out becomes silence, which is the honest answer for a shot extended past the
+  sound. Both directions are pinned by tests.
+- QC-043 now has an expectation rather than a guess, and the same warning means two
+  different things: before an edit a malformed turnover, after an edit the editor's own
+  trim, since the wav deliverable is a byte copy and is never trimmed.
+
+**The lens grid is manual in v01 (OQ-20, answered 2026-09-11).**
+
+- It arrives as **a folder in the turnover package**, not a clip on the timeline, and the
+  editor moves it to the delivery root and renames its files themselves. The tool neither
+  plans nor writes one.
+- **The folder half is what dissolved the question.** All three undecided things assumed a
+  timeline clip. The scan iterates clips, so it will never meet a lens grid and the QC-010
+  it was supposedly going to raise cannot happen; and with no deliverable planned there is
+  no show to file it under and nothing to version. That entry was carried for weeks on a
+  premise nobody had checked.
+- Not silent, in two places, because the studio's sheet marks the lens grid **Required**
+  and an unreminded manual step is a forgotten one. QC-054 is reworded from "clip" to
+  "folder" and stays a warning for a turnover that has none; **QC-057 is new**, info, for
+  a turnover that has one. Neither is implemented: both are M4 with the rest of the
+  registry.
+- `naming.lens_grid_png` and `naming.parse_lens_grid_name` stay, built and tested. They
+  are the spelling the editor now types by hand, and a tool that can check a name it no
+  longer writes costs nothing to keep.
 
 **The tool asks where the files are; it does not look (OQ-25, answered 2026-09-11).**
 
@@ -572,12 +610,6 @@ Nothing blocks the next task. These are live, in rough priority order:
   exactly this reason) will disagree with the reference. Whoever flips the colour setting
   should read this line first.
 
-- **OQ-20, the lens grid deliverable, is not built.** It is the one row of the type
-  table M2 does not cover. Three things are undecided and none can be settled from the
-  docs: the scan does not recognise a lens grid clip at all (it fails the shot naming
-  regex and lands as QC-010), a lens grid is turnover-level so it carries no show to
-  place it under `_turnovers/`, and NAMING_SPEC section 4 versions per shot and says
-  nothing about a per camera/lens/mm deliverable. Nothing downstream depends on it.
 - **Nothing stops a non 16:9 source being stretched.** `render._fit` resamples to the
   target size, so a source of the wrong aspect would be squashed rather than
   letterboxed. COLOR_AND_FORMAT section 4 says such a row is blocked by QC-023 and only

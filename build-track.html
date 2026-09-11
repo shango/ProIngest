@@ -284,11 +284,11 @@
       <div class="stat-l">Milestones done</div>
     </div>
     <div class="stat">
-      <div class="stat-n good">570</div>
+      <div class="stat-n good">573</div>
       <div class="stat-l">Tests, Linux + macOS</div>
     </div>
     <div class="stat">
-      <div class="stat-n">20<span style="color:var(--faint);font-size:17px">/27</span></div>
+      <div class="stat-n">18<span style="color:var(--faint);font-size:17px">/27</span></div>
       <div class="stat-l">Questions open</div>
     </div>
     <div class="stat">
@@ -336,8 +336,9 @@
           <div class="gate">
             One version per shot folder, resolved at plan time so a re-delivery never
             overwrites. Job kinds reuse the output-name parser's vocabulary, which makes
-            QC-151 a direct comparison later. The lens grid row of the type table is the one
-            gap, held as OQ-20.
+            QC-151 a direct comparison later. The lens grid row of the type table is
+            deliberately empty: it arrives as a folder rather than a clip and the editor moves
+            and renames it by hand in v01, so the planner has nothing to plan. OQ-20.
           </div>
         </div>
       </div>
@@ -529,11 +530,6 @@
             <td class="st"><span class="tag open">Open</span></td>
           </tr>
           <tr>
-            <td class="id">OQ-20</td>
-            <td>Lens grid: not recognised by the scan, no show to file it under, no version scope</td>
-            <td class="st"><span class="tag open">Open</span></td>
-          </tr>
-          <tr>
             <td class="id">OQ-21</td>
             <td>Alpha from a container source: what counts as a real one, and whether a conformed plate ever has one</td>
             <td class="st"><span class="tag open">Open</span></td>
@@ -558,10 +554,15 @@
             <td>Which metadata the AD and supervisor actually want in the new pane</td>
             <td class="st"><span class="tag open">Open</span></td>
           </tr>
-          <tr>
+          <tr class="resolved">
             <td class="id">OQ-27</td>
-            <td>Does a turnover's wav start where its picture does? Sound on a trimmed reference depends on it</td>
-            <td class="st"><span class="tag open">Open</span></td>
+            <td>Audio runs cut to cut, the same span as picture - and a short wav was truncating it</td>
+            <td class="st"><span class="tag ok">Resolved</span></td>
+          </tr>
+          <tr class="resolved">
+            <td class="id">OQ-20</td>
+            <td>Lens grid - a folder in the package, moved and renamed by hand in v01</td>
+            <td class="st"><span class="tag ok">Resolved</span></td>
           </tr>
           <tr class="resolved">
             <td class="id">OQ-25</td>
@@ -659,6 +660,42 @@
         </p>
       </div>
     <div class="notes">
+      <div class="note">
+        <h3>Answering a question about sound found a bug in the picture</h3>
+        <p>
+          The reference mp4s mux the shot's audio, and it was an open question whether a
+          turnover's sound covers the same span as its picture. The editor confirmed it does,
+          cut point to cut point - which sounded like a confirmation and was actually a
+          warning. If the sound <b>ends</b> with the picture, then an editor lengthening a shot
+          into its handles runs past the end of the audio, and lengthening a shot that way is
+          the documented way to do it.
+        </p>
+        <p>
+          ffmpeg was told to end the file when the shorter of the two streams ran out, so in
+          that case <b>it was cutting the picture short</b>: 24 frames asked for, 12 delivered.
+          The check added last week caught it rather than shipping it, but it would have failed
+          a perfectly good render. The audio is now padded with silence instead, so the picture
+          always wins and a wav that overruns is still trimmed. Both directions are pinned by
+          tests.
+        </p>
+      </div>
+      <div class="note">
+        <h3>A question carried for weeks rested on a premise nobody had checked</h3>
+        <p>
+          The lens distortion chart was the one row of the delivery table the tool did not
+          produce, and three things about it looked undecided: the scan not recognising one,
+          nothing to file it under, and no versioning rule for it. All three assumed it arrived
+          as a clip on the timeline. <b>It does not - it comes as a folder in the turnover
+          package</b>, and the scan only ever looks at clips, so it was never going to meet
+          one. The question dissolved rather than being answered.
+        </p>
+        <p>
+          For this version the editor moves that folder across and renames it themselves. The
+          tool is not silent about it, since the studio marks the lens grid Required: it warns
+          when a turnover has none, and says so when there is one, because a manual step nobody
+          is reminded of is one that gets forgotten.
+        </p>
+      </div>
       <div class="note">
         <h3>The tool asks where the files are rather than hunting for them</h3>
         <p>
@@ -849,7 +886,7 @@
   <footer>
     <b>Source of truth</b> &middot; PROGRESS.md, docs/OPEN_QUESTIONS.md, PRD.md section 9<br>
     <b>Verify</b> &middot; pytest &middot; ruff check . &amp;&amp; mypy proingest &middot; python -m proingest scan &lt;folder&gt;<br>
-    <b>Last updated</b> &middot; 11 September 2026, M3 complete and OQ-25 closed. Next: M4, QC rules and exports
+    <b>Last updated</b> &middot; 11 September 2026, M3 complete, four questions closed. Next: M4, QC rules and exports
   </footer>
 
 </div>
