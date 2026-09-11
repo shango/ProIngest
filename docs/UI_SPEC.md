@@ -8,7 +8,7 @@ PySide6 6.7+. Dark theme in the spirit of DaVinci Resolve: near-black panels, th
 +------------------------------------------------------------------+
 | Toolbar: [New] [Open] [Save]  | [Add Turnover] [Scan] [Run] [Stop] | [Export] [Settings]   |
 +------------------------------------------------------------------+
-| Batch bar: batch name, delivery root path (click to change), TC toggle [Source|Record], search box |
+| Batch bar: batch name, delivery root path (click to change), In/Out toggle [Frames|Source TC|Record TC], search box |
 +------------------------------------------------------------------+
 |  +-----------+  +-----------+  +-----------+  |  COLOUR          |
 |  |    IN     |  |  CENTER   |  |    OUT    |  |  exposure  ----o |
@@ -48,6 +48,7 @@ Frozen left: status dot, Shot Code (editable), Elem.
 Scrolling: Source file, Res, FPS, In (editable), Out (editable), Duration, Max Avail, Audio (icon: none / one / many), Side files (icons: HDRI, camData, stills), Version, Progress, Notes (editable, free text, goes to tracker).
 
 - **The In/Out display toggle in the batch bar has three states, not two: `Frames`, `Source TC`, `Record TC`.** It sets what the In and Out cells show as their primary value for the whole list, and it sets how a typed timecode is interpreted (source or record) when either TC state is selected.
+- **`Frames` is the default.** The frame number is what the model actually holds: frame math is integer throughout, In and Out *are* frame numbers, the QC rules quote them, the delivered EXR sequence is numbered by them, and the viewers step by them. Timecode is derived at the boundary and never stored. Opening on the derived value would show the editor a translation of the thing they are about to edit rather than the thing itself. The choice is remembered per batch, so an editor who works in source TC sets it once.
 - Secondary line: whichever representation is not primary sits under it in smaller text, so nothing is ever hidden, only demoted. In `Frames` the secondary is source TC; in either TC state it is the source frame number. Row height accommodates two lines.
 - The editor reads frames and timecode at different moments, which is why frames is a first-class state of this control rather than only the secondary line: a frame number is what gets typed into the In/Out cells and what a VFX vendor quotes back, and a timecode is what the AD and the edit talk in. Section 5 accepts both as input whatever this is set to.
 - Turnover group headers are rows in the same view (QTreeView with a flat two-level model), collapsible, showing counts and aggregate status.
