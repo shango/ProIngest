@@ -136,10 +136,11 @@ A single window with a left section list and right form, like Resolve's project 
   convention strong enough that its absence reads as a bug.
 - Remembers window geometry and dock state per user, in
   `~/Library/Application Support/ProIngest` (see PACKAGING.md).
-- **File dialogs default to the Google Drive mount if it can be found.** There is no `G:` on
-  macOS; the mount is discovered by probing
-  `~/Library/CloudStorage/GoogleDrive-*/My Drive` first, then `/Volumes/GoogleDrive`. When
-  neither exists the dialog opens at the last used folder. OQ-25.
+- **Nothing detects where Google Drive is mounted.** OQ-25 is resolved: the editor points at
+  the two roots in section 13 and both happen to be on a Drive mount. File dialogs open at the
+  last used folder. There is no `G:` on macOS and there is also no probing of
+  `~/Library/CloudStorage` or `/Volumes`: a wrong guess is worse than no guess, because it
+  opens the dialog somewhere plausible and empty.
 - Use `QStandardPaths` rather than building any of these paths by hand.
 
 ## 12. Metadata pane
@@ -207,3 +208,23 @@ it is hidden rather than shown empty.
   belongs in the pane except the QC summary.
 - **Not the frame viewer.** That is the v02 item in PRD section 10 and needs a decoded frame
   cache. The pane is text.
+
+## 13. Source root and delivery root
+
+Two folder choosers, and they are the only thing the tool knows about where files live.
+OQ-25.
+
+| root | chosen where | what it means |
+|---|---|---|
+| Source root | toolbar, `Add Turnover` | The folder turnovers are added from. The chooser opens here, and the turnover folder the editor picks beneath it is what gets scanned and indexed |
+| Delivery root | batch bar, click the path | Where `<show>/<shot>/` is written, and where the tracker and QC spreadsheets land |
+
+- Both are remembered **per batch**, so reopening a `.pibatch` restores them and a second batch
+  on another drive does not disturb the first.
+- Both are plain paths. Nothing validates that they are on a Drive mount, because nothing
+  needs to be: a local disk, an external volume and a Drive folder behave the same here.
+- A root that has gone missing when a batch is reopened (drive not mounted, folder moved) is
+  reported and the chooser reopens. It is not silently recreated: writing a delivery tree into
+  a stale path is how deliverables get lost.
+- Adding a turnover from outside the source root is allowed and just updates the remembered
+  root. The root is a starting point, not a fence.

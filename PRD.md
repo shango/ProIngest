@@ -58,10 +58,10 @@ Per shot, into a delivery root the user chooses (default proposed layout in `doc
 ## 6. User flow
 
 1. New Batch or Open Batch (`.pibatch` JSON).
-2. Add Turnover: pick the turnover folder, tool finds the `.otio` (or user picks it). Repeat for up to N turnovers in a batch.
+2. Add Turnover: pick the turnover folder, tool finds the `.otio` (or user picks it). The chooser opens at the batch's source root and picking outside it just moves the root. Repeat for up to N turnovers in a batch.
 3. Scan. Tool parses the timeline, matches each clip to media, probes media with ffprobe, resolves audio, discovers side files, runs pre-flight QC. List populates, grouped by turnover. Problem rows are colored with a tooltip and a QC panel entry.
 4. Review. Editor works down the list with the keyboard, adjusting In/Out, fixing names, marking clips as skipped. Duration and validation update live. Selecting a row fills the metadata pane on the right with everything known about that clip (FR-14), which is what the AD and supervisor read over the editor's shoulder. Everything autosaves to the batch file.
-5. Run. Editor picks the delivery root (remembered per batch), presses Run. Progress per row and overall. Rows go green when all their deliverables pass post-render QC.
+5. Run. Editor picks the delivery root (remembered per batch, the second of the two folder choosers in `docs/UI_SPEC.md` section 13), presses Run. Progress per row and overall. Rows go green when all their deliverables pass post-render QC.
 6. Export. Tracker and QC spreadsheets are written to the delivery root. Editor can re-open the batch later and re-run only what failed.
 
 ## 7. Functional requirements

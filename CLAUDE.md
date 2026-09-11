@@ -17,7 +17,7 @@ Read `PRD.md` first, then the docs it points to. The docs are the spec. When cod
 - EXR output uses the `OpenEXR` Python bindings (3.2+ numpy API), not ffmpeg. ffmpeg does have an `exr` encoder, but it only offers none/rle/zip1/zip16 compression and cannot write the DWAA the spec requires, nor a `timeCode` header attribute.
 - Write tests alongside features. Synthetic test media is generated with ffmpeg in a pytest fixture, never committed.
 - macOS on Apple Silicon is the target for v01; Windows moved to v02. Use `pathlib` everywhere. Assume paths may be on a slow network mount; avoid repeated stat calls in loops (scan once, cache).
-- Never hardcode a platform path. There is no `G:`: the Google Drive mount is discovered, and settings and logs go to `~/Library/Application Support/ProIngest` and `~/Library/Logs/ProIngest`. See `docs/PACKAGING.md`.
+- Never hardcode a platform path. There is no `G:`, and the Google Drive mount is not detected either: the user points at a source root and a delivery root and both are remembered (OQ-25, `docs/UI_SPEC.md` section 13). Settings and logs go to `~/Library/Application Support/ProIngest` and `~/Library/Logs/ProIngest`. See `docs/PACKAGING.md`.
 - CI runs the full suite on an arm64 macOS runner, so most work needs no Mac. If you write something whose behaviour can only be confirmed by a person on a Mac, add a line to `docs/MAC_SESSION.md` **in the same commit**. A checklist assembled later from memory is what that file exists to prevent.
 
 ## Style

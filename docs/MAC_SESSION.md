@@ -72,7 +72,6 @@ Append to this as M5 and M6 are built.
       known-awkward part. `UI_SPEC.md` section 2, `PROGRESS.md` section 9.
 - [ ] Metadata pane: width and section states persist, long paths elide in the middle, values
       copy. `UI_SPEC.md` section 12.
-- [ ] File dialogs open at the Google Drive mount when one exists. OQ-25.
 - [ ] Dark theme and font rendering at Retina, including the IBM Plex fallback chain.
 - [ ] Window geometry and dock state persist to `~/Library/Application Support/ProIngest`.
 - [ ] Logs land in `~/Library/Logs/ProIngest` and rotate.
@@ -86,8 +85,11 @@ Only this machine has the turnovers and the Drive mount, so none of this can be 
 Treat it as a working session with the editor rather than a delivery.
 
 - [ ] Install, strip quarantine, walk the first-run experience.
-- [ ] Google Drive mount detection finds the real path. OQ-25, and settles whether the FR-2
-      path map is needed at all.
+- [ ] The editor picks a source root and a delivery root on their Drive mount and both stick
+      across a restart. OQ-25 removed the detection, not the need to see this work once.
+- [ ] A turnover from a **Windows** shooter resolves its media. Their OTIO can carry `G:\...`
+      paths that mean nothing here, so this is what settles whether the FR-2 path map earns its
+      place or the filename search over the source root covers it on its own.
 - [ ] Scan a real turnover from each of the three shooters. OQ-1 folder structure, OQ-3 what
       the consolidated media actually is, OQ-4 how stills and BTS are named.
 - [ ] 100 shots scanned in under 60 seconds from a warm mount. `PRD.md` section 8.

@@ -50,7 +50,8 @@ minimum lease Apple's licence forces, which makes preparation, not price, the th
 optimising.
 
 Everything else in this document is still written from the documentation rather than from a
-machine anyone has used. Assumptions that need a Mac to settle are flagged as OQ-22 to OQ-25.
+machine anyone has used. Assumptions that need a Mac to settle are flagged as OQ-22 to OQ-24.
+OQ-25 no longer needs one: the tool asks for its two roots instead of looking for them.
 
 ## ffmpeg
 
@@ -118,12 +119,12 @@ also per-user and need no elevated permissions, which matches the single-user de
 
 ## First run
 
-- **Detect the Google Drive mount** and offer it as the default browse location. There is no
-  `G:` on macOS. Google Drive for desktop mounts at
-  `~/Library/CloudStorage/GoogleDrive-<account>/My Drive` on current versions and at
-  `/Volumes/GoogleDrive` on older ones, so both are probed, newest convention first. The
-  account name varies per machine, so the `<account>` segment is globbed rather than assumed.
-  OQ-25.
+- **Do not detect the Google Drive mount.** OQ-25 was resolved by the user on 2026-09-11:
+  the editor points at a source root and a delivery root with a folder chooser each, both of
+  which happen to be on a Drive mount, and the tool asks rather than guesses. Nothing probes
+  `~/Library/CloudStorage/GoogleDrive-*/My Drive` or `/Volumes/GoogleDrive`, and there is no
+  `G:` on macOS to fall back to either. First run therefore opens its dialogs at the user's
+  home folder and remembers what was picked. `UI_SPEC.md` section 13.
 - Detect `h264_videotoolbox` and show a one-time notice of whether hardware encoding is
   available. Presence in the build is not proof it opens on the hardware, so the check is an
   actual trial encode of a few frames, not a string match on `-encoders`. OQ-23.
