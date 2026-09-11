@@ -2,9 +2,9 @@
 
 ## 1. Colour policy (v01)
 
-**Colour is finished before the tool runs. A final grade session delivers one CLF per shot,
-the tool applies it to everything it writes, and the plate is delivered graded, scene linear
-ACEScg.**
+**Colour is finished before the tool runs. A final grade session delivers a CDL per shot
+inside its updated final EDL, the tool applies it to everything it writes, and the plate is
+delivered graded, scene linear ACEScg.**
 
 This **supersedes the policy of 2026-09-11**, which itself superseded OQ-17. That version had
 the shooters delivering ACEScct, the CDL read out of an EDL, an ungraded plate with the CDL
@@ -19,8 +19,9 @@ a record of what the shooter intended, nothing more. **The tool never renders a 
 from it.**
 
 **Final.** The AD meeting decides the look, and that decision goes into a colour session in
-DaVinci Resolve. The session exports a CLF per shot, and those CLFs are what the tool ingests.
-Final colour is applied before every export, the references and the plates alike.
+DaVinci Resolve, where Ben works with the AD. That session exports an updated final EDL with a
+**CDL per shot** inside it, and that CDL is what the tool ingests. Final colour is applied
+before every export, the references and the plates alike.
 
 The consequence to be clear about: **a batch cannot produce final deliverables until the
 colour session for it exists.** Scanning, review and In/Out work all happen without it, because
@@ -39,29 +40,31 @@ correct if they hold.
 | input transform | the studio standard log encoding the shooters deliver (OQ-39) |
 | grade | **primary only.** No windows, no qualifiers, no tracked secondaries |
 
-**Primary only is a hard requirement rather than a stylistic preference.** A CLF is a static
-transform of a pixel value. A window, a qualifier or a tracked secondary is a function of
-where the pixel is or what is around it, and none of that survives being written to a CLF.
-A session that used one would export a CLF that silently omits it, and the tool would deliver
-a grade that is not the grade that was approved.
+**Primary only is a hard requirement rather than a stylistic preference, and the CDL makes it
+stricter than it sounds.** A CDL says exactly four things: slope, offset and power per channel,
+and one saturation. Nothing else fits in the file. A window, a qualifier or a tracked secondary
+is a function of where the pixel is, and cannot be written at all. **Neither can a curve, a log
+wheel, or a hue versus saturation curve**, and those are ordinary primary tools that a colourist
+would not think of as a secondary. Anything outside those four controls is silently absent from
+the export, and the tool would deliver a grade that is not the grade that was approved, with
+nothing anywhere to say so.
+
+The practical safeguard is that the session also exports the stringout with the real look on it.
+**If a reference mp4 from this tool does not match that stringout, something did not survive the
+CDL**, and that is the comparison to make the first time this runs (OQ-31).
 
 The session exports:
 
 - the **updated final EDL**, carrying timecode, shot identity and the approved grade as
-  `*ASC_SOP` / `*ASC_SAT` comment lines. This supersedes the shooters' offline EDL and their
-  offline CDL, and it is the conform the tool works from.
-- a **`.clf` per shot**, encoding `ACEScct in > CDL + look > linear ACEScg out`, **if the grade
-  is more than a CDL can express**. See below.
+  `*ASC_SOP` / `*ASC_SAT` comment lines, one CDL per shot. This supersedes the shooters' EDL
+  and their offline CDL, and it is what the tool conforms and colours from.
 - the **stringout**, a ProRes QT with the look and burn-ins. The tool does not build one.
 
-**Whether the grade arrives as a CDL or as a CLF is OQ-40 and it is not settled.** A CDL says
-slope, offset and power per channel plus one saturation, and nothing else. That is very close
-to the primary only constraint above, which is why a CDL may well be sufficient here. It is not
-the whole of a Resolve primary though: curves, log wheels and hue/saturation curves are primary
-tools and none of them survives being written as a CDL, while a CLF carries all of them exactly.
-Until it is answered, everything below that says "the grade" means whichever of the two is
-carrying it, and the pipeline shape is identical either way: one OCIO transform, applied in
-ACEScct, between the input transform and the branch.
+**A `.clf` per shot was specified on 2026-09-12 and then removed the same day** (OQ-40), when
+the user confirmed the tool takes its CDL from Ben's session. Nothing is lost by it as long as
+the grade stays inside what a CDL can say, which is the constraint above. The gain is real: no
+sidecar to define, no CLF loader, and the EDL reader `core/timeline.py` already has does the
+work.
 
 ### What arrives
 
@@ -69,7 +72,7 @@ ACEScct, between the input transform and the branch.
 |---|---|
 | picture | **ProRes 4444**, one file per shot, with handles beyond the cut |
 | encoding | **one studio standard log encoding**, the same for every shooter and every camera (OQ-39) |
-| grade | one `.clf` per shot, from the colour session |
+| grade | one CDL per shot, inside the colour session's final EDL |
 | conform | EDL or XML from the colour session: timecode and shot identity |
 
 **The source encoding is a studio standard and is the same on every file, whatever anybody
@@ -84,10 +87,10 @@ produce plausible looking wrong images.
 
 **Which log is OQ-39**, and the answer changes how much work there is rather than whether it
 works. If the studio standard is **ACEScct**, the tool applies no input transform at all:
-the colour session's timeline is ACEScct and its CLF starts there, so decode leads straight
-into the CLF with nothing in between that could be silently wrong. If it is a camera vendor
-log adopted as the house format, the tool applies **one fixed transform** from that encoding
-to ACEScct ahead of the CLF. Either way it is a constant, not a per shot decision.
+the colour session's timeline is ACEScct and its CDL was authored there, so decode leads
+straight into the grade with nothing in between that could be silently wrong. If it is a camera
+vendor log adopted as the house format, the tool applies **one fixed transform** from that
+encoding to ACEScct ahead of the grade. Either way it is a constant, not a per shot decision.
 
 ### The chain
 
@@ -101,7 +104,7 @@ studio standard log ProRes 4444 (one per shot)
         |
   input:  studio log -> ACEScct         (one constant, identity if the standard is ACEScct)
         |
-     CLF:  CDL + look                                 (per shot, from the colour session)
+     CDL:  slope, offset, power, saturation        (per shot, from the final EDL)
         |
    +----+--------------------------------------------+
    |                                                  |
@@ -110,7 +113,7 @@ studio standard log ProRes 4444 (one per shot)
  -> linear ACEScg                                 stays in ACEScct
    |                                                  |
  resize in numpy, unbounded                       ACES output transform -> sRGB
-   |                                              ... input transform, CLF and output
+   |                                              ... input transform, CDL and output
  EXR: ACEScg, AP1, graded                             collapsed into one 3D LUT
                                                       |
                                                   ffmpeg lut3d, tetrahedral, resize bounded
@@ -135,7 +138,7 @@ keeping the view branch in log is what lets ffmpeg do the reference resize in a 
 with no frames crossing into Python.
 
 **The whole view branch collapses into one 3D LUT per shot**, generated in core: ACEScct in,
-sRGB display out, with the CLF and the ACES output transform inside it. ffmpeg applies it with
+sRGB display out, with the CDL and the ACES output transform inside it. ffmpeg applies it with
 `lut3d`; the viewers in UI_SPEC section 14 apply the same cube in numpy. They cannot drift
 apart, which is the failure mode this codebase keeps nearly hitting. OQ-7 was the same problem
 in the resampler and needed a measured test to settle. A 3D LUT is accurate here because its
@@ -151,17 +154,15 @@ that work done against a graded plate stops matching the moment the grade moves 
 
 **The second half of that argument no longer applies**, because this workflow finishes the DI
 before the turnover is ingested. There is no later grade for the plate to stop matching. The
-first half still applies, and it becomes a requirement on the CLF rather than a reason to
-refuse:
+first half still applies, and the CDL disposes of it almost for free:
 
-**The CLF must end in scene linear ACEScg and must contain no display rendering.** A CLF whose
-chain includes an ACES output transform, a film emulation, or any tone curve that lands in a
-display range produces a file that is display referred and says it is linear. That file grades
-and comps wrong, and it looks completely normal until someone tries to work on it. The tool
-probes for it and raises QC-039, because the alternative is trusting a filename.
+**A CDL cannot contain a display rendering.** Slope, offset, power and saturation have no way
+to express an output transform or a film emulation, so the danger that a CLF carried, a plate
+that is display referred and claims to be linear, cannot arise. This was QC-039's whole reason
+for existing and it goes with the CLF.
 
-Within that constraint a primary grade in ACEScct, converted back to linear, keeps its float
-headroom. Values above 1.0 survive it.
+A CDL applied in ACEScct and converted back to linear keeps its float headroom. Values above
+1.0 survive it.
 
 ### EXR metadata
 
@@ -173,22 +174,20 @@ was done to it.
 - `proingest/colorspace` states `ACEScg`.
 - `proingest/source_encoding` names the log encoding the source was read as, and therefore
   the input transform that was applied.
-- `proingest/clf` names the CLF, and `proingest/clf_hash` its digest. **The hash is the
-  point**: it is what lets anyone establish, later and without the session, exactly which
-  version of the grade is in these pixels. A CLF that is re-exported and re-delivered gets a
-  different hash, and the deliverable that was rendered from the old one is findable.
+- `proingest/cdl` carries the CDL twice: as machine readable slope, offset, power and
+  saturation attributes, and as the **original `*ASC_SOP` / `*ASC_SAT` text** exactly as the EDL
+  spelled it. **The original text is the point**: it is what lets anyone establish, later and
+  without the session, precisely which grade is in these pixels, rather than what this tool
+  re-serialised. `proingest/cdl_source` names the EDL it came from.
 - `proingest/tool_version`, the shot ID, the frame range and the source timecode, per the
   proposal's header list.
-- **What was applied is written, whichever it was** (OQ-40): a CLF by name and hash, a CDL by
-  its slope, offset, power and saturation values and by its original text. The point is the
-  same either way, which is that the file says what was done to it.
 
 ### OpenColorIO
 
 Transforms come from **OpenColorIO**, not from hand written curves and matrices.
 `Config.CreateFromBuiltinConfig(...)` carries the ACES transforms inside the wheel, so **no
 config files ship**. The macOS arm64 wheel is 5.7 MB, which is nothing against the 300 MB
-budget in PRD section 8, and a Windows wheel exists for v02. `FileTransform` loads the CLF and
+budget in PRD section 8, and a Windows wheel exists for v02. `CDLTransform` applies the CDL and
 `ColorSpaceTransform` supplies the input transform and the output transform.
 
 The session is ACES 1.3, so the config is pinned to an ACES 1.3 built-in config rather than
@@ -244,7 +243,7 @@ look very nearly right.
 
 | output | spec |
 |---|---|
-| raw EXR | OpenEXR 2 scanline, DWAA compression level 45, half float RGB (alpha dropped unless source has real alpha, then RGBA), data window = display window, frame numbers start 1001 (OQ-35). **ACEScg, scene linear, AP1 chromaticities, graded with the shot's CLF**, with the source encoding, the CLF name and the CLF hash carried in the header (section 1) |
+| raw EXR | OpenEXR 2 scanline, DWAA compression level 45, half float RGB (alpha dropped unless source has real alpha, then RGBA), data window = display window, frame numbers start 1001 (OQ-35). **ACEScg, scene linear, AP1 chromaticities, graded with the shot's CDL**, with the source encoding and the CDL, machine readable and as its original text, carried in the header (section 1) |
 | ref mp4 4k | 3840x2160, H.264 High, yuv420p, CRF 18 (x264 `-preset slow`) or `h264_videotoolbox` when hardware encoding is enabled, keyint 24, `-movflags +faststart`, AAC 192k if audio associated |
 | ref mp4 HD | same, 1920x1080 |
 | audio | as delivered. If the source is a wav, byte copy. If audio lives inside a container, extract to PCM 16 bit, same sample rate and channel count, no resampling. QC-044 if not 16 bit after extraction |
@@ -308,7 +307,7 @@ Editing:
 
 ```
 ffmpeg -i <src> -f rawvideo -pix_fmt gbrpf32le - | numpy frames
-    -> OCIO GroupTransform (input transform, CLF), tetrahedral
+    -> OCIO GroupTransform (input transform, CDL), tetrahedral
     -> float16 -> OpenEXR (DWAA, level 45)
 ```
 

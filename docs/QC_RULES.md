@@ -2,7 +2,14 @@
 
 Every rule has a stable ID, a phase, a severity, and a scope. Severity: `error` blocks the row from rendering (row auto-skipped, reason recorded); `warning` colors the row amber and is logged; `info` is logged only. All results appear in the QC log Deliverables sheet with pass/fail per rule.
 
-Rule IDs never change meaning. New rules get new numbers. A rule whose reason for existing goes
+Rule IDs never change meaning. New rules get new numbers. **The one exception is a rule revised on
+the same day it was written, before any code, log line or spreadsheet has used it**, which is what
+happened to QC-009, QC-019 and QC-039 on 2026-09-12: they were written for a CLF in the morning
+and the grade turned out to be a CDL. Nothing anywhere had ever referred to them, so revising them
+costs nobody an ambiguous log line, and three retired numbers in a row for a file format that was
+never built would read as history that did not happen.
+
+A rule whose reason for existing goes
 away is marked **RETIRED** and its ID is left in the table rather than deleted, so a log line or
 a spreadsheet column from an older run still resolves to what it meant when it was written.
 
@@ -17,8 +24,8 @@ a spreadsheet column from an older run still resolves to what it meant when it w
 | QC-005 | info | turnover | Turnover folder name does not match `turnover###_MM_DD_YYYY_name` pattern; fields need manual entry |
 | QC-006 | RETIRED | | Was: no EDL carrying CDL found. The tool no longer reads CDL; the grade arrives as a CLF (COLOR_AND_FORMAT section 1). Replaced by QC-008. **The ID is not reused** |
 | QC-007 | RETIRED | | Was: CDL found but failed to parse. Replaced by QC-019, which asks the same question of a CLF. **The ID is not reused** |
-| QC-008 | error | turnover | No colour session package found for the turnover: no sidecar, or a sidecar naming no CLF for any row. Nothing final can be rendered. Scan and review are unaffected, which is the point of it being turnover scope and not batch scope: one turnover can be waiting on colour while another renders |
-| QC-009 | error | row | The CLF the sidecar names for this row is missing or unreadable. An error rather than a warning, and this is the deliberate reversal of retired QC-017: an ungraded plate used to be a lesser deliverable that was still watchable, and it is now the wrong pixels under the right filename |
+| QC-008 | error | turnover | No final EDL from the colour session, or one carrying no CDL at all. Nothing final can be rendered. Scan and review are unaffected, which is the point of it being turnover scope and not batch scope: one turnover can be waiting on colour while another renders. Distinct from QC-001, which is about the shooters' timeline |
+| QC-009 | error | row | No CDL in the final EDL matches this row (OQ-30). An error rather than a warning, and this is the deliberate reversal of retired QC-017, which said the same thing about the shooters' CDL and only warned: an ungraded plate used to be a lesser deliverable that was still watchable, and it is now the wrong pixels under the right filename |
 | QC-010 | error | row | Clip name does not match the naming regex |
 | QC-011 | warning | row | Duplicate clip name within the batch |
 | QC-012 | error | row | Media not found (referenced path missing and no unique filename match) |
@@ -28,7 +35,7 @@ a spreadsheet column from an older run still resolves to what it meant when it w
 | QC-016 | warning | row | Media path was remapped via path map (info for trust) |
 | QC-017 | RETIRED | | Was: clip has no matching CDL entry in the EDL. Replaced by QC-009. **The ID is not reused** |
 | QC-018 | warning | row | The container's own colour tags contradict the IDT the sidecar names. No standard transfer tag names a camera log encoding, so the sidecar is the authority and the decode is forced to match it (COLOR_AND_FORMAT section 2); this fires when what the file does claim disagrees. Information, not a veto. **Includes the range and matrix flags**, because a log signal carried as YCbCr with the wrong range decodes to crushed blacks and clipped whites that look almost right |
-| QC-019 | error | row | The CLF failed to load in OpenColorIO. Distinct from QC-009, which is about the file being there: this one is about it being a CLF. A malformed transform means the colour is unknown, and a deliverable rendered past it would silently ship the wrong look |
+| QC-019 | error | row | A CDL was found for this row but will not parse, or OpenColorIO refuses it. Distinct from QC-009, which is about there being no CDL at all: this one is about the one there being unusable. Colour that is unknown is worse than colour that is missing, because a deliverable rendered past it silently ships the wrong look |
 | QC-020 | error | row | Source pixel format unsupported for a log plate (8 bit, or 4:2:0) |
 | QC-021 | warning | row | Source is not the expected delivery format, which is ProRes 4444 or DNxHR 444, 4:4:4, camera log. A 4:2:2 variant decodes correctly and delivers usable work, but subsampled chroma in a log signal is stretched when it is linearised and shows on saturated edges. A source already in ACEScct or ACEScg lands here too: nothing is wrong with it, the IDT stage is simply a no-op |
 | QC-022 | error | row | Source codec not decodable |
@@ -48,7 +55,7 @@ a spreadsheet column from an older run still resolves to what it meant when it w
 | QC-036 | info | row | Shot code edited from original clip name |
 | QC-037 | RETIRED | | Was: colour adjusted from neutral, for the four per clip colour controls. **The controls are removed from v01** and there is nothing to report. **The ID is not reused** |
 | QC-038 | error | row | The studio standard source encoding named in Settings has no OpenColorIO equivalent, so no input transform can be built. Batch wide in practice rather than per row, because the encoding is one constant for every file (COLOR_AND_FORMAT section 1), but it is reported on the row because the row is what cannot render |
-| QC-039 | error | row | The CLF appears to contain a display rendering: probing it shows an output that is bounded or otherwise not scene linear ACEScg. The result would be a display referred file claiming to be linear, which comps wrong and looks completely normal until someone tries to work on it (COLOR_AND_FORMAT section 1) |
+| QC-039 | RETIRED | | Was: the CLF contains a display rendering. Written and retired on 2026-09-12 with the CLF itself. **A CDL cannot express a display rendering**, so the failure it guarded against cannot occur (COLOR_AND_FORMAT section 1). **The ID is not reused** |
 | QC-040 | warning | row | Plate (pl) has no associated audio clip |
 | QC-041 | warning | row | More than one audio clip overlaps the video clip |
 | QC-042 | error | row | Associated audio file missing or unreadable |

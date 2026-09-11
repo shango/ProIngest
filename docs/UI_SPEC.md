@@ -246,7 +246,7 @@ FR-16. Three viewers above the shot list showing the selected row.
 **There are no colour controls.** An earlier version of this section specified four sliders
 per clip, exposure, saturation, warm to cool and tint, as an AD notes layer that baked into
 the references. They are removed (PRD section 3, decided 2026-09-12): colour is authored in
-the colour session and arrives as a CLF, and a second place to author a grade is a second
+the colour session and arrives as a CDL, and a second place to author a grade is a second
 answer to a question that should only have one. QC-037 and OQ-32 went with them.
 
 ### The strip
@@ -310,5 +310,5 @@ the same validation, and shows the same QC results.
   image, not a broken icon.
 - Aux still and BTS rows are one frame, so all three viewers show the same frame and neither
   In nor Out steps. `is_picture_row` in `core/qc.py` already draws that line.
-- A row with no CLF (QC-009) cannot render, and views as log. The strip says so once, quietly,
+- A row with no CDL (QC-009) cannot render, and views as log. The strip says so once, quietly,
   and names the rule, so the editor does not go looking for a grade that has not arrived yet.

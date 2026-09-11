@@ -16,8 +16,7 @@ proingest/
     ffmpeg.py            # subprocess wrapper, command builder, progress parsing, hardware encoder detection
     exr.py               # EXR read/write (OpenEXR), DWAA, header checks
     resize.py            # antialiased Lanczos downscale for the EXR path
-    color.py             # OCIO pipeline: input transform, the shot's CLF, the viewing LUT
-    clf.py               # colour session package: sidecar read, CLF match per row, CLF hash
+    color.py             # OCIO pipeline: input transform, the shot's CDL, the viewing LUT
     preview.py           # single frame fetch with cache, for the FR-16 viewers
     render.py            # job execution, process pool, atomic writes, cancellation
     qc.py                # rule registry, phase A and B checks
