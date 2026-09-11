@@ -32,7 +32,7 @@ from memory, from a commit message, or from any file dated before 2026-09-12.
 |---|---|---|
 | 2026-09-10 | sources display referred, sRGB baked in, references apply no transfer | wrong |
 | 2026-09-11 | sources ACEScct, plate **ungraded**, CDL read from the EDL, four colour controls in the tool | superseded |
-| 2026-09-12 | colour finished before ingest, **CDL per shot from the session's final EDL**, plate **graded**, no controls, no stringout | current |
+| 2026-09-12 | colour finished before ingest, **CLF per shot applied**, plate **graded**, no controls, no viewers, no stringout | current |
 
 The mechanics survived both rewrites almost intact: ACEScg working space, OCIO for every
 transform, the plate branch unbounded in numpy, the view branch bounded in ACEScct and
@@ -52,9 +52,9 @@ section 1. In one paragraph: the shooters deliver **ProRes 4444 in one studio st
 encoding**, the same on every file whatever anybody shot on. Their CDL and their string-out
 are offline reference and **the tool reads neither**. After the AD meeting, a **colour session
 in Resolve**, where Ben works with the AD (ACES 1.3, ACEScct timeline, primary grades only),
-exports an **updated final EDL carrying one CDL per shot**, and that CDL is the approved look.
-The tool applies it to **everything it writes**, plates included, and the plate is therefore
-delivered graded.
+exports an **updated final EDL** (conform, the approved trims, and the CDL as `*ASC_SOP` /
+`*ASC_SAT` lines), **a `.clf` per shot**, and the stringout. The tool conforms from the EDL and
+**applies the CLF** to everything it writes, plates included, so the plate is delivered graded.
 
 ### What changed today, and where it lives
 
@@ -62,11 +62,13 @@ delivered graded.
 |---|---|
 | Colour is finished before ingest; the tool applies, never authors | COLOR_AND_FORMAT section 1, PRD section 3 |
 | The colour session's grade is what ships; the shooters' is superseded | COLOR_AND_FORMAT section 1, PRD FR-15 |
-| The grade is a **CDL in that EDL**; the CLF was specified and dropped the same day | OQ-40, closed |
+| The **CLF is applied**; the CDL travels beside it as the readable record | OQ-40, closed |
 | The session's **updated final EDL** is the conform the run uses | COLOR_AND_FORMAT section 1, PRD section 4 |
 | **The plate is graded**, reversing 2026-09-11 | COLOR_AND_FORMAT section 1, PRD section 5 |
 | Sources are one **studio standard log**, camera agnostic | COLOR_AND_FORMAT sections 1 and 2, OQ-39 |
-| **The four colour controls are removed** | PRD section 3 and FR-16, UI_SPEC section 14 |
+| **The four colour controls are removed**, then **the three viewers too** | PRD section 3 and FR-16, UI_SPEC section 14 |
+| Ben trims with the AD; his final EDL is the **approved cut** as well as the colour | COLOR_AND_FORMAT section 1, PRD FR-5 and FR-15 |
+| The tool keeps In/Out editing for the **one-off trim**, reported by QC-045 | PRD FR-5, QC-045 |
 | **The stringout is dropped**, M6 with it | PRD FR-9, UI_SPEC section 8, OQ-38 |
 | A batch cannot render until its colour session exists | PRD section 6, QC-008 |
 | OCIO `GroupTransform`, tetrahedral, pinned ACES 1.3 | COLOR_AND_FORMAT section 1, OQ-29 |
@@ -112,13 +114,13 @@ Net M4.5 is meaningfully smaller than yesterday's version.
 
 - **OQ-39, which log encoding is the studio standard.** ACEScct makes the input transform
   identity, which is the whole of M4.5.1. Anything else costs one fixed transform. Either way
-  M4.5.1 can be written against a constant.
-- **OQ-30, which EDL field identifies an event.** Back from the dead: it was superseded in the
-  morning when the grade was a CLF named by a sidecar, and it returned in the afternoon when the
-  grade became a CDL inside an EDL again. An EDL event identifies itself by reel name, by
-  `FROM CLIP NAME` and by source timecode, and Resolve populates those differently depending on
-  export settings. **Matching on the wrong one applies a neighbouring shot's grade, which looks
-  plausible and is wrong.** Wants one real EDL out of Ben's session.
+  M4.5.1 can be written against a constant. **This is the only one that gates starting.**
+- **OQ-30 and OQ-33, how an EDL event and a CLF each find their row.** The EDL is now the
+  conform, so getting its event matching wrong misplaces the approved In/Out; pairing the wrong
+  CLF applies a neighbouring shot's grade. Both look entirely plausible when wrong. An EDL event
+  identifies itself by reel name, by `FROM CLIP NAME` and by source timecode, and Resolve
+  populates those differently depending on export settings; a CLF is matched by whatever names
+  it. **One real export from Ben's session answers both**, along with OQ-29 and OQ-39.
 
 **OQ-35 is open and does not block anything**: frame numbers at 1001, as the studio spec sheet
 and QC-102 say, or derived from source timecode as the user's proposal said. The default is
@@ -145,9 +147,9 @@ and QC-102 say, or derived from source timecode as the user's proposal said. The
   machine's Ubuntu 6.1.1. `h264_videotoolbox` was confirmed to open and encode there, which
   answered half of OQ-23.
 - **40 open questions, 18 of them still open.** Closed on 2026-09-12: OQ-12, OQ-15, OQ-32,
-  OQ-33, OQ-34, OQ-37, OQ-38 and OQ-40. **OQ-30 was superseded and then un-superseded** on the
-  same day, as the grade went from CDL to CLF and back. New: OQ-35, OQ-36, OQ-39. OQ-29 is
-  mostly answered, since the colour session pins ACES 1.3.
+  OQ-34, OQ-37, OQ-38 and OQ-40. **OQ-30 and OQ-33 each closed and reopened within the same
+  day**, as the grade carrier went CLF, then CDL, then CLF again. New: OQ-35, OQ-36, OQ-39.
+  OQ-29 is mostly answered, since the colour session pins ACES 1.3.
 - **Everything through 2026-09-11 is pushed and CI is green on both runners.** Run
   34566217430: macOS arm64 in 56s, Linux in 1m17s. Pushing is still the user's call rather
   than an automatic step.
@@ -243,7 +245,7 @@ PDF viewer.
 | `core/qc.py` | rule registry: phase A, `RuleSettings`, `preflight`, phase B | 1325 |
 | `__main__.py` | `proingest scan` and `proingest run` CLI, `--rules` overrides | 322 |
 
-Not built yet: `core/clf.py`, `core/preview.py`, `core/exports.py`, `core/settings.py`, and
+Not built yet: `core/clf.py`, `core/exports.py`, `core/settings.py`, and
 everything under `proingest/ui/`. **`core/stringout.py` will not be built**: M6 is dropped
 (PRD FR-9). `naming.stringout_mp4` and `naming.normalize_shooter` are therefore reachable
 from tests only; they are kept deliberately, because the stringout name is now something a
@@ -283,8 +285,8 @@ Entry points worth knowing:
 | M2 | Naming and planning: type table, versioning, layout | complete, 66 tests |
 | M3 | Render | complete, 172 tests |
 | M4 | QC: all rules both phases, xlsx exports, `qc` CLI | M4.1 and M4.2 done, M4.3 pending |
-| M4.5 | Colour pipeline, core only. Studio log in, CDL applied, ACEScg out, the viewing LUT | **respecified 2026-09-12, not started** |
-| M5 | UI: the FR-14 metadata pane, plus the FR-16 viewers | not started |
+| M4.5 | Colour pipeline, core only. Studio log in, CLF applied, ACEScg out, the viewing LUT | **respecified 2026-09-12, not started** |
+| M5 | UI: the list, the FR-14 metadata pane, settings, log. **No viewers** | not started |
 | M6 | ~~Stringout with burn-ins~~ | **dropped 2026-09-12**, the colour session exports it |
 | M7 | Packaging: PyInstaller `.app`, dmg, Gatekeeper | not started, and needs a Mac (OQ-22) |
 | M8 | Polish, performance on a real turnover, docs | not started |
@@ -298,16 +300,16 @@ M4 detail. The milestone had no chunk table until M4.1; this is it:
 | M4.3 | `core/exports.py`, the xlsx sheets, `proingest qc <batch>`, QC-053 | pending |
 
 M4.5 detail, respecified 2026-09-12, nothing built. It is **smaller than yesterday's
-version**: the AD notes model is gone entirely, and the CDL parser is back, reading the colour
-session's final EDL rather than the shooters'.
+version**: the AD notes model is gone entirely, the viewers and their frame fetch went with it,
+and what M4.5.2 reads is the colour session's package rather than the shooters'.
 
 | chunk | scope | state |
 |---|---|---|
 | M4.5.1 | OCIO in, `core/color.py` rebuilt as a pipeline, studio log to ACEScct to ACEScg. **Wants OQ-39** | not started |
-| M4.5.2 | CDL read from the colour session's final EDL, matched per row, modelled on the row. **Wants OQ-30** | not started |
-| M4.5.3 | The viewing LUT: CDL plus ACES output transform baked to one `.cube` per shot | not started |
+| M4.5.2 | `core/clf.py`: the final EDL read for conform, In/Out and CDL; the CLF matched per row, loaded and hashed. **Wants OQ-30 and OQ-33** | not started |
+| M4.5.3 | The viewing LUT: CLF plus ACES output transform baked to one `.cube` per shot | not started |
 | M4.5.4 | `render` plate/view split, `lut3d` encode, `exr.py` AP1 constants and the new header attributes | not started |
-| M4.5.5 | `core/preview.py`, single frame fetch with cache, for the viewers | not started |
+| ~~M4.5.5~~ | ~~`core/preview.py`, single frame fetch with cache~~ **dropped 2026-09-12 with the viewers** | n/a |
 
 Two constants in `exr.py` change in M4.5.4 and they matter: `CHROMATICITIES` goes from sRGB to
 AP1, and `COLORSPACE_ATTRIBUTE`'s value from `scene_linear_sRGB` to `ACEScg`.
@@ -345,27 +347,27 @@ were right both times; what was wrong was who authors colour and when.
 - **Colour is authored in a Resolve session, not in this tool, and that deletes a feature
   rather than moving one.** The 2026-09-11 spec had four per clip sliders as an AD notes layer
   on top of the shooter's CDL. The AD's notes now go into the colour session with the AD in the
-  room, and come back in the CDL. Two places to author a grade is two answers to a question
+  room, and come back in the CLF. Two places to author a grade is two answers to a question
   that can only have one, and the session is the one with the colourist and the reference
   monitor. QC-037 and OQ-32 retired with the sliders.
 - **The plate is graded, which reverses 2026-09-11 on its own terms.** That spec refused a
   graded plate because a baked grade stops matching when the grade moves in the DI. This
   workflow finishes the DI **before** the turnover is ingested, so there is no later grade for
   the plate to stop matching, and the objection expires rather than being overruled. The half
-  of it that survives is disposed of by the CDL's own narrowness: slope, offset, power and
-  saturation cannot express a display rendering, and applied in ACEScct they keep their float
-  headroom. QC-039 existed for one day to guard against a CLF that could.
-- **The CDL goes in the EXR header twice, and the original text is the half that matters.** A
-  graded plate is only auditable if the file says what was done to it, and re-serialising a
-  grade is exactly where a rounding difference hides. The machine readable attributes are for
-  tools; the verbatim `*ASC_SOP` / `*ASC_SAT` text is for the person establishing months later
-  which grade is in these pixels.
-- **The CDL can say four things and the session can do more than four things.** Slope, offset
-  and power per channel, plus saturation, is the whole file. A curve, a log wheel or a hue
-  versus saturation curve is an ordinary primary tool that no colourist would call a secondary,
-  and none of them survives the export. The tool cannot detect this. What it can do is be
-  compared against the stringout the session exports with the real look on it, which is the
-  check to run the first time this pipeline meets a real turnover.
+  of it that survives is a requirement on the CLF, not a reason to refuse: it must end in scene
+  linear ACEScg with **no display rendering**, or the delivered EXR is display referred and says
+  it is linear. QC-039. That failure is invisible on a monitor and expensive in a comp, which is
+  why it is an error and why the tool probes rather than trusting a filename.
+- **The CLF is applied and the CDL is recorded, and carrying both is not redundancy.** They come
+  out of the same session and they answer different questions. A CDL can say only slope, offset
+  and power per channel plus one saturation, so a grade containing a curve, a log wheel or a hue
+  versus saturation curve, all ordinary primary tools, would arrive silently incomplete; the CLF
+  carries all of it, which is why it is the thing applied. The CDL goes in the EXR header as the
+  readable version, for the person or the facility that has neither the session nor an OCIO
+  install. **Where they disagree the CLF is what is in the pixels**, and the header says so.
+- **The CLF hash is what identifies the grade.** A re-exported and redelivered CLF has a
+  different hash, so the deliverables rendered from the old one stay findable afterwards. That
+  is the whole reason a graded plate is auditable at all.
 - **One studio standard log encoding, and it is worth defending.** The user's first description
   of the workflow said "log encoded ProRes per shot", which was read as camera original, and a
   whole per shot IDT apparatus was specified: a sidecar IDT field, a Resolve to OpenColorIO
@@ -374,7 +376,28 @@ were right both times; what was wrong was who authors colour and when.
   forever**, and the camera specific work stays in the shooter's Resolve project where the
   camera metadata actually is. If a future session finds itself building a table of IDT names,
   it has taken a wrong turn. Which encoding it is, is OQ-39; ACEScct makes the transform
-  identity, because the colour session's CDL was authored there.
+  identity, because the colour session's CLF starts there.
+- **The viewers are gone, and the trimming they were attached to is not.** The user removed the
+  three viewers on 2026-09-12, a day after specifying them. The thing they existed for, judging
+  a cut point on a picture, moved to the colour session, which has the AD in the room, a real
+  viewer and a calibrated monitor. What stayed is In/Out editing in the list, deliberately, as
+  **the quick one-off**: the trim that would otherwise mean asking Ben to reopen Resolve and
+  export a new EDL for one shot. That framing matters more than the feature, because it is the
+  difference between an exception and a second editing surface.
+- **A trim is safe against the grade, and that is why the exception is affordable.** A CDL is
+  one set of numbers for the whole shot rather than a curve over time, so moving In or Out
+  carries it unchanged. The single caveat is that extending into the handles applies the
+  approved grade to frames nobody saw in the session.
+- **QC-045 is new rather than QC-035 being redefined.** There are now three In/Out states worth
+  distinguishing: what the shooters delivered, what Ben and the AD approved, and what actually
+  rendered. QC-035 already meant the first against the last and is implemented, so it keeps its
+  meaning; QC-045 reports the middle against the last, at warning severity, because a delivered
+  shot that is not the shot the AD signed off is a louder fact than an editorial trim. The QC
+  log's Shots sheet carries all three columns.
+- **The list is the only surface that writes to a row again.** No viewers, no colour controls,
+  no editable metadata pane. That was the original design, was briefly untrue on 2026-09-11 when
+  the viewers were given trim buttons, and is true again. It is worth stating because FR-5 spent
+  a day carrying an explicit exception to it.
 - **The stringout is dropped and M6 with it.** The colour session exports a reference QT with
   the look and burn-ins. Three artifacts claiming to be the stringout is two too many. What it
   gives up is real and is recorded in PRD FR-9: the tool's would have been the only one cut to
@@ -406,17 +429,20 @@ from:
   manufactures them on its own, and this tool resizes every plate to HD. AP1 is wide enough
   that the question does not arise. ACES has an entire Reference Gamut Compression spec because
   of this problem; picking AP1 avoids needing it.
-- **One LUT, two consumers.** The whole viewing transform collapses into a single 3D LUT per
-  shot, generated in core, applied by ffmpeg `lut3d` for the reference and in numpy by the
-  viewers. They cannot drift, because they are the same nine hundred numbers. OQ-7 was the same
-  problem in the resampler and it needed a measured test to settle.
+- **The viewing LUT now has one consumer, and it survives anyway.** It was justified as one
+  definition shared by the encoder and the on-screen viewers, so the two could not drift, which
+  was a good argument until the viewers were removed. What holds it up now is duller and still
+  sufficient: ffmpeg has no OCIO filter and does have `lut3d`, so baking the transform to a cube
+  is how an OCIO result reaches the encoder at all, and it is what keeps the reference a single
+  pass with no frames crossing into Python. If a viewer returns in v02, the cube is the thing to
+  hand it, and the original argument comes back with it.
 - **The view branch stays bounded until the final encode**, because everything before the
   output transform happens in ACEScct. swscale clamps float to 0..1, so this is what lets
   ffmpeg keep doing the reference resize in a single pass with no frames crossing into Python.
   The plate branch is unbounded and resizes in numpy, which is what `resize.py` is for.
 - **OCIO's packaging objection was checked and does not exist.** 5.7 MB arm64 wheel, built-in
   configs so nothing ships on disk, Windows wheel available for v02. The alternative considered
-  was `colour-science`; OCIO wins because it also applies a CDL and does ACES properly rather
+  was `colour-science`; OCIO wins because it also loads a CLF and does ACES properly rather
   than just the curves.
 
 **Phase B verification, where it runs and what it keeps (M4.2).**
@@ -901,13 +927,13 @@ Nothing blocks the next task. These are live, in rough priority order:
   was told to do. M4.5.4 fixes it. Until then, do not trust the appearance of a reference mp4.
 - **`core/color.py` describes two states and neither of them is real.** `srgb_display` and
   `scene_linear_srgb` were the 2026-09-10 premise. The real source is a studio standard log,
-  the real plate output is ACEScg with the shot's CDL applied, and a two value enum is the
+  the real plate output is ACEScg with the shot's CLF applied, and a two value enum is the
   wrong shape for any of it. The module is 61 lines and gets rebuilt rather than edited, in
   M4.5.1. Its six tests go with it.
 - **No colour session has ever exported for this tool (OQ-31).** Every claim in
   COLOR_AND_FORMAT section 1 about what arrives is a specification, not an observation, until
-  one session has run end to end on one shot. That single exercise answers OQ-29, OQ-30 and
-  OQ-39 at the same time, and it is the cheapest thing on this list: it needs one graded shot,
+  one session has run end to end on one shot. That single exercise answers OQ-29, OQ-30, OQ-33
+  and OQ-39 at the same time, and it is the cheapest thing on this list: it needs one graded shot,
   not a whole turnover.
 
 - **A reference encode reports no progress and cannot be cancelled mid-encode.** It is one

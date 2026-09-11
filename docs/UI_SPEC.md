@@ -10,12 +10,6 @@ PySide6 6.7+. Dark theme in the spirit of DaVinci Resolve: near-black panels, th
 +------------------------------------------------------------------+
 | Batch bar: batch name, delivery root path (click to change), In/Out toggle [Frames|Source TC|Record TC], search box |
 +------------------------------------------------------------------+
-|      +-------------+   +-------------+   +-------------+       |
-|      |     IN      |   |   CENTER    |   |     OUT     |       |
-|      |   [<] [>]   |   |             |   |   [<] [>]   |       |
-|      +-------------+   +-------------+   +-------------+       |
-|       1009              1128              1248                 |
-+------------------------------------------------------------------+
 |                                            |                     |
 |   SHOT LIST (hero)                         |  METADATA           |
 |                                            |  (selected row,     |
@@ -35,10 +29,10 @@ The list is still the hero. The metadata pane is a fixed-width reading surface b
 second workspace: it is read only, it never takes focus, and it collapses to nothing. See
 section 12.
 
-The viewer strip is section 14. Unlike the metadata pane it **does** write to the model:
-stepping In or Out trims the selected row. It collapses, because it costs height that a batch
-being checked for naming rather than content does not need. The strip is centred and given the
-full width now that there are no colour controls beside it (PRD section 3).
+**The list is the only thing that writes to the model.** No viewers, no colour controls, no
+editable metadata pane: In, Out, Shot Code, Notes and Skip are edited in their cells and
+nowhere else. That was true in the original spec, briefly untrue on 2026-09-11 when the
+viewers were given trim buttons, and is true again.
 
 Nothing opens a modal during review except Settings and file dialogs.
 
@@ -239,76 +233,17 @@ OQ-25.
 - Adding a turnover from outside the source root is allowed and just updates the remembered
   root. The root is a starting point, not a fence.
 
-## 14. Viewers
+## 14. Viewers: dropped
 
-FR-16. Three viewers above the shot list showing the selected row.
+**There are no image viewers in the tool** (PRD FR-16, decided 2026-09-12). This section
+specified three, In / Center / Out, steppable, with stepping trimming the row, and four colour
+controls beside them. All of it is removed and a frame viewer is a v02 item again.
 
-**There are no colour controls.** An earlier version of this section specified four sliders
-per clip, exposure, saturation, warm to cool and tint, as an AD notes layer that baked into
-the references. They are removed (PRD section 3, decided 2026-09-12): colour is authored in
-the colour session and arrives as a CDL, and a second place to author a grade is a second
-answer to a question that should only have one. QC-037 and OQ-32 went with them.
+The section number is kept rather than renumbered, because the other sections are referenced by
+number from the PRD, from `QC_RULES.md` and from `PROGRESS.md`.
 
-### The strip
-
-```
-  +---------------+  +---------------+  +---------------+
-  |               |  |               |  |               |
-  |      IN       |  |    CENTER     |  |      OUT      |
-  |               |  |               |  |               |
-  |  [<<] [<] [>] [>>] |            |  |  [<<] [<] [>] [>>] |
-  +---------------+  +---------------+  +---------------+
-   1009                1128               1248
-   01:00:00:08         01:00:04:23        01:00:10:07
-```
-
-- All three show the **graded** image, meaning the same 3D LUT the reference mp4 will be
-  encoded with (COLOR_AND_FORMAT section 1). A viewer showing ungraded pixels would be a
-  viewer of something nobody is delivering. **Before the colour session has been ingested
-  there is no LUT**, so the viewers show the log image and say so in place of pretending.
-- Each carries the frame number and the timecode, following the same Frames / Source TC /
-  Record TC toggle the list uses (section 2). Cmd+T switches all three with the columns.
-- Center is `in + duration // 2`, integer, tracking the **current** In/Out rather than the
-  turnover snapshot. It is the identity frame: what is this shot.
-- The strip is 16:9 at whatever width the window gives it, and collapses with Cmd+U.
-
-### Stepping trims the row
-
-**In and Out are trim controls, not displays.** Stepping the In viewer moves the selected
-row's In point; stepping Out moves its Out. It is the same edit as typing in the cell, runs
-the same validation, and shows the same QC results.
-
-- `[<]` and `[>]` step one frame. `[<<]` and `[>>]` step ten. Shift on any of them steps the
-  Settings "expected handle frames" value, so an editor can move by the unit the shot was
-  supposed to carry.
-- The list cell updates as the step lands, and so do Duration and Max Available. There is no
-  commit step and no separate apply.
-- QC-031 and QC-032 apply exactly as they do to a typed edit, so stepping past the end of the
-  media colours the row rather than being silently refused. **The step is not clamped**: the
-  editor should be able to see they have gone too far rather than wonder why the button
-  stopped working.
-- Center does not step. Its frame is derived, so there is nothing coherent for a step to mean.
-- Arrow keys still move the list selection (section 4). The viewers are stepped with their
-  buttons, or with Cmd+Left / Cmd+Right when a viewer has focus, so the two never fight.
-
-### Decoding
-
-- Nothing decodes on the UI thread. A step queues a fetch and the viewer shows the previous
-  frame dimmed until the new one lands.
-- Requests are debounced and superseded ones are cancelled. Holding a step button on a
-  Drive mount must not queue eighty decodes.
-- Frames are cached downscaled to viewer size, keyed on path, frame, size and mtime. Three
-  frames for a hundred shots at viewer size is around 1.4 MB, so the cache does not need a
-  policy beyond invalidating on mtime.
-- Neighbours of In and Out are prefetched, because stepping is the common case and the frame
-  after the one being looked at is the one about to be asked for.
-
-### Empty and error states
-
-- No selection: three empty frames with the strip's chrome intact, so the layout does not jump.
-- Media not found or unreadable (QC-012, QC-014): the rule ID and message in place of the
-  image, not a broken icon.
-- Aux still and BTS rows are one frame, so all three viewers show the same frame and neither
-  In nor Out steps. `is_picture_row` in `core/qc.py` already draws that line.
-- A row with no CDL (QC-009) cannot render, and views as log. The strip says so once, quietly,
-  and names the rule, so the editor does not go looking for a grade that has not arrived yet.
+**Why it went:** the viewers existed so an editor could judge a cut point and act on it. That
+judgement now happens in the colour session, with the AD present, a real viewer and a calibrated
+monitor. What is left in this tool is the occasional one-off trim of an already approved edit
+(PRD FR-5), and that is done by typing a number, which the In/Out cells have always supported in
+four formats (section 5).
