@@ -1,54 +1,157 @@
 # Color and Format
 
-## 1. Color policy (v01)
+## 1. Colour policy (v01)
 
-**The source color space is a setting, not a constant.** OQ-17 is resolved: the turnovers
-arriving today have the sRGB curve **baked in on every file, the EXRs included**. They are
-display referred, not scene referred. The shooters are expected to move the EXRs to scene
-linear sRGB later, so both cases are supported and one setting selects between them. It
-lives in `core/color.py` and defaults to baked sRGB.
+**The working space is ACEScg. Sources arrive log encoded, plates are delivered scene
+linear and ungraded, and the grade lives only in the viewing copies.**
 
-| setting | what the source is | today |
+This **supersedes OQ-17**, which recorded the opposite premise as resolved: display
+referred sources with the sRGB curve baked in, and no transfer applied to the references.
+That premise was wrong. Everything built on it has been rewritten here rather than
+amended, because amending it would leave two readings in one document.
+
+### What arrives
+
+Shooters convert camera original to a studio standard delivery in Resolve, using a
+template project the studio supplies (OQ-31). A turnover therefore carries **one encoding
+regardless of what anybody shot on**:
+
+| | |
+|---|---|
+| encoding | **ACEScct** |
+| primaries | **AP1**, the ACES working gamut |
+| container | **ProRes 4444**, or DNxHR 444 where ProRes is not available |
+
+The camera specific input transform happens in the shooter's Resolve project, where the
+camera metadata actually lives. That is the point of specifying ACEScct rather than a
+camera log: this tool has one input transform forever, and "which LogC", "which exposure
+index" and "mixed cameras in one turnover" stop being questions it has to answer.
+
+4:4:4 matters more here than it would on a display referred source. Subsampled chroma in a
+log signal is stretched when the signal is linearised, and shows up on saturated edges.
+
+### What leaves
+
+| deliverable | space | graded |
 |---|---|---|
-| `srgb_display` | sRGB curve baked in, display referred | **the v01 default** |
-| `scene_linear_srgb` | scene linear, sRGB primaries | after the shooters change |
+| raw EXR, 4k and HD | **ACEScg**, scene linear, AP1 primaries | **no** |
+| reference mp4, 4k and HD | sRGB display | **yes** |
+| stringout | sRGB display | **yes** |
 
-- The tool applies no color transform to raw EXR output in either case. Pixels in, pixels out.
-- Reference mp4s and the stringout are display encodes and must end up in display sRGB.
-  - From a **baked sRGB** source, no transfer is applied. The pixels are already there.
-    Applying the linear-to-sRGB curve to a file that already carries it washes out every
-    reference deliverable, which is the failure OQ-17 was about.
-  - From a **scene linear** source, the tool applies the linear to sRGB piecewise curve
-    (IEC 61966-2-1) with ffmpeg `zscale` (`transferin=linear:transfer=iec61966-2-1`).
-  - Either way the output is tagged `bt709` primaries and matrix, `iec61966-2-1` transfer.
-    Only the work to get there differs. Settings offers Rec.709 OETF as the alternative
-    curve. OQ-6.
-- Primaries are the same in both cases: sRGB and Rec.709 share them, so nothing about the
-  primaries depends on this setting.
-- EXR metadata: write `chromaticities` for sRGB/Rec.709 primaries and a
-  `proingest/colorspace` string attribute stating what the pixels are, `sRGB_display` or
-  `scene_linear_sRGB`. It labels the file; it does not claim a conversion happened.
-- The HD downscale runs on the values as delivered, encoded curve and all, which is what
-  ffmpeg's `scale` does on the container path too. Resampling in linear light would be
-  defensible on a display referred source but would make the two paths disagree and would
-  change pixels in a deliverable that is meant to be a faithful reduction.
+**The plate is ungraded and that is deliberate.** The CDL and the AD notes are creative
+intent that will move in the DI. A grade baked into a plate can clip highlights the comp
+needs, and work done against a graded plate stops matching the moment the grade changes.
+The CDL travels **in the EXR header** instead, so the vendor can apply it as a viewing
+transform and see exactly what was intended while working on untouched pixels.
+
+### The two branches
+
+One decode, then branch at the top, because the two deliverables want opposite things:
+
+```
+ProRes 4444  -  ACEScct, AP1
+        |  decode to float RGB, full range
+        |
+   +----+------------------------------------+
+   |                                         |
+ PLATE branch                            VIEW branch
+   |                                         |
+ ACEScct -> ACEScg   (curve only)        CDL        (in ACEScct)
+   |                                         |
+ resize in numpy, unbounded              AD notes   (in ACEScct)
+   |                                         |
+ EXR: ACEScg, CDL in the header          ACEScct -> ACEScg -> ACES output transform
+                                             |   ... collapsed into one 3D LUT
+                                         ffmpeg lut3d, resize bounded
+                                             |
+                                         mp4: sRGB display
+```
+
+Three properties follow, and each is load bearing rather than incidental.
+
+**ACEScct to ACEScg is a curve, not a gamut change.** Both are AP1, so the plate path
+applies no primaries matrix and manufactures no out of gamut negatives of its own. That
+matters on the HD downscale in particular: resizing a linear image in a gamut too small
+for its content is a documented way to produce negative pixels, and AP1 is wide enough
+that the question does not arise. Delivering scene linear in Rec.709 primaries was
+considered and rejected for exactly this reason.
+
+**The view branch stays bounded until the final encode.** Everything before the output
+transform happens in ACEScct, which an integer container bounds to 0..1. swscale clamps
+float to 0..1, so keeping the view branch in log means ffmpeg can do the resize and the
+reference stays a single fast pass with no frames pulled through Python, which is what M3
+was built around. The plate branch is unbounded scene linear and therefore resizes in
+numpy, which is what `core/resize.py` exists for.
+
+**The CDL is applied in ACEScct, its native space.** A CDL means what it means in the space
+it was authored in. ACEScct exists so grades can be authored in a log domain inside ACES,
+and applying one in linear gives a different and wrong answer.
+
+### The viewing transform is one LUT
+
+The whole view branch (CDL, AD notes, ACEScct to ACEScg, ACES output transform to sRGB)
+collapses into a **single 3D LUT per clip**, generated in core. ffmpeg applies it with
+`lut3d` for the reference mp4; the three viewers in UI_SPEC section 14 apply the same cube
+in numpy. They cannot drift apart, which is the failure mode this codebase keeps nearly
+hitting. OQ-7 is the same problem in the resampler and it needed a measured test to settle.
+
+A 3D LUT is accurate here because its input domain is log, which is where LUTs are meant to
+be authored, and its output is display referred and therefore bounded. The plate branch
+cannot use one, because scene linear output is unbounded; that path does the maths directly.
+
+### OpenColorIO
+
+Transforms come from **OpenColorIO**, not from hand written curves and matrices.
+`Config.CreateFromBuiltinConfig("studio-config-latest")` carries the ACES transforms inside
+the wheel, so **no config files ship**. The macOS arm64 wheel is 5.7 MB, which is nothing
+against the 300 MB budget in PRD section 8, and a Windows wheel exists for v02.
+`CDLTransform` applies the CDL.
+
+Hand rolling the curves was considered and rejected. Published camera log parameter tables
+are exactly the kind of thing that looks correct and is not.
+
+### EXR metadata
+
+- `chromaticities` states **AP1** primaries, not sRGB. That constant is the difference
+  between a file that is ACEScg and a file that lies about being ACEScg.
+- `proingest/colorspace` states `ACEScg`.
+- The CDL is written **twice**: as machine readable slope, offset, power and saturation
+  attributes, and as the original CDL text, so a vendor can recover exactly what was
+  authored rather than what this tool re-serialised.
+- The AD notes are written alongside it under their own attribute, so a reference that
+  looks different from the plate can be explained from the plate itself.
 
 ## 2. Source formats accepted
 
-The tool must handle whatever Resolve can consolidate to that can carry linear float without damage. Accepted:
+The studio sets the delivery spec and the shooters work to a template project, so this is
+a specification rather than a survey of what might turn up.
 
-- OpenEXR image sequences (preferred, any compression, half or float)
-- DPX sequences (10/12/16 bit, logged as QC-021 warning because integer containers with linear data lose shadow precision)
-- ProRes 4444 / 4444 XQ `.mov` (QC-021 warning, same reason)
-- Anything else decodable by ffmpeg is accepted with QC-020 error (8 bit or 4:2:0 sources cannot be legitimate linear plates)
+**Expected**, and what every QC rule is written around:
 
-OQ-3: confirm what the consolidated media actually is so the warning levels can be tightened.
+- **ProRes 4444 or DNxHR 444, ACEScct, AP1 primaries.** 12 bit, 4:4:4, full range.
+
+**Accepted with a warning**, because it decodes correctly and delivers usable work:
+
+- ProRes 422 HQ or any 4:2:2 10 bit variant carrying ACEScct. QC-021: chroma is subsampled,
+  and a log signal stretched to linear shows that on saturated edges.
+- An EXR sequence already in ACEScg or ACES2065-1. Nothing is wrong with it; it simply is
+  not what the template project produces, so it is flagged as an unexpected delivery rather
+  than a defect.
+
+**Refused:**
+
+- 8 bit anything, and any 4:2:0 source. QC-020. Neither can carry a log signal without
+  banding the moment it is linearised.
+
+A source whose colour space cannot be established is QC-018. The tool cannot read ACEScct
+off a container, because no standard transfer tag names it, so the working assumption comes
+from Settings and QC-018 fires when the container's own tags contradict it.
 
 ## 3. Output formats
 
 | output | spec |
 |---|---|
-| raw EXR | OpenEXR 2 scanline, DWAA compression level 45, half float RGB (alpha dropped unless source has real alpha, then RGBA), data window = display window, frame numbers start 1001 |
+| raw EXR | OpenEXR 2 scanline, DWAA compression level 45, half float RGB (alpha dropped unless source has real alpha, then RGBA), data window = display window, frame numbers start 1001. **ACEScg, scene linear, AP1 chromaticities, ungraded**, with the CDL and the AD notes carried in the header (section 1) |
 | ref mp4 4k | 3840x2160, H.264 High, yuv420p, CRF 18 (x264 `-preset slow`) or `h264_videotoolbox` when hardware encoding is enabled, keyint 24, `-movflags +faststart`, AAC 192k if audio associated |
 | ref mp4 HD | same, 1920x1080 |
 | audio | as delivered. If the source is a wav, byte copy. If audio lives inside a container, extract to PCM 16 bit, same sample rate and channel count, no resampling. QC-044 if not 16 bit after extraction |

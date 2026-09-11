@@ -10,6 +10,12 @@ PySide6 6.7+. Dark theme in the spirit of DaVinci Resolve: near-black panels, th
 +------------------------------------------------------------------+
 | Batch bar: batch name, delivery root path (click to change), TC toggle [Source|Record], search box |
 +------------------------------------------------------------------+
+|  +-----------+  +-----------+  +-----------+  |  COLOUR          |
+|  |    IN     |  |  CENTER   |  |    OUT    |  |  exposure  ----o |
+|  |  [<] [>]  |  |           |  |  [<] [>]  |  |  satur.    --o-- |
+|  +-----------+  +-----------+  +-----------+  |  warm/cool -o--- |
+|   1009           1128           1248          |  tint      --o-- |
++------------------------------------------------------------------+
 |                                            |                     |
 |   SHOT LIST (hero)                         |  METADATA           |
 |                                            |  (selected row,     |
@@ -28,6 +34,11 @@ PySide6 6.7+. Dark theme in the spirit of DaVinci Resolve: near-black panels, th
 The list is still the hero. The metadata pane is a fixed-width reading surface beside it, not a
 second workspace: it is read only, it never takes focus, and it collapses to nothing. See
 section 12.
+
+The viewer strip and the colour controls are section 14. Unlike the metadata pane they **do**
+write to the model: stepping In or Out trims the selected row, and the four colour sliders are
+that row's AD notes. Both collapse, because together they cost 300px of height that a batch
+being checked for naming rather than content does not need.
 
 Nothing opens a modal during review except Settings and file dialogs.
 
@@ -229,3 +240,91 @@ OQ-25.
   a stale path is how deliverables get lost.
 - Adding a turnover from outside the source root is allowed and just updates the remembered
   root. The root is a starting point, not a fence.
+
+## 14. Viewers and colour controls
+
+FR-16. Three viewers above the shot list showing the selected row, and four colour controls
+for that row beside them.
+
+### The strip
+
+```
+  +---------------+  +---------------+  +---------------+
+  |               |  |               |  |               |
+  |      IN       |  |    CENTER     |  |      OUT      |
+  |               |  |               |  |               |
+  |  [<<] [<] [>] [>>] |            |  |  [<<] [<] [>] [>>] |
+  +---------------+  +---------------+  +---------------+
+   1009                1128               1248
+   01:00:00:08         01:00:04:23        01:00:10:07
+```
+
+- All three show the **graded** image, meaning the same 3D LUT the reference mp4 will be
+  encoded with (COLOR_AND_FORMAT section 1). A viewer showing ungraded pixels would be a
+  viewer of something nobody is delivering.
+- Each carries the frame number and the timecode, following the same Frames / Source TC /
+  Record TC toggle the list uses (section 2). Cmd+T switches all three with the columns.
+- Center is `in + duration // 2`, integer, tracking the **current** In/Out rather than the
+  turnover snapshot. It is the identity frame: what is this shot.
+- The strip is 16:9 at whatever width the window gives it, and collapses with Cmd+U.
+
+### Stepping trims the row
+
+**In and Out are trim controls, not displays.** Stepping the In viewer moves the selected
+row's In point; stepping Out moves its Out. It is the same edit as typing in the cell, runs
+the same validation, and shows the same QC results.
+
+- `[<]` and `[>]` step one frame. `[<<]` and `[>>]` step ten. Shift on any of them steps the
+  Settings "expected handle frames" value, so an editor can move by the unit the shot was
+  supposed to carry.
+- The list cell updates as the step lands, and so do Duration and Max Available. There is no
+  commit step and no separate apply.
+- QC-031 and QC-032 apply exactly as they do to a typed edit, so stepping past the end of the
+  media colours the row rather than being silently refused. **The step is not clamped**: the
+  editor should be able to see they have gone too far rather than wonder why the button
+  stopped working.
+- Center does not step. Its frame is derived, so there is nothing coherent for a step to mean.
+- Arrow keys still move the list selection (section 4). The viewers are stepped with their
+  buttons, or with Cmd+Left / Cmd+Right when a viewer has focus, so the two never fight.
+
+### Decoding
+
+- Nothing decodes on the UI thread. A step queues a fetch and the viewer shows the previous
+  frame dimmed until the new one lands.
+- Requests are debounced and superseded ones are cancelled. Holding a step button on a
+  Drive mount must not queue eighty decodes.
+- Frames are cached downscaled to viewer size, keyed on path, frame, size and mtime. Three
+  frames for a hundred shots at viewer size is around 1.4 MB, so the cache does not need a
+  policy beyond invalidating on mtime.
+- Neighbours of In and Out are prefetched, because stepping is the common case and the frame
+  after the one being looked at is the one about to be asked for.
+
+### Colour controls
+
+Four sliders for the selected row: **exposure, saturation, warm to cool, tint**. These are the
+AD notes layer. They sit on top of the shooter's CDL, are applied in ACEScct alongside it, and
+bake into the references and the stringout only, never the plate.
+
+- Each slider has a numeric field beside it and a reset affordance. Double clicking a slider
+  returns it to neutral.
+- **Neutral is exactly identity.** With all four at their defaults no grade stage is built at
+  all, so an untouched clip's deliverables are bit for bit what they would have been without
+  the feature existing.
+- A non-neutral row shows a small mark in the list, the way an edited In/Out does, and raises
+  QC-037 in the log.
+- The controls are disabled with a reason shown when the row has no readable media, when the
+  row is skipped, or when the selection covers more than one row. Multi-row grading is not in
+  v01: it reads as a batch operation and would need an undo model the rest of the tool does
+  not have.
+- There is no copy or paste of a grade between clips in v01. If that turns out to be the first
+  thing anyone asks for, it is cheap to add and belongs with a proper undo stack.
+
+### Empty and error states
+
+- No selection: three empty frames with the strip's chrome intact, so the layout does not jump.
+- Media not found or unreadable (QC-012, QC-014): the rule ID and message in place of the
+  image, not a broken icon. The colour controls are disabled.
+- Aux still and BTS rows are one frame, so all three viewers show the same frame and neither
+  In nor Out steps. `is_picture_row` in `core/qc.py` already draws that line.
+- A row with no CDL (QC-017) views and renders ungraded. The strip says so once, quietly, so
+  the editor does not go looking for a grade that was never delivered.

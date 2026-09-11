@@ -8,101 +8,89 @@ commit.
 
 ## 1. Resume here
 
-**State at 2026-09-10. M1, M2, M3 are complete and M4.1 and M4.2 are done. M4.3 is next.**
-718 tests passing, `ruff` and `mypy --strict` clean, working tree clean apart from the
-deliberately untracked files in section 8. **Nothing is blocked.**
+**State at 2026-09-11. M1, M2, M3 complete; M4.1 and M4.2 done. A colour pipeline was
+specified today and nothing of it is built.**
+718 tests passing, `ruff` and `mypy --strict` clean. **No code changed on 2026-09-11**: the
+whole day is spec. **Nothing is blocked.**
 
 ### First five minutes
-
-Run this before changing anything. If it does not come back clean, fix that before
-starting anything new:
 
 ```
 .venv/bin/python -m pytest tests/ -q
 .venv/bin/python -m ruff check proingest tests && .venv/bin/python -m mypy proingest tests
 ```
 
-A real end to end run, which works today and is the fastest way to see what the tool does:
+Then read `docs/COLOR_AND_FORMAT.md` section 1 before anything else, because it was
+rewritten today and it invalidates things you may already believe.
 
-```
-.venv/bin/python -m proingest scan <turnover folder> --rules <rules.json> --save <batch>
-.venv/bin/python -m proingest run <batch> --delivery-root <root>
-```
+### Read this before trusting anything about colour
 
-A scanned turnover renders its raw EXR sequences, both reference mp4s with audio muxed,
-its audio and its side files, and **every one of them is verified against the job that
-planned it before the run calls it done.** Re-verified after M4.2 on a two shot synthetic
-turnover with side files and a lens grid folder: **14 written, 0 failed, 0 skipped**, no
-`.part` and no `.failed` anywhere, QC-057 raised by the pre-flight, QC-150 and QC-151
-clean. `tests/fixtures/media.py::make_turnover` builds a turnover to try it on.
+**OQ-17 was resolved on 2026-09-10 and that resolution was wrong.** It recorded that
+turnovers carry a baked sRGB curve on every file, that sources are display referred, and
+that reference encodes therefore apply no transfer. The user researched it and corrected
+it on 2026-09-11. The truth:
 
-**Fixture media is 64x36 and a few frames long, so it fails the real phase A rules.**
-Pass `--rules` a JSON file of threshold overrides to drive the CLI against it:
-`tests/fixtures/media.py::SMALL_RULES` is exactly that set and `write_rules_file` writes
-one. This is not a test-only hack, it is FR-12's Rules section reaching the headless path
-ahead of the Settings page.
+- Sources are **log encoded**, not display referred and not scene linear.
+- The working space is **ACEScg**.
+- Plates are delivered **scene linear ACEScg and ungraded**.
+- References get a full **ACES output transform** to sRGB, with the grade applied.
 
-### Next task: M4.3, the exports and the `qc` CLI
+**Anything written before 2026-09-11 that reasons about colour is suspect.** That includes
+the shipped M3 reference encode, which applies no transfer and would produce a flat, milky
+mp4 from a log source. `core/color.py` is a two-state setting that describes neither of the
+real states. This is not a bug to be found later; it is known, and M4.5 is where it gets fixed.
 
-Phase A and phase B are both done. What is left of M4 is `core/exports.py`, which does
-not exist:
+### What was decided on 2026-09-11
 
-- **The xlsx writers**, openpyxl, per QC_RULES "QC log structure" and PRD FR-10: the QC
-  log with its Summary, Shots and Deliverables sheets, and `shot_tracker.xlsx` whose
-  column layout loads from a template file so the studio can change it without a code
-  change (OQ-2, still open, with a default template).
-- **`proingest qc <batch>`**, the third subcommand. Everything it needs is already in the
-  model: `qc.apply_batch_rules`, `qc.preflight` and `qc.apply_phase_b` all re-run from a
-  saved batch, which is the property phase A was built for.
-- **QC-053** (camData parsed, N key/value pairs) lands here, because the parser it needs
-  is the one that fills the Camera Data sheet. OQ-11 has the format.
+All of it is written into the docs; this is the index, not the spec.
 
-### What M4.1 and M4.2 actually did, so it is not re-derived
+| decision | where it lives |
+|---|---|
+| ACEScg working space, OCIO for every transform | COLOR_AND_FORMAT section 1 |
+| Sources are **ACEScct in ProRes 4444**, camera agnostic | COLOR_AND_FORMAT section 1, PRD section 4 |
+| Plate is **ungraded**; CDL rides in the EXR header | COLOR_AND_FORMAT section 1, PRD FR-15 |
+| mp4 is graded: CDL plus AD notes, sRGB | COLOR_AND_FORMAT section 1 |
+| CDL comes from the **EDL**, per clip | PRD FR-1, QC-006, QC-007, QC-017 |
+| Three viewers, In / Out / Center, **steppable** | PRD FR-16, UI_SPEC section 14 |
+| **Stepping In or Out trims the row** | PRD FR-5 and FR-16, UI_SPEC section 14 |
+| Four per-clip colour controls, references only | PRD FR-16, QC-037 |
 
-**Phase A** is every rule that is a pure function of the model, in `core/qc.py`,
-re-running after every edit: QC-011, 020, 021, 023, 026, 028, 030, 031, 032, 033, 034,
-035, 036, 040, 041, 043, 044, 050, 051, 055. Six more need the disk and are grouped under
-`qc.preflight`, which runs once when a run is about to start: QC-022, 052, 054, 057, 062,
-063. `proingest run` calls it and refuses to start on a batch-scope error.
+Four facts behind those, each of which took real work to establish and should not be
+re-derived:
 
-**Phase B** is `qc.run_phase_b(job, deliverable)`, called from `render_job` immediately
-after the atomic rename, inside the worker: QC-101 to QC-107 for a sequence, QC-110 to
-QC-115 for a reference, QC-120 and QC-121 for audio, QC-130 for a copy. An error marks
-the deliverable `failed` and writes a `.failed` sidecar naming the rules, which is what
-`batchfile.reconcile_with_filesystem` already read. **The file stays**: a deliverable that
-failed a check is evidence, a file that was never finished is garbage. QC-150 and QC-151
-cannot run in a worker, because one asks whether a whole row landed and the other reads
-every name in the batch, so `render.apply_results` runs them.
+- **Resolve does not export `.cdl` or `.ccc` files at all.** It embeds CDL as `*ASC_SOP` and
+  `*ASC_SAT` comment lines inside an EDL, or in an ALE. So the tool wants **both** timeline
+  files: the OTIO to conform and the EDL to colour. That inverts QC-003, which currently
+  reads as though an EDL were a lesser substitute for an OTIO.
+- **ACEScct to ACEScg is a curve, not a gamut change.** Both are AP1. That is the entire
+  reason ACEScct was chosen over a camera log: the plate path applies no primaries matrix
+  and manufactures no out-of-gamut negatives, including on the HD downscale, where
+  resizing a linear image in too small a gamut is a known way to produce negative pixels.
+  Delivering scene linear in Rec.709 primaries was considered and rejected for this.
+- **The OpenColorIO wheel is 5.7 MB on macOS arm64**, and `CreateFromBuiltinConfig` means
+  no config files ship. The packaging objection to OCIO was checked and does not exist.
+  A Windows wheel exists for v02.
+- **The view branch stays bounded until the final encode**, because everything before the
+  output transform happens in ACEScct. swscale clamps float to 0..1, so this is what lets
+  ffmpeg keep doing the reference resize in a single pass with no frames crossing into
+  Python. The plate branch is unbounded and resizes in numpy, which is what `resize.py` is for.
 
-Decisions inside the two chunks worth not relitigating, all also in section 6:
+### Next task: choose between M4.3 and M4.5
 
-- **Rules are scoped by what the row is.** `qc.is_picture_row` and `qc.is_plate` are the
-  only place that is decided. An aux still is one frame at its own size, so the duration,
-  handle, timecode and resolution rules skip it; only the plate owes audio and side files.
-  Without that, every colour chart in a turnover would raise QC-033 and bury the warnings
-  that matter.
-- **Thresholds are `qc.RuleSettings`, never a literal at the point of use.** It maps one
-  to one onto FR-12's Rules section, round-trips through `Batch.settings_overrides` under
-  the key `rules`, and refuses an unknown key rather than silently ignoring a typo.
-- **Phase B takes the job as well as the deliverable.** The job is the expectation and the
-  file is the claim. ARCHITECTURE.md calls this `qc.run_phase_b(job)`; it needs the
-  deliverable too, because QC-106 and QC-120 compare against what the writer recorded.
-  The practical consequence is that every phase B check is testable by handing it a job
-  that disagrees with a real file, which is how the QC-111, QC-112, QC-113 and QC-114
-  tests corner one rule at a time without fabricating a broken encode.
-- **One result per rule for a sequence, naming the first offender.** A sequence whose
-  every frame is the wrong compression is one defect; 240 identical rows would bury the
-  rest of the report.
-- **QC-121 is an error only for extracted audio.** A wav source is delivered as a byte
-  copy, so a 24 bit source delivers 24 bit by design and QC-044 already said so at scan
-  time. `docs/QC_RULES.md` said error unconditionally and was corrected.
-- **QC-062 is batch scope and tolerates a root that does not exist yet.** The doc said row
-  scope; the code is right and the doc was corrected, with the reason in the table.
+Both are fully specified and neither blocks the other. **I would do M4.5 first**, for one
+reason: the QC log and the tracker want the CDL and the AD notes as columns, so doing
+colour first means the exports get written once instead of twice.
 
-Three phase A rules are deliberately unimplemented and each is in section 9: **QC-024**
-needs decoded pixels rather than a header, **QC-053** lands with the exports, and
-**QC-061** needs a Force re-render setting that does not exist yet. **QC-140 and QC-141
-are the stringout's and belong to M6.**
+- **M4.5, colour pipeline, core only.** OCIO wired in; `core/color.py` rebuilt from a
+  setting into a pipeline; CDL parsed out of the EDL and modelled per clip; `ColorAdjust`
+  for the AD notes; the viewing LUT generated in core; a single frame preview fetch that
+  does not exist yet. **Reopens M3** for the plate/view split in `render._source_pixels`
+  and swaps `ffmpeg.encode_command`'s `display_filter` for a `lut3d`. Two constants in
+  `exr.py` change and they matter: `CHROMATICITIES` goes from sRGB to AP1 and
+  `COLORSPACE_ATTRIBUTE` from `scene_linear_sRGB` to `ACEScg`. No Qt, testable headless.
+- **M4.3, exports.** `core/exports.py` does not exist. The xlsx writers per QC_RULES "QC log
+  structure" and PRD FR-10, plus `proingest qc <batch>`. QC-053 lands here with the camData
+  parser (OQ-11).
 
 ### Two M3 decisions to revisit rather than rediscover
 
@@ -256,8 +244,9 @@ Entry points worth knowing:
 | M1 | Core: parse, resolve, probe, model, batch file, scan CLI | complete, 348 tests |
 | M2 | Naming and planning: type table, versioning, layout | complete, 66 tests |
 | M3 | Render | complete, 172 tests |
-| M4 | QC: all rules both phases, xlsx exports, `qc` CLI | M4.1 and M4.2 done, M4.3 **next** |
-| M5 | UI, including the FR-14 metadata pane | not started |
+| M4 | QC: all rules both phases, xlsx exports, `qc` CLI | M4.1 and M4.2 done, M4.3 pending |
+| M4.5 | Colour pipeline, core only. ACEScct in, ACEScg out, CDL, the viewing LUT | **specified 2026-09-11, not started** |
+| M5 | UI: the FR-14 metadata pane, plus the FR-16 viewers and colour controls | not started |
 | M6 | Stringout with burn-ins | not started |
 | M7 | Packaging: PyInstaller `.app`, dmg, Gatekeeper | not started, and needs a Mac (OQ-22) |
 | M8 | Polish, performance on a real turnover, docs | not started |
@@ -268,7 +257,17 @@ M4 detail. The milestone had no chunk table until M4.1; this is it:
 |---|---|---|
 | M4.1 | phase A registry, `RuleSettings`, `preflight`, `--rules` | done, 91 tests |
 | M4.2 | phase B verification, QC-1xx, wired into `render_job` | done, 47 tests |
-| M4.3 | `core/exports.py`, the xlsx sheets, `proingest qc <batch>`, QC-053 | **next** |
+| M4.3 | `core/exports.py`, the xlsx sheets, `proingest qc <batch>`, QC-053 | pending |
+
+M4.5 detail, specified 2026-09-11, nothing built:
+
+| chunk | scope | state |
+|---|---|---|
+| M4.5.1 | OCIO in, `core/color.py` rebuilt as a pipeline, ACEScct to ACEScg | not started |
+| M4.5.2 | CDL read from the EDL, matched per clip, modelled on the row | not started |
+| M4.5.3 | `ColorAdjust` (AD notes), the viewing LUT, `.cube` generation | not started |
+| M4.5.4 | `render` plate/view split, `lut3d` encode, `exr.py` AP1 constants | not started |
+| M4.5.5 | `core/preview.py`, single frame fetch with cache, for the viewers | not started |
 
 M3 detail:
 
@@ -290,6 +289,55 @@ color 6.
 ---
 
 ## 6. Decisions taken
+
+**The colour pipeline (specified 2026-09-11, nothing built).**
+
+`docs/COLOR_AND_FORMAT.md` section 1 is the spec and is not repeated here. What belongs
+here is why each choice was made, so it is not relitigated by someone reading only the code.
+
+- **OQ-17's resolution was wrong and the correction reaches back into M3.** The premise was
+  display referred sources with sRGB baked in; the reality is log encoded sources. The
+  shipped reference encode applies no transfer, which was right under the old premise and
+  produces a flat milky mp4 under the real one. COLOR_AND_FORMAT section 1 was rewritten
+  rather than amended, deliberately: amending it would have left two readings in one
+  document and the wrong one is the one that reads as settled.
+- **ACEScct was chosen over any camera log to make the source camera agnostic.** The camera
+  specific input transform happens in the shooter's Resolve project, where the camera
+  metadata lives. That single choice deleted three problems rather than solving them:
+  which LogC, which exposure index (LogC3 is EI dependent and LogC4 is not), and mixed
+  cameras inside one turnover.
+- **ACEScg over scene linear Rec.709, because of negatives.** Both are legal. Converting a
+  wide gamut camera image into 709 primaries pushes saturated colour out of gamut, where it
+  becomes negative float, and negatives misbehave in comp. Resizing a linear image in too
+  small a gamut manufactures them on its own, and this tool resizes every plate to HD. AP1
+  is wide enough that the question does not arise. ACES has an entire Reference Gamut
+  Compression spec because of this problem; picking AP1 avoids needing it.
+- **The plate is ungraded and the CDL rides in the header.** The grade is creative intent
+  that moves in the DI, a baked grade can clip highlights the comp needs, and work done
+  against a graded plate stops matching when the grade changes. Writing the CDL into the
+  EXR header costs almost nothing and gives the vendor intent without altered pixels. The
+  user's first instinct was a graded plate; this was argued and they took it.
+- **Resolve exports no `.cdl` or `.ccc` file.** Verified, not assumed. CDL comes out as
+  `*ASC_SOP` and `*ASC_SAT` comment lines inside an EDL, or in an ALE. So the tool wants
+  the OTIO **and** the EDL, which is a change of shape for `scan._choose_timeline`: it
+  returns one path today and QC-003 treats an EDL as a lesser substitute.
+- **One LUT, three consumers.** The whole viewing transform collapses into a single 3D LUT
+  per clip, generated in core, applied by ffmpeg `lut3d` for the reference and in numpy by
+  the viewers. This is the direct answer to the failure mode this codebase keeps nearly
+  hitting: OQ-7 was the same problem in the resampler and needed a measured test to settle.
+  Here the two paths cannot drift, because they are the same nine hundred numbers.
+- **OCIO's packaging objection was checked and does not exist.** 5.7 MB arm64 wheel,
+  built-in configs so nothing ships on disk, Windows wheel available for v02. The
+  alternative considered was `colour-science`; OCIO wins because it also does ACES and CDL
+  properly rather than just the curves.
+- **Neutral colour controls must be exactly identity**, with no grade stage built at all.
+  Otherwise every deliverable in the batch changes the day the feature lands and every
+  render test's bytes move.
+- **Stepping a viewer trims the row**, which is a deliberate exception to FR-5's "the list
+  owns every edit". The metadata pane was kept read only for exactly the opposite reason,
+  so the difference is worth stating: the pane duplicates fields the list already edits,
+  whereas the viewers edit the two fields they are showing, through the same validation.
+  Judging a cut point and acting on it should not require looking away.
 
 **Phase B verification, where it runs and what it keeps (M4.2).**
 
@@ -765,6 +813,18 @@ is useful rather than not, but a test asserting "one stream" will fail on it.
 ## 9. Open items
 
 Nothing blocks the next task. These are live, in rough priority order:
+
+- **M3's reference encode is wrong as shipped, and it is known.** It applies no colour
+  transform, which was correct under OQ-17's old premise and is not under the real one: a
+  log source encoded with no output transform gives a flat, milky mp4. Nothing is broken in
+  a way tests can catch, because the tests assert the encode does what it was told to do.
+  M4.5.4 fixes it. Until then, do not trust the appearance of a reference mp4.
+- **`core/color.py` describes two states and neither of them is real.** `srgb_display` and
+  `scene_linear_srgb` were the old premise. The real source is ACEScct and the real plate
+  output is ACEScg. The module is 61 lines and gets rebuilt rather than edited.
+- **The shooters' template Resolve project does not exist (OQ-31).** Every claim in
+  COLOR_AND_FORMAT section 1 about what arrives in a turnover is a specification, not an
+  observation, until it has been built and one real turnover has come through it.
 
 - **A reference encode reports no progress and cannot be cancelled mid-encode.** It is one
   ffmpeg process, so the job goes from started to done with nothing in between, and a

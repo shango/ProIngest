@@ -13,6 +13,8 @@ Rule IDs never change meaning. New rules get new numbers.
 | QC-003 | warning | turnover | EDL used instead of OTIO (reduced validation) |
 | QC-004 | warning | turnover | Timeline contains no video clips on any track |
 | QC-005 | info | turnover | Turnover folder name does not match `turnover###_MM_DD_YYYY_name` pattern; fields need manual entry |
+| QC-006 | warning | turnover | No EDL carrying CDL found in the turnover. Resolve exports CDL as `*ASC_SOP` / `*ASC_SAT` comment lines inside an EDL and exports no `.cdl` or `.ccc` file, so a turnover with only an OTIO has no colour. Everything renders ungraded, which is watchable, so this chases the shooter rather than blocking |
+| QC-007 | error | turnover | CDL found but failed to parse. Deliberately an error where QC-006 is a warning: no CDL is a known state, a malformed one means the colour is unknown and a reference would silently ship the wrong look |
 | QC-010 | error | row | Clip name does not match the naming regex |
 | QC-011 | warning | row | Duplicate clip name within the batch |
 | QC-012 | error | row | Media not found (referenced path missing and no unique filename match) |
@@ -20,8 +22,10 @@ Rule IDs never change meaning. New rules get new numbers.
 | QC-014 | error | row | Media unreadable by ffprobe/OpenEXR |
 | QC-015 | warning | row | Image sequence has gaps in frame numbering |
 | QC-016 | warning | row | Media path was remapped via path map (info for trust) |
-| QC-020 | error | row | Source pixel format unsupported for linear plates (8 bit, 4:2:0) |
-| QC-021 | warning | row | Source is an integer or 4:2:2 container (DPX, ProRes 4444); linear precision at risk |
+| QC-017 | warning | row | Clip has no matching CDL entry in the EDL. The clip renders ungraded and the reference shows what the plate shows. CDLs are matched per clip (OQ-30) |
+| QC-018 | warning | row | The container's own colour tags contradict the expected source space. No standard transfer tag names ACEScct, so the working assumption comes from Settings; this fires when what the file does claim disagrees with it. **Includes the range and matrix flags**, because a log signal carried as YCbCr with the wrong range decodes to crushed blacks and clipped whites that look almost right |
+| QC-020 | error | row | Source pixel format unsupported for a log plate (8 bit, or 4:2:0) |
+| QC-021 | warning | row | Source is not the expected delivery format. The template project produces ProRes 4444 or DNxHR 444, 4:4:4. A 4:2:2 variant decodes correctly and delivers usable work, but subsampled chroma in a log signal is stretched when it is linearised and shows on saturated edges. An EXR sequence already in ACEScg lands here too: nothing is wrong with it, it is simply not what the template produces |
 | QC-022 | error | row | Source codec not decodable |
 | QC-023 | error | row | Source resolution is not 3840x2160. Enabling "allow non-4k" downgrades it to a warning rather than silencing it, because `render._fit` resamples to the target either way and a squashed plate should still be said out loud. Aux stills and BTS are not asked: they are delivered at their own size |
 | QC-024 | warning | row | Source letterboxed/pillarboxed to 3840x2160 |
@@ -37,6 +41,7 @@ Rule IDs never change meaning. New rules get new numbers.
 | QC-034 | warning | row | Duration above maximum (default 240 frames) |
 | QC-035 | info | row | In/Out differ from turnover snapshot (edited during review) |
 | QC-036 | info | row | Shot code edited from original clip name |
+| QC-037 | info | row | Colour adjusted from neutral. The AD notes layer (FR-16) sits on top of the shooter's CDL and bakes into the references and the stringout only, never the plate. Records the four values so the QC log shows which shots were touched and by how much. Parallel to QC-035 and QC-036: it reports an edit, it does not judge one |
 | QC-040 | warning | row | Plate (pl) has no associated audio clip |
 | QC-041 | warning | row | More than one audio clip overlaps the video clip |
 | QC-042 | error | row | Associated audio file missing or unreadable |
