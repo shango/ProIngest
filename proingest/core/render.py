@@ -344,8 +344,10 @@ def _audio_skip(job: DeliverableJob) -> float:
     ahead of it by the length of the trim. Computed from integer frames and converted
     only here, at the ffmpeg boundary.
 
-    It assumes the audio starts where the picture media starts, which is what a
-    consolidated turnover produces but has never been checked against a real one. OQ-27.
+    The audio starts where the picture starts and ends where it ends, cut point to cut
+    point, confirmed by the user 2026-09-11. OQ-27. That also means the wav does not
+    extend past the delivered range, so a shot extended into the handles outruns it; see
+    the `apad` note in `ffmpeg.encode_command` for why that does not truncate the picture.
     """
     if job.audio_source is None or job.in_frame is None or job.rate is None:
         return 0.0

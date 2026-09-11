@@ -40,7 +40,7 @@ Rule IDs never change meaning. New rules get new numbers.
 | QC-040 | warning | row | Plate (pl) has no associated audio clip |
 | QC-041 | warning | row | More than one audio clip overlaps the video clip |
 | QC-042 | error | row | Associated audio file missing or unreadable |
-| QC-043 | warning | row | Audio duration differs from the video In/Out range by more than one frame, in either direction, so it will not sync. Audio format itself is left flexible; this is a sync check, not a format check |
+| QC-043 | warning | row | Audio duration differs from the video In/Out range by more than one frame, in either direction, so it will not sync. Audio format itself is left flexible; this is a sync check, not a format check. OQ-27 makes the expectation firm: a wav runs cut point to cut point, so a mismatch **at scan time** means a malformed turnover, while one **after an edit** is the editor's own trim showing up, because the wav deliverable is a byte copy and is never trimmed to the new range. The reference mp4 syncs either way; it seeks and pads the audio to the picture |
 | QC-044 | warning | row | Audio not 16 bit PCM (will be extracted as 16 bit) |
 | QC-050 | warning | row | Plate (pl) has no HDRI side file |
 | QC-051 | warning | row | Plate (pl) has no camData side file |

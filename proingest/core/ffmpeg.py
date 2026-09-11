@@ -508,8 +508,19 @@ def encode_command(
         *REFERENCE_TAGS,
     ]
     if audio is not None:
-        # -shortest so a wav covering the whole clip cannot outrun a delivered range.
-        command += ["-c:a", "aac", "-b:a", REFERENCE_AUDIO_BITRATE, "-shortest"]
+        # `apad` then `-shortest` is one idiom, not two options, and it has to be both.
+        # `-shortest` alone ends the output at whichever stream runs out first, so a wav
+        # shorter than the picture truncates the **video**: measured, a 24 frame range
+        # against half a second of audio delivered 12 frames. That is reachable whenever
+        # the editor extends Out into the handles, since OQ-27 says the wav is cut to cut.
+        # `apad` makes the audio endless, so the shortest stream is always the picture,
+        # which `-frames:v` already bounds. Audio that runs out becomes silence.
+        command += [
+            "-c:a", "aac",
+            "-b:a", REFERENCE_AUDIO_BITRATE,
+            "-af", "apad",
+            "-shortest",
+        ]
     return [*command, "-movflags", "+faststart", "-f", "mp4", str(destination)]
 
 

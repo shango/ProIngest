@@ -321,6 +321,16 @@ class TestEncodeCommand:
         assert command[command.index("-b:a") + 1] == "192k"
         assert "-shortest" in command
 
+    def test_the_audio_is_padded_so_a_short_wav_cannot_cut_the_picture(self) -> None:
+        """`apad` and `-shortest` are one idiom. Without the pad, `-shortest` ends the
+        output when the audio does, and the picture is truncated with it."""
+        command = ffmpeg.encode_command(
+            "plate.mov", Path("out.mp4.part"), 0, 3, is_sequence=False, rate="24/1",
+            audio=Path("a.wav"),
+        )
+        assert command[command.index("-af") + 1] == "apad"
+        assert command.index("-af") < command.index("-shortest")
+
     def test_an_audio_skip_seeks_the_audio_input_and_not_the_picture(self) -> None:
         """-ss binds to the input that follows it, so its position is the whole point."""
         command = ffmpeg.encode_command(

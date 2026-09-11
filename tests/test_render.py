@@ -503,6 +503,30 @@ class TestReferenceMp4:
         assert "audio" not in kinds
         assert "video" in kinds
 
+    def test_audio_shorter_than_the_picture_does_not_truncate_it(self, tmp_path: Path) -> None:
+        """OQ-27: the wav is cut to cut, so extending Out into the handles outruns it.
+
+        `-shortest` on its own ends the output at whichever stream runs out first, which
+        made a short wav cut the picture down: 24 frames asked for, 12 delivered. The
+        picture is what the deliverable is, so it wins and the audio is padded.
+        """
+        source = fixtures.make_mov(tmp_path / "src" / "plate.mov", count=24)
+        wav = fixtures.make_wav(tmp_path / "src" / "short.wav", seconds=0.5)
+        job = ref_job(tmp_path, source, 0, 23, audio=wav)
+        deliverable = render.render_job(job)
+        assert ffmpeg.count_frames(job.destination) == 24
+        assert deliverable.frame_count == 24
+
+    def test_audio_longer_than_the_picture_is_still_cut_to_it(self, tmp_path: Path) -> None:
+        """Padding the audio must not stop `-shortest` trimming a wav that overruns."""
+        source = fixtures.make_mov(tmp_path / "src" / "plate.mov", count=8)
+        wav = fixtures.make_wav(tmp_path / "src" / "long.wav", seconds=5.0)
+        job = ref_job(tmp_path, source, 0, 7, audio=wav)
+        render.render_job(job)
+        video = video_stream(job.destination)
+        audio = next(s for s in streams(job.destination) if s["codec_type"] == "audio")
+        assert float(str(audio["duration"])) <= float(str(video["duration"])) + 0.05
+
     def test_a_source_that_cannot_be_read_leaves_nothing_behind(self, tmp_path: Path) -> None:
         job = ref_job(tmp_path, tmp_path / "src" / "missing.mov", 0, 3)
         with pytest.raises(render.RenderError):
