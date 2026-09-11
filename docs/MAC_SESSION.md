@@ -102,6 +102,4 @@ Treat it as a working session with the editor rather than a delivery.
 - [ ] Sit with the AD and cut the metadata pane down to what they actually read. OQ-26.
 - [ ] Calibrate `h264_videotoolbox -q:v` against x264 CRF 18 on a real plate. CI has already
       proven the encoder opens; this is the half of OQ-23 about how it looks.
-- [ ] Confirm the machine is Apple Silicon. An Intel Mac cannot run the bundled arm64
-      binaries at all. OQ-24.
 - [ ] Agree how future builds reach the editor without acquiring quarantine. OQ-9.

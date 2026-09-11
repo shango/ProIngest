@@ -17,6 +17,14 @@ for why it cannot start on the current dev machine.
   and `NSHighResolutionCapable`. No document types and no URL schemes: the app opens
   `.pibatch` files through its own dialogs, not through Launch Services.
 - `LSApplicationCategoryType` is `public.app-category.video`.
+- **The build is arm64 only, and that is now a decision rather than an assumption** (OQ-24,
+  confirmed 2026-09-11). Do not spend installer budget on a universal2 build. An Intel Mac
+  cannot run it, and needs no handling here: macOS refuses to launch an arm64-only bundle
+  itself, with a better message than this tool could print. The one place the architecture
+  leaks is running from source on an Intel Mac, where `resolve_tool` hands back the bundled
+  arm64 binary (it tests `is_file`, not whether this machine can execute it) and the first
+  ffprobe call fails with `Exec format error`. That is a developer's problem, not the
+  editor's, and the v02 Windows build will have to revisit `BUNDLED_PLATFORM` regardless.
 - Distribution as a `.dmg` built with `create-dmg`, background image and an Applications
   symlink. A plain zip of the `.app` is the fallback and is honestly fine for one user.
 - `build/build.py` runs both steps and writes to `dist/`.
@@ -50,7 +58,7 @@ minimum lease Apple's licence forces, which makes preparation, not price, the th
 optimising.
 
 Everything else in this document is still written from the documentation rather than from a
-machine anyone has used. Assumptions that need a Mac to settle are flagged as OQ-22 to OQ-24.
+machine anyone has used. Assumptions that need a Mac to settle are flagged as OQ-22 and OQ-23.
 OQ-25 no longer needs one: the tool asks for its two roots instead of looking for them.
 
 ## ffmpeg

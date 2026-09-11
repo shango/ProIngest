@@ -31,7 +31,7 @@ Non-goals for v01
 - Lens grid delivery. The tool reports whether a turnover has one; moving and renaming it is manual in v01 (OQ-20).
 - Frame viewer (v02).
 - Any Google Drive API use. The Drive mount is a normal mounted folder.
-- Windows build (design for it, do not ship it).
+- Windows build (design for it, do not ship it). v01 is Apple Silicon only, and a Windows 11 build is a v02 intention (OQ-24).
 
 ## 4. Inputs
 
@@ -155,5 +155,5 @@ M8 Polish pass against `docs/UI_SPEC.md`, performance on a real turnover, docs.
 - Frame viewer: two image panes (In, Out) bound to the selected row, updating live as In/Out are typed; frame forward/back buttons under each pane move the playhead and write back to the field. Requires a decoded frame cache per row.
 - Optional color transform on ingest (OCIO).
 - Burn-ins on reference mp4s.
-- Windows build.
+- Windows 11 build. Intended, not committed (OQ-24).
 - Google Apps Script hyperlink export for the tracker.
