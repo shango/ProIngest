@@ -26,5 +26,11 @@ proingest/resources/ffmpeg/*
 *.pibatch
 *.pibatch.bak
 
+# Front-end mock of the UI, for showing producers. Deliberately untracked at the user's
+# request: it is a picture of docs/UI_SPEC.md, never a second implementation, and the spec
+# is what the repo carries. Still on disk, still published as an artifact; see PROGRESS
+# section 8.
+/preview/
+
 # WSL NTFS alternate data stream artifacts
 *:Zone.Identifier

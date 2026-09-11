@@ -586,9 +586,10 @@ is useful rather than not, but a test asserting "one stream" will fail on it.
 
 ## 8. Repo conventions and session-specific facts
 
-- **Do not `git add docs/ROADMAP.md` or `docs/ROADMAP.docx`.** They are a manager-facing
-  plan the user asked to keep outside git, and they are deliberately untracked. Stage
-  files by name, never `git add -A`.
+- **Three things are deliberately untracked**, all at the user's request: `docs/ROADMAP.md`
+  and `docs/ROADMAP.docx`, a manager-facing plan, and the whole of `preview/`. The ROADMAP
+  pair is untracked by convention alone, so stage files by name and never `git add -A`;
+  `preview/` is in `.gitignore` as well. All three are still on disk.
   The .docx was generated from the .md with `python-docx`; no converter is kept in the
   repo, so if the .md changes and a new .docx is wanted, write one and throw it away.
 - **Build track artifact**, a readable M1-M8 status board for the user:
@@ -599,8 +600,10 @@ is useful rather than not, but a test asserting "one stream" will fail on it.
 - **Interface preview**, a front-end mock of `docs/UI_SPEC.md` for showing producers what
   the tool will look like before M5 exists:
   https://claude.ai/code/artifact/a9efaeb7-f890-4f24-a6a3-4bd92ad844eb
-  Source is `preview/index.html`, one file, React from a CDN, no build step. Its data is
-  entirely invented and it is wired to nothing in `proingest/`. It is a picture of the
+  Source is `preview/index.html`, one file, React from a CDN, no build step. **The folder
+  is untracked**, so the artifact and the copy on this machine are the only versions of it;
+  a fresh clone will not have it. Its data is entirely invented and it is wired to nothing
+  in `proingest/`. It is a picture of the
   spec, never a statement of behaviour: if the two disagree, `docs/UI_SPEC.md` wins and the
   mock is stale. `preview/README.md` lists which parts are taken from the spec and which
   are made up.
