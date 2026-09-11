@@ -288,7 +288,7 @@
       <div class="stat-l">Tests, Linux + macOS</div>
     </div>
     <div class="stat">
-      <div class="stat-n">21<span style="color:var(--faint);font-size:17px">/26</span></div>
+      <div class="stat-n">20<span style="color:var(--faint);font-size:17px">/26</span></div>
       <div class="stat-l">Questions open</div>
     </div>
     <div class="stat">
@@ -512,11 +512,6 @@
             <td class="st"><span class="tag open">Open</span></td>
           </tr>
           <tr>
-            <td class="id">OQ-5</td>
-            <td>Spec typos: 2161 and 2162 heights, witness cam without a frame range</td>
-            <td class="st"><span class="tag open">Confirmed real</span></td>
-          </tr>
-          <tr>
             <td class="id">OQ-6</td>
             <td>Display transform for refs: sRGB piecewise or Rec.709 OETF</td>
             <td class="st"><span class="tag open">Open</span></td>
@@ -565,6 +560,11 @@
             <td class="id">OQ-26</td>
             <td>Which metadata the AD and supervisor actually want in the new pane</td>
             <td class="st"><span class="tag open">Open</span></td>
+          </tr>
+          <tr class="resolved">
+            <td class="id">OQ-5</td>
+            <td>Spec table defects - witness cam is a normal clip, and the odd heights are typos for 2160</td>
+            <td class="st"><span class="tag ok">Resolved</span></td>
           </tr>
           <tr class="resolved">
             <td class="id">OQ-17</td>
@@ -740,13 +740,18 @@
         </p>
       </div>
       <div class="note">
-        <h3>The witness cam rows really are missing their frame range</h3>
+        <h3>The witness cam gap in the spec table means nothing, and now says so</h3>
         <p>
-          Checked against the source PDF. Every other raw sequence row shows a frame range and
-          two subfolder-naming columns; the witness cam raw rows show a bare filename with
-          neither, which reads as a single file rather than a sequence. The 3840&times;2162 and
-          3840&times;2161 heights are real typos in the same table. OQ-5, treated as a sequence
-          like the others.
+          Every other raw sequence row in the shooters' table shows a frame range and two
+          subfolder-naming columns; the two witness cam raw rows show a bare filename with
+          neither, which reads as a single file rather than a sequence. It was carried as an
+          open question because it looks deliberate. It is not: the editor confirmed that
+          <span class="mono">wit</span> is a normal deliverable, treated exactly like any other
+          clip on the timeline, so it owes the same four picture outputs and no audio. The
+          build already did that, so nothing changed except that the next person to read the
+          PDF will not go looking for a rule that was never there. OQ-5 is closed. The
+          3840&times;2162 and 3840&times;2161 heights in the same table are real typos and are
+          treated as 3840&times;2160.
         </p>
       </div>
       <div class="note">
@@ -782,7 +787,7 @@
   <footer>
     <b>Source of truth</b> &middot; PROGRESS.md, docs/OPEN_QUESTIONS.md, PRD.md section 9<br>
     <b>Verify</b> &middot; pytest &middot; ruff check . &amp;&amp; mypy proingest &middot; python -m proingest scan &lt;folder&gt;<br>
-    <b>Last updated</b> &middot; 11 September 2026, first green CI run on Apple Silicon
+    <b>Last updated</b> &middot; 11 September 2026, OQ-5 closed. Next: M3.5, the reference encodes
   </footer>
 
 </div>

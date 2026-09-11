@@ -10,7 +10,9 @@ commit.
 
 **State at 2026-09-11.** M1 and M2 complete, M3 in progress (M3.1 to M3.4 done, only
 M3.5 left). Working tree clean apart from two deliberately untracked files (section 8).
-547 tests passing, `ruff` and `mypy --strict` clean. M3.4 landed as `0c349c9`.
+547 tests passing, `ruff` and `mypy --strict` clean. M3.4 landed as `0c349c9`, and the
+witness cam half of OQ-5 was answered by the user and recorded in `3dd41ca`, which
+changed docs and a docstring only. No code moved with it.
 
 **The suite now runs on the target platform.** First green CI run on a `macos-latest`
 arm64 runner: 547 passed in 16.85s, lint and types clean, against the bundled
@@ -92,9 +94,15 @@ fix one and say which.**
 | `docs/QC_RULES.md` | every rule ID, severity and scope. IDs never change meaning |
 | `docs/ARCHITECTURE.md` | package layout, data flow, concurrency, batch file |
 | `docs/UI_SPEC.md` | the M5 interface, keyboard model, burn-ins |
-| `docs/OPEN_QUESTIONS.md` | OQ-1 to OQ-21, with defaults for the unanswered ones |
+| `docs/OPEN_QUESTIONS.md` | OQ-1 to OQ-26, with defaults for the unanswered ones |
 | `docs/PACKAGING.md` | M7, the `.app` and dmg, ffmpeg bundling, Gatekeeper |
 | `docs/MAC_SESSION.md` | the only work that needs a real Mac, and what to do on the day |
+
+The shooters' own spec sheet sits in `docs/` in two forms, the PDF and a CSV export of the
+same document. They are source material, not spec: what the app does with them is settled
+in `NAMING_SPEC.md`, which is where the known defects in their type table are recorded.
+Read the CSV when the question is what a row of that table actually says, since it needs no
+PDF viewer.
 
 ---
 
@@ -210,6 +218,20 @@ color 6.
 ---
 
 ## 6. Decisions taken
+
+**Witness cam is a normal deliverable (confirmed by the user 2026-09-11).**
+
+- The spec PDF lists the two `wit` raw rows with a bare filename, no frame range and no
+  subfolder columns, where every other raw sequence row has all three. It reads as though
+  witness cam were a single file, or delivered under some different rule. It is not. `wit`
+  is treated exactly like any other clip on the timeline: the same four picture
+  deliverables as `cp`, `el` and `re`, no audio, and a sequence for its raw outputs.
+- **Nothing was built for this.** The planner type table already gave every element type
+  the four picture deliverables, so the answer matched what was there. The value is in not
+  re-deriving it: the PDF gap looks like it means something, and the next reader who finds
+  it would go looking. NAMING_SPEC section 3 and the OQ-5 row now say so, and
+  `tests/test_planner.py::TestTypeTable` pins both halves.
+- The 2161/2162 heights in that table are still real typos, treated as 3840x2160.
 
 **Platform: v01 is macOS on Apple Silicon (changed 2026-09-10).**
 
