@@ -288,7 +288,7 @@
       <div class="stat-l">Tests, Linux + macOS</div>
     </div>
     <div class="stat">
-      <div class="stat-n">17<span style="color:var(--faint);font-size:17px">/39</span></div>
+      <div class="stat-n">18<span style="color:var(--faint);font-size:17px">/40</span></div>
       <div class="stat-l">Questions open</div>
     </div>
     <div class="stat">
@@ -430,9 +430,11 @@
             months later. One definition of the colour serves the render and the on-screen
             viewers alike, so the two cannot disagree. A shot whose colour has not arrived is
             not delivered ungraded; it is not delivered.
-            <b>Two quick answers from the studio would let this start clean:</b> which log
-            format the shooters deliver in, and what the colour session hands over so the tool
-            can match each colour file to the right shot.
+            <b>Three quick answers from the studio would let this start clean</b>, and all
+            three are about what two existing processes already produce rather than decisions
+            anyone has to make from scratch: which log format the shooters deliver in, whether
+            the approved grade reaches the tool inside the final edit list or as a separate file
+            per shot, and if the latter, what says which file belongs to which shot.
           </div>
         </div>
       </div>
@@ -551,8 +553,13 @@
         </thead>
         <tbody>
           <tr>
+            <td class="id">OQ-40</td>
+            <td><b style="color:var(--text)">Decides most of the colour chunk.</b> Whether the approved grade reaches the tool inside the final edit list or as a separate file per shot. The simpler answer is enough only if the grading stays within what that simpler format can describe</td>
+            <td class="st"><span class="tag hot">New</span></td>
+          </tr>
+          <tr>
             <td class="id">OQ-33</td>
-            <td><b style="color:var(--text)">Blocks the colour work.</b> What the colour session hands over so the tool knows which colour file belongs to which shot. It is a reader with nothing yet to read</td>
+            <td>What the colour session hands over so the tool knows which colour file belongs to which shot. Only live if OQ-40 lands on the per shot file; the edit list already says which event is which</td>
             <td class="st"><span class="tag hot">New</span></td>
           </tr>
           <tr>
@@ -1116,7 +1123,7 @@
   <footer>
     <b>Source of truth</b> &middot; PROGRESS.md, docs/OPEN_QUESTIONS.md, PRD.md section 9<br>
     <b>Verify</b> &middot; pytest &middot; ruff check . &amp;&amp; mypy proingest &middot; python -m proingest scan &lt;folder&gt;<br>
-    <b>Last updated</b> &middot; 12 September 2026, colour workflow settled end to end, colour controls and the stringout removed. Next: M4.5, the colour pipeline, core first and headless
+    <b>Last updated</b> &middot; 12 September 2026, colour workflow settled end to end, colour controls and the stringout removed, one question left on how the grade arrives. Next: M4.5, the colour pipeline, core first and headless
   </footer>
 
 </div>
