@@ -108,7 +108,7 @@ Table: row, rule ID, severity, message, "Fix" hint where applicable (e.g. "Renam
 
 ## 8. Stringout burn-ins: dropped
 
-**The tool no longer builds a stringout** (PRD FR-9, decided 2026-09-12), so there are no
+**The tool no longer builds a stringout** (PRD FR-9, decided 2026-09-11), so there are no
 burn-ins to specify. The colour session exports a reference QT with the look and burn-ins
 already on it.
 
@@ -235,7 +235,7 @@ OQ-25.
 
 ## 14. Viewers: dropped
 
-**There are no image viewers in the tool** (PRD FR-16, decided 2026-09-12). This section
+**There are no image viewers in the tool** (PRD FR-16, decided 2026-09-11). This section
 specified three, In / Center / Out, steppable, with stepping trimming the row, and four colour
 controls beside them. All of it is removed and a frame viewer is a v02 item again.
 

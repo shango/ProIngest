@@ -57,7 +57,13 @@
     letter-spacing: .16em;
     text-transform: uppercase;
     color: var(--faint);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 14px;
+    align-items: baseline;
   }
+  .eyebrow .stamp { color: var(--dim); letter-spacing: .1em; }
+  .eyebrow .stamp b { color: var(--text); font-weight: 600; }
 
   h1 {
     font-family: var(--cond);
@@ -269,7 +275,10 @@
 <div class="wrap">
 
   <header class="mast">
-    <div class="eyebrow">VFX turnover ingest &middot; macOS v01</div>
+    <div class="eyebrow">
+      <span>VFX turnover ingest &middot; macOS v01</span>
+      <span class="stamp">Updated <b>11 Sep 2026, 15:52 PDT</b></span>
+    </div>
     <h1>ProIngest Build Track</h1>
     <p class="standfirst">
       Milestones M1 through M8 from <span class="mono">PRD.md</span> section 9, with what each
@@ -423,7 +432,7 @@
             decides the look, a grading session builds it, and that session exports an updated
             final edit list with the approved grade carried inside it. The tool applies it and
             never authors any, which is why the four on-screen colour controls that were planned
-            a day earlier have been removed.
+            earlier the same day have been removed.
             <b>What changes:</b> shooters deliver one log format no matter what camera they
             shot on, which removes an entire class of per-camera problems before it starts.
             Every delivered file carries the approved look, plates included, and every plate
@@ -739,11 +748,11 @@
         </p>
         <p>
           <b>Three things left the plan on the strength of that.</b> The four on-screen colour
-          controls, specified the day before, are gone: colour is authored once, in the session,
+          controls, specified that morning, are gone: colour is authored once, in the session,
           with the AD in the room. The turnover review movie is gone, because the session already
           produces one, which takes a day out of the estimate. And the delivered plates now carry
           the approved look rather than shipping untouched, which reverses a decision argued the
-          day before - defensibly, because that argument was that the grade moves later, and in
+          same morning - defensibly, because that argument was that the grade moves later, and in
           this workflow it does not move at all.
         </p>
         <p>
@@ -1125,7 +1134,7 @@
   <footer>
     <b>Source of truth</b> &middot; PROGRESS.md, docs/OPEN_QUESTIONS.md, PRD.md section 9<br>
     <b>Verify</b> &middot; pytest &middot; ruff check . &amp;&amp; mypy proingest &middot; python -m proingest scan &lt;folder&gt;<br>
-    <b>Last updated</b> &middot; 12 September 2026, colour workflow settled end to end, colour controls and the stringout removed, the grade arrives as a CDL in the colour session's final EDL. Next: M4.5, the colour pipeline, core first and headless
+    <b>Last updated</b> &middot; 11 September 2026, 15:52 PDT. Colour workflow settled end to end: the grade arrives as a CLF from the colour session, the plate is graded, and the colour controls, the viewers and the stringout are all out of the tool. Next: M4.5, the colour pipeline, core first and headless
   </footer>
 
 </div>

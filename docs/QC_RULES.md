@@ -4,7 +4,7 @@ Every rule has a stable ID, a phase, a severity, and a scope. Severity: `error` 
 
 Rule IDs never change meaning. New rules get new numbers. **The one exception is a rule revised on
 the same day it was written, before any code, log line or spreadsheet has used it**, which is what
-happened to QC-009, QC-019 and QC-039 on 2026-09-12. The grade carrier was specified as a CLF, then
+happened to QC-009, QC-019 and QC-039 on 2026-09-11. The grade carrier was specified as a CLF, then
 as a CDL, then as a CLF again, all in one session and none of it built, so these three were written,
 reworded and written back. Nothing anywhere had ever referred to them, which is the only condition
 under which this is safe. **It is not a precedent**: the moment a rule ID reaches code, a log or a
@@ -52,7 +52,7 @@ a spreadsheet column from an older run still resolves to what it meant when it w
 | QC-032 | error | row | In greater than Out |
 | QC-033 | warning | row | Duration below minimum (default 120 frames) |
 | QC-034 | warning | row | Duration above maximum (default 240 frames) |
-| QC-035 | info | row | In/Out differ from turnover snapshot. **Unchanged in meaning and mostly changed in cause**: the snapshot is what the shooters delivered, and since 2026-09-12 most of the difference is the colour session's own approved trim rather than anything the editor did. QC-045 is the one that reports the editor |
+| QC-035 | info | row | In/Out differ from turnover snapshot. **Unchanged in meaning and mostly changed in cause**: the snapshot is what the shooters delivered, and since 2026-09-11 most of the difference is the colour session's own approved trim rather than anything the editor did. QC-045 is the one that reports the editor |
 | QC-045 | warning | row | Current In/Out differ from the **approved** In/Out on the colour session's final EDL. A warning where QC-035 is info, because this is a deviation from an edit the AD signed off rather than a record of one: the delivered shot is not the shot that was approved, and the only place that fact exists is this rule. Fires on a deliberate one-off trim, which is a supported thing to do (PRD FR-5), and on a colour session ingested after a trim was already made, which overwrites it |
 | QC-036 | info | row | Shot code edited from original clip name |
 | QC-037 | RETIRED | | Was: colour adjusted from neutral, for the four per clip colour controls. **The controls are removed from v01** and there is nothing to report. **The ID is not reused** |

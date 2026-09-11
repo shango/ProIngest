@@ -1,4 +1,4 @@
-# Session close, 12 September 2026
+# Session close, 11 September 2026, evening
 
 **This file is disposable and it is not the handoff record.** `PROGRESS.md` section 1 is, and
 it is written to be picked up cold. This is only a note about what one session did. Delete it
@@ -7,8 +7,8 @@ once it has been read. **If it disagrees with `PROGRESS.md` or the docs, they wi
 ## What happened
 
 No code changed. 718 tests still pass, `ruff` and `mypy --strict` are clean. The whole session
-was specification, and for the second day running it **replaced a colour policy that had been
-written up as settled**.
+was specification, and it **replaced a colour policy that had been written up as settled
+earlier the same day**. This is the second session of 2026-09-11; the first is what it replaced.
 
 The user described the real colour workflow: colour is finished in a Resolve session where Ben
 works with the AD, who also do the shot trims there. That session exports the updated final EDL,
@@ -26,14 +26,14 @@ the same day.
 
 Six things changed shape, five of them at the user's explicit instruction:
 
-- **The plate is graded now.** The 2026-09-11 spec delivered it ungraded with the CDL in the
+- **The plate is graded now.** This morning's spec delivered it ungraded with the CDL in the
   header. Reversed, and the reasoning is in `PROGRESS.md` section 6: the old objection was that
   the grade moves later in the DI, and this workflow does the DI first.
 - **The colour controls are removed** (user). Four sliders, QC-037 and OQ-32 went with them.
 - **The stringout is dropped** (user). M6, `core/stringout.py`, UI_SPEC section 8, QC-140,
   QC-141, OQ-12 and OQ-15 went with it.
 - **Sources are one studio standard log** (user, correcting mid-session). See below.
-- **The three viewers are dropped** (user). FR-16 is now a removal note, UI_SPEC section 14 is
+- **The three viewers are dropped** (user), hours after being specified. FR-16 is a removal note, UI_SPEC section 14 is
   empty, `core/preview.py` and M4.5.5 are gone, and a frame viewer is a v02 item again.
 - **In/Out is now approved in Ben's session**, and the tool's trimming survives as the deliberate
   one-off: the quick trim not worth asking for a new EDL. QC-045 is new and reports it. The list
@@ -74,7 +74,7 @@ is OQ-39, and ACEScct makes the transform identity.
   tests only. They were kept on purpose: the stringout name is something a human types now, and
   the tool can still check it, exactly as with the lens grid. Do not delete them without asking.
 - **The colour spec has been wrong twice.** `PROGRESS.md` section 1 has the table of what each
-  version claimed. Take nothing about colour from a file dated before 2026-09-12.
+  version claimed. Two of the three share a date, so check the time on anything dated 2026-09-11.
 - **`preview/` is untracked on purpose** and still shows the four colour sliders and the three
   viewers, so it is badly stale against UI_SPEC sections 1 and 14. `PROGRESS.md` section 8 has the URL.
 - **One answer would unblock M4.5**: OQ-39, which log encoding the shooters deliver in. OQ-30

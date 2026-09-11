@@ -6,7 +6,9 @@
 tool applies it to everything it writes, and the plate is delivered graded, scene linear
 ACEScg.**
 
-This **supersedes the policy of 2026-09-11**, which itself superseded OQ-17. That version had
+This **supersedes the policy written earlier on 2026-09-11**, which itself superseded OQ-17.
+Both carry the same date, which is worth noticing before trusting a file by its timestamp alone.
+That morning's version had
 the shooters delivering ACEScct, the CDL read out of an EDL, an ungraded plate with the CDL
 carried in the header, and four colour controls in the tool for the AD's notes. The pipeline
 mechanics from it survive almost intact. What changed is where colour is authored and when,
@@ -172,7 +174,7 @@ float pixels directly.
 
 ### The plate is graded, and what that costs
 
-The 2026-09-11 policy delivered an ungraded plate and carried the CDL in the header. The
+The morning's policy delivered an ungraded plate and carried the CDL in the header. The
 argument for it was that a grade baked into a plate can clip highlights the comp needs, and
 that work done against a graded plate stops matching the moment the grade moves in the DI.
 

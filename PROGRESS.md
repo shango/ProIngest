@@ -8,10 +8,11 @@ commit.
 
 ## 1. Resume here
 
-**State at 2026-09-12. M1, M2, M3 complete; M4.1 and M4.2 done. The colour workflow was
-replaced today, for the second time in two days, and nothing of it is built.**
+**State at 2026-09-11, evening. M1, M2, M3 complete; M4.1 and M4.2 done. The colour workflow
+was replaced twice today, once this morning and again this afternoon, and nothing of it is
+built.**
 718 tests passing, `ruff` and `mypy --strict` clean. **No code has changed since 2026-09-10**:
-two consecutive days of spec. **Nothing is blocked.**
+a whole day of spec. **Nothing is blocked.**
 
 ### First five minutes
 
@@ -21,18 +22,19 @@ two consecutive days of spec. **Nothing is blocked.**
 ```
 
 Then read `docs/COLOR_AND_FORMAT.md` section 1 before anything else, because it was rewritten
-today and it invalidates things you may already believe, including things written yesterday.
+today and it invalidates things you may already believe, including things written this morning.
 
 ### Read this before trusting anything about colour
 
 **The colour spec has now been wrong twice and rewritten twice.** Take nothing about colour
-from memory, from a commit message, or from any file dated before 2026-09-12.
+from memory or from a commit message, and check the time on anything dated 2026-09-11 before
+trusting it: two of the three versions below share that date.
 
 | dated | what it claimed | status |
 |---|---|---|
 | 2026-09-10 | sources display referred, sRGB baked in, references apply no transfer | wrong |
-| 2026-09-11 | sources ACEScct, plate **ungraded**, CDL read from the EDL, four colour controls in the tool | superseded |
-| 2026-09-12 | colour finished before ingest, **CLF per shot applied**, plate **graded**, no controls, no viewers, no stringout | current |
+| 2026-09-11 am | sources ACEScct, plate **ungraded**, CDL read from the shooters' EDL, four colour controls in the tool | superseded |
+| 2026-09-11 pm | colour finished before ingest, **CLF per shot applied**, plate **graded**, no controls, no viewers, no stringout | current |
 
 The mechanics survived both rewrites almost intact: ACEScg working space, OCIO for every
 transform, the plate branch unbounded in numpy, the view branch bounded in ACEScct and
@@ -41,13 +43,13 @@ collapsed into one 3D LUT. What kept changing is **where colour is authored and 
 ### What the tool is for
 
 **Checking all media, running QC, and producing every turnover output.** The user said it in
-those words on 2026-09-12. It does not author colour, it does not cut a stringout, and it
+those words on 2026-09-11. It does not author colour, it does not cut a stringout, and it
 decides nothing creative. Everything it writes is either a deliverable named from the spec or
 a report about one.
 
 ### What the workflow is now
 
-The user described it on 2026-09-12 and it is written up in `docs/COLOR_AND_FORMAT.md`
+The user described it on 2026-09-11 and it is written up in `docs/COLOR_AND_FORMAT.md`
 section 1. In one paragraph: the shooters deliver **ProRes 4444 in one studio standard log
 encoding**, the same on every file whatever anybody shot on. Their CDL and their string-out
 are offline reference and **the tool reads neither**. After the AD meeting, a **colour session
@@ -80,7 +82,7 @@ table and are never reused, so an old log line still resolves.
 ### Three things behind those that should not be re-derived
 
 - **The graded plate is not a reversal of the argument, it is the argument running out.**
-  2026-09-11 refused a graded plate because a grade baked into a plate stops matching when it
+  The morning's spec refused a graded plate because a baked grade stops matching when it
   moves in the DI. This workflow does the DI **first**, so there is no later grade to stop
   matching. The old objection's other half, that a baked grade can clip highlights the comp
   needs, is disposed of by the CDL itself: slope, offset, power and saturation applied in
@@ -101,14 +103,14 @@ table and are never reused, so an old log line still resolves.
 ### Next task: still M4.5, and its shape changed
 
 M4.5 and M4.3 are both unblocked and neither blocks the other. **M4.5 first** still, for the
-reason it was chosen yesterday: the QC log and the tracker want the colour columns, so doing
+reason it was chosen this morning: the QC log and the tracker want the colour columns, so doing
 colour first means the exports get written once instead of twice.
 
 What changed in M4.5 is what it reads. It no longer parses CDL out of an EDL and no longer
 models AD notes, which was all of M4.5.3. What M4.5.2 reads did change twice in one day and
 landed back where it started: the CDL, out of an EDL, except that the EDL is now the colour
 session's final one rather than the shooters'. `core/timeline.py` already walks EDL events.
-Net M4.5 is meaningfully smaller than yesterday's version.
+Net M4.5 is meaningfully smaller than this morning's version.
 
 **Three questions are open and the user has all of them:**
 
@@ -146,7 +148,7 @@ and QC-102 say, or derived from source timecode as the user's proposal said. The
   `macos-latest` arm64 runner on every push, against the bundled ffmpeg 9.0.1 rather than this
   machine's Ubuntu 6.1.1. `h264_videotoolbox` was confirmed to open and encode there, which
   answered half of OQ-23.
-- **40 open questions, 18 of them still open.** Closed on 2026-09-12: OQ-12, OQ-15, OQ-32,
+- **40 open questions, 18 of them still open.** Closed on 2026-09-11: OQ-12, OQ-15, OQ-32,
   OQ-34, OQ-37, OQ-38 and OQ-40. **OQ-30 and OQ-33 each closed and reopened within the same
   day**, as the grade carrier went CLF, then CDL, then CLF again. New: OQ-35, OQ-36, OQ-39.
   OQ-29 is mostly answered, since the colour session pins ACES 1.3.
@@ -285,9 +287,9 @@ Entry points worth knowing:
 | M2 | Naming and planning: type table, versioning, layout | complete, 66 tests |
 | M3 | Render | complete, 172 tests |
 | M4 | QC: all rules both phases, xlsx exports, `qc` CLI | M4.1 and M4.2 done, M4.3 pending |
-| M4.5 | Colour pipeline, core only. Studio log in, CLF applied, ACEScg out, the viewing LUT | **respecified 2026-09-12, not started** |
+| M4.5 | Colour pipeline, core only. Studio log in, CLF applied, ACEScg out, the viewing LUT | **respecified 2026-09-11, not started** |
 | M5 | UI: the list, the FR-14 metadata pane, settings, log. **No viewers** | not started |
-| M6 | ~~Stringout with burn-ins~~ | **dropped 2026-09-12**, the colour session exports it |
+| M6 | ~~Stringout with burn-ins~~ | **dropped 2026-09-11**, the colour session exports it |
 | M7 | Packaging: PyInstaller `.app`, dmg, Gatekeeper | not started, and needs a Mac (OQ-22) |
 | M8 | Polish, performance on a real turnover, docs | not started |
 
@@ -299,7 +301,7 @@ M4 detail. The milestone had no chunk table until M4.1; this is it:
 | M4.2 | phase B verification, QC-1xx, wired into `render_job` | done, 47 tests |
 | M4.3 | `core/exports.py`, the xlsx sheets, `proingest qc <batch>`, QC-053 | pending |
 
-M4.5 detail, respecified 2026-09-12, nothing built. It is **smaller than yesterday's
+M4.5 detail, respecified 2026-09-11, nothing built. It is **smaller than this morning's
 version**: the AD notes model is gone entirely, the viewers and their frame fetch went with it,
 and what M4.5.2 reads is the colour session's package rather than the shooters'.
 
@@ -309,7 +311,7 @@ and what M4.5.2 reads is the colour session's package rather than the shooters'.
 | M4.5.2 | `core/clf.py`: the final EDL read for conform, In/Out and CDL; the CLF matched per row, loaded and hashed. **Wants OQ-30 and OQ-33** | not started |
 | M4.5.3 | The viewing LUT: CLF plus ACES output transform baked to one `.cube` per shot | not started |
 | M4.5.4 | `render` plate/view split, `lut3d` encode, `exr.py` AP1 constants and the new header attributes | not started |
-| ~~M4.5.5~~ | ~~`core/preview.py`, single frame fetch with cache~~ **dropped 2026-09-12 with the viewers** | n/a |
+| ~~M4.5.5~~ | ~~`core/preview.py`, single frame fetch with cache~~ **dropped 2026-09-11 with the viewers** | n/a |
 
 Two constants in `exr.py` change in M4.5.4 and they matter: `CHROMATICITIES` goes from sRGB to
 AP1, and `COLORSPACE_ATTRIBUTE`'s value from `scene_linear_sRGB` to `ACEScg`.
@@ -335,17 +337,17 @@ color 6.
 
 ## 6. Decisions taken
 
-**The colour pipeline (respecified 2026-09-12, nothing built).**
+**The colour pipeline (respecified 2026-09-11, nothing built).**
 
 `docs/COLOR_AND_FORMAT.md` section 1 is the spec and is not repeated here. What belongs here is
 why each choice was made, so it is not relitigated by someone reading only the code.
 
-**This spec has been rewritten twice in two days and both rewrites were the user correcting a
+**This spec has been rewritten twice in one day and both rewrites were the user correcting a
 premise, not a design changing its mind.** Section 1 of this file has the table. The mechanics
 were right both times; what was wrong was who authors colour and when.
 
 - **Colour is authored in a Resolve session, not in this tool, and that deletes a feature
-  rather than moving one.** The 2026-09-11 spec had four per clip sliders as an AD notes layer
+  rather than moving one.** The morning's spec had four per clip sliders as an AD notes layer
   on top of the shooter's CDL. The AD's notes now go into the colour session with the AD in the
   room, and come back in the CLF. Two places to author a grade is two answers to a question
   that can only have one, and the session is the one with the colourist and the reference
@@ -378,7 +380,7 @@ were right both times; what was wrong was who authors colour and when.
   it has taken a wrong turn. Which encoding it is, is OQ-39; ACEScct makes the transform
   identity, because the colour session's CLF starts there.
 - **The viewers are gone, and the trimming they were attached to is not.** The user removed the
-  three viewers on 2026-09-12, a day after specifying them. The thing they existed for, judging
+  three viewers hours after specifying them that morning. The thing they existed for, judging
   a cut point on a picture, moved to the colour session, which has the AD in the room, a real
   viewer and a calibrated monitor. What stayed is In/Out editing in the list, deliberately, as
   **the quick one-off**: the trim that would otherwise mean asking Ben to reopen Resolve and

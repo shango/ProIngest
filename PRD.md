@@ -29,10 +29,10 @@ Goals
 - Installs from a single macOS disk image with no Python setup.
 
 Non-goals for v01
-- Authoring colour. The tool applies colour, it never invents any: the look is decided in the AD meeting, built in the colour session, and arrives as one CLF per shot alongside its final EDL. **There are no colour controls in the tool.** An earlier version of this PRD specified four per clip sliders for the AD's notes; they are removed, because two places to author a grade is one place too many and the Resolve session is the one that has the AD in the room.
+- Authoring colour. The tool applies colour, it never invents any: the look is decided in the AD meeting, built in the colour session, and arrives as one CLF per shot alongside its final EDL. **There are no colour controls in the tool.** An earlier version of this PRD, from the same morning, specified four per clip sliders for the AD's notes; they are removed, because two places to author a grade is one place too many and the Resolve session is the one that has the AD in the room.
 - Lidar deliverables.
 - Lens grid delivery. The tool reports whether a turnover has one; moving and renaming it is manual in v01 (OQ-20).
-- Frame viewer. Specified on 2026-09-11 as three steppable viewers, removed 2026-09-12, and back in the v02 backlog where it started (FR-16).
+- Frame viewer. Specified on the morning of 2026-09-11 as three steppable viewers, removed that afternoon, and back in the v02 backlog where it started (FR-16).
 - Any Google Drive API use. The Drive mount is a normal mounted folder.
 - Windows build (design for it, do not ship it). v01 is Apple Silicon only, and a Windows 11 build is a v02 intention (OQ-24).
 
@@ -115,7 +115,7 @@ FR-7 Render
 FR-8 Post-render QC
 Rules `QC-1xx` in `docs/QC_RULES.md`: frame count, first/last frame numbers, resolution, fps, EXR header integrity, checksum of every frame written, mp4 duration, audio duration.
 
-FR-9 Stringout: **dropped from v01, 2026-09-12.**
+FR-9 Stringout: **dropped from v01, 2026-09-11.**
 - The tool does not build a stringout. The colour session exports a reference QT with the look and burn-ins, and that is the stringout. Two tools building the same artifact from the same decisions is one too many, and the one with the colourist in front of it wins.
 - What went with it: milestone M6, `core/stringout.py`, the burn-in specification in `docs/UI_SPEC.md` section 8, QC-140 and QC-141, and OQ-12 and OQ-15.
 - **What this gives up, recorded so it is a decision and not an oversight**: the tool's stringout would have been the only one cut to the **edited** In/Out. The session's QT and the shooters' offline are both cut to the turnover as delivered. If it turns out the vendor needs a stringout that reflects the review session, this comes back, and it comes back as a milestone rather than a patch.
@@ -150,8 +150,8 @@ FR-15 Colour pipeline
 - **A CLF that contains a display rendering is refused**, QC-039: it would produce a display referred file that claims to be scene linear, and nothing downstream would notice until the comp was wrong.
 - A row with no CLF cannot render. QC-009, error, not a warning: an ungraded plate is not a lesser deliverable here, it is the wrong pixels under the right filename.
 
-FR-16 Viewers: **dropped from v01, 2026-09-12.**
-- There are no image viewers in the tool. The three steppable In / Center / Out viewers specified on 2026-09-11 are removed, along with the four colour controls that were specified beside them and already removed earlier the same day.
+FR-16 Viewers: **dropped from v01, 2026-09-11.**
+- There are no image viewers in the tool. The three steppable In / Center / Out viewers specified on the morning of 2026-09-11 are removed, along with the four colour controls that were specified beside them and removed a little earlier the same day.
 - A frame viewer returns to the v02 backlog where it started (section 10), and section 3 lists it as a non-goal again.
 - What went with it: `docs/UI_SPEC.md` section 14, `core/preview.py` and M4.5.5, and the single frame fetch and cache they needed. In/Out are edited by typing, per FR-5, which is now the only way a row is edited at all.
 - **What this gives up**: an editor judging a cut point reads frame numbers and timecode rather than pictures. That is what the review session with the AD was for, and that session now happens in Resolve with Ben, where there is a proper viewer and a calibrated monitor.
@@ -172,13 +172,13 @@ M3 Render: EXR writer, mp4 encoder, audio copy, side file copy, atomic writes, p
 M4 QC: all rules, both phases, xlsx exports. CLI `proingest qc <batch>`.
 M4.5 Colour pipeline, core only: OCIO wired in, the final EDL's In/Out and CDL read and matched per row, the CLF matched and loaded, input transform plus CLF as one GroupTransform, the viewing LUT. Reopens M3's render for the plate/view split. No Qt, testable headless, which is what makes M5's viewers a thin layer rather than a second implementation.
 M5 UI: main window, list view with keyboard model, metadata pane, validation coloring, settings page, log panel, batch open/save.
-M6 **Dropped 2026-09-12.** Was: stringout with burn-ins. The colour session exports it instead (FR-9). The number is not reused.
+M6 **Dropped 2026-09-11.** Was: stringout with burn-ins. The colour session exports it instead (FR-9). The number is not reused.
 M7 Packaging: PyInstaller `.app`, disk image, bundled ffmpeg, first-run experience, icon.
 M8 Polish pass against `docs/UI_SPEC.md`, performance on a real turnover, docs.
 
 ## 10. v02 backlog (do not build in v01, but do not design against it)
 
-- Frame viewer. Removed from v01 twice now, which is worth noting before anyone adds it a third time: it was a v02 item from the start, was promoted into v01 on 2026-09-11 as three steppable viewers, and was removed again on 2026-09-12 because the review that needed pictures moved to Resolve. It needs a decoded frame cache per row and the viewing LUT that M4.5 builds anyway.
+- Frame viewer. Removed from v01 twice now, which is worth noting before anyone adds it a third time: it was a v02 item from the start, was promoted into v01 on 2026-09-11 as three steppable viewers, and was removed again on 2026-09-11 because the review that needed pictures moved to Resolve. It needs a decoded frame cache per row and the viewing LUT that M4.5 builds anyway.
 - Per shot colour controls in the tool, if the round trip through the colour session ever proves too slow for a review session. Removed from v01 deliberately (section 3).
 - Burn-ins on reference mp4s.
 - Windows 11 build. Intended, not committed (OQ-24).
