@@ -297,7 +297,7 @@
       <div class="stat-l">Tests, Linux + macOS</div>
     </div>
     <div class="stat">
-      <div class="stat-n">17<span style="color:var(--faint);font-size:17px">/40</span></div>
+      <div class="stat-n">18<span style="color:var(--faint);font-size:17px">/40</span></div>
       <div class="stat-l">Questions open</div>
     </div>
     <div class="stat">
@@ -376,7 +376,7 @@
             and 1920&times;1080, H.264 High, correctly tagged, AAC at 193&nbsp;kbit/s.
             <b>One known gap, and it is deliberate.</b> The reference videos apply no colour
             transform, which was correct under the colour policy in force when they were built
-            and is not correct under the one settled on 12 September. M4.5 fixes it. Nothing
+            and is not correct under the one settled later that day. M4.5 fixes it. Nothing
             else here is affected: plates and copies were never a colour question until now.
           </div>
         </div>
@@ -425,27 +425,25 @@
             The approved grade from the colour session, applied to everything the tool writes.
             Core only, no interface.
           </p>
-          <div class="mods"><span>color.py</span><i>/</i><span>clf.py</span><i>/</i><span>preview.py</span><i>/</i><span>render.py</span><i>/</i><span>exr.py</span></div>
+          <div class="mods"><span>color.py</span><i>/</i><span>clf.py</span><i>/</i><span>render.py</span><i>/</i><span>exr.py</span></div>
           <div class="gate">
-            <b>Respecified on 12 September, when the studio described how colour actually
+            <b>Respecified on 11 September, when the studio described how colour actually
             works here.</b> Colour is finished <b>before</b> the tool runs: the AD meeting
             decides the look, a grading session builds it, and that session exports an updated
-            final edit list with the approved grade carried inside it. The tool applies it and
-            never authors any, which is why the four on-screen colour controls that were planned
-            earlier the same day have been removed.
+            final edit list plus one colour transform per shot. The tool applies those and never
+            authors any colour, which is why the four on-screen colour controls and the three
+            frame viewers that were planned that morning have both been removed.
             <b>What changes:</b> shooters deliver one log format no matter what camera they
             shot on, which removes an entire class of per-camera problems before it starts.
             Every delivered file carries the approved look, plates included, and every plate
-            records which version of the grade is in its pixels so a frame can be traced back
-            months later. One definition of the colour serves the render and the on-screen
-            viewers alike, so the two cannot disagree. A shot whose colour has not arrived is
-            not delivered ungraded; it is not delivered.
+            records exactly which version of the grade is in its pixels, so a frame can be
+            traced back months later without the grading session. A shot whose colour has not
+            arrived is not delivered ungraded; it is not delivered.
             <b>One answer from the studio would let this start clean:</b> which log format the
-            shooters deliver in. <b>And one caution</b>, which no software can check: the format
-            the grade travels in carries four controls and no more, so a curve or a colour wheel
-            used in the grading session does not reach the tool at all, silently. The session
-            also produces a reference movie with the real look on it, and comparing the two the
-            first time this runs is what would catch that.
+            shooters deliver in. Two smaller ones want a single real export from the grading
+            session rather than an opinion: how an entry in the edit list, and how a colour
+            file, each find their shot. Picking the wrong one applies a neighbouring shot's
+            colour, and looks entirely plausible while doing it.
           </div>
         </div>
       </div>
@@ -458,23 +456,21 @@
             <span class="pill">Not started</span>
           </div>
           <p class="ms-goal">
-            Main window, shot list with the keyboard model, <b>three frame viewers</b>,
-            metadata pane, validation colouring, settings page, log panel, batch open and save.
-            PySide6 6.7+, LGPL.
+            Main window, shot list with the keyboard model, metadata pane, validation
+            colouring, settings page, log panel, batch open and save. PySide6 6.7+, LGPL.
           </p>
           <div class="mods">
             <span>main_window</span><i>/</i><span>shot_model</span><i>/</i><span>delegates</span><i>/</i><span>docks</span><i>/</i><span>metadata_pane</span><i>/</i><span>theme.qss</span>
           </div>
           <div class="gate">
-            <b>Newer scope: three viewers</b>, added 2026-09-11 and now FR-16. The editor sees
-            the first frame, the middle and the last of whichever shot is selected, and steps
-            through them to find the right cut point. <b>Stepping a viewer trims the shot</b>,
-            so judging a cut and making it are the same action rather than two. The viewers show
-            the graded image, so what is approved on screen is what the vendor receives. They
-            rest on M4.5, which is why that is built first and headless. The <b>colour controls
-            that were planned beside them are gone</b>, removed 12 September: colour is authored
-            in the grading session, and a second place to author it is a second answer to a
-            question that can only have one.
+            <b>This chunk got smaller on 11 September.</b> Three frame viewers and four colour
+            controls were added to it that morning and both were removed that afternoon. Colour
+            is decided in the grading session and so is the cut, both with the AD present and on
+            a calibrated monitor, so neither needs a second home here. <b>What stayed is the
+            ability to trim a shot</b>, deliberately: the quick one-off that would otherwise mean
+            asking the colourist to reopen Resolve and re-export for a single shot. Any shot
+            trimmed that way is flagged in the report, because the delivered shot is then not
+            quite the shot that was approved.
             <b>Earlier scope: the metadata pane</b>, added at the user's request and now FR-14 with a
             full field list in UI_SPEC section 12. Selecting a clip fills a read-only panel on the
             right with everything known about it, which is what the AD and supervisor read during
@@ -570,13 +566,13 @@
           </tr>
           <tr class="resolved">
             <td class="id">OQ-40</td>
-            <td>How the approved grade reaches the tool - answered: inside the colour session's final edit list, which also deleted the need for a separate file per shot</td>
+            <td>How the approved grade reaches the tool - answered: one colour transform per shot, applied, with the readable short form of it carried alongside for anyone without colour software</td>
             <td class="st"><span class="tag ok">Answered</span></td>
           </tr>
-          <tr class="resolved">
+          <tr>
             <td class="id">OQ-33</td>
-            <td>What says which colour file belongs to which shot - closed with OQ-40; the edit list already does</td>
-            <td class="st"><span class="tag ok">Closed</span></td>
+            <td>What pairs a colour file with its shot: a filename convention, or a small index file. The same failure mode as OQ-30, and the same one real export answers both</td>
+            <td class="st"><span class="tag hot">Open</span></td>
           </tr>
           <tr>
             <td class="id">OQ-39</td>
