@@ -8,11 +8,11 @@ commit.
 
 ## 1. Resume here
 
-**State at 2026-09-11.** M1 and M2 complete, M3 in progress (M3.1 to M3.4 done, only
-M3.5 left). Working tree clean apart from two deliberately untracked files (section 8).
-547 tests passing, `ruff` and `mypy --strict` clean. M3.4 landed as `0c349c9`, and the
-witness cam half of OQ-5 was answered by the user and recorded in `3dd41ca`, which
-changed docs and a docstring only. No code moved with it.
+**State at 2026-09-11. M3 is complete.** M1, M2 and M3 are done; M4 is next and has
+not been started. Working tree clean apart from two deliberately untracked files
+(section 8). 570 tests passing, `ruff` and `mypy --strict` clean. M3.5, the reference
+encodes, landed last; the witness cam half of OQ-5 was answered by the user and recorded
+in `3dd41ca`, which changed docs and a docstring only.
 
 **The suite now runs on the target platform.** First green CI run on a `macos-latest`
 arm64 runner: 547 passed in 16.85s, lint and types clean, against the bundled
@@ -37,41 +37,33 @@ Verify the state before changing anything:
 .venv/bin/python -m proingest run <batch> --delivery-root <root>
 ```
 
-The last two are a real end to end run and they work today: a scanned turnover renders
-its raw EXR sequences, its audio and its side files, and reports the reference mp4s as
-QC-100 failures because M3.5 is not built. That is the expected output right now.
+The last two are a real end to end run and they now go all the way: a scanned turnover
+renders its raw EXR sequences, its reference mp4s at both resolutions with audio muxed,
+its audio and its side files. Verified on a two shot synthetic turnover: **10 written, 0
+failed, 0 skipped**, and the references came back 3840x2160 and 1920x1080, H.264 High,
+yuv420p, `bt709` primaries, `iec61966-2-1` transfer, 24/1, with AAC at 193 kbit/s. No
+`.part` left anywhere. That is the expected output now.
 
-**Next task: M3.5, the reference encodes.**
+**Next task: M4, QC and exports.**
 
-`render.py` dispatches `ref_mp4` to a "not yet" error. Replacing that is the last chunk
-of M3. COLOR_AND_FORMAT section 3 has the encode settings and section 1 the colour
-policy. Notes for it:
-
-- **Read the transfer decision from `color.display_transform(colorspace)`, never
-  re-derive it.** It returns the linear-to-sRGB filter for a scene linear source and
-  `None` for the baked sRGB source we actually get today. Getting it backwards does not
-  fail loudly, it washes out or crushes every reference (section 6).
-- Both outputs are tagged the same either way: `bt709` primaries and matrix,
-  `iec61966-2-1` transfer. Only the work to get there differs.
-- **State `-f mp4` explicitly.** The output is written to a `.part` path, so ffmpeg
-  cannot infer the muxer from the extension. This already bit the audio extract; see
-  section 7.
-- The encode reads the same source range as the raw pass. `ffmpeg.decode_command` shows
-  how the frame seek is built; an encode can use the same `trim` and `-start_number`
-  handling rather than piping raw frames back in.
-- `job.audio_source` carries the wav to mux, when the row has one. AAC 192k.
-- **x264 CRF 18 `-preset slow` is the default and the only thing to build for M3.5.**
-  NVENC is gone with the Windows target; the macOS hardware encoder is
+Nothing is half done behind it. `qc.py` already holds QC-025, QC-026 and QC-043 and the
+rest of both phases is unwritten; `exports.py` does not exist. Two things M3 left that M4
+is the right place for, both in section 9: QC-023 (a non 16:9 or non 4k source is not
+caught by anything today) and the post-render QC-1xx family, which is what
+`Deliverable.checksum`, `frame_checksums` and the new container frame count were recorded
+for.
+- **x264 CRF 18 `-preset slow` is what shipped, and hardware encoding stayed out.**
+  NVENC went with the Windows target; the macOS hardware encoder is
   `h264_videotoolbox`, which has no CRF and whose `-q:v` scale is uncalibrated (OQ-23).
-  `ffmpeg.has_nvenc()` is now dead code that nothing calls. Leave hardware encoding out
-  of M3.5 entirely rather than shipping a quality setting nobody has measured; it is a
-  Settings toggle in M5 at the earliest, and it needs a real Mac to calibrate.
-  Keyint 24, `-movflags +faststart` (QC-115 checks the moov atom is at the head).
-- Cancellation and progress: an encode is one ffmpeg run, not a frame loop, so the
-  hooks work differently from `_render_sequence`. Parse ffmpeg's `-progress` output for
-  frame counts, and kill the child when the cancel event is set.
-
-After M3.5, M3 is done and M4 (QC rules, both phases, xlsx exports) is next.
+  `ffmpeg.has_nvenc()` is dead code that nothing calls. Shipping a quality setting nobody
+  has measured was not worth it: hardware encode is a Settings toggle in M5 at the
+  earliest and needs a real Mac to calibrate. Keyint 24 and `-movflags +faststart` are
+  in the command; QC-115 will check the moov atom is at the head.
+- **M3.5 deliberately did not build the two things the plan for it named last.** It said
+  to parse ffmpeg's `-progress` for frame counts and to kill the child on cancel. Neither
+  is there: a reference goes from started to done with nothing in between, and a cancelled
+  run finishes the encodes in flight. The reasoning is in section 6 and the gap is in
+  section 9, so this is a decision to revisit rather than an oversight to rediscover.
 
 ---
 
@@ -194,8 +186,8 @@ Entry points worth knowing:
 |---|---|---|
 | M1 | Core: parse, resolve, probe, model, batch file, scan CLI | complete, 348 tests |
 | M2 | Naming and planning: type table, versioning, layout | complete, 66 tests |
-| M3 | Render | in progress, see below |
-| M4 | QC: all rules both phases, xlsx exports, `qc` CLI | not started |
+| M3 | Render | complete, 172 tests |
+| M4 | QC: all rules both phases, xlsx exports, `qc` CLI | **next**, not started |
 | M5 | UI, including the FR-14 metadata pane | not started |
 | M6 | Stringout with burn-ins | not started |
 | M7 | Packaging: PyInstaller `.app`, dmg, Gatekeeper | not started, and needs a Mac (OQ-22) |
@@ -209,15 +201,40 @@ M3 detail:
 | M3.2 | container decode to numpy frames in `core/ffmpeg.py` | done, 25 tests |
 | M3.3 | `core/render.py`: execution, atomic writes, checksums, copies | done, 35 tests |
 | M3.4 | pool, progress, cancellation, `proingest run` CLI | done, 30 tests |
-| M3.5 | ref mp4 and stringout encodes | **next**, unblocked |
+| M3.5 | ref mp4 encode, audio muxed, frame count verified | done, 23 tests |
 
-Tests by file: naming 115, planner 55, frames 55, render 49, media 46, models 37,
-timeline 33, exr 29, ffmpeg 25, scan 25, qc 22, batchfile 18, resize 16, cli 16,
+The stringout moved off this table: it is M6 and always was. The M3.5 row said "ref
+mp4 and stringout" and that was a mistake in the row, not a change of plan.
+
+Tests by file: naming 115, render 60, planner 55, frames 55, media 46, models 37,
+ffmpeg 37, timeline 33, exr 29, scan 25, qc 22, batchfile 18, resize 16, cli 16,
 color 6.
 
 ---
 
 ## 6. Decisions taken
+
+**The reference encode is one ffmpeg pass over the source, not a decode and re-feed.**
+
+- The raw path pulls frames into this process because it has to: EXR output goes through
+  the OpenEXR bindings, and swscale would clamp float to 0-1 on the way. An mp4 has no
+  such need. x264 wants every frame anyway, so decoding into numpy first would copy 95 MB
+  a frame across a pipe to hand straight back. `ffmpeg.encode_reference` runs one command.
+- **The price is paid in two places, and both are real.** A reference reports no progress
+  between its start and its finish, and a cancelled run waits for an encode already in
+  flight rather than stopping it. Both are in section 9; neither is worth a frame-by-frame
+  pipe, and `-progress pipe:1` would buy the first back on its own if it is ever wanted.
+- The seek is `decode_command`'s, unchanged: `-start_number` for a sequence, the
+  frame-counting `trim` for a container, never `-ss`. Section 7 has the two traps that
+  come with using it for an encode rather than a decode.
+- The transfer is read from `color.display_transform`, never re-derived. It returns the
+  linear-to-sRGB filter for a scene linear source and None for the baked sRGB source the
+  turnovers actually carry today, and the wrong branch washes out every reference without
+  failing. The scale runs before it, so the resample sees the values as delivered
+  (COLOR_AND_FORMAT section 4).
+- Audio is a second input, AAC 192k, `-shortest`, and **seeked by the in-point offset** so
+  the sound stays with a trimmed picture. That the wav starts where the picture media
+  starts is an assumption, logged as OQ-27.
 
 **Witness cam is a normal deliverable (confirmed by the user 2026-09-11).**
 
@@ -374,6 +391,26 @@ color 6.
 
 ## 7. Findings worth keeping
 
+**Three ways a reference encode goes wrong without failing.**
+
+- **A sequence input has no frame rate, and image2 invents 25.** Every reference built
+  from an EXR or DPX sequence would play 4% fast with nothing in the log. `-framerate` is
+  passed before the input from the timeline rate, as an exact rational: 23.976 is
+  24000/1001, and a decimal there drifts against the timecode.
+- **`trim` keeps the source timestamps.** The first delivered frame lands at its original
+  offset, so the mp4 opens with a gap that long. Measured on four frames at 24: 0.25s of
+  container against 0.17s of picture. `setpts=PTS-STARTPTS` follows every trim.
+- **ffmpeg exits 0 when the source runs out before the range does.** Asked for 100 frames
+  of a 4 frame plate it writes 4, says nothing, and the deliverable would be recorded as
+  done. The raw path already counted what it wrote; the encode now reads `nb_frames` back
+  off the container (`ffmpeg.container_frame_count`, the index rather than a decode, which
+  on a 4k reference is the difference between nothing and minutes) and refuses a short
+  file. Pinned by a test.
+
+**A mov's timecode track rides along into the reference.** `-map 0:v:0 -an` drops the
+audio but the mp4 muxer still writes a `tmcd` data stream from the source timecode. That
+is useful rather than not, but a test asserting "one stream" will fail on it.
+
 **OpenEXR bindings.**
 
 - `OpenEXR.File(header, channels)` takes the header **first**.
@@ -500,6 +537,20 @@ color 6.
 ## 9. Open items
 
 Nothing blocks the next task. These are live, in rough priority order:
+
+- **A reference encode reports no progress and cannot be cancelled mid-encode.** It is one
+  ffmpeg process, so the job goes from started to done with nothing in between, and a
+  cancelled run finishes the encodes already in flight before it stops. Worst case is the
+  length of one 4k encode per worker. `-progress pipe:1` parsed off stdout would give
+  per-frame progress, and a `Popen` with a poll on the cancel flag would give the kill;
+  neither is built because neither is worth it until someone has watched a real 100 shot
+  run. Section 6 has the reasoning.
+- **The reference path resamples through swscale, which clamps float to 0-1.** Inert
+  today: every source is display referred and bounded. The day the EXRs go scene linear a
+  highlight at 4.0 will clamp to 1.0 *before* the HD downscale averages it, so a bright
+  edge reduces differently than it should, and the raw path (which resamples in numpy for
+  exactly this reason) will disagree with the reference. Whoever flips the colour setting
+  should read this line first.
 
 - **OQ-20, the lens grid deliverable, is not built.** It is the one row of the type
   table M2 does not cover. Three things are undecided and none can be settled from the
