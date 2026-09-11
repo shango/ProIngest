@@ -59,7 +59,23 @@ Tokens: `{shotcode}` `{elem}` `{kind}` `{res}` `{ver}` `{frame}` `{aux}` `{auxid
 
 `{res}` is `4k` or `HD` exactly. `{ver}` is two digits. `{frame}` is four digits starting at 1001.
 
-Note: the spec PDF has a few resolution typos (2161, 2162); treat 4k as 3840x2160. It also lists witness cam raw without a frame range, which reads as though witness cam were delivered differently or not at all. It is not: **`wit` is a normal deliverable treated exactly like any other clip on the timeline**, confirmed by the user 2026-09-11, so its raw output is a sequence like every other row of this table. That gap in the PDF is a defect in the table and nothing more. OQ-5.
+### Known defects in the studio's own table
+
+The tables above are what this tool implements. The studio's sheet is in `docs/` in two
+forms, the PDF and a CSV export of it; read the CSV, it needs no viewer. Every difference
+between it and the tables above is listed here, because each one reads like it means
+something and none of them do. OQ-5.
+
+| in their sheet | reality |
+|---|---|
+| Heights of `3840x2161` and `3840x2162` on the element, witness, recon and lens grid rows | Typos. 4k is `3840x2160` everywhere |
+| Witness cam raw rows carry a bare filename, with no frame range and no subfolder columns, where every other raw row has all three | **`wit` is a normal deliverable, treated exactly like any other clip on the timeline**, confirmed by the user 2026-09-11. Its raw output is a sequence like every other row |
+| The HDRI row's naming convention ends `.mp4` | Its own example and its codec column say `.exr`, and an HDRI is an EXR. The convention cell is wrong |
+| Two rows are both labelled `HD Reference Recon Plate` | The first is the 4k row: its resolution and its own example say `re01_ref_4k_v01`. A label typo, not a missing deliverable or a duplicate one |
+| The element raw rows' subfolder *examples* read `MELT0001_el01_ref_4k_v01` | The subfolder convention column next to them reads `raw`, and a raw sequence folder is what those rows deliver. The convention is right and the example is wrong |
+
+None of these changed anything this tool does. They are recorded so the next person to read
+the sheet does not go looking for the rule behind one of them.
 
 ## 4. Versioning
 
