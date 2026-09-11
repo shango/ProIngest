@@ -66,7 +66,7 @@ exports an **updated final EDL** (conform, the approved trims, and the CDL as `*
 | The colour session's grade is what ships; the shooters' is superseded | COLOR_AND_FORMAT section 1, PRD FR-15 |
 | The **CLF is applied**; the CDL travels beside it as the readable record | OQ-40, closed |
 | The session's **updated final EDL** is the conform the run uses | COLOR_AND_FORMAT section 1, PRD section 4 |
-| **The plate is graded**, reversing 2026-09-11 | COLOR_AND_FORMAT section 1, PRD section 5 |
+| **The plate is graded**, reversing the morning's spec | COLOR_AND_FORMAT section 1, PRD section 5 |
 | Sources are one **studio standard log**, camera agnostic | COLOR_AND_FORMAT sections 1 and 2, OQ-39 |
 | **The four colour controls are removed**, then **the three viewers too** | PRD section 3 and FR-16, UI_SPEC section 14 |
 | Ben trims with the AD; his final EDL is the **approved cut** as well as the colour | COLOR_AND_FORMAT section 1, PRD FR-5 and FR-15 |
@@ -76,19 +76,23 @@ exports an **updated final EDL** (conform, the approved trims, and the CDL as `*
 | OCIO `GroupTransform`, tetrahedral, pinned ACES 1.3 | COLOR_AND_FORMAT section 1, OQ-29 |
 
 QC rules: QC-006, QC-007, QC-017 and QC-037 are **retired**, and QC-140 and QC-141 went with
-the stringout. QC-008, QC-009, QC-019, QC-038 and QC-039 are new. Retired IDs stay in the
-table and are never reused, so an old log line still resolves.
+the stringout. QC-008, QC-009, QC-019, QC-038, QC-039 and QC-045 are new. Retired IDs stay in
+the table and are never reused, so an old log line still resolves. **QC-009, QC-019 and QC-039
+were written, reworded and written back inside the one day**, as the grade carrier went CLF,
+CDL, CLF; that is safe only because nothing had ever referred to them, and `QC_RULES.md` says
+so and says it is not a precedent.
 
 ### Three things behind those that should not be re-derived
 
 - **The graded plate is not a reversal of the argument, it is the argument running out.**
-  The morning's spec refused a graded plate because a baked grade stops matching when it
-  moves in the DI. This workflow does the DI **first**, so there is no later grade to stop
-  matching. The old objection's other half, that a baked grade can clip highlights the comp
-  needs, is disposed of by the CDL itself: slope, offset, power and saturation applied in
-  ACEScct and converted back to linear keep their float headroom, and a CDL has no way to
-  express a display rendering at all. QC-039 was written to guard against exactly that and was
-  retired the same day, with the CLF.
+  The morning's spec refused a graded plate because a baked grade stops matching when it moves
+  in the DI. This workflow does the DI **first**, so there is no later grade to stop matching.
+  The objection's other half, that a baked grade can clip the highlights a comp needs, survives
+  as a hard requirement on the CLF rather than as a reason to refuse: it must end in scene
+  linear ACEScg and contain **no display rendering**, or the delivered EXR is display referred
+  and claims to be linear. That is QC-039, it is an error, and the tool probes for it rather
+  than trusting a filename, because the failure is invisible on a monitor and expensive in a
+  comp.
 - **"Studio standard log" is the single most valuable line in the spec.** The user's first
   description said log encoded ProRes per shot, which was read as camera original, and a full
   per shot IDT apparatus was specified and then deleted within the hour when they corrected
@@ -106,11 +110,12 @@ M4.5 and M4.3 are both unblocked and neither blocks the other. **M4.5 first** st
 reason it was chosen this morning: the QC log and the tracker want the colour columns, so doing
 colour first means the exports get written once instead of twice.
 
-What changed in M4.5 is what it reads. It no longer parses CDL out of an EDL and no longer
-models AD notes, which was all of M4.5.3. What M4.5.2 reads did change twice in one day and
-landed back where it started: the CDL, out of an EDL, except that the EDL is now the colour
-session's final one rather than the shooters'. `core/timeline.py` already walks EDL events.
-Net M4.5 is meaningfully smaller than this morning's version.
+What changed in M4.5 is what it reads and what it no longer has to build. The AD notes model
+is gone, which was all of M4.5.3, and the viewers took `core/preview.py` and all of M4.5.5 with
+them. M4.5.2 now reads the colour session's package: the final EDL for the conform, the
+approved In/Out and the CDL, and a CLF per shot to load and hash. `core/timeline.py` already
+walks EDL events, so half of that exists. **Net M4.5 is meaningfully smaller than this
+morning's version**, which is the one thing about it that did not wobble all day.
 
 **Three questions are open and the user has all of them:**
 
