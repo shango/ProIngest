@@ -60,7 +60,7 @@ Per shot, into a delivery root the user chooses (default proposed layout in `doc
 1. New Batch or Open Batch (`.pibatch` JSON).
 2. Add Turnover: pick the turnover folder, tool finds the `.otio` (or user picks it). Repeat for up to N turnovers in a batch.
 3. Scan. Tool parses the timeline, matches each clip to media, probes media with ffprobe, resolves audio, discovers side files, runs pre-flight QC. List populates, grouped by turnover. Problem rows are colored with a tooltip and a QC panel entry.
-4. Review. Editor works down the list with the keyboard, adjusting In/Out, fixing names, marking clips as skipped. Duration and validation update live. Everything autosaves to the batch file.
+4. Review. Editor works down the list with the keyboard, adjusting In/Out, fixing names, marking clips as skipped. Duration and validation update live. Selecting a row fills the metadata pane on the right with everything known about that clip (FR-14), which is what the AD and supervisor read over the editor's shoulder. Everything autosaves to the batch file.
 5. Run. Editor picks the delivery root (remembered per batch), presses Run. Progress per row and overall. Rows go green when all their deliverables pass post-render QC.
 6. Export. Tracker and QC spreadsheets are written to the delivery root. Editor can re-open the batch later and re-run only what failed.
 
@@ -122,6 +122,14 @@ Sections: General (delivery root default, path map, concurrency, GPU), Rules (mi
 FR-13 Logging
 - Rotating log file in the app data folder. Every ffmpeg command line logged. In-app log panel with filter by row.
 
+FR-14 Metadata pane
+- A read-only pane to the right of the shot list. Selecting a row shows everything known about that clip: identity, source media, frame rate, ranges, audio, side files, turnover, and a QC summary. Full field list and behaviour in `docs/UI_SPEC.md` section 12.
+- It shows what the list has no column for (codec, pixel format, start timecode, file size, parsed camera data, the paths themselves), rather than repeating the columns.
+- Read only. The list owns every edit per FR-5, so the pane never writes to the model and never takes keyboard focus. Ctrl+I toggles it.
+- Multi-selection shows the fields the selection agrees on and marks the rest "mixed", which is how an editor spots one clip at the wrong resolution in a turnover of thirty.
+- Values are individually copyable, paths and checksums especially.
+- Primarily serves the AD and VFX supervisor described in section 2, who sit with the editor during review and read rather than operate. Parsed camera data (OQ-11) is the only place lens, filter and body ever surface in the UI.
+
 ## 8. Non-functional requirements
 
 - 100 shots per batch, 30 per turnover, must scan in under 60 seconds from the Drive mount with warm cache.
@@ -136,7 +144,7 @@ M1 Core: OTIO parse, clip name parse, media resolution, ffprobe cache, shot mode
 M2 Naming and planning: deliverable plan per clip type, versioning, path layout. Tests against the spec examples.
 M3 Render: EXR writer, mp4 encoder, audio copy, side file copy, atomic writes, pool, progress. CLI `proingest run <batch>`.
 M4 QC: all rules, both phases, xlsx exports. CLI `proingest qc <batch>`.
-M5 UI: main window, list view with keyboard model, validation coloring, settings page, log panel, batch open/save.
+M5 UI: main window, list view with keyboard model, metadata pane, validation coloring, settings page, log panel, batch open/save.
 M6 Stringout with burn-ins.
 M7 Packaging: PyInstaller `.app`, disk image, bundled ffmpeg, first-run experience, icon.
 M8 Polish pass against `docs/UI_SPEC.md`, performance on a real turnover, docs.

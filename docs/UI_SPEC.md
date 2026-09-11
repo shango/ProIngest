@@ -10,14 +10,14 @@ PySide6 6.7+. Dark theme in the spirit of DaVinci Resolve: near-black panels, th
 +------------------------------------------------------------------+
 | Batch bar: batch name, delivery root path (click to change), TC toggle [Source|Record], search box |
 +------------------------------------------------------------------+
-|                                                                  |
-|   SHOT LIST (hero, fills the window)                             |
-|                                                                  |
-|   > turnover001  02_23_2026  danielluckett   28 shots  2 warn 1 err   [collapse]   |
-|     MELT0001_pl01  ...                                           |
-|     MELT0001_cp01  ...                                           |
-|   > turnover002  ...                                             |
-|                                                                  |
+|                                            |                     |
+|   SHOT LIST (hero)                         |  METADATA           |
+|                                            |  (selected row,     |
+|   > turnover001  02_23_2026  danielluckett |   read only,        |
+|     MELT0001_pl01  ...                     |   collapsible)      |
+|     MELT0001_cp01  ...                     |                     |
+|   > turnover002  ...                       |  section 12         |
+|                                            |                     |
 +------------------------------------------------------------------+
 | Bottom dock (collapsible, tabs): Issues | Log | Deliverables (for selected row) |
 +------------------------------------------------------------------+
@@ -25,7 +25,11 @@ PySide6 6.7+. Dark theme in the spirit of DaVinci Resolve: near-black panels, th
 +------------------------------------------------------------------+
 ```
 
-The list is the whole product. Nothing opens a modal during review except Settings and file dialogs.
+The list is still the hero. The metadata pane is a fixed-width reading surface beside it, not a
+second workspace: it is read only, it never takes focus, and it collapses to nothing. See
+section 12.
+
+Nothing opens a modal during review except Settings and file dialogs.
 
 ## 2. Shot list columns
 
@@ -58,6 +62,7 @@ Hovering the dot or the row shows a tooltip listing rule IDs and messages. Click
 - Enter: commit edit and stay. Escape: revert cell.
 - Ctrl+K: toggle skip on current row (prompts for reason on first skip; Escape cancels).
 - Ctrl+T: toggle Source/Record TC.
+- Ctrl+I: show or hide the metadata pane (section 12). Focus stays in the list.
 - Ctrl+F: focus search. Ctrl+S: save batch. Ctrl+R: run. Ctrl+.: stop.
 - Typing into a selected cell starts editing immediately (no F2 required).
 - Space on a group header collapses/expands.
@@ -137,3 +142,68 @@ A single window with a left section list and right form, like Resolve's project 
   neither exists the dialog opens at the last used folder. OQ-25.
 - Use `QStandardPaths` rather than building any of these paths by hand.
 
+## 12. Metadata pane
+
+A read-only pane on the right of the shot list showing everything known about the current
+selection. Clicking a row fills it; arrowing down the list refills it as the selection moves.
+
+**Its job is to show what has no column.** Section 2 gives the list columns for the fields the
+editor works with (shot code, In, Out, duration, max available, audio and side file icons).
+Repeating them here would waste the space and give the editor two places to read the same
+number. The pane exists for the rest: codec, pixel format, start timecode, file size, camera
+data, turnover details, and the paths themselves.
+
+### 12.1 Behaviour
+
+- **Read only.** The list owns every edit (FR-5). A second editable surface for the same
+  fields means two code paths writing the same model and two places for validation to
+  disagree. The pane never writes.
+- **Never takes focus.** Tab cycles the editable cells of the row (section 4) and must keep
+  doing so. The pane is reachable by mouse and by Ctrl+I only.
+- **Every value is selectable and copyable**, paths and checksums especially. An editor
+  chasing a media problem needs to paste a path into a terminal or a Resolve dialog. A
+  copy button on each path row, and the whole pane copyable as `key: value` text.
+- **Live.** Values recompute as In/Out are typed, the same as Duration and Max Available in
+  the row.
+- **Collapsible sections**, each remembering its open state, and a remembered pane width.
+  Both live with the rest of the window state (section 11).
+- Long paths elide in the middle, never at the end: the filename is the part that identifies
+  the file, and the middle of a Google Drive path is the least informative part of it.
+
+### 12.2 Sections, and the fields in each
+
+Fields come from `core/models.py` and are shown only when present. A section with nothing in
+it is hidden rather than shown empty.
+
+| section | fields |
+|---|---|
+| Identity | timeline clip name, shot code (and whether it is an editor override), show, shot number, element type and index, aux type and index, track, turnover id |
+| Source media | path, codec, pixel format, resolution, single file or image sequence, sequence frame range and padding, frame count, first frame number, start timecode, file size, modified time |
+| Frame rate | timeline rate (authoritative), rate stated by the media, and an explicit disagreement note when they differ. COLOR_AND_FORMAT section 5 explains why the timeline wins; QC-026 is the rule |
+| Range | record In/Out, source In/Out in frames and timecode, turnover snapshot In/Out, current In/Out, duration, max available out, and whether the editor has moved it off the snapshot (QC-035) |
+| Audio | path, sample rate, channels, bit depth, duration in samples and in frames, and the sync difference against the video range (QC-043) |
+| Side files | HDRI path, camData path, and the parsed camData key/values once OQ-11 is settled. This is the single most useful thing in the pane for an AD sitting with the editor, because it is the only place lens, filter and camera body ever appear |
+| Turnover | number, date, shooter, folder, timeline file. Shown alone when a turnover group header is the selection |
+| QC | count by severity with the rule IDs, each clicking through to that row in the Issues dock |
+
+### 12.3 Empty and edge states
+
+- **Nothing selected**: "Select a shot to see its metadata". Not a blank panel.
+- **More than one row selected**: show only the fields the selection agrees on, with a count
+  ("12 shots selected"). Fields that differ read "mixed". This is what makes the pane useful
+  for spotting one clip at the wrong resolution in a turnover of thirty.
+- **Turnover header selected**: the Turnover section alone.
+- **Media unresolved** (QC-011, QC-012): the Identity and Range sections still populate from
+  the timeline, and Source media reads why it is missing rather than vanishing. An unresolved
+  row is exactly when someone wants to see what the timeline claimed the path was.
+- **Media on a Drive placeholder** that has not downloaded yet: show the download-wait state
+  rather than blocking the pane, matching the scan behaviour in PRD section 8.
+
+### 12.4 What it is not
+
+- **Not the Deliverables tab.** That stays in the bottom dock (section 1). The pane describes
+  the source; the dock describes what was written from it, with versions, paths and checksums,
+  which is a table and wants the width. Keep the boundary: nothing about an output file
+  belongs in the pane except the QC summary.
+- **Not the frame viewer.** That is the v02 item in PRD section 10 and needs a decoded frame
+  cache. The pane is text.

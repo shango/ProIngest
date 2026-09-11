@@ -172,7 +172,7 @@ Entry points worth knowing:
 | M2 | Naming and planning: type table, versioning, layout | complete, 66 tests |
 | M3 | Render | in progress, see below |
 | M4 | QC: all rules both phases, xlsx exports, `qc` CLI | not started |
-| M5 | UI | not started |
+| M5 | UI, including the FR-14 metadata pane | not started |
 | M6 | Stringout with burn-ins | not started |
 | M7 | Packaging: PyInstaller `.app`, dmg, Gatekeeper | not started, and needs a Mac (OQ-22) |
 | M8 | Polish, performance on a real turnover, docs | not started |
@@ -489,6 +489,16 @@ Nothing blocks the next task. These are live, in rough priority order:
   carry values above 1.0, display referred ones are bounded at 1.0), but it needs the
   scan to read a frame's pixels rather than just its header, and it false-positives on
   a dark plate. Worth adding as a warning before the switch happens.
+- **The metadata pane (FR-14) is new scope, added 2026-09-10 at the user's request.** It was
+  not in any doc before: the closest thing was the bottom dock's Deliverables tab, which
+  describes outputs rather than the source. Spec is `docs/UI_SPEC.md` section 12, field list
+  taken from what `core/models.py` actually holds rather than invented. Three decisions in it
+  are worth not relitigating: it is **read only**, because the list already owns every edit
+  under FR-5 and two writable surfaces over one model means two places for validation to
+  disagree; it **never takes focus**, because Tab has a job in the list already; and it
+  deliberately **does not repeat the list columns**, only the fields that have none. Nothing
+  in core needs to change for it, which is why it costs M5 time and nothing before that.
+  Which fields actually earn their place is OQ-26, and it wants a real review session.
 - **Two M5 decisions still unlogged.** Frozen left columns have no built-in QTreeView
   support and need the overlaid second-view trick. Progress on the app icon is now a
   macOS Dock tile rather than a Windows taskbar button; Qt 6 exposes no API for either,

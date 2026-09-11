@@ -29,6 +29,7 @@ proingest/
     shot_model.py        # QAbstractItemModel over Batch (two-level)
     delegates.py         # In/Out editors, status dot, progress cell
     docks.py             # Issues, Log, Deliverables
+    metadata_pane.py     # read-only right pane over the selected row (UI_SPEC section 12)
     settings_dialog.py
     theme.qss
     workers.py           # QThread bridge to core.render, signal plumbing

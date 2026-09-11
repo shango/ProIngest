@@ -288,7 +288,7 @@
       <div class="stat-l">Tests passing</div>
     </div>
     <div class="stat">
-      <div class="stat-n">20<span style="color:var(--faint);font-size:17px">/25</span></div>
+      <div class="stat-n">21<span style="color:var(--faint);font-size:17px">/26</span></div>
       <div class="stat-l">Questions open</div>
     </div>
     <div class="stat">
@@ -398,14 +398,18 @@
             <span class="pill">Not started</span>
           </div>
           <p class="ms-goal">
-            Main window, shot list with the keyboard model, validation colouring, settings page,
-            log panel, batch open and save. PySide6 6.7+, LGPL.
+            Main window, shot list with the keyboard model, <b>metadata pane</b>, validation
+            colouring, settings page, log panel, batch open and save. PySide6 6.7+, LGPL.
           </p>
           <div class="mods">
-            <span>main_window</span><i>/</i><span>shot_model</span><i>/</i><span>delegates</span><i>/</i><span>docks</span><i>/</i><span>theme.qss</span>
+            <span>main_window</span><i>/</i><span>shot_model</span><i>/</i><span>delegates</span><i>/</i><span>docks</span><i>/</i><span>metadata_pane</span><i>/</i><span>theme.qss</span>
           </div>
           <div class="gate">
-            Two decisions still unlogged. <b>Frozen left columns</b> have no built-in QTreeView
+            <b>New scope: the metadata pane</b>, added at the user's request and now FR-14 with a
+            full field list in UI_SPEC section 12. Selecting a clip fills a read-only panel on the
+            right with everything known about it, which is what the AD and supervisor read during
+            review. It needs nothing from core, so it costs M5 time and nothing earlier.
+            Two older decisions are still unlogged. <b>Frozen left columns</b> have no built-in QTreeView
             support and need the overlaid second-view trick. <b>Progress on the Dock icon</b> has
             no Qt 6 API, so it needs a small <code>NSDockTile</code> shim through PyObjC, isolated
             in a macOS-only helper. It is decoration: the status bar carries the same information.
@@ -551,6 +555,11 @@
           <tr>
             <td class="id">OQ-25</td>
             <td>Where Google Drive actually mounts on the editor's Mac</td>
+            <td class="st"><span class="tag open">Open</span></td>
+          </tr>
+          <tr>
+            <td class="id">OQ-26</td>
+            <td>Which metadata the AD and supervisor actually want in the new pane</td>
             <td class="st"><span class="tag open">Open</span></td>
           </tr>
           <tr class="resolved">
@@ -753,7 +762,7 @@
   <footer>
     <b>Source of truth</b> &middot; PROGRESS.md, docs/OPEN_QUESTIONS.md, PRD.md section 9<br>
     <b>Verify</b> &middot; pytest &middot; ruff check . &amp;&amp; mypy proingest &middot; python -m proingest scan &lt;folder&gt;<br>
-    <b>Last updated</b> &middot; 10 September 2026, after the switch to a macOS v01 target
+    <b>Last updated</b> &middot; 10 September 2026, macOS v01 target and the FR-14 metadata pane
   </footer>
 
 </div>
