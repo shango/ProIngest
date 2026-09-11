@@ -12,6 +12,12 @@ commit.
 M3.5 left). Working tree clean apart from two deliberately untracked files (section 8).
 547 tests passing, `ruff` and `mypy --strict` clean. M3.4 landed as `0c349c9`.
 
+**The target platform changed on 2026-09-10: v01 is now macOS on Apple Silicon, not
+Windows.** The primary user turned out to be on a Mac. Section 6 has the decision and what
+it cost, which was much less than it might have been because core never imported Qt and
+never hardcoded a Windows path. Windows moved to the v02 backlog. Read that entry before
+touching packaging, settings paths or the reference encodes.
+
 **Nothing is blocked.**
 
 Verify the state before changing anything:
@@ -46,7 +52,12 @@ policy. Notes for it:
   how the frame seek is built; an encode can use the same `trim` and `-start_number`
   handling rather than piping raw frames back in.
 - `job.audio_source` carries the wav to mux, when the row has one. AAC 192k.
-- x264 CRF 18 `-preset slow`, or NVENC `-cq 19 -preset p5` when `ffmpeg.has_nvenc()`.
+- **x264 CRF 18 `-preset slow` is the default and the only thing to build for M3.5.**
+  NVENC is gone with the Windows target; the macOS hardware encoder is
+  `h264_videotoolbox`, which has no CRF and whose `-q:v` scale is uncalibrated (OQ-23).
+  `ffmpeg.has_nvenc()` is now dead code that nothing calls. Leave hardware encoding out
+  of M3.5 entirely rather than shipping a quality setting nobody has measured; it is a
+  Settings toggle in M5 at the earliest, and it needs a real Mac to calibrate.
   Keyint 24, `-movflags +faststart` (QC-115 checks the moov atom is at the head).
 - Cancellation and progress: an encode is one ffmpeg run, not a frame loop, so the
   hooks work differently from `_render_sequence`. Parse ffmpeg's `-progress` output for
@@ -58,9 +69,9 @@ After M3.5, M3 is done and M4 (QC rules, both phases, xlsx exports) is next.
 
 ## 2. What this is, and what to read
 
-A single-user Windows desktop app (PySide6, Python 3.11+) that ingests VFX shot
+A single-user macOS desktop app (PySide6, Python 3.11+) that ingests VFX shot
 turnovers. It reads an OpenTimelineIO file exported from DaVinci Resolve, matches
-timeline clips to media in a turnover folder on a Google Drive mount (G:), lets the
+timeline clips to media in a turnover folder on a Google Drive mount, lets the
 VFX editor adjust In/Out per shot, then transcodes and names all deliverables per the
 studio spec, runs automated QC, and exports spreadsheets.
 
@@ -76,7 +87,7 @@ fix one and say which.**
 | `docs/ARCHITECTURE.md` | package layout, data flow, concurrency, batch file |
 | `docs/UI_SPEC.md` | the M5 interface, keyboard model, burn-ins |
 | `docs/OPEN_QUESTIONS.md` | OQ-1 to OQ-21, with defaults for the unanswered ones |
-| `docs/PACKAGING.md` | M7, PyInstaller and Inno Setup |
+| `docs/PACKAGING.md` | M7, the `.app` and dmg, ffmpeg bundling, Gatekeeper |
 
 ---
 
@@ -85,10 +96,21 @@ fix one and say which.**
 - venv at `.venv` (Python 3.12, created with `uv venv`); `uv pip install -e ".[dev]"`.
   There is no `pip` inside the venv: use `uv pip install --python .venv/bin/python`.
 - otio 0.18.1, OpenEXR 3.4.15 (numpy File API present), numpy 2.5.3.
-- Dev machine is Linux/WSL; the target is Windows. The bundled `resources/ffmpeg/*.exe`
-  cannot run here, so `core/ffmpeg.py` falls back to ffmpeg/ffprobe on PATH. That
-  fallback order is required by PACKAGING.md anyway.
-- ffmpeg binaries are not in git: `python build/fetch_ffmpeg.py` populates them.
+- Dev machine is Linux/WSL; the target is **macOS on Apple Silicon**, and there is no Mac
+  available (OQ-22). Nothing has ever run on the target platform. Everything in core is
+  verifiable headless on Linux, which is why the switch was cheap, but M7 cannot be built
+  here at all and the reference encodes cannot be quality-checked here either.
+- **`core/ffmpeg.py` skips the bundled binary unless `sys.platform == "darwin"`.** This
+  guard is load bearing, not tidiness. The Windows bundle was `ffmpeg.exe`, so a Linux
+  lookup for `ffmpeg` missed it and fell through to PATH by accident. The macOS binary is
+  named `ffmpeg`, exactly what Linux looks for, so without the guard `resolve_tool`
+  returns an arm64 Mach-O and all 547 tests die with "Exec format error". Found by
+  running it, immediately after the first successful fetch.
+- ffmpeg binaries are not in git: `python build/fetch_ffmpeg.py` populates them. They are
+  now the martin-riedl.de macOS arm64 GPL build of ffmpeg 9.0.1, 132 MB for the pair
+  rather than the Windows 446 MB. Two macOS traps are handled in that script and will bite
+  anyone who rewrites it: Python's `zipfile` drops the exec bit, and the host answers the
+  default `Python-urllib` User-Agent with HTTP 403.
 - `mypy python_version` is 3.12, not 3.11: numpy's stubs use `type` statement syntax
   that mypy rejects under 3.11, and pytest imports numpy transitively. The runtime
   floor in `requires-python` stays 3.11, which numpy genuinely supports.
@@ -152,7 +174,7 @@ Entry points worth knowing:
 | M4 | QC: all rules both phases, xlsx exports, `qc` CLI | not started |
 | M5 | UI | not started |
 | M6 | Stringout with burn-ins | not started |
-| M7 | Packaging: PyInstaller, Inno Setup | not started |
+| M7 | Packaging: PyInstaller `.app`, dmg, Gatekeeper | not started, and needs a Mac (OQ-22) |
 | M8 | Polish, performance on a real turnover, docs | not started |
 
 M3 detail:
@@ -172,6 +194,38 @@ color 6.
 ---
 
 ## 6. Decisions taken
+
+**Platform: v01 is macOS on Apple Silicon (changed 2026-09-10).**
+
+- The primary user is on a Mac. Windows moved to the v02 backlog, swapping places with the
+  macOS build that was sitting there. Confirmed with the user: macOS only for v01, Apple
+  Silicon, **no Apple Developer account**, and **no Mac available to build or test on**.
+- **The switch was cheap, and the reason is worth keeping.** Core never imports Qt, uses
+  `pathlib` throughout, and had no win32 API anywhere; the process pool already used the
+  spawn context on every platform; `media.url_to_path` already handled both `file:///G:/...`
+  and `/Volumes/...`. The whole of M1 to M3.4 needed exactly one code change, the
+  `sys.platform` guard in section 3. Everything else was docs. The discipline in CLAUDE.md
+  paid for itself here.
+- **ffmpeg had to be re-sourced entirely.** gyan.dev publishes Windows builds only, which
+  was checked rather than assumed: 419 assets across the 100 most recent releases, none
+  macOS. v01 now bundles the martin-riedl.de macOS arm64 GPL v3 build of ffmpeg 9.0.1.
+  `build/ffmpeg.lock.json` went to schema 2 to describe per-download archives, because the
+  new source ships ffmpeg and ffprobe as separate zips rather than one archive with members.
+  Full rationale and the rejected alternatives are in `proingest/resources/ffmpeg/PROVENANCE.md`.
+- **The bundled ffmpeg features were verified by reading the binary, not by running it**, since
+  an arm64 Mach-O will not execute on this machine. The configure line, the symbol table and
+  the linked frameworks confirm libx264, libzimg, libfreetype and `h264_videotoolbox` are
+  compiled in. That is strong evidence, not proof the encoder opens on real hardware. OQ-23.
+- **NVENC is gone and is not being replaced in M3.** `has_nvenc()` is dead code. VideoToolbox
+  is the macOS equivalent but has no CRF and an uncalibrated `-q:v` scale, so shipping it
+  would mean shipping a quality setting nobody has measured. Software x264 CRF 18 is what the
+  spec pins and it is deterministic, which QC-106 depends on. Hardware encode is an M5
+  Settings toggle at the earliest.
+- **Gatekeeper is the one place macOS is genuinely worse.** OQ-9 was a shrug on Windows (a
+  SmartScreen warning) and is a blocker here: an unsigned, un-notarized, quarantined `.app`
+  is refused outright. The bundled ffmpeg binaries are themselves Developer ID signed with
+  the hardened runtime (`CS_RUNTIME`, read out of their code directory), so they are fine;
+  ProIngest's own bundle is the problem. Decide before handover, not at handover.
 
 **Colour (OQ-17, answered by the studio 2026-09-10).**
 
@@ -217,10 +271,12 @@ color 6.
 
 **Running a batch (M3.4).**
 
-- **The pool uses the spawn context on every platform**, not just Windows. Windows has
-  no other option and is the target, so spawning on the Linux dev machine too means the
-  pickling constraints are identical in testing and in the field. A job that only works
-  under fork would otherwise pass every test here and fail on the user's machine.
+- **The pool uses the spawn context on every platform**, not just where it is forced.
+  macOS, now the target, spawns by default, so spawning on the Linux dev machine too
+  means the pickling constraints are identical in testing and in the field. A job that
+  only works under fork would otherwise pass every test here and fail on the user's
+  machine. This was written when Windows was the target and needed no change when it
+  stopped being one, which is the whole argument for the choice.
 - **A failed job is a result, not an exception.** `execute` returns one Deliverable per
   job whatever happened: `done`, `failed` carrying QC-100, or `skipped` when cancelled.
   One bad row must not stop a 100 shot run. Results come back in job order, not
@@ -434,11 +490,24 @@ Nothing blocks the next task. These are live, in rough priority order:
   scan to read a frame's pixels rather than just its header, and it false-positives on
   a dark plate. Worth adding as a warning before the switch happens.
 - **Two M5 decisions still unlogged.** Frozen left columns have no built-in QTreeView
-  support and need the overlaid second-view trick. Windows taskbar progress lost its
-  API when QtWinExtras was removed in Qt 6, so it needs an `ITaskbarList3` shim
-  isolated in a Windows-only helper.
+  support and need the overlaid second-view trick. Progress on the app icon is now a
+  macOS Dock tile rather than a Windows taskbar button; Qt 6 exposes no API for either,
+  so it needs a small `NSDockTile` shim through PyObjC in `ui/platform_mac.py`. It is
+  decoration, and the status bar carries the same information if it is never built.
 - **OQ-2 (tracker columns) and OQ-3 (what the consolidated media actually is)** are
   still open and both want a real turnover. Neither blocks: OQ-2 has a default template
   loaded from a file, OQ-3 only tunes QC-020 and QC-021 severity.
+- **Nothing has ever run on macOS or on arm64.** No Mac is available (OQ-22). The suite is
+  green on Linux and that is genuinely most of the value, because core is where the logic
+  is, but the reference encodes cannot be quality-checked here, `h264_videotoolbox` cannot
+  be proven to open, the Dock and menu-bar behaviour in UI_SPEC section 11 is unverified,
+  and M7 cannot start. A `macos-14` CI runner is the cheapest way to close most of that.
+- **The Google Drive mount path on the editor's machine is unknown** (OQ-25). Everything
+  that used to say `G:` now says "discover it", and the discovery is written from the
+  documented Google Drive conventions rather than from a machine anyone has looked at.
+- **The old Windows binaries are still in `proingest/resources/ffmpeg/`** as `ffmpeg.exe`
+  and `ffprobe.exe`, 446 MB of untracked dead weight. Nothing references them any more and
+  the lock file no longer knows how to fetch them. Safe to delete; left in place because
+  deleting 446 MB the user might want is not this session's call.
 - A real end-to-end run against a shooter's turnover has never happened. That is M8,
   and it is where reality will disagree with the spec.

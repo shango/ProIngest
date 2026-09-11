@@ -425,8 +425,8 @@ def execute(
     `on_progress` is called on a drain thread in **this** process, not in a worker, so
     a UI callback can marshal to the main thread the way it normally would.
 
-    The pool uses the spawn context on every platform. Windows has no other option and
-    is the target, so using it on the dev machine too means the pickling constraints
+    The pool uses the spawn context on every platform. macOS, the target, spawns by
+    default, so using it on the Linux dev machine too means the pickling constraints
     are the same in testing as in the field.
     """
     if not jobs:

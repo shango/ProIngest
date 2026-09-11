@@ -1,7 +1,7 @@
 # CLAUDE.md - ProIngest
 
 ## What this is
-A single-user Windows desktop app (PySide6, Python 3.11+) that ingests VFX shot turnovers. It reads an OpenTimelineIO file exported from DaVinci Resolve, matches timeline clips to media in a turnover folder on a Google Drive mount (G:), lets the VFX editor adjust In/Out per shot, then transcodes and names all deliverables per the studio spec, runs automated QC, and exports spreadsheets.
+A single-user macOS desktop app (PySide6, Python 3.11+) that ingests VFX shot turnovers. It reads an OpenTimelineIO file exported from DaVinci Resolve, matches timeline clips to media in a turnover folder on a Google Drive mount, lets the VFX editor adjust In/Out per shot, then transcodes and names all deliverables per the studio spec, runs automated QC, and exports spreadsheets.
 
 Read `PRD.md` first, then the docs it points to. The docs are the spec. When code and docs disagree, fix one and say which.
 
@@ -16,7 +16,8 @@ Read `PRD.md` first, then the docs it points to. The docs are the spec. When cod
 - ffmpeg and ffprobe are called as subprocesses through `proingest/core/ffmpeg.py`. Never shell out from elsewhere. All commands are logged verbatim so the user can reproduce a render.
 - EXR output uses the `OpenEXR` Python bindings (3.2+ numpy API), not ffmpeg. ffmpeg does have an `exr` encoder, but it only offers none/rle/zip1/zip16 compression and cannot write the DWAA the spec requires, nor a `timeCode` header attribute.
 - Write tests alongside features. Synthetic test media is generated with ffmpeg in a pytest fixture, never committed.
-- Windows is the target. Use `pathlib` everywhere. Assume paths may be on a slow network mount; avoid repeated stat calls in loops (scan once, cache).
+- macOS on Apple Silicon is the target for v01; Windows moved to v02. Use `pathlib` everywhere. Assume paths may be on a slow network mount; avoid repeated stat calls in loops (scan once, cache).
+- Never hardcode a platform path. There is no `G:`: the Google Drive mount is discovered, and settings and logs go to `~/Library/Application Support/ProIngest` and `~/Library/Logs/ProIngest`. See `docs/PACKAGING.md`.
 
 ## Style
 - Python 3.11, type hints everywhere, `ruff` and `mypy --strict` clean.
@@ -30,7 +31,7 @@ uv sync                      # or: pip install -e .[dev]
 pytest
 ruff check . && mypy proingest
 python -m proingest          # run the app
-python build/build.py        # PyInstaller + Inno Setup (see docs/PACKAGING.md)
+python build/build.py        # PyInstaller .app + dmg, macOS only (see docs/PACKAGING.md)
 ```
 
 ## Definition of done for a feature

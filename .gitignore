@@ -10,7 +10,12 @@ venv/
 
 # Bundled binaries. Not tracked: pinned in build/ffmpeg.lock.json and fetched with
 # `python build/fetch_ffmpeg.py`. See proingest/resources/ffmpeg/PROVENANCE.md.
-proingest/resources/ffmpeg/*.exe
+# Ignore the whole folder and re-admit the two files that are source, because the macOS
+# binaries are named `ffmpeg` and `ffprobe` with no extension: an `*.exe` rule stopped
+# covering them the moment the target changed, and they are 132 MB.
+proingest/resources/ffmpeg/*
+!proingest/resources/ffmpeg/PROVENANCE.md
+!proingest/resources/ffmpeg/LICENSE.ffmpeg.txt
 
 # Tooling caches
 .pytest_cache/

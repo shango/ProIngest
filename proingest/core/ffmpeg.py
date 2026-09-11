@@ -5,8 +5,11 @@ runs so the user can paste it into a terminal and reproduce a render, which is a
 stated requirement in CLAUDE.md.
 
 Binary resolution order is: an explicit Settings override, then the bundled binary
-for this platform, then PATH. The bundled binaries are Windows `.exe` files, so on a
-non-Windows dev machine the lookup falls through to PATH on its own.
+for this platform, then PATH. The bundled binaries are macOS arm64 Mach-O executables,
+so the bundled step is skipped off macOS and the Linux dev machine falls through to
+PATH. That guard is load bearing: `ffmpeg` and `ffprobe` are spelled the same on both
+platforms, so without it a Mach-O binary resolves as a perfectly good file on Linux and
+then fails every subprocess with a bare "Exec format error".
 """
 
 from __future__ import annotations
@@ -16,6 +19,7 @@ import logging
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 from collections.abc import Generator
 from dataclasses import dataclass
@@ -31,6 +35,9 @@ from proingest.core import frames
 log = logging.getLogger(__name__)
 
 BUNDLED_DIR = Path(__file__).resolve().parent.parent / "resources" / "ffmpeg"
+
+BUNDLED_PLATFORM = "darwin"
+"""The lock file pins macOS arm64 binaries, so the bundle only applies on macOS."""
 
 DEFAULT_TIMEOUT = 120
 
@@ -74,7 +81,7 @@ def resolve_tool(tool: str, override: Path | None = None) -> Path:
         raise FFmpegNotFound(f"{tool} override {override} does not exist")
 
     bundled = BUNDLED_DIR / _platform_binary(tool)
-    if bundled.is_file():
+    if sys.platform == BUNDLED_PLATFORM and bundled.is_file():
         return bundled
 
     found = shutil.which(tool)

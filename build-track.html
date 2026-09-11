@@ -90,6 +90,7 @@
     color: #eef1f5;
   }
   .stat-n.good { color: var(--done); }
+  .stat-n.warn { color: var(--warn); }
   .stat-n.bad  { color: var(--err); }
   .stat-l {
     font-family: var(--mono);
@@ -268,7 +269,7 @@
 <div class="wrap">
 
   <header class="mast">
-    <div class="eyebrow">VFX turnover ingest &middot; Windows v01</div>
+    <div class="eyebrow">VFX turnover ingest &middot; macOS v01</div>
     <h1>ProIngest Build Track</h1>
     <p class="standfirst">
       Milestones M1 through M8 from <span class="mono">PRD.md</span> section 9, with what each
@@ -287,12 +288,12 @@
       <div class="stat-l">Tests passing</div>
     </div>
     <div class="stat">
-      <div class="stat-n">17<span style="color:var(--faint);font-size:17px">/21</span></div>
+      <div class="stat-n">20<span style="color:var(--faint);font-size:17px">/25</span></div>
       <div class="stat-l">Questions open</div>
     </div>
     <div class="stat">
-      <div class="stat-n good">0</div>
-      <div class="stat-l">Active blockers</div>
+      <div class="stat-n warn">1</div>
+      <div class="stat-l">Blocks handover</div>
     </div>
   </div>
 
@@ -405,9 +406,9 @@
           </div>
           <div class="gate">
             Two decisions still unlogged. <b>Frozen left columns</b> have no built-in QTreeView
-            support and need the overlaid second-view trick. <b>Windows taskbar progress</b> lost
-            its API when QtWinExtras was removed in Qt 6, so it needs an
-            <code>ITaskbarList3</code> shim isolated in a Windows-only helper.
+            support and need the overlaid second-view trick. <b>Progress on the Dock icon</b> has
+            no Qt 6 API, so it needs a small <code>NSDockTile</code> shim through PyObjC, isolated
+            in a macOS-only helper. It is decoration: the status bar carries the same information.
           </div>
         </div>
       </div>
@@ -439,15 +440,17 @@
             <span class="pill">Not started</span>
           </div>
           <p class="ms-goal">
-            PyInstaller onedir, Inno Setup installer, bundled ffmpeg, first-run experience, icon.
+            PyInstaller <span class="mono">.app</span> bundle, disk image, bundled ffmpeg,
+            first-run experience, icon.
           </p>
-          <div class="mods"><span>build/build.py</span><i>/</i><span>proingest.spec</span><i>/</i><span>installer.iss</span></div>
+          <div class="mods"><span>build/build.py</span><i>/</i><span>proingest.spec</span><i>/</i><span>dmg.py</span></div>
           <div class="gate">
-            ffmpeg is settled: GPL v3 gyan.dev full build, pinned in
-            <code>build/ffmpeg.lock.json</code>, fetched not committed. Both binaries compress to
-            <b>111&nbsp;MB</b> against a 300&nbsp;MB installer budget. <b>OQ-9</b> code signing
-            still open; unsigned means a SmartScreen warning.
-          </div>
+            ffmpeg is settled again for macOS: GPL v3 <b>martin-riedl.de arm64</b> build of 9.0.1,
+            pinned in <code>build/ffmpeg.lock.json</code>, fetched not committed. The pair
+            compresses to <b>57&nbsp;MB</b> against a 300&nbsp;MB budget, down from 111&nbsp;MB on
+            Windows. Two real gates remain: <b>OQ-22</b>, a Mac application can only be built on a
+            Mac and there is no Mac, and <b>OQ-9</b>, an unsigned app is <b>refused</b> by
+            Gatekeeper rather than warned about the way an unsigned Windows installer was.
         </div>
       </div>
 
@@ -461,10 +464,10 @@
           <p class="ms-goal">
             Pass against UI_SPEC, performance on a real turnover, docs.
           </p>
-          <div class="mods"><span>&mdash;</span></div>
+          <div class="mods"><span>-</span></div>
           <div class="gate">
             Target from PRD section 8: <b>100 shots</b> across a batch scanning in under
-            <b>60 seconds</b> from a warm G: mount.
+            <b>60 seconds</b> from a warm Google Drive mount.
           </div>
         </div>
       </div>
@@ -512,7 +515,7 @@
           </tr>
           <tr>
             <td class="id">OQ-9</td>
-            <td>Code signing certificate available</td>
+            <td>Apple Developer ID: unsigned apps are refused by Gatekeeper, not just warned</td>
             <td class="st"><span class="tag open">Open</span></td>
           </tr>
           <tr>
@@ -530,29 +533,49 @@
             <td>Alpha from a container source: what counts as a real one, and whether a conformed plate ever has one</td>
             <td class="st"><span class="tag open">Open</span></td>
           </tr>
+          <tr>
+            <td class="id">OQ-22</td>
+            <td>No Mac to build or test on, and a Mac app cannot be built anywhere else</td>
+            <td class="st"><span class="tag open">Open</span></td>
+          </tr>
+          <tr>
+            <td class="id">OQ-23</td>
+            <td>VideoToolbox has no CRF; its quality scale is uncalibrated and needs the real machine</td>
+            <td class="st"><span class="tag open">Open</span></td>
+          </tr>
+          <tr>
+            <td class="id">OQ-24</td>
+            <td>Is every machine Apple Silicon? The bundled tools will not run on an Intel Mac</td>
+            <td class="st"><span class="tag open">Open</span></td>
+          </tr>
+          <tr>
+            <td class="id">OQ-25</td>
+            <td>Where Google Drive actually mounts on the editor's Mac</td>
+            <td class="st"><span class="tag open">Open</span></td>
+          </tr>
           <tr class="resolved">
             <td class="id">OQ-17</td>
-            <td>Colour space &mdash; sources are display referred today, scene linear later; a setting, not an assumption</td>
+            <td>Colour space - sources are display referred today, scene linear later; a setting, not an assumption</td>
             <td class="st"><span class="tag ok">Resolved</span></td>
           </tr>
           <tr class="resolved">
             <td class="id">OQ-7</td>
-            <td>EXR downscale &mdash; Lanczos in numpy, matching ffmpeg's filter; no scipy</td>
+            <td>EXR downscale - Lanczos in numpy, matching ffmpeg's filter; no scipy</td>
             <td class="st"><span class="tag ok">Resolved</span></td>
           </tr>
           <tr class="resolved">
             <td class="id">OQ-8</td>
-            <td>ffmpeg licensing &mdash; GPL v3 full build, never leaves the studio</td>
+            <td>ffmpeg licensing and source - GPL v3 arm64 build, never leaves the studio</td>
             <td class="st"><span class="tag ok">Resolved</span></td>
           </tr>
           <tr class="resolved">
             <td class="id">OQ-16</td>
-            <td>ffprobe.exe missing &mdash; pulled from the matching release</td>
+            <td>ffprobe.exe missing - pulled from the matching release</td>
             <td class="st"><span class="tag ok">Resolved</span></td>
           </tr>
           <tr class="resolved">
             <td class="id">OQ-19</td>
-            <td>QC-026 severity &mdash; stays an error; everything is 24 in Resolve</td>
+            <td>QC-026 severity - stays an error; everything is 24 in Resolve</td>
             <td class="st"><span class="tag ok">Resolved</span></td>
           </tr>
         </tbody>
@@ -562,6 +585,43 @@
 
   <section>
     <h2>Corrections made to the spec</h2>
+      <div class="note">
+        <h3>The target moved from Windows to macOS, and the design absorbed it</h3>
+        <p>
+          The primary user turned out to be on an Apple Silicon Mac. Windows and macOS swapped
+          places: macOS is v01, Windows is the v02 backlog item macOS used to be.
+        </p>
+        <p>
+          <b>It cost one line of application code.</b> Core never imported Qt, used
+          <span class="mono">pathlib</span> throughout, had no Windows API anywhere, and already
+          ran its worker pool the way both targets require. All 547 tests passed on the new
+          settings without modification. The rest was documentation and re-sourcing the bundled
+          video tools.
+        </p>
+        <p>
+          That one line matters, though. The Windows tools were called
+          <span class="mono">ffmpeg.exe</span>, so the Linux development machine looked for
+          <span class="mono">ffmpeg</span>, missed them, and used its own copy by luck. The macOS
+          tools are called exactly what Linux looks for, so the first fetch made every test fail
+          at once. The lookup is now explicit about which platform the bundled tools are for.
+        </p>
+      </div>
+      <div class="note">
+        <h3>The bundled video tools had to be replaced entirely</h3>
+        <p>
+          The Windows build came from gyan.dev, which publishes Windows builds only. That was
+          checked rather than assumed: 419 downloads across the 100 most recent releases, not one
+          of them for a Mac. The replacement is the martin-riedl.de Apple Silicon build of the
+          same ffmpeg version, which carries everything the spec depends on and happens to be a
+          quarter of the size, leaving real room under the installer budget.
+        </p>
+        <p>
+          Its features were confirmed by reading the downloaded binary, because an Apple Silicon
+          program cannot be run on the development machine. That is good evidence, not proof.
+          Whether the hardware encoder actually starts on the editor's Mac is a question only that
+          Mac can answer.
+        </p>
+      </div>
     <div class="notes">
       <div class="note">
         <h3>ffmpeg does have an EXR encoder</h3>
@@ -634,10 +694,11 @@
       <div class="note">
         <h3>The worker pool spawns on Linux too, deliberately</h3>
         <p>
-          Windows can only spawn, and Windows is the target. Spawning on the dev machine as
-          well means the constraints on what can cross into a worker are identical in testing
-          and in the field, instead of a job that only works under fork passing every test
-          here and failing on the user's machine.
+          macOS defaults to spawn and Windows can do nothing else, so the target has never been
+          able to fork. Spawning on the Linux dev machine as well means the constraints on what
+          can cross into a worker are identical in testing and in the field, instead of a job that
+          only works under fork passing every test here and failing on the user's machine. This
+          survived the move from Windows to macOS untouched, which was rather the point.
         </p>
       </div>
       <div class="note">
@@ -692,7 +753,7 @@
   <footer>
     <b>Source of truth</b> &middot; PROGRESS.md, docs/OPEN_QUESTIONS.md, PRD.md section 9<br>
     <b>Verify</b> &middot; pytest &middot; ruff check . &amp;&amp; mypy proingest &middot; python -m proingest scan &lt;folder&gt;<br>
-    <b>Last updated</b> &middot; 10 September 2026, after the first end-to-end render
+    <b>Last updated</b> &middot; 10 September 2026, after the switch to a macOS v01 target
   </footer>
 
 </div>

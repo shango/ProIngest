@@ -62,6 +62,16 @@ Hovering the dot or the row shows a tooltip listing rule IDs and messages. Click
 - Typing into a selected cell starts editing immediately (no F2 required).
 - Space on a group header collapses/expands.
 
+**Ctrl means Cmd.** Qt maps the `Ctrl` portable modifier onto Cmd on macOS on its own, so the
+shortcuts above are written as `Ctrl+` in both the spec and the code and reach the user as
+Cmd+. Do not special-case them per platform, and do not use `Qt.MetaModifier` to mean Cmd:
+on macOS Qt swaps Control and Meta, so `MetaModifier` is the physical Control key. Where a
+standard action exists (`QKeySequence.Save`, `Find`, `Quit`) prefer it, because it also gets
+the platform's second binding for free.
+
+`Ctrl+.` is Cmd+. on macOS, which is the long-standing system idiom for cancel. It is the
+right key for Stop and needs no change.
+
 ## 5. In/Out input parsing
 
 Auto-detected in this order:
@@ -107,8 +117,23 @@ A single window with a left section list and right form, like Resolve's project 
 - Batch with no turnovers: "Add a turnover folder to begin".
 - After Scan with zero rows: "No clips found in timeline" plus a link to the Issues dock.
 
-## 11. Windows details
+## 11. macOS details
 
-- Native title bar, app icon, taskbar progress during render.
-- Remembers window geometry and dock state per user.
-- File dialogs default to G: if it exists.
+- Native title bar and app icon. Progress during render goes on the **Dock tile**, not a
+  taskbar. Qt 6 exposes no API for it, so it needs a small `NSDockTile` shim through PyObjC,
+  isolated in a macOS-only helper under `ui/`. It is decoration: if the shim is not built, the
+  status bar progress in section 7 still carries the information and nothing else changes.
+- The menu bar is the system menu bar at the top of the screen, not a window menu bar. Qt does
+  this automatically, but it means About and Settings must be created with the right roles
+  (`QAction.AboutRole`, `PreferencesRole`) or macOS will not move them into the application
+  menu where users look for them.
+- Settings is reached by Cmd+, as well as from the toolbar. That shortcut is a macOS
+  convention strong enough that its absence reads as a bug.
+- Remembers window geometry and dock state per user, in
+  `~/Library/Application Support/ProIngest` (see PACKAGING.md).
+- **File dialogs default to the Google Drive mount if it can be found.** There is no `G:` on
+  macOS; the mount is discovered by probing
+  `~/Library/CloudStorage/GoogleDrive-*/My Drive` first, then `/Volumes/GoogleDrive`. When
+  neither exists the dialog opens at the last used folder. OQ-25.
+- Use `QStandardPaths` rather than building any of these paths by hand.
+

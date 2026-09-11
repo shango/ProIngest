@@ -1,6 +1,6 @@
 # ProIngest PRD v01
 
-Working name: ProIngest. Version target: v01 (Windows). v02 items are listed at the end and must not block v01.
+Working name: ProIngest. Version target: v01 (macOS, Apple Silicon). v02 items are listed at the end and must not block v01.
 
 ## 1. Problem
 
@@ -23,18 +23,18 @@ Goals
 - Every deliverable verified before it is reported as done.
 - Review notes captured in the same list used to run the batch, keyboard driven.
 - Clean, modern, dark UI at the level of a commercial tool.
-- Installs from a single Windows installer with no Python setup.
+- Installs from a single macOS disk image with no Python setup.
 
 Non-goals for v01
 - Color transforms of plates. Raw output is never transformed; the only transfer the tool ever applies is on the reference encodes, and only when the source is scene linear (see `docs/COLOR_AND_FORMAT.md` section 1).
 - Lidar deliverables.
 - Frame viewer (v02).
-- Any Google Drive API use. G: is a normal mounted drive.
-- macOS build (design for it, do not ship it).
+- Any Google Drive API use. The Drive mount is a normal mounted folder.
+- Windows build (design for it, do not ship it).
 
 ## 4. Inputs
 
-Per turnover, in one folder on G: (structure configurable in Settings, see `docs/OPEN_QUESTIONS.md` OQ-1):
+Per turnover, in one folder on the Google Drive mount (structure configurable in Settings, see `docs/OPEN_QUESTIONS.md` OQ-1):
 
 - One `.otio` exported from Resolve (required). CMX3600 `.edl` accepted as fallback with reduced validation.
 - Consolidated media: one file or image sequence per timeline clip, with the sRGB curve baked in today and scene linear sRGB expected later (`docs/COLOR_AND_FORMAT.md` section 1), with extra frames beyond the timeline In/Out (handles are already in the timeline range; the extra frames only exist so Out can be extended).
@@ -74,7 +74,7 @@ FR-1 Timeline import
 - EDL fallback via otio's `cmx_3600` adapter. Clip name comes from `FROM CLIP NAME` comments. No media paths, so matching is by filename search in the turnover folder (FR-2). Audio association is not available from EDL; the tool searches for a wav with the same base name.
 
 FR-2 Media resolution
-- Prefer the OTIO `media_reference.target_url`. Rewrite Resolve paths to the local mount using a configurable path map (e.g. `/Volumes/GoogleDrive/...` to `G:\...`).
+- Prefer the OTIO `media_reference.target_url`. Rewrite Resolve paths to the local mount using a configurable path map (e.g. `/Volumes/GoogleDrive/...` to `~/Library/CloudStorage/GoogleDrive-<account>/...`). On a macOS-to-macOS turnover the map is often empty, because Resolve wrote paths this machine can already resolve; it earns its keep when the shooter's mount differs from the editor's.
 - If the referenced file is missing, search the turnover folder recursively for a file or image sequence whose base name matches the clip name. Exactly one hit resolves silently; zero or many is a QC error on the row.
 - Image sequences are detected by the `name.####.ext` pattern and treated as one media item with a frame range.
 
@@ -99,7 +99,7 @@ FR-7 Render
 - Jobs execute in a process pool. Concurrency default = physical cores / 2, editable. EXR jobs are CPU and IO heavy; refs are ffmpeg heavy. The scheduler interleaves them.
 - Every job writes to `<final>.part` (files) or `<folder>.part/` (sequences) then renames on success.
 - Versioning: before writing, scan the destination for existing versions of the same deliverable and use max+1. All deliverables of one shot in one run share the same version number. If a shot already has a complete, QC-passing set at the highest version and "Force re-render" is off, skip with status "Exists".
-- GPU (NVENC) is optional: detected at startup, used for H.264 when available and enabled in Settings. Output must be visually equivalent; CRF/CQ mapping in `docs/COLOR_AND_FORMAT.md`.
+- Hardware encoding (`h264_videotoolbox`) is optional: detected at startup, used for H.264 when available and enabled in Settings. Output must be visually equivalent; quality mapping in `docs/COLOR_AND_FORMAT.md`. NVENC was the Windows equivalent and does not exist on macOS.
 
 FR-8 Post-render QC
 Rules `QC-1xx` in `docs/QC_RULES.md`: frame count, first/last frame numbers, resolution, fps, EXR header integrity, checksum of every frame written, mp4 duration, audio duration.
@@ -124,7 +124,7 @@ FR-13 Logging
 
 ## 8. Non-functional requirements
 
-- 100 shots per batch, 30 per turnover, must scan in under 60 seconds from a G: mount with warm cache.
+- 100 shots per batch, 30 per turnover, must scan in under 60 seconds from the Drive mount with warm cache.
 - UI stays responsive during render; list edits allowed on rows not currently rendering.
 - Crash safety: reopening a batch after a crash shows accurate per-deliverable state derived from the filesystem, not just the last saved status.
 - Installer under 300 MB. First launch under 5 seconds on a typical workstation.
@@ -138,7 +138,7 @@ M3 Render: EXR writer, mp4 encoder, audio copy, side file copy, atomic writes, p
 M4 QC: all rules, both phases, xlsx exports. CLI `proingest qc <batch>`.
 M5 UI: main window, list view with keyboard model, validation coloring, settings page, log panel, batch open/save.
 M6 Stringout with burn-ins.
-M7 Packaging: PyInstaller, Inno Setup, bundled ffmpeg, first-run experience, icon.
+M7 Packaging: PyInstaller `.app`, disk image, bundled ffmpeg, first-run experience, icon.
 M8 Polish pass against `docs/UI_SPEC.md`, performance on a real turnover, docs.
 
 ## 10. v02 backlog (do not build in v01, but do not design against it)
@@ -146,5 +146,5 @@ M8 Polish pass against `docs/UI_SPEC.md`, performance on a real turnover, docs.
 - Frame viewer: two image panes (In, Out) bound to the selected row, updating live as In/Out are typed; frame forward/back buttons under each pane move the playhead and write back to the field. Requires a decoded frame cache per row.
 - Optional color transform on ingest (OCIO).
 - Burn-ins on reference mp4s.
-- macOS build.
+- Windows build.
 - Google Apps Script hyperlink export for the tracker.

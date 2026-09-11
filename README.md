@@ -1,6 +1,6 @@
 # ProIngest (working name)
 
-VFX turnover ingest and conform tool for a small studio pipeline. Windows first, macOS later.
+VFX turnover ingest and conform tool for a small studio pipeline. macOS (Apple Silicon) first, Windows later.
 
 This repo starts as a PRD package intended to be handed to Claude Code for implementation.
 

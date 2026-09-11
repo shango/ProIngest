@@ -13,7 +13,7 @@ proingest/
     frames.py            # integer frame math, TC conversion, input parsing
     scan.py              # turnover folder -> Turnover + ShotRows (data flow steps 1-4)
     planner.py           # ShotRow -> list[DeliverableJob]
-    ffmpeg.py            # subprocess wrapper, command builder, progress parsing, NVENC detection
+    ffmpeg.py            # subprocess wrapper, command builder, progress parsing, hardware encoder detection
     exr.py               # EXR read/write (OpenEXR), DWAA, header checks
     resize.py            # antialiased Lanczos downscale for the EXR path
     color.py             # source color space setting; what each deliverable does about it
@@ -21,7 +21,7 @@ proingest/
     qc.py                # rule registry, phase A and B checks
     stringout.py         # concat plan and drawtext filter builder
     exports.py           # openpyxl writers for tracker and QC log
-    settings.py          # defaults, load/save, validation
+    settings.py          # defaults, load/save, validation, platform paths (PACKAGING.md)
     batchfile.py         # .pibatch load/save, backup, migration
   ui/
     app.py               # QApplication, theme load
@@ -32,12 +32,14 @@ proingest/
     settings_dialog.py
     theme.qss
     workers.py           # QThread bridge to core.render, signal plumbing
+    platform_mac.py      # the only macOS-specific UI code: Dock tile progress via PyObjC
   resources/             # icons, font, default tracker template
 tests/
   fixtures/media.py      # generates synthetic exr/mov/wav with ffmpeg
   test_naming.py test_frames.py test_timeline.py test_planner.py test_qc.py test_render.py
 build/
-  build.py proingest.spec installer.iss
+  build.py proingest.spec dmg.py    # PyInstaller .app then create-dmg; Inno Setup returns with v02 Windows
+  fetch_ffmpeg.py ffmpeg.lock.json
 ```
 
 ## Data flow

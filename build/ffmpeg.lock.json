@@ -1,32 +1,37 @@
 {
-  "schema_version": 1,
-  "_comment": "Pinned external binaries. These are NOT tracked in git. Run `python build/fetch_ffmpeg.py` to populate proingest/resources/ffmpeg/ from this file. See docs/PACKAGING.md and proingest/resources/ffmpeg/PROVENANCE.md.",
+  "schema_version": 2,
+  "_comment": "Pinned external binaries. These are NOT tracked in git. Run `python build/fetch_ffmpeg.py` to populate proingest/resources/ffmpeg/ from this file. See docs/PACKAGING.md and proingest/resources/ffmpeg/PROVENANCE.md. v01 targets macOS on Apple Silicon only; the Windows build returns with the v02 Windows target, which is why there is no platform matrix here yet.",
+  "platform": "macos-arm64",
   "ffmpeg": {
-    "version": "2026-03-01-git-862338fe31-full_build-www.gyan.dev",
-    "release_tag": "2026-03-01-git-862338fe31",
-    "release_page": "https://github.com/GyanD/codexffmpeg/releases/tag/2026-03-01-git-862338fe31",
-    "archive_url": "https://github.com/GyanD/codexffmpeg/releases/download/2026-03-01-git-862338fe31/ffmpeg-2026-03-01-git-862338fe31-full_build.zip",
-    "archive_size": 247425391,
+    "version": "9.0.1-https://www.martin-riedl.de",
+    "build_id": "1787073674_9.0.1",
+    "source": "https://ffmpeg.martin-riedl.de/",
     "license": "GPL-3.0-or-later",
     "dest_dir": "proingest/resources/ffmpeg",
-    "members": [
+    "downloads": [
       {
-        "dest_name": "ffmpeg.exe",
-        "archive_suffix": "bin/ffmpeg.exe",
-        "size": 223078400,
-        "sha256": "cce4074b7af8e71b4c63f17bec8d36ca3da9b7f84f5bcbb010476164a6cafa85"
+        "dest_name": "ffmpeg",
+        "url": "https://ffmpeg.martin-riedl.de/download/macos/arm64/1787073674_9.0.1/ffmpeg.zip",
+        "archive_member": "ffmpeg",
+        "size": 66334032,
+        "sha256": "393e4c395020a1cb7cbd77fbe00599ce69d1c6466fee0dbd59d13f86a81a1611",
+        "executable": true
       },
       {
-        "dest_name": "ffprobe.exe",
-        "archive_suffix": "bin/ffprobe.exe",
-        "size": 222872576,
-        "sha256": "44edce8f24543b17390e7f50e554349998541e6d6b0241f650df1073770d202a"
+        "dest_name": "ffprobe",
+        "url": "https://ffmpeg.martin-riedl.de/download/macos/arm64/1787073674_9.0.1/ffprobe.zip",
+        "archive_member": "ffprobe",
+        "size": 66159232,
+        "sha256": "7abc49fb2bdf2204f018e76dc6e0a8ae7643313bae09a9fa43e7eb12442271bc",
+        "executable": true
       },
       {
+        "_comment": "The martin-riedl archives carry the binary alone, so the GPLv3 text comes from the FFmpeg source at the matching release tag.",
         "dest_name": "LICENSE.ffmpeg.txt",
-        "archive_suffix": "LICENSE",
+        "url": "https://raw.githubusercontent.com/FFmpeg/FFmpeg/n9.0.1/COPYING.GPLv3",
         "size": 35147,
-        "sha256": "8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903"
+        "sha256": "8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903",
+        "executable": false
       }
     ]
   }

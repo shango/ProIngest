@@ -1,36 +1,124 @@
-# Packaging (Windows v01)
+# Packaging (macOS v01)
+
+v01 targets **macOS on Apple Silicon only**. Windows moved to the v02 backlog (PRD section
+10). Nothing here is built yet: M7 has not started, and see "The build machine problem" below
+for why it cannot start on the current dev machine.
 
 ## Build
 
-- PyInstaller `onedir` build (faster start than onefile, no temp extraction). Spec file in `build/proingest.spec` with hidden imports for PySide6 plugins, OpenEXR, and numpy.
-- Inno Setup script `build/installer.iss` produces `ProIngest-Setup-<version>.exe`. Per-user install by default (no admin), optional per-machine. Start menu and optional desktop shortcut. Uninstaller included.
-- Version comes from `pyproject.toml` and is stamped into the exe metadata, the installer, the About box, and every QC log.
-- `build/build.py` runs both steps and writes the artifact to `dist/`.
+- PyInstaller `onedir` build producing `ProIngest.app`. `onedir` over `onefile` for the same
+  reason as before: faster start, no temp extraction. On macOS `onefile` is worse still,
+  because an app bundle is already a directory and `onefile` would unpack ~200 MB to a temp
+  path on every launch.
+- Spec file in `build/proingest.spec` with `BUNDLE(...)` for the `.app`, hidden imports for
+  PySide6 plugins, OpenEXR and numpy.
+- `Info.plist` needs: `CFBundleIdentifier` (`com.<studio>.proingest`), `CFBundleShortVersionString`
+  from `pyproject.toml`, `LSMinimumSystemVersion` (macOS 12 is a safe floor for PySide6 6.7),
+  and `NSHighResolutionCapable`. No document types and no URL schemes: the app opens
+  `.pibatch` files through its own dialogs, not through Launch Services.
+- `LSApplicationCategoryType` is `public.app-category.video`.
+- Distribution as a `.dmg` built with `create-dmg`, background image and an Applications
+  symlink. A plain zip of the `.app` is the fallback and is honestly fine for one user.
+- `build/build.py` runs both steps and writes to `dist/`.
+- Version comes from `pyproject.toml` and is stamped into `Info.plist`, the dmg name, the
+  About box, and every QC log.
+
+## The build machine problem
+
+**PyInstaller cannot cross-build.** A macOS `.app` must be produced on a Mac. The dev machine
+is Linux/WSL and there is no Mac available, so M7 cannot be completed or verified here at all.
+Two ways forward, neither chosen yet (OQ-22):
+
+- A GitHub Actions `macos-14` runner (arm64) builds the `.app` and runs the test suite. This
+  also gives the first real execution of the test suite on the target architecture, which
+  nothing has done yet.
+- Build on the editor's own Mac when the tool is ready to hand over.
+
+Until one of these exists, everything in this document is written from the documentation and
+is **unverified**. Assumptions that need a Mac to settle are flagged as OQ-22 to OQ-25.
 
 ## ffmpeg
 
-- Bundle the GPL v3 gyan.dev full build, which includes libx264, so H.264 encoding uses `libx264` with CRF as specified in `docs/COLOR_AND_FORMAT.md`. The tool is used inside the studio and is not distributed to third parties, so the GPL triggers no source offer; ProIngest calls ffmpeg as a subprocess and is not linked against it. Hardware encoders (`h264_nvenc`, `h264_amf`, `h264_qsv`, `h264_mf`) are also present. The Settings > Advanced override for a user-installed ffmpeg is retained. Note the license in the About box. OQ-8 resolved.
-- Binaries live in `resources/ffmpeg/`. `core/ffmpeg.py` resolves the bundled path first, then the Settings override, then PATH.
-- The binaries are ~426 MB and are **not tracked in git**. `build/ffmpeg.lock.json` pins the release, the archive URL and a sha256 per file; `python build/fetch_ffmpeg.py` downloads and verifies them into `resources/ffmpeg/`. Run it once after cloning and before `build/build.py`. Provenance and the GPL note are in `resources/ffmpeg/PROVENANCE.md`.
+- Bundle the **martin-riedl.de macOS arm64 GPL v3 build**, which includes libx264, so H.264
+  encoding uses `libx264` with CRF as specified in `docs/COLOR_AND_FORMAT.md`. It also carries
+  `h264_videotoolbox`, which is the macOS hardware encoder and the replacement for NVENC.
+  Full rationale, the verified feature list, and why gyan.dev could not be used are in
+  `proingest/resources/ffmpeg/PROVENANCE.md`. OQ-8 re-resolved for macOS.
+- Binaries live in `proingest/resources/ffmpeg/` and are named `ffmpeg` and `ffprobe`, with no
+  extension. `core/ffmpeg.py` resolves the Settings override first, then the bundled path,
+  then PATH. **The bundled step is gated on `sys.platform == "darwin"`.** That guard is load
+  bearing rather than tidiness: unlike `.exe`, the macOS binary name is exactly what a Linux
+  or Windows machine also looks for, so without the guard the Linux dev machine resolves a
+  Mach-O binary as a valid file and every subprocess dies with "Exec format error".
+- The pair is 132 MB installed, ~57 MB compressed, against a 300 MB installer budget. The
+  Windows pair was 446 MB, so the macOS build has considerably more room.
+- The binaries are **not tracked in git**. `build/ffmpeg.lock.json` pins the versioned URLs and
+  a sha256 per extracted file; `python build/fetch_ffmpeg.py` downloads and verifies them into
+  `proingest/resources/ffmpeg/`. Run it once after cloning and before `build/build.py`.
+- Two macOS-specific traps, both already handled in `fetch_ffmpeg.py` and worth knowing before
+  anyone rewrites it: Python's `zipfile` does not carry the archived mode across, so the
+  **exec bit must be set explicitly** or the binary lands unrunnable; and
+  ffmpeg.martin-riedl.de answers the default `Python-urllib` User-Agent with **HTTP 403**.
 - Record the ffmpeg version string in every QC log.
+
+## Code signing, notarization and Gatekeeper
+
+**This is the one place macOS is materially harder than Windows, and it is unresolved.**
+
+There is no Apple Developer account (confirmed 2026-09-10), so `ProIngest.app` ships
+**unsigned and un-notarized**. On Windows that meant a SmartScreen warning the user could
+click past. On macOS it means Gatekeeper refuses to open the app: a `.dmg` or zip downloaded
+through a browser carries the `com.apple.quarantine` extended attribute, and an unsigned,
+un-notarized quarantined app is blocked outright, not merely warned about.
+
+Workarounds, in order of preference:
+
+1. **Get a Developer ID.** $99/year, then `codesign --deep --options runtime` and submit with
+   `notarytool`, stapling the ticket to the dmg. This is the only clean answer and the only
+   one that survives a macOS release that tightens the rules again.
+2. **Transfer without quarantine.** The attribute is applied by the browser and by AirDrop,
+   not by `scp`, `rsync`, or a USB drive formatted for the purpose. A tool handed over on a
+   stick or copied over the network from the build machine never acquires it.
+3. **Strip it on the target machine**: `xattr -dr com.apple.quarantine /Applications/ProIngest.app`,
+   run once after install. Right-click and Open no longer reliably suffices on recent macOS.
+
+Note that the **bundled ffmpeg and ffprobe are already Developer ID signed with the hardened
+runtime** (`CS_RUNTIME`, verified by reading their code directory), so they are not the
+problem and do not need ad-hoc signing to satisfy the arm64 kernel requirement. If ProIngest
+is ever signed for real, the nested binaries must be signed as part of the bundle and their
+existing signatures will be replaced, which is normal and expected.
+
+OQ-9, and it is a **blocker for handing the tool over**, not a cosmetic note. Decide it before
+M7 rather than at delivery.
 
 ## Runtime locations
 
-- Settings: `%APPDATA%\ProIngest\settings.json`
-- Logs: `%LOCALAPPDATA%\ProIngest\logs\proingest-YYYYMMDD.log`, rotated daily, 14 kept
+- Settings: `~/Library/Application Support/ProIngest/settings.json`
+- Logs: `~/Library/Logs/ProIngest/proingest-YYYYMMDD.log`, rotated daily, 14 kept
 - Crash dumps: same folder, with the batch path and last 200 log lines
 - Batches: wherever the user saves them; default suggestion is the delivery root
 
+These are the Apple-sanctioned locations and are what `core/settings.py` must use. They are
+also per-user and need no elevated permissions, which matches the single-user design.
+
 ## First run
 
-- Detect G: and offer it as the default browse location.
-- Detect NVENC; show a one-time notice of whether GPU encoding is available.
-- Create the default tracker template in settings folder if missing.
+- **Detect the Google Drive mount** and offer it as the default browse location. There is no
+  `G:` on macOS. Google Drive for desktop mounts at
+  `~/Library/CloudStorage/GoogleDrive-<account>/My Drive` on current versions and at
+  `/Volumes/GoogleDrive` on older ones, so both are probed, newest convention first. The
+  account name varies per machine, so the `<account>` segment is globbed rather than assumed.
+  OQ-25.
+- Detect `h264_videotoolbox` and show a one-time notice of whether hardware encoding is
+  available. Presence in the build is not proof it opens on the hardware, so the check is an
+  actual trial encode of a few frames, not a string match on `-encoders`. OQ-23.
+- Create the default tracker template in the settings folder if missing.
 
-## Code signing
+## Windows (later)
 
-Unsigned in v01 unless the studio supplies a certificate. Note the SmartScreen warning in the README. OQ-9.
-
-## macOS (later)
-
-Keep everything path-agnostic and avoid Windows-only APIs outside `ui/` platform helpers. A `.app` via PyInstaller and a `.dmg` via `create-dmg` is the plan; not built in v01.
+v02. Keep everything path-agnostic and avoid macOS-only APIs outside `ui/` platform helpers,
+which is the same discipline that made this switch cheap in the first place. The Windows plan
+is the one this document previously described: PyInstaller `onedir`, Inno Setup producing
+`ProIngest-Setup-<version>.exe`, per-user install by default, and the gyan.dev GPL full build
+of ffmpeg. `build/ffmpeg.lock.json` will need a platform matrix at that point; it deliberately
+does not have one now, because a matrix with one entry is harder to read than a flat file.

@@ -49,11 +49,29 @@ OQ-3: confirm what the consolidated media actually is so the warning levels can 
 | output | spec |
 |---|---|
 | raw EXR | OpenEXR 2 scanline, DWAA compression level 45, half float RGB (alpha dropped unless source has real alpha, then RGBA), data window = display window, frame numbers start 1001 |
-| ref mp4 4k | 3840x2160, H.264 High, yuv420p, CRF 18 (x264 `-preset slow`) or NVENC `-cq 19 -preset p5`, keyint 24, `-movflags +faststart`, AAC 192k if audio associated |
+| ref mp4 4k | 3840x2160, H.264 High, yuv420p, CRF 18 (x264 `-preset slow`) or `h264_videotoolbox` when hardware encoding is enabled, keyint 24, `-movflags +faststart`, AAC 192k if audio associated |
 | ref mp4 HD | same, 1920x1080 |
 | audio | as delivered. If the source is a wav, byte copy. If audio lives inside a container, extract to PCM 16 bit, same sample rate and channel count, no resampling. QC-044 if not 16 bit after extraction |
 | stringout | 1920x1080, H.264 High, CRF 20, burn-ins, audio from associated wavs mixed at unity |
 | HDRI, stills, lens grid, camData | byte copy with rename, checksum recorded |
+
+### Hardware encoding on macOS
+
+NVENC was the Windows hardware encoder and **does not exist on macOS**. The macOS equivalent is
+`h264_videotoolbox`, which the bundled build carries (PROVENANCE.md).
+
+- **The default is software x264 at CRF 18.** It is deterministic, it is what this spec pins,
+  and it is what every QC threshold was written against. Hardware encoding is opt-in in
+  Settings, exactly as NVENC was.
+- VideoToolbox has no CRF. On Apple Silicon it takes a constant-quality `-q:v` on a 1 to 100
+  scale where higher is better, which is **not** convertible to a CRF number by any published
+  formula. `-q:v 65` is the starting point, not a specification.
+- **That number is uncalibrated and must not be trusted until it is measured** on the target
+  Mac against x264 CRF 18 on a real plate. Until then Settings should describe it as an
+  approximation. OQ-23.
+- Detection is a trial encode of a few frames, not a string match on `-encoders`. A codec
+  compiled into the binary can still fail to open a session on the actual hardware, and the
+  reference deliverables are not the place to discover that.
 
 ## 4. Resolution rules
 
