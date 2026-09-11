@@ -20,8 +20,9 @@ in `PROGRESS.md` section 8 instead.
 
 - The window layout, in the order `UI_SPEC.md` section 1 sets out: toolbar, batch bar, shot
   list, metadata pane, bottom dock, status bar.
-- The columns and the frozen left three, section 2. The secondary timecode line under In and
-  Out, and the Source/Record toggle that switches which one is primary.
+- The columns and the frozen left three, section 2. The three-state In/Out display toggle,
+  `Frames` / `Source TC` / `Record TC`, and the secondary line under each cell carrying
+  whichever representation is not primary.
 - Row colours and the status dot, section 3.
 - The metadata pane's sections and their fields, section 12, including that it is read only.
 - Arrow keys move the selection, Cmd+T toggles timecode, Cmd+I hides the pane. Section 4.

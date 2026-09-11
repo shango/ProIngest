@@ -476,6 +476,14 @@ const rows = [
   i,
 }));
 
+let _rec = 864000; // timeline global start, 10:00:00:00 at 24 fps
+rows.forEach((r) => {
+  const d = r.outF - r.inF + 1;
+  r.recIn = _rec;
+  r.recOut = _rec + d - 1;
+  _rec += d;
+});
+
 const DELIVERABLES = (r) => {
   const v = "v0" + r.version;
   const out = [
@@ -536,6 +544,8 @@ function Meta({ row, turnover }) {
     ["Range", [
       ["source In", `${row.inF}  ${tc(row.inF)}`],
       ["source Out", `${row.outF}  ${tc(row.outF)}`],
+      ["record In", tc(row.recIn)],
+      ["record Out", tc(row.recOut)],
       ["duration", `${dur} frames`],
       ["max available", row.maxAvail ? String(row.maxAvail) : "-"],
       ["snapshot", moved ? `${row.snapIn}-${row.snapOut} (moved)` : "unchanged"],
@@ -584,7 +594,9 @@ function Meta({ row, turnover }) {
 
 function App() {
   const [sel, setSel] = useState(0);
-  const [recordTC, setRecordTC] = useState(false);
+  // Which representation is primary in the In and Out cells. UI_SPEC section 2: the
+  // other one sits under it in secondary text, so nothing is ever hidden, only demoted.
+  const [display, setDisplay] = useState("source");
   const [query, setQuery] = useState("");
   const [collapsed, setCollapsed] = useState({});
   const [tab, setTab] = useState("issues");
@@ -616,7 +628,10 @@ function App() {
       const typing = e.target.tagName === "INPUT";
       if (e.key === "ArrowDown" && !typing) { e.preventDefault(); move(1); }
       else if (e.key === "ArrowUp" && !typing) { e.preventDefault(); move(-1); }
-      else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "t") { e.preventDefault(); setRecordTC((v) => !v); }
+      else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "t") {
+        e.preventDefault();
+        setDisplay((d) => (d === "frames" ? "source" : d === "source" ? "record" : "frames"));
+      }
       else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "i") { e.preventDefault(); setShowPane((v) => !v); }
     };
     window.addEventListener("keydown", onKey);
@@ -697,11 +712,13 @@ function App() {
           <button className="pathbtn" title={DELIVERY}>{"‪" + DELIVERY}</button>
         </div>
         <div className="field">
-          <span className="lab">TC</span>
+          <span className="lab">In / Out</span>
           <div className="seg">
-            <button className={!recordTC ? "on" : ""} onClick={() => setRecordTC(false)}>Source</button>
-            <button className={recordTC ? "on" : ""} onClick={() => setRecordTC(true)}>Record</button>
+            <button className={display === "frames" ? "on" : ""} onClick={() => setDisplay("frames")}>Frames</button>
+            <button className={display === "source" ? "on" : ""} onClick={() => setDisplay("source")}>Source TC</button>
+            <button className={display === "record" ? "on" : ""} onClick={() => setDisplay("record")}>Record TC</button>
           </div>
+          <span className="kbd">&#8984;T</span>
         </div>
         <input className="search" id="q" placeholder="Filter shot code" value={query}
                onChange={(e) => setQuery(e.target.value)} />
@@ -759,8 +776,12 @@ function App() {
                       {!collapsed[t.id] && mine.map((r) => {
                         const st = rowState(r);
                         const p = progress[r.key] || 0;
-                        const primaryIn = recordTC ? tc(r.inF - 86400 + 3600 * FPS) : tc(r.inF);
-                        const primaryOut = recordTC ? tc(r.outF - 86400 + 3600 * FPS) : tc(r.outF);
+                        const cell = (frame, rec) =>
+                          display === "frames" ? [String(frame), tc(frame)]
+                          : display === "record" ? [tc(rec), String(frame)]
+                          : [tc(frame), String(frame)];
+                        const [inMain, inSub] = cell(r.inF, r.recIn);
+                        const [outMain, outSub] = cell(r.outF, r.recOut);
                         return (
                           <tr key={r.key}
                               className={"row " + (sel === r.i ? "sel " : "") + st}
@@ -775,8 +796,8 @@ function App() {
                             <td className="num" style={{ color: r.statedRate !== 24 ? "var(--err)" : undefined }}>
                               {r.statedRate}
                             </td>
-                            <td className="num">{primaryIn}<span className="sub">{r.inF}</span></td>
-                            <td className="num">{primaryOut}<span className="sub">{r.outF}</span></td>
+                            <td className="num">{inMain}<span className="sub">{inSub}</span></td>
+                            <td className="num">{outMain}<span className="sub">{outSub}</span></td>
                             <td className="num">{r.outF - r.inF + 1}</td>
                             <td className="num">{r.maxAvail ?? "-"}</td>
                             <td><span className="icons"><span className={r.audio === "one" ? "on" : ""}>

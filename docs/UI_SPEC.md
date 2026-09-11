@@ -36,8 +36,9 @@ Nothing opens a modal during review except Settings and file dialogs.
 Frozen left: status dot, Shot Code (editable), Elem.
 Scrolling: Source file, Res, FPS, In (editable), Out (editable), Duration, Max Avail, Audio (icon: none / one / many), Side files (icons: HDRI, camData, stills), Version, Progress, Notes (editable, free text, goes to tracker).
 
-- Secondary TC line: In and Out cells show the primary value (frame or TC per toggle) and the other representation in smaller secondary text underneath. Row height accommodates two lines.
-- The TC toggle in the batch bar switches the whole list between Source TC and Record TC as the primary display and as the interpretation of typed TC.
+- **The In/Out display toggle in the batch bar has three states, not two: `Frames`, `Source TC`, `Record TC`.** It sets what the In and Out cells show as their primary value for the whole list, and it sets how a typed timecode is interpreted (source or record) when either TC state is selected.
+- Secondary line: whichever representation is not primary sits under it in smaller text, so nothing is ever hidden, only demoted. In `Frames` the secondary is source TC; in either TC state it is the source frame number. Row height accommodates two lines.
+- The editor reads frames and timecode at different moments, which is why frames is a first-class state of this control rather than only the secondary line: a frame number is what gets typed into the In/Out cells and what a VFX vendor quotes back, and a timecode is what the AD and the edit talk in. Section 5 accepts both as input whatever this is set to.
 - Turnover group headers are rows in the same view (QTreeView with a flat two-level model), collapsible, showing counts and aggregate status.
 - Sorting is fixed to timeline order within a turnover. A search box filters rows by shot code substring.
 
@@ -61,7 +62,7 @@ Hovering the dot or the row shows a tooltip listing rule IDs and messages. Click
 - Tab / Shift+Tab: move between editable cells in the current row (Shot Code, In, Out, Notes), wrapping to next row's first editable cell.
 - Enter: commit edit and stay. Escape: revert cell.
 - Ctrl+K: toggle skip on current row (prompts for reason on first skip; Escape cancels).
-- Ctrl+T: toggle Source/Record TC.
+- Ctrl+T: cycle the In/Out display, `Frames` to `Source TC` to `Record TC` and round again.
 - Ctrl+I: show or hide the metadata pane (section 12). Focus stays in the list.
 - Ctrl+F: focus search. Ctrl+S: save batch. Ctrl+R: run. Ctrl+.: stop.
 - Typing into a selected cell starts editing immediately (no F2 required).
