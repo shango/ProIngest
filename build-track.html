@@ -285,7 +285,7 @@
     </div>
     <div class="stat">
       <div class="stat-n good">547</div>
-      <div class="stat-l">Tests passing</div>
+      <div class="stat-l">Tests, Linux + macOS</div>
     </div>
     <div class="stat">
       <div class="stat-n">21<span style="color:var(--faint);font-size:17px">/26</span></div>
@@ -539,12 +539,12 @@
           </tr>
           <tr>
             <td class="id">OQ-22</td>
-            <td>No Mac to build or test on, and a Mac app cannot be built anywhere else</td>
-            <td class="st"><span class="tag open">Open</span></td>
+            <td>No Mac to build on. CI now runs the suite on Apple Silicon; packaging and M8 still need one</td>
+            <td class="st"><span class="tag open">Narrowed</span></td>
           </tr>
           <tr>
             <td class="id">OQ-23</td>
-            <td>VideoToolbox has no CRF; its quality scale is uncalibrated and needs the real machine</td>
+            <td>VideoToolbox opens on real hardware (proven in CI); its quality scale is still uncalibrated</td>
             <td class="st"><span class="tag open">Open</span></td>
           </tr>
           <tr>
@@ -594,6 +594,22 @@
 
   <section>
     <h2>Corrections made to the spec</h2>
+      <div class="note">
+        <h3>The code now runs on the machine it is for</h3>
+        <p>
+          Until this week every test had only ever run on the Linux development machine. A hosted
+          Apple Silicon runner now runs the whole suite on every change: <b>547 tests, lint and
+          type checks, all green</b>, and slightly faster than locally.
+        </p>
+        <p>
+          It also closed a gap nobody had measured. The development machine tests against the
+          video tools its Linux distribution happens to ship, three major versions behind the
+          ones the product will actually install. CI runs the real bundled tools, so the tested
+          configuration and the shipped configuration are finally the same thing. The Apple
+          hardware encoder was confirmed to start and encode, which was an open question that
+          could only ever be answered on a Mac.
+        </p>
+      </div>
       <div class="note">
         <h3>The target moved from Windows to macOS, and the design absorbed it</h3>
         <p>
@@ -762,7 +778,7 @@
   <footer>
     <b>Source of truth</b> &middot; PROGRESS.md, docs/OPEN_QUESTIONS.md, PRD.md section 9<br>
     <b>Verify</b> &middot; pytest &middot; ruff check . &amp;&amp; mypy proingest &middot; python -m proingest scan &lt;folder&gt;<br>
-    <b>Last updated</b> &middot; 10 September 2026, macOS v01 target and the FR-14 metadata pane
+    <b>Last updated</b> &middot; 11 September 2026, first green CI run on Apple Silicon
   </footer>
 
 </div>

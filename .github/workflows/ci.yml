@@ -22,14 +22,18 @@ jobs:
     name: Linux (x86-64)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install ffmpeg
         # The fixtures shell out to a bare `ffmpeg`, so it has to be on PATH. On Linux
         # the distro build is fine: this job exists to check the logic, not the bundle.
         run: sudo apt-get update && sudo apt-get install -y ffmpeg
 
-      - uses: astral-sh/setup-uv@v5
+      - uses: astral-sh/setup-uv@v10
+        with:
+          # There is no uv.lock, so the default glob matches nothing and uv's cache would
+          # never invalidate. pyproject.toml is what actually pins the dependency set here.
+          cache-dependency-glob: "pyproject.toml"
       - name: Create the environment
         run: |
           uv venv --python ${{ env.PYTHON_VERSION }}
@@ -49,10 +53,10 @@ jobs:
     # standard runner, so it draws on included minutes rather than larger-runner billing.
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Cache the pinned ffmpeg
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: proingest/resources/ffmpeg
           key: ffmpeg-${{ runner.os }}-${{ hashFiles('build/ffmpeg.lock.json') }}
@@ -74,7 +78,11 @@ jobs:
           "$GITHUB_WORKSPACE/proingest/resources/ffmpeg/ffmpeg" -hide_banner -version | head -1
           "$GITHUB_WORKSPACE/proingest/resources/ffmpeg/ffprobe" -hide_banner -version | head -1
 
-      - uses: astral-sh/setup-uv@v5
+      - uses: astral-sh/setup-uv@v10
+        with:
+          # There is no uv.lock, so the default glob matches nothing and uv's cache would
+          # never invalidate. pyproject.toml is what actually pins the dependency set here.
+          cache-dependency-glob: "pyproject.toml"
       - name: Create the environment
         run: |
           uv venv --python ${{ env.PYTHON_VERSION }}

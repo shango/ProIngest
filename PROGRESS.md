@@ -8,9 +8,15 @@ commit.
 
 ## 1. Resume here
 
-**State at 2026-09-10.** M1 and M2 complete, M3 in progress (M3.1 to M3.4 done, only
+**State at 2026-09-11.** M1 and M2 complete, M3 in progress (M3.1 to M3.4 done, only
 M3.5 left). Working tree clean apart from two deliberately untracked files (section 8).
 547 tests passing, `ruff` and `mypy --strict` clean. M3.4 landed as `0c349c9`.
+
+**The suite now runs on the target platform.** First green CI run on a `macos-latest`
+arm64 runner: 547 passed in 16.85s, lint and types clean, against the bundled
+martin-riedl ffmpeg 9.0.1 rather than this machine's Ubuntu 6.1.1. The pinned arm64
+binaries were confirmed to actually execute, and `h264_videotoolbox` opened a session
+and encoded, which answers half of OQ-23.
 
 **The target platform changed on 2026-09-10: v01 is now macOS on Apple Silicon, not
 Windows.** The primary user turned out to be on a Mac. Section 6 has the decision and what
