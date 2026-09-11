@@ -288,7 +288,7 @@
       <div class="stat-l">Tests, Linux + macOS</div>
     </div>
     <div class="stat">
-      <div class="stat-n">18<span style="color:var(--faint);font-size:17px">/40</span></div>
+      <div class="stat-n">17<span style="color:var(--faint);font-size:17px">/40</span></div>
       <div class="stat-l">Questions open</div>
     </div>
     <div class="stat">
@@ -420,9 +420,10 @@
           <div class="gate">
             <b>Respecified on 12 September, when the studio described how colour actually
             works here.</b> Colour is finished <b>before</b> the tool runs: the AD meeting
-            decides the look, a grading session builds it, and that session exports one colour
-            file per shot. The tool applies it and never authors any, which is why the four
-            on-screen colour controls that were planned a day earlier have been removed.
+            decides the look, a grading session builds it, and that session exports an updated
+            final edit list with the approved grade carried inside it. The tool applies it and
+            never authors any, which is why the four on-screen colour controls that were planned
+            a day earlier have been removed.
             <b>What changes:</b> shooters deliver one log format no matter what camera they
             shot on, which removes an entire class of per-camera problems before it starts.
             Every delivered file carries the approved look, plates included, and every plate
@@ -430,11 +431,12 @@
             months later. One definition of the colour serves the render and the on-screen
             viewers alike, so the two cannot disagree. A shot whose colour has not arrived is
             not delivered ungraded; it is not delivered.
-            <b>Three quick answers from the studio would let this start clean</b>, and all
-            three are about what two existing processes already produce rather than decisions
-            anyone has to make from scratch: which log format the shooters deliver in, whether
-            the approved grade reaches the tool inside the final edit list or as a separate file
-            per shot, and if the latter, what says which file belongs to which shot.
+            <b>One answer from the studio would let this start clean:</b> which log format the
+            shooters deliver in. <b>And one caution</b>, which no software can check: the format
+            the grade travels in carries four controls and no more, so a curve or a colour wheel
+            used in the grading session does not reach the tool at all, silently. The session
+            also produces a reference movie with the real look on it, and comparing the two the
+            first time this runs is what would catch that.
           </div>
         </div>
       </div>
@@ -553,14 +555,19 @@
         </thead>
         <tbody>
           <tr>
-            <td class="id">OQ-40</td>
-            <td><b style="color:var(--text)">Decides most of the colour chunk.</b> Whether the approved grade reaches the tool inside the final edit list or as a separate file per shot. The simpler answer is enough only if the grading stays within what that simpler format can describe</td>
-            <td class="st"><span class="tag hot">New</span></td>
+            <td class="id">OQ-30</td>
+            <td><b style="color:var(--text)">Wants one real edit list.</b> Which field of an edit list entry identifies a shot, so a neighbouring shot's colour is never applied to the wrong one. It looks plausible when it goes wrong, which is what makes it worth pinning down</td>
+            <td class="st"><span class="tag hot">Open</span></td>
           </tr>
-          <tr>
+          <tr class="resolved">
+            <td class="id">OQ-40</td>
+            <td>How the approved grade reaches the tool - answered: inside the colour session's final edit list, which also deleted the need for a separate file per shot</td>
+            <td class="st"><span class="tag ok">Answered</span></td>
+          </tr>
+          <tr class="resolved">
             <td class="id">OQ-33</td>
-            <td>What the colour session hands over so the tool knows which colour file belongs to which shot. Only live if OQ-40 lands on the per shot file; the edit list already says which event is which</td>
-            <td class="st"><span class="tag hot">New</span></td>
+            <td>What says which colour file belongs to which shot - closed with OQ-40; the edit list already does</td>
+            <td class="st"><span class="tag ok">Closed</span></td>
           </tr>
           <tr>
             <td class="id">OQ-39</td>
@@ -596,11 +603,6 @@
             <td class="id">OQ-32</td>
             <td>What the four colour controls range over - closed, the controls are removed</td>
             <td class="st"><span class="tag ok">Closed</span></td>
-          </tr>
-          <tr class="resolved">
-            <td class="id">OQ-30</td>
-            <td>How a colour decision is matched to the right clip - superseded, the sidecar names it explicitly</td>
-            <td class="st"><span class="tag ok">Superseded</span></td>
           </tr>
           <tr>
             <td class="id">OQ-28</td>
@@ -1123,7 +1125,7 @@
   <footer>
     <b>Source of truth</b> &middot; PROGRESS.md, docs/OPEN_QUESTIONS.md, PRD.md section 9<br>
     <b>Verify</b> &middot; pytest &middot; ruff check . &amp;&amp; mypy proingest &middot; python -m proingest scan &lt;folder&gt;<br>
-    <b>Last updated</b> &middot; 12 September 2026, colour workflow settled end to end, colour controls and the stringout removed, one question left on how the grade arrives. Next: M4.5, the colour pipeline, core first and headless
+    <b>Last updated</b> &middot; 12 September 2026, colour workflow settled end to end, colour controls and the stringout removed, the grade arrives as a CDL in the colour session's final EDL. Next: M4.5, the colour pipeline, core first and headless
   </footer>
 
 </div>
