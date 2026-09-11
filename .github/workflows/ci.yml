@@ -29,7 +29,9 @@ jobs:
         # the distro build is fine: this job exists to check the logic, not the bundle.
         run: sudo apt-get update && sudo apt-get install -y ffmpeg
 
-      - uses: astral-sh/setup-uv@v10
+      # setup-uv publishes no floating major tag (no v10), unlike checkout and cache,
+      # so this is pinned to an exact release and has to be bumped by hand.
+      - uses: astral-sh/setup-uv@v10.1.0
         with:
           # There is no uv.lock, so the default glob matches nothing and uv's cache would
           # never invalidate. pyproject.toml is what actually pins the dependency set here.
@@ -78,7 +80,9 @@ jobs:
           "$GITHUB_WORKSPACE/proingest/resources/ffmpeg/ffmpeg" -hide_banner -version | head -1
           "$GITHUB_WORKSPACE/proingest/resources/ffmpeg/ffprobe" -hide_banner -version | head -1
 
-      - uses: astral-sh/setup-uv@v10
+      # setup-uv publishes no floating major tag (no v10), unlike checkout and cache,
+      # so this is pinned to an exact release and has to be bumped by hand.
+      - uses: astral-sh/setup-uv@v10.1.0
         with:
           # There is no uv.lock, so the default glob matches nothing and uv's cache would
           # never invalidate. pyproject.toml is what actually pins the dependency set here.
