@@ -53,7 +53,8 @@ OQ-3: confirm what the consolidated media actually is so the warning levels can 
 | ref mp4 HD | same, 1920x1080 |
 | audio | as delivered. If the source is a wav, byte copy. If audio lives inside a container, extract to PCM 16 bit, same sample rate and channel count, no resampling. QC-044 if not 16 bit after extraction |
 | stringout | 1920x1080, H.264 High, CRF 20, burn-ins, audio from associated wavs mixed at unity |
-| HDRI, stills, lens grid, camData | byte copy with rename, checksum recorded |
+| HDRI, stills, camData | byte copy with rename, checksum recorded |
+| lens grid | not written in v01; moved and renamed by hand (OQ-20) |
 
 ### Hardware encoding on macOS
 

@@ -28,6 +28,7 @@ Goals
 Non-goals for v01
 - Color transforms of plates. Raw output is never transformed; the only transfer the tool ever applies is on the reference encodes, and only when the source is scene linear (see `docs/COLOR_AND_FORMAT.md` section 1).
 - Lidar deliverables.
+- Lens grid delivery. The tool reports whether a turnover has one; moving and renaming it is manual in v01 (OQ-20).
 - Frame viewer (v02).
 - Any Google Drive API use. The Drive mount is a normal mounted folder.
 - Windows build (design for it, do not ship it).
@@ -50,7 +51,7 @@ Per shot, into a delivery root the user chooses (default proposed layout in `doc
 - 4k and HD raw EXR sequences (DWAA 45, start frame 1001) in their own subfolders
 - 4k and HD H.264 reference mp4s
 - Audio wav for plate clips (as delivered, 16 bit PCM)
-- Copied and renamed HDRI, lens grid, BTS, reference stills where present
+- Copied and renamed HDRI, BTS, reference stills where present. **Not the lens grid**: it arrives as a folder in the turnover and the editor moves and renames it by hand in v01 (OQ-20)
 - One turnover stringout mp4 (1920x1080, H.264) with burn-ins
 - `shot_tracker.xlsx` for paste into the studio tracker (columns supplied by studio, OQ-2)
 - `qc_ingest_log.xlsx` with one row per deliverable, rule results, and turnover-vs-final In/Out diff

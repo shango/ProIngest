@@ -31,7 +31,7 @@ Regex (show prefix configurable, default `[A-Z]{2,6}`):
 | wit | witness cam | raw 4k, raw HD, ref 4k, ref HD |
 | re | recon plate | raw 4k, raw HD, ref 4k, ref HD |
 | aux still | reference still on a plate | single 4k exr (BTS: png/jpg/jpeg copy) |
-| lensgrid | lens distortion chart | png copy |
+| lensgrid | lens distortion chart | **nothing in v01.** It arrives as a folder in the turnover package and the editor moves and renames it by hand. OQ-20 |
 
 Side files discovered next to the media (not on the timeline), matched by shot code and element id in the filename:
 
@@ -54,7 +54,7 @@ Tokens: `{shotcode}` `{elem}` `{kind}` `{res}` `{ver}` `{frame}` `{aux}` `{auxid
 | camData | `{shotcode}_{elem}_camData_v{ver}.{ext}` | `MELT0001_pl01_camData_v01.rtf` |
 | aux still exr | `{shotcode}_{elem}_{aux}_{auxidx}_4k_v{ver}.exr` | `MELT0001_pl01_colorChart_01_4k_v01.exr` |
 | BTS | `{shotcode}_{elem}_BTS_{auxidx}_v{ver}.{ext}` | `MELT0001_pl01_BTS_01_v01.png` |
-| lens grid | `{camera}_{lens}_lensgrid_{mm}mm_v{ver}.png` | `SonyA7V_Tamron20-40_lensgrid_40mm_v01.png` |
+| lens grid | `{camera}_{lens}_lensgrid_{mm}mm_v{ver}.png` | `SonyA7V_Tamron20-40_lensgrid_40mm_v01.png` (v01: the editor types this one, OQ-20) |
 | stringout | `turnover{tno:03d}_{MM}_{DD}_{YYYY}_{firstnamelastname}_v{ver}.mp4` | `turnover001_02_23_2026_danielluckett_v01.mp4` |
 
 `{res}` is `4k` or `HD` exactly. `{ver}` is two digits. `{frame}` is four digits starting at 1001.
@@ -82,7 +82,7 @@ the sheet does not go looking for the rule behind one of them.
 - Version is per shot per run. Before rendering a shot, list existing `v??` for any of its deliverables in the destination; new version = max + 1, or 01 if none.
 - "Per shot" means per shot folder, so the scope of that listing is the whole `<delivery_root>/<show>/<shotcode>/` directory and every element of the shot in the run shares the result. A shot whose `cp01` was delivered at v01 therefore starts its `pl01` at v02. Element versions can skip numbers; a shot's deliverables never disagree.
 - All deliverables for that shot in this run get the same version, even if only one of them was missing. Partial version sets are confusing downstream.
-- Side-file copies (HDRI, camData, stills, lens grid) follow the same version as the shot in that run.
+- Side-file copies (HDRI, camData, stills) follow the same version as the shot in that run. The lens grid is not one of them in v01: it is turnover-level and handled by hand, so nothing versions it. OQ-20.
 - A `.part` file or folder is never counted as an existing version.
 
 ## 5. Delivery folder layout (proposed default, editable template in Settings, OQ-1)
@@ -101,7 +101,7 @@ the sheet does not go looking for the rule behind one of them.
       <shotcode>_<elem>_colorChart_01_4k_v01.exr
     _turnovers/
       turnover001_02_23_2026_danielluckett_v01.mp4
-      <camera>_<lens>_lensgrid_40mm_v01.png
+      <camera>_<lens>_lensgrid_40mm_v01.png   (v01: put here by hand, OQ-20)
     _reports/
       shot_tracker_<batchname>_<date>.xlsx
       qc_ingest_log_<batchname>_<date>.xlsx

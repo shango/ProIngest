@@ -95,8 +95,10 @@ Treat it as a working session with the editor rather than a delivery.
 - [ ] 100 shots scanned in under 60 seconds from a warm mount. `PRD.md` section 8.
 - [ ] A full run end to end, then read the QC log and tracker with the editor. OQ-2 tracker
       columns, OQ-11 camData format.
-- [ ] OQ-20 lens grid and OQ-21 container alpha, both of which were explicitly deferred until
-      a real turnover existed.
+- [ ] OQ-21 container alpha, explicitly deferred until a real turnover existed.
+- [ ] Confirm the lens grid really does arrive as a folder in the package, and watch the editor
+      move and rename it once. OQ-20 made that manual for v01; if it is painful, that is the
+      argument for building it in v02.
 - [ ] Sit with the AD and cut the metadata pane down to what they actually read. OQ-26.
 - [ ] Calibrate `h264_videotoolbox -q:v` against x264 CRF 18 on a real plate. CI has already
       proven the encoder opens; this is the half of OQ-23 about how it looks.

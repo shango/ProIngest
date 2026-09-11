@@ -46,7 +46,8 @@ Rule IDs never change meaning. New rules get new numbers.
 | QC-051 | warning | row | Plate (pl) has no camData side file |
 | QC-052 | warning | row | HDRI file fails OpenEXR header read |
 | QC-053 | info | row | camData parsed; N key/value pairs found |
-| QC-054 | warning | turnover | No lens grid clip in turnover |
+| QC-054 | warning | turnover | No lens grid folder in turnover. The studio's sheet marks it Required, so this chases the shooter. It is a folder in the package, never a clip on the timeline (OQ-20) |
+| QC-057 | info | turnover | Lens grid folder present. In v01 the tool does not deliver it: the editor moves it to `_turnovers/` and renames it per NAMING_SPEC section 3. Raised so a manual step is not a forgotten one (OQ-20) |
 | QC-055 | warning | row | Aux still (colorChart, mirrorBall, greyBall, sizeRef) has more than one frame; first frame will be used |
 | QC-056 | warning | row | BTS still is not png, jpg or jpeg, so no delivery name exists for it and it is not planned |
 | QC-060 | warning | row | Existing deliverables found at version N; new render will be version N+1 |
