@@ -288,7 +288,7 @@
       <div class="stat-l">Tests, Linux + macOS</div>
     </div>
     <div class="stat">
-      <div class="stat-n">21<span style="color:var(--faint);font-size:17px">/27</span></div>
+      <div class="stat-n">20<span style="color:var(--faint);font-size:17px">/27</span></div>
       <div class="stat-l">Questions open</div>
     </div>
     <div class="stat">
@@ -554,11 +554,6 @@
             <td class="st"><span class="tag open">Open</span></td>
           </tr>
           <tr>
-            <td class="id">OQ-25</td>
-            <td>Where Google Drive actually mounts on the editor's Mac</td>
-            <td class="st"><span class="tag open">Open</span></td>
-          </tr>
-          <tr>
             <td class="id">OQ-26</td>
             <td>Which metadata the AD and supervisor actually want in the new pane</td>
             <td class="st"><span class="tag open">Open</span></td>
@@ -567,6 +562,11 @@
             <td class="id">OQ-27</td>
             <td>Does a turnover's wav start where its picture does? Sound on a trimmed reference depends on it</td>
             <td class="st"><span class="tag open">Open</span></td>
+          </tr>
+          <tr class="resolved">
+            <td class="id">OQ-25</td>
+            <td>Where Google Drive mounts - the tool asks for two roots instead of looking</td>
+            <td class="st"><span class="tag ok">Resolved</span></td>
           </tr>
           <tr class="resolved">
             <td class="id">OQ-5</td>
@@ -659,6 +659,25 @@
         </p>
       </div>
     <div class="notes">
+      <div class="note">
+        <h3>The tool asks where the files are rather than hunting for them</h3>
+        <p>
+          The plan was to find the Google Drive mount by probing the two places Google
+          documents it, since there is no <span class="mono">G:</span> drive on a Mac. The
+          editor settled it instead: they point at a source folder and a delivery folder, and
+          both happen to be on the Drive. <b>That deleted a planned feature rather than adding
+          one</b> - nothing detects anything now, and first run has one less thing to get wrong
+          on a machine nobody has seen. A wrong default would have been worse than none,
+          opening the dialog somewhere plausible and empty.
+        </p>
+        <p>
+          It leaves one real question behind, now on the Mac list: a shooter working on
+          <b>Windows</b> exports timelines carrying <span class="mono">G:\...</span> media
+          paths, which mean nothing on the editor's machine wherever their Drive sits. The tool
+          already falls back to searching the chosen source folder by filename, so this should
+          resolve itself, but only a real turnover will say.
+        </p>
+      </div>
       <div class="note">
         <h3>Three ways a reference encode goes wrong without failing</h3>
         <p>
@@ -824,7 +843,7 @@
   <footer>
     <b>Source of truth</b> &middot; PROGRESS.md, docs/OPEN_QUESTIONS.md, PRD.md section 9<br>
     <b>Verify</b> &middot; pytest &middot; ruff check . &amp;&amp; mypy proingest &middot; python -m proingest scan &lt;folder&gt;<br>
-    <b>Last updated</b> &middot; 11 September 2026, M3 complete. Next: M4, QC rules and exports
+    <b>Last updated</b> &middot; 11 September 2026, M3 complete and OQ-25 closed. Next: M4, QC rules and exports
   </footer>
 
 </div>

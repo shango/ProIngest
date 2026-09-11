@@ -26,7 +26,8 @@ it cost, which was much less than it might have been because core never imported
 never hardcoded a Windows path. Windows moved to the v02 backlog. Read that entry before
 touching packaging, settings paths or the reference encodes.
 
-**Nothing is blocked.**
+**Nothing is blocked.** OQ-25 was answered by the user on 2026-09-11 and is in section 6;
+it removed a first-run feature rather than adding one.
 
 Verify the state before changing anything:
 
@@ -213,6 +214,25 @@ color 6.
 ---
 
 ## 6. Decisions taken
+
+**The tool asks where the files are; it does not look (OQ-25, answered 2026-09-11).**
+
+- The editor points at a **source root** and a **delivery root**, a folder chooser each, and
+  both happen to be on a Google Drive mount. Nothing probes
+  `~/Library/CloudStorage/GoogleDrive-*/My Drive` or `/Volumes/GoogleDrive` any more, and
+  first run detects nothing. A dialog opens at the last used folder.
+- **This deleted planned work rather than adding any.** The discovery only ever existed in
+  the docs, written from Google's published conventions rather than from a machine anyone
+  had seen, and no code was built for it. The CLI already takes a turnover folder and a
+  `--delivery-root`, which is the same shape. UI_SPEC section 13 has the spec; the metadata
+  pane stayed section 12 so the cross-references in four files still point at it.
+- A wrong default is worse than none: probing would have opened the dialog somewhere
+  plausible and empty on a machine where the guess missed.
+- **"Source root" was read as the folder turnovers are added from, not as a replacement for
+  picking them.** Multi-turnover batches are untouched and adding one from outside the root
+  just moves the root. Flagged to the user as an assumption; it is a two line change.
+- **It does not settle FR-2.** See section 9: a Windows shooter's OTIO carries `G:\...`
+  paths regardless of where the editor's Drive is mounted.
 
 **The reference encode is one ffmpeg pass over the source, not a decode and re-feed.**
 
@@ -603,9 +623,12 @@ Nothing blocks the next task. These are live, in rough priority order:
   packaging is not wired up because `build/build.py` and `proingest.spec` do not exist yet;
   it belongs on the same runner when they do. Renting an hourly Mac is the cheap answer for
   the M5 UI work where someone has to actually look at it.
-- **The Google Drive mount path on the editor's machine is unknown** (OQ-25). Everything
-  that used to say `G:` now says "discover it", and the discovery is written from the
-  documented Google Drive conventions rather than from a machine anyone has looked at.
+- **A Windows shooter's media paths are still unresolved in practice.** OQ-25 removed the
+  mount question but not this half of it: an OTIO written on Windows carries `G:\...`
+  paths that mean nothing on the editor's Mac. `scan._resolve_media` already falls back to
+  a filename search over the chosen source root, which needs no configuration and should
+  cover it; the FR-2 path map is the belt to that pair of braces. Which one actually does
+  the work is a real turnover question, now on the Mac session list.
 - **The old Windows binaries are still in `proingest/resources/ffmpeg/`** as `ffmpeg.exe`
   and `ffprobe.exe`, 446 MB of untracked dead weight. Nothing references them any more and
   the lock file no longer knows how to fetch them. Safe to delete; left in place because
