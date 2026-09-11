@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from proingest.__main__ import _ProgressPrinter, main
-from proingest.core import batchfile, render
+from proingest.core import batchfile, qc, render
 from tests.fixtures import media as fixtures
 
 FOLDER = "turnover001_02_23_2026_danielluckett"
@@ -16,13 +16,46 @@ FOLDER = "turnover001_02_23_2026_danielluckett"
 class TestScanCommand:
     def test_clean_turnover_exits_zero(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
         folder = tmp_path / FOLDER
-        fixtures.make_turnover(folder, shots=2, frames=4)
+        fixtures.make_turnover(folder, shots=2, frames=4, side_files=True)
+        rules = fixtures.write_rules_file(tmp_path / "rules.json")
 
-        assert main(["scan", str(folder)]) == 0
+        assert main(["scan", str(folder), "--rules", str(rules)]) == 0
         out = capsys.readouterr().out
         assert "MELT0001" in out
         assert "MELT0002" in out
         assert "2 rows, 0 errors, 0 warnings" in out
+
+    def test_fixture_sized_media_fails_the_real_rules(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Without overrides the shipped thresholds apply, and 64x36 is not 4k."""
+        folder = tmp_path / FOLDER
+        fixtures.make_turnover(folder, shots=1, frames=4)
+
+        assert main(["scan", str(folder)]) == 1
+        out = capsys.readouterr().out
+        assert "QC-023" in out
+        assert "QC-033" in out
+
+    def test_a_bad_rules_file_exits_two(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+        folder = tmp_path / FOLDER
+        fixtures.make_turnover(folder, shots=1, frames=4)
+        rules = tmp_path / "rules.json"
+        rules.write_text('{"min_duraiton_frames": 4}', encoding="utf-8")
+
+        assert main(["scan", str(folder), "--rules", str(rules)]) == 2
+        assert "unknown rule settings: min_duraiton_frames" in capsys.readouterr().err
+
+    def test_rules_are_saved_into_the_batch(self, tmp_path: Path) -> None:
+        """A later `run` or `qc` must apply the same thresholds the scan did."""
+        folder = tmp_path / FOLDER
+        fixtures.make_turnover(folder, shots=1, frames=4, side_files=True)
+        rules = fixtures.write_rules_file(tmp_path / "rules.json")
+        target = tmp_path / "melt.pibatch"
+
+        main(["scan", str(folder), "--rules", str(rules), "--save", str(target)])
+        loaded = batchfile.load(target)
+        assert qc.settings_for(loaded) == fixtures.SMALL_RULES
 
     def test_prints_the_turnover_header(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
         folder = tmp_path / FOLDER
@@ -57,10 +90,11 @@ class TestScanCommand:
     def test_scans_several_folders(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
         first = tmp_path / "turnover001_02_23_2026_dan"
         second = tmp_path / "turnover002_02_24_2026_sam"
-        fixtures.make_turnover(first, shots=1, frames=4)
-        fixtures.make_turnover(second, shots=1, frames=4)
+        fixtures.make_turnover(first, shots=1, frames=4, side_files=True)
+        fixtures.make_turnover(second, shots=1, frames=4, side_files=True)
+        rules = fixtures.write_rules_file(tmp_path / "rules.json")
 
-        assert main(["scan", str(first), str(second)]) == 0
+        assert main(["scan", str(first), str(second), "--rules", str(rules)]) == 0
         out = capsys.readouterr().out
         assert "turnover001" in out and "turnover002" in out
         assert "2 rows" in out
@@ -84,9 +118,10 @@ class TestRunCommand:
     def scanned(self, tmp_path: Path) -> Path:
         """A saved batch of one small turnover, ready to render."""
         folder = tmp_path / FOLDER
-        fixtures.make_turnover(folder, shots=1, frames=4)
+        fixtures.make_turnover(folder, shots=1, frames=4, side_files=True)
+        rules = fixtures.write_rules_file(tmp_path / "rules.json")
         batch_path = tmp_path / "batch.pibatch"
-        assert main(["scan", str(folder), "--save", str(batch_path)]) == 0
+        assert main(["scan", str(folder), "--rules", str(rules), "--save", str(batch_path)]) == 0
         return batch_path
 
     def test_a_dry_run_prints_the_plan_and_writes_nothing(
@@ -129,6 +164,26 @@ class TestRunCommand:
         assert raw.frame_count == 4
         assert len(raw.frame_checksums) == 4
         assert batchfile.backup(batch_path) is not None
+
+    def test_the_preflight_is_reported_before_the_render(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """The disk-touching rules run once, when a run is about to start."""
+        batch_path = self.scanned(tmp_path)
+        main(["run", str(batch_path), "--delivery-root", str(tmp_path / "delivery"), "--dry-run"])
+        assert "QC-054" in capsys.readouterr().out
+
+    def test_an_unwritable_delivery_root_stops_the_run(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        batch_path = self.scanned(tmp_path)
+        locked = tmp_path / "locked"
+        locked.mkdir(mode=0o500)
+        try:
+            assert main(["run", str(batch_path), "--delivery-root", str(locked / "d")]) == 2
+        finally:
+            locked.chmod(0o700)
+        assert "QC-062" in capsys.readouterr().err
 
     def test_a_missing_batch_file_exits_two(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]

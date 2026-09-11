@@ -46,6 +46,9 @@ class ScanSettings:
     show_pattern: str = naming.DEFAULT_SHOW_PATTERN
     path_map: dict[str, str] = field(default_factory=dict)
     project_rate: FrameRate = field(default_factory=lambda: FrameRate(24))
+    rules: qc.RuleSettings = field(default_factory=qc.RuleSettings)
+    """Thresholds the rule registry compares against, so the scan's first pass of QC
+    matches what the Settings page will later re-run with."""
 
 
 @dataclass(frozen=True)
@@ -196,7 +199,7 @@ def _build_row(
     _derive_ranges(row, clip)
     _attach_audio(row, clip, loaded, index)
     _attach_side_files(row, index)
-    qc.apply_row_rules(row, settings.project_rate)
+    qc.apply_row_rules(row, settings.project_rate, settings.rules)
     return row
 
 
@@ -326,6 +329,7 @@ def _attach_audio(
     what was found.
     """
     associated = loaded.audio_for(clip)
+    row.audio_clip_count = len(associated)
     if associated and associated[0].media_url:
         row.audio_path = media_module.url_to_path(associated[0].media_url)
     elif loaded.is_edl:
@@ -385,4 +389,6 @@ def scan_batch(
         )
         batch.turnovers.append(turnover)
         batch.rows.extend(rows)
+    # QC-011 is the one row rule that needs every row, so it can only run once they exist.
+    qc.apply_batch_rules(batch, settings.rules)
     return batch

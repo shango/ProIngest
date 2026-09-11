@@ -213,6 +213,24 @@ def available_encoders(ffmpeg: Path | None = None) -> frozenset[str]:
     return frozenset(names)
 
 
+def available_decoders(ffmpeg: Path | None = None) -> frozenset[str]:
+    """Decoder names this build supports, which is what QC-022 compares a codec against.
+
+    ffprobe reports a stream's codec by the same name `-decoders` lists, so the
+    comparison is direct. A build that cannot answer at all returns an empty set and
+    QC-022 stays silent rather than failing every row.
+    """
+    path = ffmpeg or resolve_tool("ffmpeg")
+    result = run([str(path), "-hide_banner", "-decoders"], timeout=30)
+    names = set()
+    for line in result.stdout.splitlines():
+        parts = line.split()
+        # Decoder rows look like " V....D h264   H.264 / AVC ..." after a header block.
+        if len(parts) >= 2 and len(parts[0]) == 6 and parts[0][0] in "VAS":
+            names.add(parts[1])
+    return frozenset(names)
+
+
 def has_nvenc(ffmpeg: Path | None = None) -> bool:
     """Whether NVENC H.264 encoding is compiled in.
 

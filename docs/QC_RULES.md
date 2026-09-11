@@ -23,7 +23,7 @@ Rule IDs never change meaning. New rules get new numbers.
 | QC-020 | error | row | Source pixel format unsupported for linear plates (8 bit, 4:2:0) |
 | QC-021 | warning | row | Source is an integer or 4:2:2 container (DPX, ProRes 4444); linear precision at risk |
 | QC-022 | error | row | Source codec not decodable |
-| QC-023 | error | row | Source resolution is not 3840x2160 (blocked unless "allow non-4k" enabled) |
+| QC-023 | error | row | Source resolution is not 3840x2160. Enabling "allow non-4k" downgrades it to a warning rather than silencing it, because `render._fit` resamples to the target either way and a squashed plate should still be said out loud. Aux stills and BTS are not asked: they are delivered at their own size |
 | QC-024 | warning | row | Source letterboxed/pillarboxed to 3840x2160 |
 | QC-025 | error | turnover | Timeline fps differs from project fps |
 | QC-026 | error | row | Source fps differs from project fps |
@@ -52,7 +52,7 @@ Rule IDs never change meaning. New rules get new numbers.
 | QC-056 | warning | row | BTS still is not png, jpg or jpeg, so no delivery name exists for it and it is not planned |
 | QC-060 | warning | row | Existing deliverables found at version N; new render will be version N+1 |
 | QC-061 | info | row | Complete QC-passing set exists; row skipped (Force re-render off) |
-| QC-062 | error | row | Delivery destination not writable |
+| QC-062 | error | batch | Delivery destination not writable. Batch scope, not row: there is one delivery root and the run creates every folder under it, so checking per row would be N stat calls on a network mount for one answer. The root need not exist yet; the nearest existing ancestor is what gets the write probe |
 | QC-063 | warning | batch | Free space at delivery root below estimated output size |
 
 ## Phase B: post-render verification (QC-1xx)

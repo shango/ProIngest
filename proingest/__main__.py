@@ -8,13 +8,15 @@ without Qt.
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import sys
 import time
 from pathlib import Path
+from typing import Any
 
 from proingest import __version__
-from proingest.core import batchfile, planner, render, scan
+from proingest.core import batchfile, planner, qc, render, scan
 from proingest.core.models import Batch, Deliverable, ShotRow, Turnover
 
 COLUMNS = ("STATUS", "SHOT", "ELEM", "SOURCE", "RES", "FPS", "IN", "OUT", "DUR", "MAX", "AUDIO")
@@ -30,6 +32,11 @@ def main(argv: list[str] | None = None) -> int:
     scan_parser.add_argument("folders", nargs="+", type=Path)
     scan_parser.add_argument("--save", type=Path, help="write the result to a .pibatch file")
     scan_parser.add_argument("--name", default="untitled", help="batch name")
+    scan_parser.add_argument(
+        "--rules",
+        type=Path,
+        help="JSON file of rule threshold overrides (FR-12); saved into the batch",
+    )
 
     run_parser = subparsers.add_parser("run", help="plan and render a saved batch")
     run_parser.add_argument("batch", type=Path, help="a .pibatch file")
@@ -51,7 +58,7 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     if args.command == "scan":
-        return _scan(args.folders, args.save, args.name)
+        return _scan(args.folders, args.save, args.name, args.rules)
 
     if args.command == "run":
         return _run(args.batch, args.delivery_root, args.jobs, args.dry_run)
@@ -60,14 +67,24 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
-def _scan(folders: list[Path], save: Path | None, name: str) -> int:
+def _scan(folders: list[Path], save: Path | None, name: str, rules_path: Path | None) -> int:
     missing = [folder for folder in folders if not folder.is_dir()]
     if missing:
         for folder in missing:
             print(f"error: {folder} is not a directory", file=sys.stderr)
         return 2
 
-    batch = scan.scan_batch(folders, name=name)
+    try:
+        overrides = _load_rule_overrides(rules_path)
+    except (OSError, ValueError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+
+    batch = scan.scan_batch(
+        folders, name=name, settings=scan.ScanSettings(rules=qc.RuleSettings.from_dict(overrides))
+    )
+    if overrides:
+        batch.settings_overrides[qc.RULES_OVERRIDE_KEY] = overrides
     _print_batch(batch)
 
     if save is not None:
@@ -75,6 +92,36 @@ def _scan(folders: list[Path], save: Path | None, name: str) -> int:
         print(f"\nwrote {written}")
 
     return 1 if _has_errors(batch) else 0
+
+
+def _print_preflight(batch: Batch) -> bool:
+    """Print what the pre-flight rules found and say whether the run must stop.
+
+    Only a batch-scope error stops it: a turnover with no lens grid or a row with a
+    broken HDRI is a warning the editor reads, not a reason to render nothing.
+    """
+    results = list(batch.qc) + [result for turnover in batch.turnovers for result in turnover.qc]
+    for result in results:
+        print(f"  {result.severity.upper():7} {result.rule_id}  {result.message}")
+    blocking = [result for result in batch.qc if result.severity == "error"]
+    for result in blocking:
+        print(f"error: {result.rule_id}: {result.message}", file=sys.stderr)
+    return bool(blocking)
+
+
+def _load_rule_overrides(path: Path | None) -> dict[str, Any]:
+    """Read a rule overrides file, or return no overrides at all.
+
+    Kept as a plain dict so the batch stores exactly what the user wrote, rather than
+    a full settings object that would bake today's defaults into a saved file.
+    """
+    if path is None:
+        return {}
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        raise ValueError(f"{path} must hold a JSON object of rule settings")
+    qc.RuleSettings.from_dict(data)
+    return dict(data)
 
 
 def _run(batch_path: Path, delivery_root: Path | None, jobs: int, dry_run: bool) -> int:
@@ -89,10 +136,17 @@ def _run(batch_path: Path, delivery_root: Path | None, jobs: int, dry_run: bool)
         print(f"error: {exc}", file=sys.stderr)
         return 2
 
+    root = delivery_root or batch.delivery_root
     try:
-        planned = planner.plan_batch(batch, delivery_root)
+        planned = planner.plan_batch(batch, root)
     except ValueError as exc:
         print(f"error: {exc}", file=sys.stderr)
+        return 2
+
+    batch.delivery_root = root
+    qc.preflight(batch)
+    blocking = _print_preflight(batch)
+    if blocking:
         return 2
 
     if not planned:

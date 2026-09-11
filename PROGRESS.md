@@ -8,8 +8,8 @@ commit.
 
 ## 1. Resume here
 
-**State at 2026-09-10. M1, M2 and M3 are complete. M4 is next and has not been started.**
-573 tests passing, `ruff` and `mypy --strict` clean, working tree clean apart from the
+**State at 2026-09-10. M1, M2, M3 are complete and M4.1 is done. M4.2 is next.**
+671 tests passing, `ruff` and `mypy --strict` clean, working tree clean apart from the
 deliberately untracked files in section 8. **Nothing is blocked.**
 
 ### First five minutes
@@ -35,23 +35,62 @@ failed, 0 skipped**, references at 3840x2160 and 1920x1080, H.264 High, yuv420p,
 primaries, `iec61966-2-1` transfer, 24/1, AAC at 193 kbit/s, and no `.part` left anywhere.
 `tests/fixtures/media.py::make_turnover` builds a turnover to try it on.
 
-### Next task: M4, QC and exports
+**Fixture media is 64x36 and a few frames long, so it fails the real rules now that
+phase A is implemented.** Pass `--rules` a JSON file of threshold overrides to drive
+the CLI against it: `tests/fixtures/media.py::SMALL_RULES` is exactly that set, and
+`write_rules_file` writes one. This is not a test-only hack, it is FR-12's Rules
+section reaching the headless path ahead of the Settings page.
 
-Nothing is half done behind it. `qc.py` holds QC-025, QC-026 and QC-043 and the rest of
-both phases is unwritten; `exports.py` does not exist. `docs/QC_RULES.md` is the
-specification and every ID in it is stable.
+### Next task: M4.2, phase B post-render verification
 
-Four things already waiting for M4, rather than new scope:
+M4.1 landed the phase A registry. What is left of M4 is the QC-1xx family and then the
+exports:
 
-- **QC-023 is not implemented and nothing catches a non 4k or non 16:9 source today.**
-  `render._fit` would resample it to the target size, squashing it. The check belongs in
-  `qc.py` with the rest, not as a second guard inside `render.py`. Section 9.
-- **The post-render QC-1xx family** is what `Deliverable.checksum`, `frame_checksums` and
-  `ffmpeg.container_frame_count` were recorded for. None of it is consumed yet.
-- **QC-057 is new and unimplemented**, added when OQ-20 was answered: info, turnover
-  scope, a lens grid folder is present and v01 does not deliver it.
-- **QC-054 was reworded** from "no lens grid clip" to "no lens grid folder". Same ID, same
-  severity.
+- **M4.2, the post-render checks.** QC-100 to QC-107, QC-110 to QC-115, QC-120, QC-121,
+  QC-130, QC-150, QC-151. This is what `Deliverable.checksum`, `frame_checksums` and
+  `ffmpeg.container_frame_count` were recorded for and none of it is consumed yet. The
+  integration point is `render.render_job`, immediately after the atomic rename, where
+  the `DeliverableJob` is still in hand: it carries the source, the frame range, the
+  target size and the audio source, which is everything the checks need. QC_RULES says
+  an error marks the deliverable failed and leaves the file with a `.failed` marker
+  sidecar for inspection. QC-140 and QC-141 are the stringout's and belong to M6.
+- **M4.3, `core/exports.py` and `proingest qc <batch>`.** Does not exist yet. QC-053
+  (camData parsed, N pairs) lands here, because the parser it needs is the one that
+  fills the Camera Data sheet (OQ-11).
+
+### What M4.1 actually did, so it is not re-derived
+
+Every phase A rule that is a pure function of the model now lives in `core/qc.py` and
+re-runs after every edit: QC-011, 020, 021, 023, 026, 028, 030, 031, 032, 033, 034,
+035, 036, 040, 041, 043, 044, 050, 051, 055. Five more need the disk and are grouped
+under `qc.preflight`, which runs once when a run is about to start rather than after
+every edit: QC-022, 052, 054, 057, 062, 063. `proingest run` calls it and refuses to
+start on a batch-scope error.
+
+Four decisions inside it are worth not relitigating:
+
+- **Rules are scoped by what the row is.** `qc.is_picture_row` and `qc.is_plate` are the
+  only place that is decided. An aux still is one frame at its own size, so the duration,
+  handle, timecode and resolution rules skip it; only the plate owes audio and side files.
+  Without that, every colour chart in a turnover would raise QC-033 and bury the warnings
+  that matter.
+- **Thresholds are `qc.RuleSettings`, never a literal at the point of use.** It maps
+  one to one onto FR-12's Rules section, round-trips through `Batch.settings_overrides`
+  under the key `rules`, and refuses an unknown key rather than silently ignoring a typo.
+  M5's Settings page edits this object and every rule follows.
+- **QC-022 sits in the preflight registry only because the decoder set comes from asking
+  ffmpeg.** `check_source_codec` itself is pure and takes the set, so it is testable
+  headless like the rest. An ffmpeg that will not answer returns an empty set and the
+  rule falls silent rather than failing every row.
+- **QC-062 is batch scope and tolerates a root that does not exist yet.** The doc said
+  row scope; the code is right and `docs/QC_RULES.md` was corrected, with the reason in
+  the table. There is one delivery root, the run creates every folder under it, and a
+  per-row check would be N stat calls on a network mount for one answer.
+
+Three phase A rules are deliberately unimplemented and each is in section 9: **QC-024**
+needs decoded pixels rather than a header, **QC-053** needs the camData parser that
+lands with the exports, and **QC-061** needs a Force re-render setting that does not
+exist yet.
 
 ### Two M3 decisions to revisit rather than rediscover
 
@@ -74,11 +113,10 @@ Four things already waiting for M4, rather than new scope:
   this machine's Ubuntu 6.1.1. `h264_videotoolbox` was confirmed to open and encode there,
   which answered half of OQ-23.
 - **Five open questions were answered by the user on 2026-09-10**: OQ-5, OQ-20, OQ-24,
-  OQ-25 and OQ-27, all written up in section 6. Two of them deleted planned work, one
-  added QC-057, and OQ-27 exposed a real bug in an encode that had already shipped. **17
-  of 27 questions remain open**; none of them blocks M4.
-- **The last commits are not pushed.** CI has not seen M3.5, the five answers, or the
-  `apad` fix. Pushing is the user's call, not an automatic step.
+  OQ-25 and OQ-27, all written up in section 6. **OQ-28 is new**, raised by M4.1: no doc
+  has ever stated how many handle frames a turnover carries, and QC-030 needs a number.
+  **17 of 28 questions remain open**; none of them blocks M4.2.
+- **The last commits are not pushed.** Pushing is the user's call, not an automatic step.
 
 ## 2. What this is, and what to read
 
@@ -165,8 +203,8 @@ PDF viewer.
 | `core/planner.py` | type table, deliverable jobs, version resolution | 440 |
 | `core/batchfile.py` | `.pibatch` save/load, backup, filesystem reconciliation | 86 |
 | `core/render.py` | executing a job and a batch of them: atomic writes, pool, progress, cancel | 469 |
-| `core/qc.py` | rule registry; QC-025, QC-026, QC-043 so far | 120 |
-| `__main__.py` | `proingest scan` and `proingest run` CLI | 268 |
+| `core/qc.py` | rule registry: every phase A rule, `RuleSettings`, and `preflight` | 821 |
+| `__main__.py` | `proingest scan` and `proingest run` CLI, `--rules` overrides | 322 |
 
 Not built yet: `core/stringout.py`, `core/exports.py`, `core/settings.py`, and
 everything under `proingest/ui/`.
@@ -200,11 +238,19 @@ Entry points worth knowing:
 | M1 | Core: parse, resolve, probe, model, batch file, scan CLI | complete, 348 tests |
 | M2 | Naming and planning: type table, versioning, layout | complete, 66 tests |
 | M3 | Render | complete, 172 tests |
-| M4 | QC: all rules both phases, xlsx exports, `qc` CLI | **next**, not started |
+| M4 | QC: all rules both phases, xlsx exports, `qc` CLI | M4.1 done, M4.2 **next** |
 | M5 | UI, including the FR-14 metadata pane | not started |
 | M6 | Stringout with burn-ins | not started |
 | M7 | Packaging: PyInstaller `.app`, dmg, Gatekeeper | not started, and needs a Mac (OQ-22) |
 | M8 | Polish, performance on a real turnover, docs | not started |
+
+M4 detail. The milestone had no chunk table until M4.1; this is it:
+
+| chunk | scope | state |
+|---|---|---|
+| M4.1 | phase A registry, `RuleSettings`, `preflight`, `--rules` | done, 91 tests |
+| M4.2 | phase B post-render verification, QC-1xx, wired into `render_job` | **next** |
+| M4.3 | `core/exports.py`, the xlsx sheets, `proingest qc <batch>`, QC-053 | not started |
 
 M3 detail:
 
@@ -219,13 +265,50 @@ M3 detail:
 The stringout moved off this table: it is M6 and always was. The M3.5 row said "ref
 mp4 and stringout" and that was a mistake in the row, not a change of plan.
 
-Tests by file: naming 115, render 62, planner 55, frames 55, media 46, ffmpeg 38,
-models 37, timeline 33, exr 29, scan 25, qc 22, batchfile 18, resize 16, cli 16,
+Tests by file: naming 115, qc 113, render 62, planner 55, frames 55, media 46,
+ffmpeg 40, models 37, timeline 33, exr 29, scan 25, cli 22, batchfile 18, resize 16,
 color 6.
 
 ---
 
 ## 6. Decisions taken
+
+**The phase A rule registry, and what scopes a rule (M4.1).**
+
+- **Rules are scoped by what the row is, in one place.** `qc.is_picture_row` and
+  `qc.is_plate` decide it and nothing else does. An aux still is a single frame at its
+  own size, so the resolution, range, handle, duration and timecode rules skip it; only
+  the plate owes audio (QC-040) and side files (QC-050, QC-051), because only the plate
+  delivers them. Firing QC-033 on every colour chart in a turnover would bury the
+  warnings the editor is actually meant to read.
+- **Every threshold lives in `qc.RuleSettings`, never as a literal at the point of use.**
+  It maps one to one onto FR-12's Rules section, round-trips through
+  `Batch.settings_overrides["rules"]`, and **refuses an unknown key**: a typo in a
+  settings file that silently changed nothing is the failure mode that costs a whole
+  delivery. `proingest scan --rules <json>` is the headless way in until M5's Settings
+  page exists, and it saves what it read into the batch so a later run or QC applies the
+  same numbers the scan did.
+- **The rules that touch the disk are a separate pass, `qc.preflight`.** Model rules
+  re-run after every edit and must stay cheap; QC-022, 052, 054, 057, 062 and 063 cost
+  stat calls, an EXR header read and an ffmpeg invocation, and their answers change
+  without the model changing. `proingest run` calls preflight once, prints what it found,
+  and stops only on a batch-scope error: a turnover with no lens grid is a warning the
+  editor reads, not a reason to render nothing.
+- **QC-022 is pure even though it lives in preflight.** `check_source_codec` takes the
+  decoder set as an argument, so it tests headless like every other rule; preflight is
+  merely the only caller that knows to ask ffmpeg. An ffmpeg that will not answer yields
+  an empty set and the rule falls silent, because failing every row in the batch over a
+  build detail is worse than missing one undecodable file.
+- **QC-062 is batch scope and tolerates a root that does not exist.** `docs/QC_RULES.md`
+  said row scope and was corrected. There is one delivery root, the run creates every
+  folder under it, and a per-row check is N stat calls on a network mount for one answer.
+  The write probe goes to the nearest existing ancestor, because the root itself is
+  usually the thing about to be created.
+- **Fixture media had to stop pretending to be clean.** A 64x36 four frame turnover
+  legitimately fails QC-023, QC-030 and QC-033 now, and the honest fix was to give the
+  tests real settings (`tests/fixtures/media.py::SMALL_RULES`) rather than to soften the
+  rules. `make_turnover(side_files=True)` writes the HDRI and camData a plate is supposed
+  to arrive with, off by default so the side file tests can still place their own.
 
 **Apple Silicon only, Windows 11 a v02 intention (OQ-24, confirmed 2026-09-10).**
 
@@ -645,13 +728,23 @@ Nothing blocks the next task. These are live, in rough priority order:
   exactly this reason) will disagree with the reference. Whoever flips the colour setting
   should read this line first.
 
-- **Nothing stops a non 16:9 source being stretched.** `render._fit` resamples to the
-  target size, so a source of the wrong aspect would be squashed rather than
-  letterboxed. COLOR_AND_FORMAT section 4 says such a row is blocked by QC-023 and only
-  letterboxed when a Settings toggle allows it, but **QC-023 is not implemented** (qc.py
-  holds only QC-025, QC-026 and QC-043) and there is no Settings module yet, so today
-  nothing catches it. The fix belongs in qc.py with the rest of the rules, not as a
-  second check inside render.py; letterboxing waits on Settings. M4.
+- **QC-024, a letterboxed source, is the one phase A rule that cannot be a model
+  function.** QC-023 now catches a source that is not 3840x2160, but a source that *is*
+  3840x2160 with black bars baked into it looks identical in a header. Detecting it means
+  decoding a frame and measuring the black rows and columns, which is a scan-time cost on
+  a network mount and false-positives on a genuinely dark plate. Nothing is built and
+  nothing pretends to be. Worth doing next to the colour space heuristic below, since
+  both want the same "read one frame during the scan" machinery.
+- **Letterboxing a non 16:9 source is still not implemented.** QC-023 blocks such a row
+  now, which is the half that mattered: `render._fit` can no longer squash a plate
+  without anyone being told. COLOR_AND_FORMAT section 4 also says the row is letterboxed
+  when a Settings toggle allows it, and that half waits on M5's Settings page. Turning
+  `allow_non_4k` on today downgrades QC-023 to a warning and still resamples.
+- **QC-053 and QC-061 are the other two phase A rules with nothing behind them.** QC-053
+  (camData parsed, N key/value pairs) needs the parser that fills the exports' Camera
+  Data sheet, so it lands with M4.3 and OQ-11. QC-061 (a complete QC-passing set exists,
+  row skipped) needs a Force re-render setting and a planner that can be told to respect
+  it; the planner raises QC-060 today and always writes the next version.
 - **OQ-21, alpha from a container source.** The EXR path preserves a source alpha;
   the container path decodes `gbrpf32le` and drops it. Two things are undecided and neither
   can be settled from the docs: what counts as a *real* alpha rather than the opaque one a

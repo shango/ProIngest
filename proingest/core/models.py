@@ -352,6 +352,13 @@ class ShotRow:
     current: InOut | None = None
     audio_path: Path | None = None
     audio: AudioInfo | None = None
+    audio_clip_count: int = 0
+    """How many timeline audio clips overlapped this one. More than one is QC-041.
+
+    Recorded at scan because the timeline is gone by the time the rules run. Additive,
+    so the schema version does not move: an older batch simply reports none.
+    """
+
     side_files: SideFiles = field(default_factory=SideFiles)
     notes: str = ""
     skipped: bool = False
@@ -399,6 +406,7 @@ class ShotRow:
             "current": self.current.to_dict() if self.current else None,
             "audio_path": str(self.audio_path) if self.audio_path else None,
             "audio": self.audio.to_dict() if self.audio else None,
+            "audio_clip_count": self.audio_clip_count,
             "side_files": self.side_files.to_dict(),
             "notes": self.notes,
             "skipped": self.skipped,
@@ -425,6 +433,7 @@ class ShotRow:
             current=InOut.from_dict(current) if current else None,
             audio_path=_as_path(data.get("audio_path")),
             audio=AudioInfo.from_dict(data["audio"]) if data.get("audio") else None,
+            audio_clip_count=int(data.get("audio_clip_count", 0)),
             side_files=SideFiles.from_dict(data.get("side_files", {})),
             notes=str(data.get("notes", "")),
             skipped=bool(data.get("skipped", False)),

@@ -38,8 +38,9 @@ class TestParseTurnoverFolder:
 class TestScanTurnover:
     def test_happy_path(self, tmp_path: Path) -> None:
         folder = tmp_path / GOOD_FOLDER
-        fixtures.make_turnover(folder, shots=2, frames=6)
-        turnover, rows = scan.scan_turnover(folder, "t1")
+        fixtures.make_turnover(folder, shots=2, frames=6, side_files=True)
+        settings = scan.ScanSettings(rules=fixtures.SMALL_RULES)
+        turnover, rows = scan.scan_turnover(folder, "t1", settings)
 
         assert turnover.number == 1
         assert turnover.shooter == "danielluckett"

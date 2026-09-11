@@ -348,3 +348,14 @@ class TestEncodeCommand:
             audio=Path("a.wav"),
         )
         assert "-ss" not in command
+
+
+class TestAvailableDecoders:
+    """QC-022 compares a probed codec name against this set, so it has to be real."""
+
+    def test_it_lists_the_codecs_a_turnover_arrives_in(self) -> None:
+        decoders = ffmpeg.available_decoders()
+        assert {"exr", "h264", "prores", "dpx"} <= decoders
+
+    def test_it_does_not_list_encoder_only_names(self) -> None:
+        assert "libx264" not in ffmpeg.available_decoders()
