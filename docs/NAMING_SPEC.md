@@ -59,7 +59,7 @@ Tokens: `{shotcode}` `{elem}` `{kind}` `{res}` `{ver}` `{frame}` `{aux}` `{auxid
 
 `{res}` is `4k` or `HD` exactly. `{ver}` is two digits. `{frame}` is four digits starting at 1001.
 
-Note: the spec PDF has a few resolution typos (2161, 2162) and lists witness cam raw without a frame range. Treat 4k as 3840x2160 and witness cam as a sequence like the others. OQ-5.
+Note: the spec PDF has a few resolution typos (2161, 2162); treat 4k as 3840x2160. It also lists witness cam raw without a frame range, which reads as though witness cam were delivered differently or not at all. It is not: **`wit` is a normal deliverable treated exactly like any other clip on the timeline**, confirmed by the user 2026-09-11, so its raw output is a sequence like every other row of this table. That gap in the PDF is a defect in the table and nothing more. OQ-5.
 
 ## 4. Versioning
 

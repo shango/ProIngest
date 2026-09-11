@@ -96,7 +96,10 @@ class TestTypeTable:
         assert all(job.name.startswith(f"MELT0001_{elem_type}01_") for job in plan.jobs)
 
     def test_witness_cam_is_a_sequence_like_the_others(self) -> None:
-        """OQ-5: the spec PDF omits its frame range; it is treated as a sequence anyway."""
+        """OQ-5, confirmed by the user 2026-09-11: `wit` is a normal deliverable treated
+        like any other clip, so its raw output is a sequence. The spec PDF omits its frame
+        range, which reads as though it meant something; it does not.
+        """
         plan = planner.plan_row(row("MELT0001_wit01"), ROOT, 1)
         assert "MELT0001_wit01_raw_4k_v01" in names(plan.jobs)
 

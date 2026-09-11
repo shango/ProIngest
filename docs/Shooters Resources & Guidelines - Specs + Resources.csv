@@ -1,0 +1,48 @@
+Downloads and Resources,,,,,,,,
+DaVinci Project File Template,DaVinci Export Presets,DaVinci Burn-In Presets,DaVinci Color PowerGrades,Video Tutorial Resources,Shot Sheet Builder,Shot sheet Builder Video Tutorial,,
+DaVinci Template Project Files,DaVinci Render Presets,DaVinci Burn-In Preset,DaVinci PowerGrades,*coming soon,shot_sheet_builder_v2.1.zip,Shot Sheet Builder_v2.1 walkthrough.mp4,,
+,,,,,,,,
+,,,,,,,,
+,,,,,,,,
+Frame Rate,Camera Color Space,Render Color Space,Ratio,Min Length,Max Length,,,
+24 fps,Camera Log,sRGB,16:9,"5 second
+(120 frames)","10 seconds
+(240 frames)",,,
+,,,,,,,,
+,,,,,,,,
+Type,Codec,Wrapper/Format,Resolution,Naming convention,Naming Example,Subfolder Naming Convention,Subfolder Naming Example,Required/Optional/If Needed
+4k Raw Original Main Plate,DWAA 45,.exr,3840x2160,[SHOTCODE][####]_pl01_raw_4k_v01.[1001-1240].exr,MELT0001_pl01_raw_4k_v01.1001.exr,[SHOTCODE][####]_pl01_raw_4k_v01,MELT0001_pl01_raw_4k_v01,Required
+HD Raw Original Main Plate,DWAA 45,.exr,1920x1080,[SHOTCODE][####]_pl01_raw_HD_v01.[1001-1240].exr,MELT0001_pl01_raw_HD_v01.1001.exr,[SHOTCODE][####]_pl01_raw_HD_v01,MELT0001_pl01_raw_HD_v01,Required
+4k Reference Original Main Plate,H.264,.mp4,3840x2160,[SHOTCODE][####]_pl01_ref_4k_v01.mp4,MELT0001_pl01_ref_4k_v01.mp4,,,Required
+HD Reference Original Main Plate,H.264,.mp4,1920x1080,[SHOTCODE][####]_pl01_ref_HD_v01.mp4,MELT0001_pl01_ref_HD_v01.mp4,,,Required
+4k Raw Clean Plate,DWAA 45,.exr,3840x2160,[SHOTCODE][####]_cp01_raw_4k_v01.[1001-1240].exr,MELT0001_cp01_raw_4k_v01.1001.exr,[SHOTCODE][####]_cp01_raw_4k_v01,MELT0001_cp01_raw_4k_v01,Required
+HD Raw Clean Plate,DWAA 45,.exr,1920x1080,[SHOTCODE][####]_cp01_raw_HD_v01.[1001-1240].exr,MELT0001_cp01_raw_HD_v01.1001.exr,[SHOTCODE][####]_cp01_raw_HD_v01,MELT0001_cp01_raw_HD_v01,Required
+4k Reference Clean Plate,H.264,.mp4,3840x2160,[SHOTCODE][####]_cp01_ref_4k_v01.mp4,MELT0001_cp01_ref_4k_v01.mp4,,,Required
+HD Reference Clean Plate,H.264,.mp4,1920x1080,[SHOTCODE][####]_cp01_ref_HD_v01.mp4,MELT0001_cp01_ref_HD_v01.mp4,,,Required
+Audio for Main Plate,Linear PCM,.wav,16 Bits,[SHOTCODE][####]_pl01_audio_v01.wav,MELT0001_pl01_audio_v01.wav,,,Required
+HDRI,OpenEXR,.exr,Max Camera Res,[SHOTCODE][####]_pl01_HDRI_v01.mp4,MELT0001_pl01_HDRI_v01.exr,,,Required
+Camera Data,Text File,.rtf or .txt,N/A,[SHOTCODE][####]_pl01_camData_v01.rtf,MELT0001_pl01_camData_v01.rtf,,,Required
+Lens Distortion Chart,N/A,.png,3840x2162,[CAMERA]_[LENS]_lensgrid_[mm]_v01.png,SonyA7V_Tamron20-40_lensgrid_40mm_v01.png,,,Required
+Turnover Stringout,H.264,.mp4,1920x1080,turnover[###]_[MM_DD_YYYY]_[firstnamelastname]_v01.mp4,turnover001_02_23_2026_danielluckett_v01.mp4,,,Required
+Color Chart,DWAA 45,.exr,3840x2160,[SHOTCODE][####]_pl01_colorChart_##_4k_v01.exr,MELT0001_pl01_colorChart_01_4k_v01.exr,,,Prefered
+Mirror Ball,DWAA 45,.exr,3840x2160,[SHOTCODE][####]_pl01_mirrorBall_##_4k_v01.exr,MELT0001_pl01_mirrorBall_01_4k_v01.exr,,,Prefered
+18% Grey Ball,DWAA 45,.exr,3840x2160,[SHOTCODE][####]_pl01_greyBall_##_4k_v01.exr,MELT0001_pl01_greyBall_01_4k_v01.exr,,,Prefered
+Size Reference,DWAA 45,.exr,3840x2160,[SHOTCODE][####]_pl01_sizeRef_##_4k_v01.exr,MELT0001_pl01_sizeRef_01_4k_v01.exr,,,Prefered
+BTS phone shots of scene,RGB 8 Bit,.png or .jpg or .jpeg,Camera Res,[SHOTCODE][####]_pl01_BTS_##_v01.png,MELT0001_pl01_BTS_01_v01.png,,,Prefered
+4k Raw Element Plate,DWAA 45,.exr,3840x2161,[SHOTCODE][####]_el01_raw_4k_v01.[1001-1240].exr,MELT0001_el01_raw_4k_v01.1001.exr,[SHOTCODE][####]_el01_raw_4k_v01,MELT0001_el01_ref_4k_v01,If Needed
+HD Raw Element Plate,DWAA 45,.exr,1920x1080,[SHOTCODE][####]_el01_raw_HD_v01.[1001-1240].exr,MELT0001_el01_raw_HD_v01.1001.exr,[SHOTCODE][####]_el01_raw_HD_v01,MELT0001_el01_ref_HD_v01,If Needed
+4k Reference Element Plate,H.264,.mp4,3840x2162,[SHOTCODE][####]_el01_ref_4k_v01.mp4,MELT0001_el01_ref_4k_v01.mp4,,,If Needed
+HD Reference Element Plate,H.264,.mp4,1920x1080,[SHOTCODE][####]_el01_ref_HD_v01.mp4,MELT0001_el01_ref_HD_v01.mp4,,,If Needed
+4k Raw Witness Cam,DWAA 45,.exr,3840x2162,[SHOTCODE][####]_wit01_raw_4k_v01.exr,MELT0001_wit01_raw_4k_v01.exr,,,If Needed
+HD Raw Witness Cam,DWAA 45,.exr,1920x1080,[SHOTCODE][####]_wit01_raw_HD_v01.exr,MELT0001_wit01_raw_HD_v01.exr,,,If Needed
+4k Reference Witness Cam,H.264,.mp4,3840x2162,[SHOTCODE][####]_wit01_ref_4k_v01.mp4,MELT0001_wit01_ref_4k_v01.mp4,,,If Needed
+HD Reference Witness Cam,H.264,.mp4,1920x1080,[SHOTCODE][####]_wit01_ref_HD_v01.mp4,MELT0001_wit01_ref_HD_v01.mp4,,,If Needed
+4k Raw Recon Plate,DWAA 45,.exr,3840x2162,[SHOTCODE][####]_re01_raw_4k_v01.[1001-1240].exr,MELT0001_re01_raw_4k_v01.1001.exr,[SHOTCODE][####]_re01_raw_4k_v01,MELT0001_re01_raw_4k_v01,If Needed
+HD Raw Recon Plate,DWAA 45,.exr,1920x1080,[SHOTCODE][####]_re01_raw_HD_v01.[1001-1240].exr,MELT0001_re01_raw_HD_v01.1001.exr,[SHOTCODE][####]_re01_raw_HD_v01,MELT0001_re01_raw_HD_v01,If Needed
+HD Reference Recon Plate,H.264,.mp4,3840x2162,[SHOTCODE][####]_re01_ref_4k_v01.mp4,MELT0001_re01_ref_4k_v01.mp4,,,If Needed
+HD Reference Recon Plate,H.264,.mp4,1920x1080,[SHOTCODE][####]_re01_ref_HD_v01.mp4,MELT0001_re01_ref_HD_v01.mp4,,,If Needed
+Lidar Scan,N/A,.obj,N/A,[SHOTCODE][####]_pl01_lidarGeo_##_v01.obj,MELT0001_pl01_lidarGeo_01_v01.obj,,,If Needed
+Lidar Scan Texture Data,N/A,.mtl,N/A,[SHOTCODE][####]_pl01_lidarText_##_v01.mtl,MELT0001_pl01_lidarText_01_v01.mtl,,,If Needed
+Lidar Scan Texture RGB Map,N/A,.jpg,N/A,[SHOTCODE][####]_pl01_lidarTextRGB_##_v01.jpg,MELT0001_pl01_lidarTextRGB_01_v01.jpg,,,If Needed
+Lidar Scan Texture Normals Map,N/A,.jpg,N/A,[SHOTCODE][####]_pl01_lidarTextNorm_##_v01.jpg,MELT0001_pl01_lidarTextNorm_01_v01.jpg,,,If Needed
+Lidar Scan Texture Roughness Map,N/A,.jpg,N/A,[SHOTCODE][####]_pl01_lidarTextRough_##_v01.jpg,MELT0001_pl01_lidarTextRough_01_v01.jpg,,,If Needed
