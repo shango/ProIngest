@@ -20,7 +20,7 @@ Do not rent for any of these. Listed because the instinct to rent is usually wro
 
 - **Building the `.app`.** CI compiles it. There is no need to upload anything anywhere to be
   compiled; the runner that tests the code can package it too (M7).
-- **Judging encode quality.** A reference mp4 or a stringout is a normal file. Download the CI
+- **Judging encode quality.** A reference mp4 is a normal file. Download the CI
   artifact and watch it on Linux or Windows.
 - **Spreadsheets, QC rules, naming, frame math, the batch file.** Pure logic, fully covered by
   the suite.

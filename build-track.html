@@ -288,7 +288,7 @@
       <div class="stat-l">Tests, Linux + macOS</div>
     </div>
     <div class="stat">
-      <div class="stat-n">19<span style="color:var(--faint);font-size:17px">/32</span></div>
+      <div class="stat-n">17<span style="color:var(--faint);font-size:17px">/39</span></div>
       <div class="stat-l">Questions open</div>
     </div>
     <div class="stat">
@@ -365,10 +365,10 @@
             leaves nothing behind, and one bad row cannot stop a hundred shot run. Proved end to
             end on a two shot turnover: <b>10 written, 0 failed</b>, references at 3840&times;2160
             and 1920&times;1080, H.264 High, correctly tagged, AAC at 193&nbsp;kbit/s.
-            <b>OQ-17 is why the colour is right:</b> today's turnovers carry a baked sRGB curve
-            on every file, EXRs included, so the reference applies <b>no</b> transfer; the EXRs
-            move to scene linear later, so it is a setting rather than an assumption. The
-            stringout was never part of this milestone: it is M6.
+            <b>One known gap, and it is deliberate.</b> The reference videos apply no colour
+            transform, which was correct under the colour policy in force when they were built
+            and is not correct under the one settled on 12 September. M4.5 fixes it. Nothing
+            else here is affected: plates and copies were never a colour question until now.
           </div>
         </div>
       </div>
@@ -413,24 +413,26 @@
             <span class="pill now">Next &middot; Specified, not built</span>
           </div>
           <p class="ms-goal">
-            Log encoded sources in, scene linear ungraded plates and graded viewing copies out.
+            The approved grade from the colour session, applied to everything the tool writes.
             Core only, no interface.
           </p>
-          <div class="mods"><span>color.py</span><i>/</i><span>preview.py</span><i>/</i><span>render.py</span><i>/</i><span>exr.py</span></div>
+          <div class="mods"><span>color.py</span><i>/</i><span>clf.py</span><i>/</i><span>preview.py</span><i>/</i><span>render.py</span><i>/</i><span>exr.py</span></div>
           <div class="gate">
-            <b>New, and it corrects something that was recorded as settled.</b> The tool was
-            built believing the footage arrives already looking the way it should. It does not:
-            it arrives <b>log encoded</b>, which looks flat and washed out until a transform is
-            applied. The reference videos shipped today would have looked wrong, and no test
-            could have caught it, because the tests check that the code does what it was told
-            to do rather than whether it was told the right thing.
-            <b>What changes:</b> shooters work from a studio template project and deliver one
-            format no matter what camera they shot on, which removes an entire class of
-            per-camera problems before it starts. The plate the vendor receives is
-            <b>untouched</b>, with the shooter's colour decisions carried alongside it as
-            metadata rather than burned in, so the look can still change later. The videos
-            people actually watch get the full treatment. It is one definition of the colour,
-            used by the render and the new on-screen viewers alike, so the two cannot disagree.
+            <b>Respecified on 12 September, when the studio described how colour actually
+            works here.</b> Colour is finished <b>before</b> the tool runs: the AD meeting
+            decides the look, a grading session builds it, and that session exports one colour
+            file per shot. The tool applies it and never authors any, which is why the four
+            on-screen colour controls that were planned a day earlier have been removed.
+            <b>What changes:</b> shooters deliver one log format no matter what camera they
+            shot on, which removes an entire class of per-camera problems before it starts.
+            Every delivered file carries the approved look, plates included, and every plate
+            records which version of the grade is in its pixels so a frame can be traced back
+            months later. One definition of the colour serves the render and the on-screen
+            viewers alike, so the two cannot disagree. A shot whose colour has not arrived is
+            not delivered ungraded; it is not delivered.
+            <b>Two quick answers from the studio would let this start clean:</b> which log
+            format the shooters deliver in, and what the colour session hands over so the tool
+            can match each colour file to the right shot.
           </div>
         </div>
       </div>
@@ -444,19 +446,22 @@
           </div>
           <p class="ms-goal">
             Main window, shot list with the keyboard model, <b>three frame viewers</b>,
-            <b>per shot colour controls</b>, metadata pane, validation colouring, settings page,
-            log panel, batch open and save. PySide6 6.7+, LGPL.
+            metadata pane, validation colouring, settings page, log panel, batch open and save.
+            PySide6 6.7+, LGPL.
           </p>
           <div class="mods">
             <span>main_window</span><i>/</i><span>shot_model</span><i>/</i><span>delegates</span><i>/</i><span>docks</span><i>/</i><span>metadata_pane</span><i>/</i><span>theme.qss</span>
           </div>
           <div class="gate">
-            <b>Newer scope: three viewers and colour controls</b>, added 2026-09-11 and now FR-16.
-            The editor sees the first frame, the middle and the last of whichever shot is
-            selected, and steps through them to find the right cut point. <b>Stepping a viewer
-            trims the shot</b>, so judging a cut and making it are the same action rather than
-            two. Four controls per shot handle the colour notes that come out of the AD meeting.
-            All of it rests on M4.5, which is why that is built first and headless.
+            <b>Newer scope: three viewers</b>, added 2026-09-11 and now FR-16. The editor sees
+            the first frame, the middle and the last of whichever shot is selected, and steps
+            through them to find the right cut point. <b>Stepping a viewer trims the shot</b>,
+            so judging a cut and making it are the same action rather than two. The viewers show
+            the graded image, so what is approved on screen is what the vendor receives. They
+            rest on M4.5, which is why that is built first and headless. The <b>colour controls
+            that were planned beside them are gone</b>, removed 12 September: colour is authored
+            in the grading session, and a second place to author it is a second answer to a
+            question that can only have one.
             <b>Earlier scope: the metadata pane</b>, added at the user's request and now FR-14 with a
             full field list in UI_SPEC section 12. Selecting a clip fills a read-only panel on the
             right with everything known about it, which is what the AD and supervisor read during
@@ -474,16 +479,18 @@
         <div class="ms-body">
           <div class="ms-head">
             <span class="ms-name">Stringout</span>
-            <span class="pill">Not started</span>
+            <span class="pill">Removed 12 Sep</span>
           </div>
           <p class="ms-goal">
-            One per turnover, timeline order, edited In/Out, no slate. 1920&times;1080 H.264
-            with <code class="mono">drawtext</code> burn-ins.
+            One review movie per turnover with information burned into the picture. The colour
+            session already produces exactly this, so the tool no longer does.
           </p>
-          <div class="mods"><span>stringout.py</span></div>
           <div class="gate">
-            Bundled ffmpeg has <code>libfreetype</code>, so <code>drawtext</code> is available.
-            <b>OQ-12</b> (include associated wavs) defaults to yes.
+            <b>A day out of the plan.</b> One thing is given up and it is worth stating: the
+            tool's version would have been the only one cut to the <b>edited</b> In and Out
+            points from the review session, where the session's version and the shooters' own
+            are both cut to the turnover as delivered. If that matters to the vendor it comes
+            back as its own milestone rather than as a patch.
           </div>
         </div>
       </div>
@@ -544,24 +551,49 @@
         </thead>
         <tbody>
           <tr>
-            <td class="id">OQ-31</td>
-            <td>The shooters' template project does not exist yet. Everything about colour rests on it</td>
+            <td class="id">OQ-33</td>
+            <td><b style="color:var(--text)">Blocks the colour work.</b> What the colour session hands over so the tool knows which colour file belongs to which shot. It is a reader with nothing yet to read</td>
             <td class="st"><span class="tag hot">New</span></td>
           </tr>
           <tr>
-            <td class="id">OQ-30</td>
-            <td>How a colour decision in the edit list is matched to the right clip. Matching the wrong one looks plausible and is wrong</td>
+            <td class="id">OQ-39</td>
+            <td>Which log format the shooters deliver in. One answer, and it decides whether the tool does any input conversion at all</td>
             <td class="st"><span class="tag hot">New</span></td>
+          </tr>
+          <tr>
+            <td class="id">OQ-35</td>
+            <td>Frame numbers on delivered sequences: start at 1001 as the studio spec sheet says, or derive them from the source timecode</td>
+            <td class="st"><span class="tag open">New</span></td>
+          </tr>
+          <tr>
+            <td class="id">OQ-36</td>
+            <td>Whether a final graded plate should use lossless compression now that it carries the approved look</td>
+            <td class="st"><span class="tag open">New</span></td>
+          </tr>
+          <tr>
+            <td class="id">OQ-31</td>
+            <td>No colour session has ever exported for this tool. One graded shot through the real chain answers four questions at once</td>
+            <td class="st"><span class="tag hot">Open</span></td>
           </tr>
           <tr>
             <td class="id">OQ-29</td>
-            <td>Which version of the industry colour standard the viewing copies use. Two versions look visibly different</td>
-            <td class="st"><span class="tag hot">New</span></td>
+            <td>Which version of the industry colour standard the viewing copies use. Mostly answered: the session is ACES 1.3, so the tool matches it</td>
+            <td class="st"><span class="tag open">Narrowed</span></td>
           </tr>
-          <tr>
+          <tr class="resolved">
+            <td class="id">OQ-38</td>
+            <td>Does the tool still build the stringout - no, the colour session produces it</td>
+            <td class="st"><span class="tag ok">Answered</span></td>
+          </tr>
+          <tr class="resolved">
             <td class="id">OQ-32</td>
-            <td>What the four colour controls range over. The AD is the person who knows what "a touch warmer" means</td>
-            <td class="st"><span class="tag open">New</span></td>
+            <td>What the four colour controls range over - closed, the controls are removed</td>
+            <td class="st"><span class="tag ok">Closed</span></td>
+          </tr>
+          <tr class="resolved">
+            <td class="id">OQ-30</td>
+            <td>How a colour decision is matched to the right clip - superseded, the sidecar names it explicitly</td>
+            <td class="st"><span class="tag ok">Superseded</span></td>
           </tr>
           <tr>
             <td class="id">OQ-28</td>
@@ -657,7 +689,7 @@
           </tr>
           <tr>
             <td class="id">OQ-17</td>
-            <td><b style="color:var(--text)">Was resolved, and was wrong.</b> Sources are log encoded, not display referred. Superseded 11 Sep; the colour document was rewritten</td>
+            <td><b style="color:var(--text)">Was resolved, and was wrong, twice.</b> Sources are log encoded, not display referred. Superseded 11 Sep, then again 12 Sep when the plate became graded. The colour document was rewritten both times</td>
             <td class="st"><span class="tag hot">Reversed</span></td>
           </tr>
           <tr class="resolved">
@@ -687,6 +719,47 @@
 
   <section>
     <h2>Corrections made to the spec</h2>
+      <div class="note">
+        <h3>The colour workflow was described properly, and it replaced the plan</h3>
+        <p>
+          The studio set out how colour actually works here: the shooters' colour is a starting
+          point, the AD meeting decides the look, and a <b>grading session builds it and exports
+          one colour file per shot</b>. The tool applies those files and authors nothing. Colour
+          is therefore finished <b>before</b> the tool runs, where the plan had assumed the tool
+          sat in the middle of it.
+        </p>
+        <p>
+          <b>Three things left the plan on the strength of that.</b> The four on-screen colour
+          controls, specified the day before, are gone: colour is authored once, in the session,
+          with the AD in the room. The turnover review movie is gone, because the session already
+          produces one, which takes a day out of the estimate. And the delivered plates now carry
+          the approved look rather than shipping untouched, which reverses a decision argued the
+          day before - defensibly, because that argument was that the grade moves later, and in
+          this workflow it does not move at all.
+        </p>
+        <p>
+          <b>None of it had been built.</b> Two days of specification changed, and no code did.
+          That is the cheapest possible moment for a change of this size, and it is the reason
+          the colour work had not been started yet.
+        </p>
+      </div>
+      <div class="note">
+        <h3>"Log encoded" was nearly read as "camera original"</h3>
+        <p>
+          The first description of the new workflow said the shooters deliver log encoded files
+          per shot. That was read as camera original footage, and an entire apparatus was
+          specified against it: a per shot record of which camera transform to apply, a
+          translation table between two tools that name those transforms differently, and a new
+          failure mode for an unrecognised name.
+        </p>
+        <p>
+          The studio then clarified that the shooters deliver <b>one studio standard format</b>,
+          whatever they shot on. All of it was deleted the same hour. <b>One format on every file
+          means one conversion forever</b>, and the camera-specific step stays where the camera
+          information actually is. The correction cost an hour of writing because nothing had been
+          built; it would have been a fortnight later.
+        </p>
+      </div>
       <div class="note">
         <h3>The code now runs on the machine it is for</h3>
         <p>
@@ -953,15 +1026,6 @@
         </p>
       </div>
       <div class="note">
-        <h3>The reference encode was about to be inverted</h3>
-        <p>
-          Both docs assumed scene linear sources and applied a linear-to-sRGB curve to every
-          reference mp4. The files actually arrive with that curve already baked in, so the
-          transfer is applied only when the source is scene linear, which today it is not.
-          The failure mode was silent: correct EXRs, washed out references.
-        </p>
-      </div>
-      <div class="note">
         <h3>DWAA is lossy, so "pixels in, pixels out" has a limit</h3>
         <p>
           At level 45 a written frame comes back about a tenth of a percent off, proportionally.
@@ -1052,7 +1116,7 @@
   <footer>
     <b>Source of truth</b> &middot; PROGRESS.md, docs/OPEN_QUESTIONS.md, PRD.md section 9<br>
     <b>Verify</b> &middot; pytest &middot; ruff check . &amp;&amp; mypy proingest &middot; python -m proingest scan &lt;folder&gt;<br>
-    <b>Last updated</b> &middot; 11 September 2026, colour pipeline specified and a settled decision corrected. Next: M4.5, the colour pipeline, core first and headless
+    <b>Last updated</b> &middot; 12 September 2026, colour workflow settled end to end, colour controls and the stringout removed. Next: M4.5, the colour pipeline, core first and headless
   </footer>
 
 </div>

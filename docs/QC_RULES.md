@@ -2,7 +2,9 @@
 
 Every rule has a stable ID, a phase, a severity, and a scope. Severity: `error` blocks the row from rendering (row auto-skipped, reason recorded); `warning` colors the row amber and is logged; `info` is logged only. All results appear in the QC log Deliverables sheet with pass/fail per rule.
 
-Rule IDs never change meaning. New rules get new numbers.
+Rule IDs never change meaning. New rules get new numbers. A rule whose reason for existing goes
+away is marked **RETIRED** and its ID is left in the table rather than deleted, so a log line or
+a spreadsheet column from an older run still resolves to what it meant when it was written.
 
 ## Phase A: scan and pre-flight (QC-0xx)
 
@@ -13,8 +15,10 @@ Rule IDs never change meaning. New rules get new numbers.
 | QC-003 | warning | turnover | EDL used instead of OTIO (reduced validation) |
 | QC-004 | warning | turnover | Timeline contains no video clips on any track |
 | QC-005 | info | turnover | Turnover folder name does not match `turnover###_MM_DD_YYYY_name` pattern; fields need manual entry |
-| QC-006 | warning | turnover | No EDL carrying CDL found in the turnover. Resolve exports CDL as `*ASC_SOP` / `*ASC_SAT` comment lines inside an EDL and exports no `.cdl` or `.ccc` file, so a turnover with only an OTIO has no colour. Everything renders ungraded, which is watchable, so this chases the shooter rather than blocking |
-| QC-007 | error | turnover | CDL found but failed to parse. Deliberately an error where QC-006 is a warning: no CDL is a known state, a malformed one means the colour is unknown and a reference would silently ship the wrong look |
+| QC-006 | RETIRED | | Was: no EDL carrying CDL found. The tool no longer reads CDL; the grade arrives as a CLF (COLOR_AND_FORMAT section 1). Replaced by QC-008. **The ID is not reused** |
+| QC-007 | RETIRED | | Was: CDL found but failed to parse. Replaced by QC-019, which asks the same question of a CLF. **The ID is not reused** |
+| QC-008 | error | turnover | No colour session package found for the turnover: no sidecar, or a sidecar naming no CLF for any row. Nothing final can be rendered. Scan and review are unaffected, which is the point of it being turnover scope and not batch scope: one turnover can be waiting on colour while another renders |
+| QC-009 | error | row | The CLF the sidecar names for this row is missing or unreadable. An error rather than a warning, and this is the deliberate reversal of retired QC-017: an ungraded plate used to be a lesser deliverable that was still watchable, and it is now the wrong pixels under the right filename |
 | QC-010 | error | row | Clip name does not match the naming regex |
 | QC-011 | warning | row | Duplicate clip name within the batch |
 | QC-012 | error | row | Media not found (referenced path missing and no unique filename match) |
@@ -22,10 +26,11 @@ Rule IDs never change meaning. New rules get new numbers.
 | QC-014 | error | row | Media unreadable by ffprobe/OpenEXR |
 | QC-015 | warning | row | Image sequence has gaps in frame numbering |
 | QC-016 | warning | row | Media path was remapped via path map (info for trust) |
-| QC-017 | warning | row | Clip has no matching CDL entry in the EDL. The clip renders ungraded and the reference shows what the plate shows. CDLs are matched per clip (OQ-30) |
-| QC-018 | warning | row | The container's own colour tags contradict the expected source space. No standard transfer tag names ACEScct, so the working assumption comes from Settings; this fires when what the file does claim disagrees with it. **Includes the range and matrix flags**, because a log signal carried as YCbCr with the wrong range decodes to crushed blacks and clipped whites that look almost right |
+| QC-017 | RETIRED | | Was: clip has no matching CDL entry in the EDL. Replaced by QC-009. **The ID is not reused** |
+| QC-018 | warning | row | The container's own colour tags contradict the IDT the sidecar names. No standard transfer tag names a camera log encoding, so the sidecar is the authority and the decode is forced to match it (COLOR_AND_FORMAT section 2); this fires when what the file does claim disagrees. Information, not a veto. **Includes the range and matrix flags**, because a log signal carried as YCbCr with the wrong range decodes to crushed blacks and clipped whites that look almost right |
+| QC-019 | error | row | The CLF failed to load in OpenColorIO. Distinct from QC-009, which is about the file being there: this one is about it being a CLF. A malformed transform means the colour is unknown, and a deliverable rendered past it would silently ship the wrong look |
 | QC-020 | error | row | Source pixel format unsupported for a log plate (8 bit, or 4:2:0) |
-| QC-021 | warning | row | Source is not the expected delivery format. The template project produces ProRes 4444 or DNxHR 444, 4:4:4. A 4:2:2 variant decodes correctly and delivers usable work, but subsampled chroma in a log signal is stretched when it is linearised and shows on saturated edges. An EXR sequence already in ACEScg lands here too: nothing is wrong with it, it is simply not what the template produces |
+| QC-021 | warning | row | Source is not the expected delivery format, which is ProRes 4444 or DNxHR 444, 4:4:4, camera log. A 4:2:2 variant decodes correctly and delivers usable work, but subsampled chroma in a log signal is stretched when it is linearised and shows on saturated edges. A source already in ACEScct or ACEScg lands here too: nothing is wrong with it, the IDT stage is simply a no-op |
 | QC-022 | error | row | Source codec not decodable |
 | QC-023 | error | row | Source resolution is not 3840x2160. Enabling "allow non-4k" downgrades it to a warning rather than silencing it, because `render._fit` resamples to the target either way and a squashed plate should still be said out loud. Aux stills and BTS are not asked: they are delivered at their own size |
 | QC-024 | warning | row | Source letterboxed/pillarboxed to 3840x2160 |
@@ -41,7 +46,9 @@ Rule IDs never change meaning. New rules get new numbers.
 | QC-034 | warning | row | Duration above maximum (default 240 frames) |
 | QC-035 | info | row | In/Out differ from turnover snapshot (edited during review) |
 | QC-036 | info | row | Shot code edited from original clip name |
-| QC-037 | info | row | Colour adjusted from neutral. The AD notes layer (FR-16) sits on top of the shooter's CDL and bakes into the references and the stringout only, never the plate. Records the four values so the QC log shows which shots were touched and by how much. Parallel to QC-035 and QC-036: it reports an edit, it does not judge one |
+| QC-037 | RETIRED | | Was: colour adjusted from neutral, for the four per clip colour controls. **The controls are removed from v01** and there is nothing to report. **The ID is not reused** |
+| QC-038 | error | row | The studio standard source encoding named in Settings has no OpenColorIO equivalent, so no input transform can be built. Batch wide in practice rather than per row, because the encoding is one constant for every file (COLOR_AND_FORMAT section 1), but it is reported on the row because the row is what cannot render |
+| QC-039 | error | row | The CLF appears to contain a display rendering: probing it shows an output that is bounded or otherwise not scene linear ACEScg. The result would be a display referred file claiming to be linear, which comps wrong and looks completely normal until someone tries to work on it (COLOR_AND_FORMAT section 1) |
 | QC-040 | warning | row | Plate (pl) has no associated audio clip |
 | QC-041 | warning | row | More than one audio clip overlaps the video clip |
 | QC-042 | error | row | Associated audio file missing or unreadable |
@@ -70,7 +77,7 @@ QC-100 is the exception to that: it reports a render that never produced a file 
 |---|---|---|---|
 | QC-100 | error | deliverable | Render did not complete; the reason is recorded. Every other QC-1xx is NA when this one fails, because there is no file to check |
 | QC-101 | error | exr seq | Frame count equals duration |
-| QC-102 | error | exr seq | First frame is 1001, last is 1000 + duration, no gaps |
+| QC-102 | error | exr seq | First frame is 1001, last is 1000 + duration, no gaps. OQ-35 asks whether frame numbers should instead derive from source timecode; until it is answered this rule and NAMING_SPEC both say 1001 |
 | QC-103 | error | exr seq | Every frame opens with OpenEXR and header parses. Also applied to an aux still, which is one EXR written by the same function: a mirror ball delivered unreadable is the same defect |
 | QC-104 | error | exr seq | Data window and display window equal target resolution. Also applied to an aux still |
 | QC-105 | error | exr seq | Compression is DWAA, channels are R,G,B (or R,G,B,A) half. Also applied to an aux still. One result per rule for the whole sequence, naming the first offender: 240 identical rows would bury the rest of the report |
@@ -85,8 +92,8 @@ QC-100 is the exception to that: it reports a render that never produced a file 
 | QC-120 | error | wav | Duration in samples matches source audio (byte copy: checksum equal) |
 | QC-121 | error | wav | 16 bit PCM. **Error only when the audio was extracted from a container**, where the extraction was supposed to produce 16 bit and did not. A wav source is delivered as a byte copy per COLOR_AND_FORMAT section 3, so a 24 bit source delivers 24 bit by design and this is a warning there; QC-044 already said so at scan time |
 | QC-130 | error | copy | Checksum of copied side file equals source |
-| QC-140 | error | stringout | Frame count equals sum of durations of included rows |
-| QC-141 | warning | stringout | Any burn-in field was empty for any clip |
+| QC-140 | RETIRED | | Was: stringout frame count equals the sum of the included rows. **The tool no longer builds a stringout** (PRD FR-9); the colour session exports it. **The ID is not reused** |
+| QC-141 | RETIRED | | Was: a burn-in field was empty for some clip. Retired with QC-140. **The ID is not reused** |
 | QC-150 | error | row | Every planned deliverable for the row exists and passed. Run by `render.apply_results`, not in a worker: a worker sees one job |
 | QC-151 | error | batch | Filename of every deliverable re-parses with the naming regex to the same shot/elem/kind/res/ver. Compared against the plan rather than merely checked for parsing, which is what catches a name that is well formed and wrong. Only delivered names are asked; one that never landed is QC-150's |
 

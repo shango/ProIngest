@@ -2,160 +2,239 @@
 
 ## 1. Colour policy (v01)
 
-**The working space is ACEScg. Sources arrive log encoded, plates are delivered scene
-linear and ungraded, and the grade lives only in the viewing copies.**
+**Colour is finished before the tool runs. A final grade session delivers one CLF per shot,
+the tool applies it to everything it writes, and the plate is delivered graded, scene linear
+ACEScg.**
 
-This **supersedes OQ-17**, which recorded the opposite premise as resolved: display
-referred sources with the sRGB curve baked in, and no transfer applied to the references.
-That premise was wrong. Everything built on it has been rewritten here rather than
-amended, because amending it would leave two readings in one document.
+This **supersedes the policy of 2026-09-11**, which itself superseded OQ-17. That version had
+the shooters delivering ACEScct, the CDL read out of an EDL, an ungraded plate with the CDL
+carried in the header, and four colour controls in the tool for the AD's notes. The pipeline
+mechanics from it survive almost intact. What changed is where colour is authored and when,
+and that moves enough to be worth rewriting rather than amending.
 
-### What arrives
+### Two colour stages, and only the second one reaches a deliverable
 
-Shooters convert camera original to a studio standard delivery in Resolve, using a
-template project the studio supplies (OQ-31). A turnover therefore carries **one encoding
-regardless of what anybody shot on**:
+**Offline.** Shooters deliver a string-out and a CDL with it. The CDL is a starting point and
+a record of what the shooter intended, nothing more. **The tool never renders a deliverable
+from it.**
+
+**Final.** The AD meeting decides the look, and that decision goes into a colour session in
+DaVinci Resolve. The session exports a CLF per shot, and those CLFs are what the tool ingests.
+Final colour is applied before every export, the references and the plates alike.
+
+The consequence to be clear about: **a batch cannot produce final deliverables until the
+colour session for it exists.** Scanning, review and In/Out work all happen without it, because
+they are about frames rather than pixels. Rendering waits. That is a change of shape in the
+user flow and it is written up in PRD section 6.
+
+### The colour session
+
+These are constraints on the session, not descriptions of it. The pipeline below is only
+correct if they hold.
 
 | | |
 |---|---|
-| encoding | **ACEScct** |
-| primaries | **AP1**, the ACES working gamut |
-| container | **ProRes 4444**, or DNxHR 444 where ProRes is not available |
+| colour science | DaVinci YRGB Color Managed, **ACES 1.3** |
+| timeline space | **ACEScct** |
+| input transform | the studio standard log encoding the shooters deliver (OQ-39) |
+| grade | **primary only.** No windows, no qualifiers, no tracked secondaries |
 
-The camera specific input transform happens in the shooter's Resolve project, where the
-camera metadata actually lives. That is the point of specifying ACEScct rather than a
-camera log: this tool has one input transform forever, and "which LogC", "which exposure
-index" and "mixed cameras in one turnover" stop being questions it has to answer.
+**Primary only is a hard requirement rather than a stylistic preference.** A CLF is a static
+transform of a pixel value. A window, a qualifier or a tracked secondary is a function of
+where the pixel is or what is around it, and none of that survives being written to a CLF.
+A session that used one would export a CLF that silently omits it, and the tool would deliver
+a grade that is not the grade that was approved.
 
-4:4:4 matters more here than it would on a display referred source. Subsampled chroma in a
-log signal is stretched when the signal is linearised, and shows up on saturated edges.
+Per shot, the session exports:
 
-### What leaves
+- a **`.clf`**, encoding `ACEScct in > CDL + look > linear ACEScg out`
+- an **EDL or XML**, for timecode and shot identity
+- a **reference ProRes QT** with the look and burn-ins
 
-| deliverable | space | graded |
-|---|---|---|
-| raw EXR, 4k and HD | **ACEScg**, scene linear, AP1 primaries | **no** |
-| reference mp4, 4k and HD | sRGB display | **yes** |
-| stringout | sRGB display | **yes** |
+### What arrives
 
-**The plate is ungraded and that is deliberate.** The CDL and the AD notes are creative
-intent that will move in the DI. A grade baked into a plate can clip highlights the comp
-needs, and work done against a graded plate stops matching the moment the grade changes.
-The CDL travels **in the EXR header** instead, so the vendor can apply it as a viewing
-transform and see exactly what was intended while working on untouched pixels.
+| | |
+|---|---|
+| picture | **ProRes 4444**, one file per shot, with handles beyond the cut |
+| encoding | **one studio standard log encoding**, the same for every shooter and every camera (OQ-39) |
+| grade | one `.clf` per shot, from the colour session |
+| conform | EDL or XML from the colour session: timecode and shot identity |
 
-### The two branches
+**The source encoding is a studio standard and is the same on every file, whatever anybody
+shot on.** The camera specific input transform happens in the shooter's Resolve project,
+where the camera metadata actually lives, and the tool never sees a camera original. This is
+the single most valuable property in the whole pipeline and it is worth being explicit about
+what it buys: the tool has **one input transform forever**, and "which log", "which exposure
+index" (LogC3 is EI dependent where LogC4 is not) and "mixed cameras inside one turnover"
+stop being questions it has to answer. It also means no per shot IDT lookup, and no mapping
+of Resolve's transform names onto OpenColorIO's, which do not agree and whose near misses
+produce plausible looking wrong images.
 
-One decode, then branch at the top, because the two deliverables want opposite things:
+**Which log is OQ-39**, and the answer changes how much work there is rather than whether it
+works. If the studio standard is **ACEScct**, the tool applies no input transform at all:
+the colour session's timeline is ACEScct and its CLF starts there, so decode leads straight
+into the CLF with nothing in between that could be silently wrong. If it is a camera vendor
+log adopted as the house format, the tool applies **one fixed transform** from that encoding
+to ACEScct ahead of the CLF. Either way it is a constant, not a per shot decision.
+
+### The chain
+
+One decode, one transform stack, then a branch at the point where the two deliverables stop
+wanting the same thing:
 
 ```
-ProRes 4444  -  ACEScct, AP1
-        |  decode to float RGB, full range
+studio standard log ProRes 4444 (one per shot)
         |
-   +----+------------------------------------+
-   |                                         |
- PLATE branch                            VIEW branch
-   |                                         |
- ACEScct -> ACEScg   (curve only)        CDL        (in ACEScct)
-   |                                         |
- resize in numpy, unbounded              AD notes   (in ACEScct)
-   |                                         |
- EXR: ACEScg, CDL in the header          ACEScct -> ACEScg -> ACES output transform
-                                             |   ... collapsed into one 3D LUT
-                                         ffmpeg lut3d, resize bounded
-                                             |
-                                         mp4: sRGB display
+        |  decode to float RGB, colour tags overridden, range confirmed
+        |
+  input:  studio log -> ACEScct         (one constant, identity if the standard is ACEScct)
+        |
+     CLF:  CDL + look                                 (per shot, from the colour session)
+        |
+   +----+--------------------------------------------+
+   |                                                  |
+ PLATE branch                                     VIEW branch
+   |                                                  |
+ -> linear ACEScg                                 stays in ACEScct
+   |                                                  |
+ resize in numpy, unbounded                       ACES output transform -> sRGB
+   |                                              ... input transform, CLF and output
+ EXR: ACEScg, AP1, graded                             collapsed into one 3D LUT
+                                                      |
+                                                  ffmpeg lut3d, tetrahedral, resize bounded
+                                                      |
+                                                  mp4: sRGB display
 ```
 
-Three properties follow, and each is load bearing rather than incidental.
+**Every transform is a single OCIO `GroupTransform`, interpolated tetrahedrally.** Not a
+sequence of separate applications, and not trilinear. Tetrahedral is stated here because the
+default in several tools is trilinear, it is visibly worse on saturated colour, and it is a
+one word difference that nobody notices being wrong.
 
-**ACEScct to ACEScg is a curve, not a gamut change.** Both are AP1, so the plate path
-applies no primaries matrix and manufactures no out of gamut negatives of its own. That
-matters on the HD downscale in particular: resizing a linear image in a gamut too small
-for its content is a documented way to produce negative pixels, and AP1 is wide enough
-that the question does not arise. Delivering scene linear in Rec.709 primaries was
-considered and rejected for exactly this reason.
+Three properties carry over from the previous policy unchanged, because the reasoning behind
+them did not depend on where the grade came from.
+
+**The plate branch is unbounded and resizes in numpy.** Scene linear values run past 1.0, and
+`core/resize.py` exists so the HD downscale does not go through anything that clamps.
 
 **The view branch stays bounded until the final encode.** Everything before the output
-transform happens in ACEScct, which an integer container bounds to 0..1. swscale clamps
-float to 0..1, so keeping the view branch in log means ffmpeg can do the resize and the
-reference stays a single fast pass with no frames pulled through Python, which is what M3
-was built around. The plate branch is unbounded scene linear and therefore resizes in
-numpy, which is what `core/resize.py` exists for.
+transform happens in ACEScct, which is bounded to 0..1. swscale clamps float to 0..1, so
+keeping the view branch in log is what lets ffmpeg do the reference resize in a single pass
+with no frames crossing into Python.
 
-**The CDL is applied in ACEScct, its native space.** A CDL means what it means in the space
-it was authored in. ACEScct exists so grades can be authored in a log domain inside ACES,
-and applying one in linear gives a different and wrong answer.
+**The whole view branch collapses into one 3D LUT per shot**, generated in core: ACEScct in,
+sRGB display out, with the CLF and the ACES output transform inside it. ffmpeg applies it with
+`lut3d`; the viewers in UI_SPEC section 14 apply the same cube in numpy. They cannot drift
+apart, which is the failure mode this codebase keeps nearly hitting. OQ-7 was the same problem
+in the resampler and needed a measured test to settle. A 3D LUT is accurate here because its
+input domain is log, which is where LUTs are meant to be authored, and its output is display
+referred and therefore bounded. **The plate branch cannot use one**, because scene linear
+output is unbounded; that path applies the GroupTransform to float pixels directly.
 
-### The viewing transform is one LUT
+### The plate is graded, and what that costs
 
-The whole view branch (CDL, AD notes, ACEScct to ACEScg, ACES output transform to sRGB)
-collapses into a **single 3D LUT per clip**, generated in core. ffmpeg applies it with
-`lut3d` for the reference mp4; the three viewers in UI_SPEC section 14 apply the same cube
-in numpy. They cannot drift apart, which is the failure mode this codebase keeps nearly
-hitting. OQ-7 is the same problem in the resampler and it needed a measured test to settle.
+The 2026-09-11 policy delivered an ungraded plate and carried the CDL in the header. The
+argument for it was that a grade baked into a plate can clip highlights the comp needs, and
+that work done against a graded plate stops matching the moment the grade moves in the DI.
 
-A 3D LUT is accurate here because its input domain is log, which is where LUTs are meant to
-be authored, and its output is display referred and therefore bounded. The plate branch
-cannot use one, because scene linear output is unbounded; that path does the maths directly.
+**The second half of that argument no longer applies**, because this workflow finishes the DI
+before the turnover is ingested. There is no later grade for the plate to stop matching. The
+first half still applies, and it becomes a requirement on the CLF rather than a reason to
+refuse:
+
+**The CLF must end in scene linear ACEScg and must contain no display rendering.** A CLF whose
+chain includes an ACES output transform, a film emulation, or any tone curve that lands in a
+display range produces a file that is display referred and says it is linear. That file grades
+and comps wrong, and it looks completely normal until someone tries to work on it. The tool
+probes for it and raises QC-039, because the alternative is trusting a filename.
+
+Within that constraint a primary grade in ACEScct, converted back to linear, keeps its float
+headroom. Values above 1.0 survive it.
+
+### EXR metadata
+
+The header carries provenance, because a graded plate is only auditable if the file says what
+was done to it.
+
+- `chromaticities` states **AP1** primaries. That constant is the difference between a file
+  that is ACEScg and a file that lies about being ACEScg.
+- `proingest/colorspace` states `ACEScg`.
+- `proingest/source_encoding` names the log encoding the source was read as, and therefore
+  the input transform that was applied.
+- `proingest/clf` names the CLF, and `proingest/clf_hash` its digest. **The hash is the
+  point**: it is what lets anyone establish, later and without the session, exactly which
+  version of the grade is in these pixels. A CLF that is re-exported and re-delivered gets a
+  different hash, and the deliverable that was rendered from the old one is findable.
+- `proingest/tool_version`, the shot ID, the frame range and the source timecode, per the
+  proposal's header list.
+- The CDL attributes from the previous policy are **not written**. The CDL is an offline
+  artifact now and the look that shipped is the CLF.
 
 ### OpenColorIO
 
 Transforms come from **OpenColorIO**, not from hand written curves and matrices.
-`Config.CreateFromBuiltinConfig("studio-config-latest")` carries the ACES transforms inside
-the wheel, so **no config files ship**. The macOS arm64 wheel is 5.7 MB, which is nothing
-against the 300 MB budget in PRD section 8, and a Windows wheel exists for v02.
-`CDLTransform` applies the CDL.
+`Config.CreateFromBuiltinConfig(...)` carries the ACES transforms inside the wheel, so **no
+config files ship**. The macOS arm64 wheel is 5.7 MB, which is nothing against the 300 MB
+budget in PRD section 8, and a Windows wheel exists for v02. `FileTransform` loads the CLF and
+`ColorSpaceTransform` supplies the input transform and the output transform.
 
-Hand rolling the curves was considered and rejected. Published camera log parameter tables
-are exactly the kind of thing that looks correct and is not.
+The session is ACES 1.3, so the config is pinned to an ACES 1.3 built-in config rather than
+tracking `studio-config-latest`. Matching the colour session matters more than being current,
+and a dependency bump must not change what the references look like. OQ-29.
 
-### EXR metadata
+### The EXR writer stays as it is
 
-- `chromaticities` states **AP1** primaries, not sRGB. That constant is the difference
-  between a file that is ACEScg and a file that lies about being ACEScg.
-- `proingest/colorspace` states `ACEScg`.
-- The CDL is written **twice**: as machine readable slope, offset, power and saturation
-  attributes, and as the original CDL text, so a vendor can recover exactly what was
-  authored rather than what this tool re-serialised.
-- The AD notes are written alongside it under their own attribute, so a reference that
-  looks different from the plate can be explained from the plate itself.
+The proposal writes EXRs via OpenImageIO. **This keeps the `OpenEXR` Python bindings**, which
+is what `core/exr.py` already uses and what CLAUDE.md's ground rules pin. Nothing in the
+proposal's header list needs OIIO: the bindings write arbitrary named attributes, AP1
+chromaticities, DWAA and timecode already, with 45 tests behind them. OIIO would be a second
+large dependency inside a 300 MB installer budget in exchange for no capability. Compression
+stays **DWAA at level 45** per section 3; PIZ is a defensible option for a graded final plate
+and is recorded as OQ-36 rather than built.
 
 ## 2. Source formats accepted
 
-The studio sets the delivery spec and the shooters work to a template project, so this is
-a specification rather than a survey of what might turn up.
+The studio sets the delivery spec and the shooters work to it, so this is a specification
+rather than a survey of what might turn up. **One encoding, every file, every shooter**
+(section 1).
 
 **Expected**, and what every QC rule is written around:
 
-- **ProRes 4444 or DNxHR 444, ACEScct, AP1 primaries.** 12 bit, 4:4:4, full range.
+- **ProRes 4444 or DNxHR 444, the studio standard log encoding, 12 bit, 4:4:4, full range**,
+  one file per shot, with handles beyond the cut.
+
+4:4:4 matters more on a log source than it would on a display referred one. Subsampled chroma
+in a log signal is stretched when the signal is linearised, and it shows on saturated edges.
 
 **Accepted with a warning**, because it decodes correctly and delivers usable work:
 
-- ProRes 422 HQ or any 4:2:2 10 bit variant carrying ACEScct. QC-021: chroma is subsampled,
-  and a log signal stretched to linear shows that on saturated edges.
-- An EXR sequence already in ACEScg or ACES2065-1. Nothing is wrong with it; it simply is
-  not what the template project produces, so it is flagged as an unexpected delivery rather
+- ProRes 422 HQ or any 4:2:2 10 bit variant carrying the same encoding. QC-021, for the chroma
+  reason above.
+- An EXR sequence already in ACEScg or ACES2065-1. Nothing is wrong with it; it simply is not
+  what the shooters are asked to deliver, so it is flagged as an unexpected delivery rather
   than a defect.
 
 **Refused:**
 
-- 8 bit anything, and any 4:2:0 source. QC-020. Neither can carry a log signal without
-  banding the moment it is linearised.
+- 8 bit anything, and any 4:2:0 source. QC-020. Neither can carry a log signal without banding
+  the moment it is linearised.
 
-A source whose colour space cannot be established is QC-018. The tool cannot read ACEScct
-off a container, because no standard transfer tag names it, so the working assumption comes
-from Settings and QC-018 fires when the container's own tags contradict it.
+**The tool does not read the colour space off the container, it overrides it.** No standard
+transfer tag names ACEScct or any camera log, and a container that does carry tags is as
+likely to carry the wrong ones. The studio standard from Settings is the authority and the
+decode is forced to match it. QC-018 fires when the file's own tags contradict it, which is
+information rather than a veto. **Range is confirmed rather than assumed**: a log signal
+carried as YCbCr and decoded at the wrong range gives crushed blacks and clipped whites that
+look very nearly right.
 
 ## 3. Output formats
 
 | output | spec |
 |---|---|
-| raw EXR | OpenEXR 2 scanline, DWAA compression level 45, half float RGB (alpha dropped unless source has real alpha, then RGBA), data window = display window, frame numbers start 1001. **ACEScg, scene linear, AP1 chromaticities, ungraded**, with the CDL and the AD notes carried in the header (section 1) |
+| raw EXR | OpenEXR 2 scanline, DWAA compression level 45, half float RGB (alpha dropped unless source has real alpha, then RGBA), data window = display window, frame numbers start 1001 (OQ-35). **ACEScg, scene linear, AP1 chromaticities, graded with the shot's CLF**, with the source encoding, the CLF name and the CLF hash carried in the header (section 1) |
 | ref mp4 4k | 3840x2160, H.264 High, yuv420p, CRF 18 (x264 `-preset slow`) or `h264_videotoolbox` when hardware encoding is enabled, keyint 24, `-movflags +faststart`, AAC 192k if audio associated |
 | ref mp4 HD | same, 1920x1080 |
 | audio | as delivered. If the source is a wav, byte copy. If audio lives inside a container, extract to PCM 16 bit, same sample rate and channel count, no resampling. QC-044 if not 16 bit after extraction |
-| stringout | 1920x1080, H.264 High, CRF 20, burn-ins, audio from associated wavs mixed at unity |
 | HDRI, stills, camData | byte copy with rename, checksum recorded |
 | lens grid | not written in v01; moved and renamed by hand (OQ-20) |
 
@@ -187,7 +266,7 @@ NVENC was the Windows hardware encoder and **does not exist on macOS**. The macO
 ## 5. Frame rate and timecode
 
 - Project fps default 24, editable. Timeline fps from the OTIO must equal project fps or QC-025 error.
-- Shooters set every clip to the project rate in Resolve before exporting the stringout and the EDL, so **the timeline rate is authoritative**. It is what the media is actually played at and what all frame math and timecode conversion use.
+- Shooters set every clip to the project rate in Resolve before export, so **the timeline rate is authoritative**. It is what the media is actually played at and what all frame math and timecode conversion use.
 - A clip's media may still carry a rate of its own: an EXR sequence states one in its `framesPerSecond` header, a container in its stream. After a conform that value can be stale camera metadata. It is recorded as `MediaInfo.stated_rate` and compared against the project rate for QC-026, but nothing computes with it. Computing with a stale rate would misread the source timecode and block every row.
 - A frame count is a property of the file, so it is always counted at the file's own rate, never at the timeline's. A 30 fps container conformed to 24 still holds the frames it holds.
 - QC-026 therefore fires when the media states a rate and that rate differs from the project rate. Media that states no rate, such as a DPX sequence, cannot disagree. No retiming is ever performed. See OQ-19 on severity.
@@ -215,14 +294,21 @@ Editing:
 ## 7. EXR writing pipeline
 
 ```
-ffmpeg -i <src> -f rawvideo -pix_fmt gbrpf32le - | numpy frames -> float16 -> OpenEXR (DWAA, level 45)
+ffmpeg -i <src> -f rawvideo -pix_fmt gbrpf32le - | numpy frames
+    -> OCIO GroupTransform (input transform, CLF), tetrahedral
+    -> float16 -> OpenEXR (DWAA, level 45)
 ```
+
+- **The colour stage is in numpy, between the decode and the write**, and it is the whole of
+  what section 1 calls the plate branch. It is applied to unbounded float, before the HD
+  downscale, so the resize happens on the pixels that are being delivered rather than on
+  something that still has a transform waiting for it.
 
 - One ffmpeg decode per resolution (4k pass writes 4k EXRs; HD pass adds the Lanczos scale filter). Two passes are simpler than a filtergraph split and cost one extra decode, acceptable at this scale.
 - **The frame range is a frame seek, never a time seek.** A container seeks with the `trim` filter, `trim=start_frame=<in>:end_frame=<out+1>`, whose end is exclusive; it counts frames after the decoder has put them back in display order, so a long GOP source lands exactly. A sequence seeks with `-start_number <in>`, which never opens the frames before the range. `-ss` takes a float number of seconds and would land on the wrong frame at 23.976.
 - `gbrpf32le` is planar and stores G, then B, then R, so RGB is planes 2, 0 and 1. It carries no alpha, which is OQ-21: the EXR source path preserves a source alpha and the container path cannot yet, because nothing records whether a container has a real one.
 - EXR source sequences skip ffmpeg and are read with OpenEXR directly, then downscaled by `core/resize.py`, an antialiased Lanczos-3 in numpy. They have to: ffmpeg's `scale` accepts a float pixel format but **clamps the values to 0-1**, so routing a scene linear EXR through it would flatten every highlight above 1.0 to white without a word. The container path is unaffected because every container format section 2 accepts is integer and already bounded. That is the same filter the container path gets from `flags=lanczos`, so the two paths do not disagree: on a hard edge they are identical, and on smooth content they are within one 8 bit level. OQ-7, resolved.
-- **DWAA is lossy.** At level 45 a written frame comes back about a tenth of a percent off the value that went in, proportionally, at every brightness. "Pixels in, pixels out" in section 1 means no colour transform is applied, not that the file is a byte copy of the source. QC therefore never compares a rendered frame to its source by equality.
+- **DWAA is lossy.** At level 45 a written frame comes back about a tenth of a percent off the value that went in, proportionally, at every brightness. The plate carries a colour transform by design (section 1), so a delivered frame was never going to equal its source; DWAA means it does not even equal the float that was handed to the writer. QC therefore never compares a rendered frame to its source by equality.
 - The encoder is deterministic: the same pixels and header produce the same bytes, which is what makes the QC-106 per-frame hash meaningful across a re-render.
 - `framesPerSecond` is **not** written on output. The OpenEXR Python bindings cannot write a `Rational` attribute, and writing an int or a string under that name would be the wrong attribute type for any reader expecting a rate. Delivered frames carry a per-frame `timeCode` instead, which the bindings do write correctly.
 - Checksum (xxhash64) of each written frame is recorded in the batch and the QC log.

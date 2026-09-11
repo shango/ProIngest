@@ -16,10 +16,11 @@ proingest/
     ffmpeg.py            # subprocess wrapper, command builder, progress parsing, hardware encoder detection
     exr.py               # EXR read/write (OpenEXR), DWAA, header checks
     resize.py            # antialiased Lanczos downscale for the EXR path
-    color.py             # source color space setting; what each deliverable does about it
+    color.py             # OCIO pipeline: input transform, the shot's CLF, the viewing LUT
+    clf.py               # colour session package: sidecar read, CLF match per row, CLF hash
+    preview.py           # single frame fetch with cache, for the FR-16 viewers
     render.py            # job execution, process pool, atomic writes, cancellation
     qc.py                # rule registry, phase A and B checks
-    stringout.py         # concat plan and drawtext filter builder
     exports.py           # openpyxl writers for tracker and QC log
     settings.py          # defaults, load/save, validation, platform paths (PACKAGING.md)
     batchfile.py         # .pibatch load/save, backup, migration
@@ -55,7 +56,7 @@ build/
    every edit.
 6. UI edits mutate `ShotRow.in_frame/out_frame/shot_code/notes/skip`, then `qc.run_phase_a_row`.
 7. `planner.plan(row, settings, destination)` produces `DeliverableJob`s with final and temp paths, version resolved at plan time (right before render, not at scan).
-8. `render.execute(jobs)` runs in a `ProcessPoolExecutor`; each worker runs one job, streams progress via a `multiprocessing.Queue`, and on success calls `qc.run_phase_b(job)`.
+8. `render.execute(jobs)` runs in a `ProcessPoolExecutor`; each worker runs one job, streams progress via a `multiprocessing.Queue`, and on success calls `qc.run_phase_b(job)`. The plate branch applies the OCIO transform in numpy before the resize; the view branch hands ffmpeg one `lut3d` (COLOR_AND_FORMAT section 1).
 9. `exports.write_all(batch)` after run or on demand.
 
 ## Concurrency
@@ -79,4 +80,4 @@ JSON, `schema_version: 1`. Top level: settings overrides, delivery root, turnove
 
 ## Third-party
 
-`opentimelineio`, `OpenEXR` (3.2+), `numpy`, `openpyxl`, `PySide6`, `xxhash`, `pydantic` (or dataclasses + `cattrs`), `ffmpeg`/`ffprobe` binaries (bundled). The EXR downscale is plain numpy (`core/resize.py`), so neither `scipy` nor `OpenImageIO` is a dependency. See OQ-7.
+`opentimelineio`, `OpenEXR` (3.2+), `OpenColorIO`, `numpy`, `openpyxl`, `PySide6`, `xxhash`, `pydantic` (or dataclasses + `cattrs`), `ffmpeg`/`ffprobe` binaries (bundled). The EXR downscale is plain numpy (`core/resize.py`), so neither `scipy` nor `OpenImageIO` is a dependency. See OQ-7. **OpenImageIO stays out on the EXR write too**: the `OpenEXR` bindings already write AP1 chromaticities, DWAA, timecode and arbitrary named attributes, so OIIO would be a second large dependency inside a 300 MB budget for no capability (COLOR_AND_FORMAT section 1).

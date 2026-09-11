@@ -8,10 +8,10 @@ commit.
 
 ## 1. Resume here
 
-**State at 2026-09-11. M1, M2, M3 complete; M4.1 and M4.2 done. A colour pipeline was
-specified today and nothing of it is built.**
-718 tests passing, `ruff` and `mypy --strict` clean. **No code changed on 2026-09-11**: the
-whole day is spec. **Nothing is blocked.**
+**State at 2026-09-12. M1, M2, M3 complete; M4.1 and M4.2 done. The colour workflow was
+replaced today, for the second time in two days, and nothing of it is built.**
+718 tests passing, `ruff` and `mypy --strict` clean. **No code has changed since 2026-09-10**:
+two consecutive days of spec. **Nothing is blocked.**
 
 ### First five minutes
 
@@ -20,105 +20,122 @@ whole day is spec. **Nothing is blocked.**
 .venv/bin/python -m ruff check proingest tests && .venv/bin/python -m mypy proingest tests
 ```
 
-Then read `docs/COLOR_AND_FORMAT.md` section 1 before anything else, because it was
-rewritten today and it invalidates things you may already believe.
+Then read `docs/COLOR_AND_FORMAT.md` section 1 before anything else, because it was rewritten
+today and it invalidates things you may already believe, including things written yesterday.
 
 ### Read this before trusting anything about colour
 
-**OQ-17 was resolved on 2026-09-10 and that resolution was wrong.** It recorded that
-turnovers carry a baked sRGB curve on every file, that sources are display referred, and
-that reference encodes therefore apply no transfer. The user researched it and corrected
-it on 2026-09-11. The truth:
+**The colour spec has now been wrong twice and rewritten twice.** Take nothing about colour
+from memory, from a commit message, or from any file dated before 2026-09-12.
 
-- Sources are **log encoded**, not display referred and not scene linear.
-- The working space is **ACEScg**.
-- Plates are delivered **scene linear ACEScg and ungraded**.
-- References get a full **ACES output transform** to sRGB, with the grade applied.
+| dated | what it claimed | status |
+|---|---|---|
+| 2026-09-10 | sources display referred, sRGB baked in, references apply no transfer | wrong |
+| 2026-09-11 | sources ACEScct, plate **ungraded**, CDL read from the EDL, four colour controls in the tool | superseded |
+| 2026-09-12 | colour finished before ingest, **CLF per shot**, plate **graded**, no controls, no stringout | current |
 
-**Anything written before 2026-09-11 that reasons about colour is suspect.** That includes
-the shipped M3 reference encode, which applies no transfer and would produce a flat, milky
-mp4 from a log source. `core/color.py` is a two-state setting that describes neither of the
-real states. This is not a bug to be found later; it is known, and M4.5 is where it gets fixed.
+The mechanics survived both rewrites almost intact: ACEScg working space, OCIO for every
+transform, the plate branch unbounded in numpy, the view branch bounded in ACEScct and
+collapsed into one 3D LUT. What kept changing is **where colour is authored and by whom**.
 
-### What was decided on 2026-09-11
+### What the workflow is now
 
-All of it is written into the docs; this is the index, not the spec.
+The user described it on 2026-09-12 and it is written up in `docs/COLOR_AND_FORMAT.md`
+section 1. In one paragraph: the shooters deliver **ProRes 4444 in one studio standard log
+encoding**, the same on every file whatever anybody shot on. Their CDL and their string-out
+are offline reference and **the tool reads neither**. After the AD meeting, a **colour session
+in Resolve** (ACES 1.3, ACEScct timeline, primary grades only) exports **one CLF per shot**,
+and that CLF is the approved look. The tool applies it to **everything it writes**, plates
+included, and the plate is therefore delivered graded.
+
+### What changed today, and where it lives
 
 | decision | where it lives |
 |---|---|
-| ACEScg working space, OCIO for every transform | COLOR_AND_FORMAT section 1 |
-| Sources are **ACEScct in ProRes 4444**, camera agnostic | COLOR_AND_FORMAT section 1, PRD section 4 |
-| Plate is **ungraded**; CDL rides in the EXR header | COLOR_AND_FORMAT section 1, PRD FR-15 |
-| mp4 is graded: CDL plus AD notes, sRGB | COLOR_AND_FORMAT section 1 |
-| CDL comes from the **EDL**, per clip | PRD FR-1, QC-006, QC-007, QC-017 |
-| Three viewers, In / Out / Center, **steppable** | PRD FR-16, UI_SPEC section 14 |
-| **Stepping In or Out trims the row** | PRD FR-5 and FR-16, UI_SPEC section 14 |
-| Four per-clip colour controls, references only | PRD FR-16, QC-037 |
+| Colour is finished before ingest; the tool applies, never authors | COLOR_AND_FORMAT section 1, PRD section 3 |
+| One CLF per shot is the grade; no CDL anywhere in the tool | COLOR_AND_FORMAT section 1, PRD FR-15 |
+| **The plate is graded**, reversing 2026-09-11 | COLOR_AND_FORMAT section 1, PRD section 5 |
+| Sources are one **studio standard log**, camera agnostic | COLOR_AND_FORMAT sections 1 and 2, OQ-39 |
+| **The four colour controls are removed** | PRD section 3 and FR-16, UI_SPEC section 14 |
+| **The stringout is dropped**, M6 with it | PRD FR-9, UI_SPEC section 8, OQ-38 |
+| A batch cannot render until its colour session exists | PRD section 6, QC-008 |
+| OCIO `GroupTransform`, tetrahedral, pinned ACES 1.3 | COLOR_AND_FORMAT section 1, OQ-29 |
 
-Four facts behind those, each of which took real work to establish and should not be
-re-derived:
+QC rules: QC-006, QC-007, QC-017 and QC-037 are **retired**, and QC-140 and QC-141 went with
+the stringout. QC-008, QC-009, QC-019, QC-038 and QC-039 are new. Retired IDs stay in the
+table and are never reused, so an old log line still resolves.
 
-- **Resolve does not export `.cdl` or `.ccc` files at all.** It embeds CDL as `*ASC_SOP` and
-  `*ASC_SAT` comment lines inside an EDL, or in an ALE. So the tool wants **both** timeline
-  files: the OTIO to conform and the EDL to colour. That inverts QC-003, which currently
-  reads as though an EDL were a lesser substitute for an OTIO.
-- **ACEScct to ACEScg is a curve, not a gamut change.** Both are AP1. That is the entire
-  reason ACEScct was chosen over a camera log: the plate path applies no primaries matrix
-  and manufactures no out-of-gamut negatives, including on the HD downscale, where
-  resizing a linear image in too small a gamut is a known way to produce negative pixels.
-  Delivering scene linear in Rec.709 primaries was considered and rejected for this.
-- **The OpenColorIO wheel is 5.7 MB on macOS arm64**, and `CreateFromBuiltinConfig` means
-  no config files ship. The packaging objection to OCIO was checked and does not exist.
-  A Windows wheel exists for v02.
-- **The view branch stays bounded until the final encode**, because everything before the
-  output transform happens in ACEScct. swscale clamps float to 0..1, so this is what lets
-  ffmpeg keep doing the reference resize in a single pass with no frames crossing into
-  Python. The plate branch is unbounded and resizes in numpy, which is what `resize.py` is for.
+### Three things behind those that should not be re-derived
 
-### Next task: choose between M4.3 and M4.5
+- **The graded plate is not a reversal of the argument, it is the argument running out.**
+  2026-09-11 refused a graded plate because a grade baked into a plate stops matching when it
+  moves in the DI. This workflow does the DI **first**, so there is no later grade to stop
+  matching. What survives of the old objection is one hard requirement: the CLF must end in
+  scene linear ACEScg and contain **no display rendering**. A CLF carrying an output transform
+  produces a display referred file that claims to be linear, which comps wrong and looks
+  entirely normal until someone works on it. That is QC-039 and it is not optional.
+- **"Studio standard log" is the single most valuable line in the spec.** The user's first
+  description said log encoded ProRes per shot, which was read as camera original, and a full
+  per shot IDT apparatus was specified and then deleted within the hour when they corrected
+  it. One encoding on every file means **one input transform forever**, no per shot IDT, and
+  no mapping Resolve's transform names onto OpenColorIO's, which do not agree. If a future
+  session finds itself building an IDT table, it has taken a wrong turn.
+- **The tool's stringout would have been the only one cut to the edited In/Out.** The colour
+  session's QT and the shooters' offline are both cut to the turnover as delivered. That is
+  what dropping M6 gives up, and it is recorded in PRD FR-9 so it reads as a decision rather
+  than an oversight.
 
-Both are fully specified and neither blocks the other. **I would do M4.5 first**, for one
-reason: the QC log and the tracker want the CDL and the AD notes as columns, so doing
+### Next task: still M4.5, and its shape changed
+
+M4.5 and M4.3 are both unblocked and neither blocks the other. **M4.5 first** still, for the
+reason it was chosen yesterday: the QC log and the tracker want the colour columns, so doing
 colour first means the exports get written once instead of twice.
 
-- **M4.5, colour pipeline, core only.** OCIO wired in; `core/color.py` rebuilt from a
-  setting into a pipeline; CDL parsed out of the EDL and modelled per clip; `ColorAdjust`
-  for the AD notes; the viewing LUT generated in core; a single frame preview fetch that
-  does not exist yet. **Reopens M3** for the plate/view split in `render._source_pixels`
-  and swaps `ffmpeg.encode_command`'s `display_filter` for a `lut3d`. Two constants in
-  `exr.py` change and they matter: `CHROMATICITIES` goes from sRGB to AP1 and
-  `COLORSPACE_ATTRIBUTE` from `scene_linear_sRGB` to `ACEScg`. No Qt, testable headless.
-- **M4.3, exports.** `core/exports.py` does not exist. The xlsx writers per QC_RULES "QC log
-  structure" and PRD FR-10, plus `proingest qc <batch>`. QC-053 lands here with the camData
-  parser (OQ-11).
+What changed in M4.5 is what it reads. It no longer parses CDL out of an EDL and no longer
+models AD notes, which between them were most of M4.5.2 and all of M4.5.3. It gains a sidecar
+reader and a CLF matcher. Net it is smaller.
+
+**Two questions are open and both are cheap to answer**, and the user has them:
+
+- **OQ-39, which log encoding is the studio standard.** ACEScct makes the input transform
+  identity, which is the whole of M4.5.1. Anything else costs one fixed transform. Either way
+  M4.5.1 can be written against a constant.
+- **OQ-33, what the sidecar actually is.** This one genuinely blocks M4.5.2: it is a reader,
+  and there is no format to read yet. The default is JSON from a small export script in the
+  colour session, with an EDL plus a CLF folder as the fallback.
+
+**OQ-35 is open and does not block anything**: frame numbers at 1001, as the studio spec sheet
+and QC-102 say, or derived from source timecode as the user's proposal said. The default is
+1001 and changing it later costs `naming.py`, the planner, the EXR writer and their tests.
 
 ### Two M3 decisions to revisit rather than rediscover
 
 - **A reference encode reports no progress and cannot be cancelled mid-encode.** It is one
-  ffmpeg process, so a job goes from started to done with nothing in between and a
-  cancelled run finishes the encodes in flight. The plan for M3.5 said to parse
-  `-progress` and kill the child; neither was built, deliberately. Sections 6 and 9.
+  ffmpeg process, so a job goes from started to done with nothing in between and a cancelled
+  run finishes the encodes in flight. The plan for M3.5 said to parse `-progress` and kill the
+  child; neither was built, deliberately. Sections 6 and 9.
 - **x264 CRF 18 `-preset slow` is what shipped and hardware encoding stayed out.**
-  `h264_videotoolbox` has no CRF and an uncalibrated `-q:v` (OQ-23). `ffmpeg.has_nvenc()`
-  is dead code nothing calls. Hardware encode is an M5 Settings toggle at the earliest and
-  needs a real Mac to calibrate.
+  `h264_videotoolbox` has no CRF and an uncalibrated `-q:v` (OQ-23). `ffmpeg.has_nvenc()` is
+  dead code nothing calls. Hardware encode is an M5 Settings toggle at the earliest and needs
+  a real Mac to calibrate.
 
 ### Context a cold reader needs before touching anything
 
-- **v01 is macOS on Apple Silicon, decided 2026-09-10.** Not Windows, and not Intel
-  (OQ-24). Windows 11 is a v02 intention. Read the section 6 entry before touching
-  packaging, settings paths or the reference encodes.
+- **v01 is macOS on Apple Silicon, decided 2026-09-10.** Not Windows, and not Intel (OQ-24).
+  Windows 11 is a v02 intention. Read the section 6 entry before touching packaging, settings
+  paths or the reference encodes.
 - **The suite runs on the target platform.** CI runs lint, types and the full suite on a
-  `macos-latest` arm64 runner on every push, against the bundled ffmpeg 9.0.1 rather than
-  this machine's Ubuntu 6.1.1. `h264_videotoolbox` was confirmed to open and encode there,
-  which answered half of OQ-23.
-- **Five open questions were answered by the user on 2026-09-10**: OQ-5, OQ-20, OQ-24,
-  OQ-25 and OQ-27, all written up in section 6. **OQ-28 is new**, raised by M4.1: no doc
-  has ever stated how many handle frames a turnover carries, and QC-030 needs a number.
-  **17 of 28 questions remain open**; none of them blocks M4.3.
-- **Everything is pushed and CI is green on both runners**, including the M3.5 and OQ work
-  that had been sitting unpushed. Run 34566217430: macOS arm64 in 56s, Linux in 1m17s.
-  Pushing is still the user's call rather than an automatic step.
+  `macos-latest` arm64 runner on every push, against the bundled ffmpeg 9.0.1 rather than this
+  machine's Ubuntu 6.1.1. `h264_videotoolbox` was confirmed to open and encode there, which
+  answered half of OQ-23.
+- **39 open questions, 17 of them still open.** Closed on 2026-09-12: OQ-12, OQ-15, OQ-32,
+  OQ-34, OQ-37, OQ-38, and OQ-30 superseded. New: OQ-33, OQ-35, OQ-36, OQ-39. OQ-29 is mostly
+  answered, since the colour session pins ACES 1.3.
+- **Everything through 2026-09-11 is pushed and CI is green on both runners.** Run
+  34566217430: macOS arm64 in 56s, Linux in 1m17s. Pushing is still the user's call rather
+  than an automatic step.
+
+---
 
 ## 2. What this is, and what to read
 
@@ -134,12 +151,13 @@ fix one and say which.**
 
 | doc | what it settles |
 |---|---|
+| `docs/WORKFLOW.md` | who does what, in twenty lines. Read it first, it is the shortest thing here |
 | `docs/NAMING_SPEC.md` | every input and output name, the type table, versioning, delivery layout |
 | `docs/COLOR_AND_FORMAT.md` | colour policy, accepted sources, output formats, frame math, EXR pipeline |
 | `docs/QC_RULES.md` | every rule ID, severity and scope. IDs never change meaning |
 | `docs/ARCHITECTURE.md` | package layout, data flow, concurrency, batch file |
 | `docs/UI_SPEC.md` | the M5 interface, keyboard model, burn-ins |
-| `docs/OPEN_QUESTIONS.md` | OQ-1 to OQ-26, with defaults for the unanswered ones |
+| `docs/OPEN_QUESTIONS.md` | OQ-1 to OQ-39, with defaults for the unanswered ones |
 | `docs/PACKAGING.md` | M7, the `.app` and dmg, ffmpeg bundling, Gatekeeper |
 | `docs/MAC_SESSION.md` | the only work that needs a real Mac, and what to do on the day |
 
@@ -199,7 +217,7 @@ PDF viewer.
 | `core/media.py` | DirectoryIndex, sequence detection, path remap, probe cache | 465 |
 | `core/exr.py` | EXR header and pixel reading, delivery frame writing | 235 |
 | `core/resize.py` | antialiased Lanczos downscale for the EXR path | 96 |
-| `core/color.py` | source colour space setting; what each deliverable does about it | 61 |
+| `core/color.py` | source colour space setting; what each deliverable does about it. **Describes a workflow that no longer exists**; M4.5.1 rebuilds it | 61 |
 | `core/timeline.py` | OTIO and EDL loading, audio association | 233 |
 | `core/scan.py` | turnover folder -> Turnover + ShotRows | 388 |
 | `core/planner.py` | type table, deliverable jobs, version resolution | 440 |
@@ -208,8 +226,11 @@ PDF viewer.
 | `core/qc.py` | rule registry: phase A, `RuleSettings`, `preflight`, phase B | 1325 |
 | `__main__.py` | `proingest scan` and `proingest run` CLI, `--rules` overrides | 322 |
 
-Not built yet: `core/stringout.py`, `core/exports.py`, `core/settings.py`, and
-everything under `proingest/ui/`.
+Not built yet: `core/clf.py`, `core/preview.py`, `core/exports.py`, `core/settings.py`, and
+everything under `proingest/ui/`. **`core/stringout.py` will not be built**: M6 is dropped
+(PRD FR-9). `naming.stringout_mp4` and `naming.normalize_shooter` are therefore reachable
+from tests only; they are kept deliberately, because the stringout name is now something a
+human types and the tool can still check it, exactly as with the lens grid.
 
 Entry points worth knowing:
 
@@ -245,9 +266,9 @@ Entry points worth knowing:
 | M2 | Naming and planning: type table, versioning, layout | complete, 66 tests |
 | M3 | Render | complete, 172 tests |
 | M4 | QC: all rules both phases, xlsx exports, `qc` CLI | M4.1 and M4.2 done, M4.3 pending |
-| M4.5 | Colour pipeline, core only. ACEScct in, ACEScg out, CDL, the viewing LUT | **specified 2026-09-11, not started** |
-| M5 | UI: the FR-14 metadata pane, plus the FR-16 viewers and colour controls | not started |
-| M6 | Stringout with burn-ins | not started |
+| M4.5 | Colour pipeline, core only. Studio log in, CLF applied, ACEScg out, the viewing LUT | **respecified 2026-09-12, not started** |
+| M5 | UI: the FR-14 metadata pane, plus the FR-16 viewers | not started |
+| M6 | ~~Stringout with burn-ins~~ | **dropped 2026-09-12**, the colour session exports it |
 | M7 | Packaging: PyInstaller `.app`, dmg, Gatekeeper | not started, and needs a Mac (OQ-22) |
 | M8 | Polish, performance on a real turnover, docs | not started |
 
@@ -259,15 +280,20 @@ M4 detail. The milestone had no chunk table until M4.1; this is it:
 | M4.2 | phase B verification, QC-1xx, wired into `render_job` | done, 47 tests |
 | M4.3 | `core/exports.py`, the xlsx sheets, `proingest qc <batch>`, QC-053 | pending |
 
-M4.5 detail, specified 2026-09-11, nothing built:
+M4.5 detail, respecified 2026-09-12, nothing built. It is **smaller than yesterday's
+version**: the CDL parser and the AD notes model are gone, a sidecar reader and a CLF matcher
+take their place, and one chunk disappears entirely.
 
 | chunk | scope | state |
 |---|---|---|
-| M4.5.1 | OCIO in, `core/color.py` rebuilt as a pipeline, ACEScct to ACEScg | not started |
-| M4.5.2 | CDL read from the EDL, matched per clip, modelled on the row | not started |
-| M4.5.3 | `ColorAdjust` (AD notes), the viewing LUT, `.cube` generation | not started |
-| M4.5.4 | `render` plate/view split, `lut3d` encode, `exr.py` AP1 constants | not started |
+| M4.5.1 | OCIO in, `core/color.py` rebuilt as a pipeline, studio log to ACEScct to ACEScg. **Wants OQ-39** | not started |
+| M4.5.2 | `core/clf.py`: sidecar read, CLF matched per row, CLF hashed. **Blocked on OQ-33** | not started |
+| M4.5.3 | The viewing LUT: CLF plus ACES output transform baked to one `.cube` per shot | not started |
+| M4.5.4 | `render` plate/view split, `lut3d` encode, `exr.py` AP1 constants and the new header attributes | not started |
 | M4.5.5 | `core/preview.py`, single frame fetch with cache, for the viewers | not started |
+
+Two constants in `exr.py` change in M4.5.4 and they matter: `CHROMATICITIES` goes from sRGB to
+AP1, and `COLORSPACE_ATTRIBUTE`'s value from `scene_linear_sRGB` to `ACEScg`.
 
 M3 detail:
 
@@ -290,54 +316,86 @@ color 6.
 
 ## 6. Decisions taken
 
-**The colour pipeline (specified 2026-09-11, nothing built).**
+**The colour pipeline (respecified 2026-09-12, nothing built).**
 
-`docs/COLOR_AND_FORMAT.md` section 1 is the spec and is not repeated here. What belongs
-here is why each choice was made, so it is not relitigated by someone reading only the code.
+`docs/COLOR_AND_FORMAT.md` section 1 is the spec and is not repeated here. What belongs here is
+why each choice was made, so it is not relitigated by someone reading only the code.
 
-- **OQ-17's resolution was wrong and the correction reaches back into M3.** The premise was
-  display referred sources with sRGB baked in; the reality is log encoded sources. The
-  shipped reference encode applies no transfer, which was right under the old premise and
-  produces a flat milky mp4 under the real one. COLOR_AND_FORMAT section 1 was rewritten
-  rather than amended, deliberately: amending it would have left two readings in one
-  document and the wrong one is the one that reads as settled.
-- **ACEScct was chosen over any camera log to make the source camera agnostic.** The camera
-  specific input transform happens in the shooter's Resolve project, where the camera
-  metadata lives. That single choice deleted three problems rather than solving them:
-  which LogC, which exposure index (LogC3 is EI dependent and LogC4 is not), and mixed
-  cameras inside one turnover.
-- **ACEScg over scene linear Rec.709, because of negatives.** Both are legal. Converting a
-  wide gamut camera image into 709 primaries pushes saturated colour out of gamut, where it
-  becomes negative float, and negatives misbehave in comp. Resizing a linear image in too
-  small a gamut manufactures them on its own, and this tool resizes every plate to HD. AP1
-  is wide enough that the question does not arise. ACES has an entire Reference Gamut
-  Compression spec because of this problem; picking AP1 avoids needing it.
-- **The plate is ungraded and the CDL rides in the header.** The grade is creative intent
-  that moves in the DI, a baked grade can clip highlights the comp needs, and work done
-  against a graded plate stops matching when the grade changes. Writing the CDL into the
-  EXR header costs almost nothing and gives the vendor intent without altered pixels. The
-  user's first instinct was a graded plate; this was argued and they took it.
-- **Resolve exports no `.cdl` or `.ccc` file.** Verified, not assumed. CDL comes out as
-  `*ASC_SOP` and `*ASC_SAT` comment lines inside an EDL, or in an ALE. So the tool wants
-  the OTIO **and** the EDL, which is a change of shape for `scan._choose_timeline`: it
-  returns one path today and QC-003 treats an EDL as a lesser substitute.
-- **One LUT, three consumers.** The whole viewing transform collapses into a single 3D LUT
-  per clip, generated in core, applied by ffmpeg `lut3d` for the reference and in numpy by
-  the viewers. This is the direct answer to the failure mode this codebase keeps nearly
-  hitting: OQ-7 was the same problem in the resampler and needed a measured test to settle.
-  Here the two paths cannot drift, because they are the same nine hundred numbers.
-- **OCIO's packaging objection was checked and does not exist.** 5.7 MB arm64 wheel,
-  built-in configs so nothing ships on disk, Windows wheel available for v02. The
-  alternative considered was `colour-science`; OCIO wins because it also does ACES and CDL
-  properly rather than just the curves.
-- **Neutral colour controls must be exactly identity**, with no grade stage built at all.
-  Otherwise every deliverable in the batch changes the day the feature lands and every
-  render test's bytes move.
-- **Stepping a viewer trims the row**, which is a deliberate exception to FR-5's "the list
-  owns every edit". The metadata pane was kept read only for exactly the opposite reason,
-  so the difference is worth stating: the pane duplicates fields the list already edits,
-  whereas the viewers edit the two fields they are showing, through the same validation.
-  Judging a cut point and acting on it should not require looking away.
+**This spec has been rewritten twice in two days and both rewrites were the user correcting a
+premise, not a design changing its mind.** Section 1 of this file has the table. The mechanics
+were right both times; what was wrong was who authors colour and when.
+
+- **Colour is authored in a Resolve session, not in this tool, and that deletes a feature
+  rather than moving one.** The 2026-09-11 spec had four per clip sliders as an AD notes layer
+  on top of the shooter's CDL. The AD's notes now go into the colour session with the AD in the
+  room, and come back in the CLF. Two places to author a grade is two answers to a question
+  that can only have one, and the session is the one with the colourist and the reference
+  monitor. QC-037 and OQ-32 retired with the sliders.
+- **The plate is graded, which reverses 2026-09-11 on its own terms.** That spec refused a
+  graded plate because a baked grade stops matching when the grade moves in the DI. This
+  workflow finishes the DI **before** the turnover is ingested, so there is no later grade for
+  the plate to stop matching, and the objection expires rather than being overruled. The half
+  of it that survives is a requirement on the CLF, not a reason to refuse: it must end in scene
+  linear ACEScg with **no display rendering**, or the delivered EXR is display referred and
+  says it is linear. QC-039. That failure is invisible on a monitor and expensive in a comp,
+  which is why it is an error and why the tool probes rather than trusting a filename.
+- **The CLF hash goes in the EXR header, and that is the point of the header change.** A
+  graded plate is only auditable if the file says what was done to it. A CLF that is re-exported
+  and redelivered has a different hash, so the deliverables rendered from the old one are
+  findable afterwards. The CDL attributes from the previous spec are not written at all: the
+  CDL is an offline artifact and the look that shipped is the CLF.
+- **One studio standard log encoding, and it is worth defending.** The user's first description
+  of the workflow said "log encoded ProRes per shot", which was read as camera original, and a
+  whole per shot IDT apparatus was specified: a sidecar IDT field, a Resolve to OpenColorIO
+  name map, QC-038 on an unknown name, two open questions. The user corrected it within the
+  hour and all of that was deleted. **One encoding on every file means one input transform
+  forever**, and the camera specific work stays in the shooter's Resolve project where the
+  camera metadata actually is. If a future session finds itself building a table of IDT names,
+  it has taken a wrong turn. Which encoding it is, is OQ-39; ACEScct makes the transform
+  identity, because the colour session's CLF starts there.
+- **The stringout is dropped and M6 with it.** The colour session exports a reference QT with
+  the look and burn-ins. Three artifacts claiming to be the stringout is two too many. What it
+  gives up is real and is recorded in PRD FR-9: the tool's would have been the only one cut to
+  the **edited** In/Out, since the session's QT and the shooters' offline are both cut to the
+  turnover as delivered. If the vendor turns out to need that, it comes back as a milestone.
+- **Rendering now depends on something that is not media.** A batch scans and reviews without a
+  colour session and cannot render final deliverables without one (QC-008, QC-009). That is a
+  new shape for the user flow, written into PRD section 6 as its own step, and it is why Run
+  can be blocked by something with nothing wrong with the pictures.
+- **QC IDs were retired rather than repurposed.** QC-006, QC-007, QC-017, QC-037, QC-140 and
+  QC-141 stay in the table marked RETIRED with what they used to mean. Reusing an ID would make
+  an old log line resolve to the wrong rule, and the whole reason the IDs are stable is that
+  they turn up in spreadsheets that outlive the code.
+- **OpenImageIO stays out.** The proposed workflow wrote EXRs with OIIO. `core/exr.py` already
+  writes AP1 chromaticities, DWAA, timecode and arbitrary named attributes through the
+  `OpenEXR` bindings, with 45 tests behind it, so OIIO would be a second large dependency
+  inside a 300 MB installer budget in exchange for no capability. DWAA 45 stays the default
+  over PIZ for the same kind of reason, and is OQ-36 rather than closed.
+- **Tetrahedral interpolation is specified, not defaulted.** Trilinear is the default in
+  several tools, it is visibly worse on saturated colour, and it is a one word difference that
+  nobody notices being wrong. It is stated for both the OCIO transform and the ffmpeg `lut3d`.
+
+These carry over from 2026-09-11 unchanged, because they never depended on where the grade came
+from:
+
+- **ACEScg over scene linear Rec.709, because of negatives.** Converting a wide gamut camera
+  image into 709 primaries pushes saturated colour out of gamut, where it becomes negative
+  float, and negatives misbehave in comp. Resizing a linear image in too small a gamut
+  manufactures them on its own, and this tool resizes every plate to HD. AP1 is wide enough
+  that the question does not arise. ACES has an entire Reference Gamut Compression spec because
+  of this problem; picking AP1 avoids needing it.
+- **One LUT, two consumers.** The whole viewing transform collapses into a single 3D LUT per
+  shot, generated in core, applied by ffmpeg `lut3d` for the reference and in numpy by the
+  viewers. They cannot drift, because they are the same nine hundred numbers. OQ-7 was the same
+  problem in the resampler and it needed a measured test to settle.
+- **The view branch stays bounded until the final encode**, because everything before the
+  output transform happens in ACEScct. swscale clamps float to 0..1, so this is what lets
+  ffmpeg keep doing the reference resize in a single pass with no frames crossing into Python.
+  The plate branch is unbounded and resizes in numpy, which is what `resize.py` is for.
+- **OCIO's packaging objection was checked and does not exist.** 5.7 MB arm64 wheel, built-in
+  configs so nothing ships on disk, Windows wheel available for v02. The alternative considered
+  was `colour-science`; OCIO wins because it also loads a CLF and does ACES properly rather
+  than just the curves.
 
 **Phase B verification, where it runs and what it keeps (M4.2).**
 
@@ -815,16 +873,20 @@ is useful rather than not, but a test asserting "one stream" will fail on it.
 Nothing blocks the next task. These are live, in rough priority order:
 
 - **M3's reference encode is wrong as shipped, and it is known.** It applies no colour
-  transform, which was correct under OQ-17's old premise and is not under the real one: a
-  log source encoded with no output transform gives a flat, milky mp4. Nothing is broken in
-  a way tests can catch, because the tests assert the encode does what it was told to do.
-  M4.5.4 fixes it. Until then, do not trust the appearance of a reference mp4.
+  transform, which was correct under OQ-17's original premise and is not under any of the
+  three specs since: a log source encoded with no output transform gives a flat, milky mp4.
+  Nothing is broken in a way tests can catch, because the tests assert the encode does what it
+  was told to do. M4.5.4 fixes it. Until then, do not trust the appearance of a reference mp4.
 - **`core/color.py` describes two states and neither of them is real.** `srgb_display` and
-  `scene_linear_srgb` were the old premise. The real source is ACEScct and the real plate
-  output is ACEScg. The module is 61 lines and gets rebuilt rather than edited.
-- **The shooters' template Resolve project does not exist (OQ-31).** Every claim in
-  COLOR_AND_FORMAT section 1 about what arrives in a turnover is a specification, not an
-  observation, until it has been built and one real turnover has come through it.
+  `scene_linear_srgb` were the 2026-09-10 premise. The real source is a studio standard log,
+  the real plate output is ACEScg with the shot's CLF applied, and a two value enum is the
+  wrong shape for any of it. The module is 61 lines and gets rebuilt rather than edited, in
+  M4.5.1. Its six tests go with it.
+- **No colour session has ever exported for this tool (OQ-31).** Every claim in
+  COLOR_AND_FORMAT section 1 about what arrives is a specification, not an observation, until
+  one session has run end to end on one shot. That single exercise answers OQ-29, OQ-33 and
+  OQ-39 at the same time, and it is the cheapest thing on this list: it needs one graded shot,
+  not a whole turnover.
 
 - **A reference encode reports no progress and cannot be cancelled mid-encode.** It is one
   ffmpeg process, so the job goes from started to done with nothing in between, and a
@@ -833,12 +895,12 @@ Nothing blocks the next task. These are live, in rough priority order:
   per-frame progress, and a `Popen` with a poll on the cancel flag would give the kill;
   neither is built because neither is worth it until someone has watched a real 100 shot
   run. Section 6 has the reasoning.
-- **The reference path resamples through swscale, which clamps float to 0-1.** Inert
-  today: every source is display referred and bounded. The day the EXRs go scene linear a
-  highlight at 4.0 will clamp to 1.0 *before* the HD downscale averages it, so a bright
-  edge reduces differently than it should, and the raw path (which resamples in numpy for
-  exactly this reason) will disagree with the reference. Whoever flips the colour setting
-  should read this line first.
+- **The reference path resamples through swscale, which clamps float to 0-1.** This is now
+  load bearing rather than a hazard, and COLOR_AND_FORMAT section 1 depends on it: the view
+  branch stays in ACEScct all the way to the `lut3d`, so everything swscale sees is bounded to
+  0..1 anyway and the clamp costs nothing. **The plate branch must never go near it.** That is
+  why `core/resize.py` exists, and why M4.5.4 has to keep the two branches apart rather than
+  letting the plate borrow the reference's resize.
 
 - **QC-024, a letterboxed source, is the one phase A rule that cannot be a model
   function.** QC-023 now catches a source that is not 3840x2160, but a source that *is*
@@ -871,12 +933,12 @@ Nothing blocks the next task. These are live, in rough priority order:
   one. `MediaInfo` records no alpha field, so nothing could set a flag even if the decoder
   took one. Decoding `gbrapf32le` instead is a one line change once there is something to
   switch on.
-- **Nothing detects which colour space a turnover actually is.** When the shooters
-  switch their EXRs to scene linear and the setting is stale, the references come out
-  wrong in the other direction. A cheap heuristic exists (scene linear plates usually
-  carry values above 1.0, display referred ones are bounded at 1.0), but it needs the
-  scan to read a frame's pixels rather than just its header, and it false-positives on
-  a dark plate. Worth adding as a warning before the switch happens.
+- **Nothing detects what a turnover's pixels actually are.** The source encoding comes from
+  Settings and the file is decoded as whatever it is told (QC-018 only compares the container's
+  own tags, which are usually absent or wrong). A source that is not the studio standard
+  therefore renders silently wrong. A cheap heuristic exists, since a log signal and a display
+  referred one have very different histograms, but it needs the scan to read a frame's pixels
+  rather than just a header. Worth a warning eventually; it is not what QC-018 does today.
 - **The metadata pane (FR-14) is new scope, added 2026-09-10 at the user's request.** It was
   not in any doc before: the closest thing was the bottom dock's Deliverables tab, which
   describes outputs rather than the source. Spec is `docs/UI_SPEC.md` section 12, field list
@@ -892,9 +954,9 @@ Nothing blocks the next task. These are live, in rough priority order:
   macOS Dock tile rather than a Windows taskbar button; Qt 6 exposes no API for either,
   so it needs a small `NSDockTile` shim through PyObjC in `ui/platform_mac.py`. It is
   decoration, and the status bar carries the same information if it is never built.
-- **OQ-2 (tracker columns) and OQ-3 (what the consolidated media actually is)** are
-  still open and both want a real turnover. Neither blocks: OQ-2 has a default template
-  loaded from a file, OQ-3 only tunes QC-020 and QC-021 severity.
+- **OQ-2 (tracker columns) is still open** and wants a real turnover; it has a default
+  template loaded from a file, so it blocks nothing. OQ-3's container half is settled and its
+  encoding half became OQ-39.
 - **A Mac is still needed, but for less than before.** CI now runs the suite on arm64 macOS
   every push (section 3), which was the larger half of OQ-22. What a runner still cannot do:
   judge whether a reference encode looks right, exercise the Dock and menu-bar behaviour in

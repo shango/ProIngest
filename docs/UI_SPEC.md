@@ -10,11 +10,11 @@ PySide6 6.7+. Dark theme in the spirit of DaVinci Resolve: near-black panels, th
 +------------------------------------------------------------------+
 | Batch bar: batch name, delivery root path (click to change), In/Out toggle [Frames|Source TC|Record TC], search box |
 +------------------------------------------------------------------+
-|  +-----------+  +-----------+  +-----------+  |  COLOUR          |
-|  |    IN     |  |  CENTER   |  |    OUT    |  |  exposure  ----o |
-|  |  [<] [>]  |  |           |  |  [<] [>]  |  |  satur.    --o-- |
-|  +-----------+  +-----------+  +-----------+  |  warm/cool -o--- |
-|   1009           1128           1248          |  tint      --o-- |
+|      +-------------+   +-------------+   +-------------+       |
+|      |     IN      |   |   CENTER    |   |     OUT     |       |
+|      |   [<] [>]   |   |             |   |   [<] [>]   |       |
+|      +-------------+   +-------------+   +-------------+       |
+|       1009              1128              1248                 |
 +------------------------------------------------------------------+
 |                                            |                     |
 |   SHOT LIST (hero)                         |  METADATA           |
@@ -35,10 +35,10 @@ The list is still the hero. The metadata pane is a fixed-width reading surface b
 second workspace: it is read only, it never takes focus, and it collapses to nothing. See
 section 12.
 
-The viewer strip and the colour controls are section 14. Unlike the metadata pane they **do**
-write to the model: stepping In or Out trims the selected row, and the four colour sliders are
-that row's AD notes. Both collapse, because together they cost 300px of height that a batch
-being checked for naming rather than content does not need.
+The viewer strip is section 14. Unlike the metadata pane it **does** write to the model:
+stepping In or Out trims the selected row. It collapses, because it costs height that a batch
+being checked for naming rather than content does not need. The strip is centred and given the
+full width now that there are no colour controls beside it (PRD section 3).
 
 Nothing opens a modal during review except Settings and file dialogs.
 
@@ -112,18 +112,15 @@ Table: row, rule ID, severity, message, "Fix" hint where applicable (e.g. "Renam
 - Stop finishes in-flight frames, discards `.part` outputs, and leaves rows in their previous state.
 - On completion a non-modal banner above the list reads "Batch complete: 27 done, 1 failed, 2 skipped. Exports written to ...". Click opens the folder.
 
-## 8. Stringout burn-ins
+## 8. Stringout burn-ins: dropped
 
-Rendered with ffmpeg `drawtext`, monospace font bundled with the app, white text with 60% black box. Layout on 1920x1080:
+**The tool no longer builds a stringout** (PRD FR-9, decided 2026-09-12), so there are no
+burn-ins to specify. The colour session exports a reference QT with the look and burn-ins
+already on it.
 
-- Top left: shot code, element (e.g. `MELT0001  pl01`)
-- Top center: source filename
-- Top right: fps, resolution (`24 fps  3840x2160`)
-- Bottom left: source TC (running)
-- Bottom center: record TC (running)
-- Bottom right: frame `1001 + k` of duration, then color label. The label is the source color space from Settings (`sRGB display` or `scene linear sRGB`, see COLOR_AND_FORMAT section 1), or the LUT name when one is set
-
-Each burn-in is a toggle in Settings. Text size scales with a single Settings value.
+The section number is kept rather than renumbered, because every other section is referenced
+by number from the PRD, from `QC_RULES.md` and from `PROGRESS.md`, and renumbering would
+silently redirect all of them.
 
 ## 9. Settings page
 
@@ -242,10 +239,15 @@ OQ-25.
 - Adding a turnover from outside the source root is allowed and just updates the remembered
   root. The root is a starting point, not a fence.
 
-## 14. Viewers and colour controls
+## 14. Viewers
 
-FR-16. Three viewers above the shot list showing the selected row, and four colour controls
-for that row beside them.
+FR-16. Three viewers above the shot list showing the selected row.
+
+**There are no colour controls.** An earlier version of this section specified four sliders
+per clip, exposure, saturation, warm to cool and tint, as an AD notes layer that baked into
+the references. They are removed (PRD section 3, decided 2026-09-12): colour is authored in
+the colour session and arrives as a CLF, and a second place to author a grade is a second
+answer to a question that should only have one. QC-037 and OQ-32 went with them.
 
 ### The strip
 
@@ -262,7 +264,8 @@ for that row beside them.
 
 - All three show the **graded** image, meaning the same 3D LUT the reference mp4 will be
   encoded with (COLOR_AND_FORMAT section 1). A viewer showing ungraded pixels would be a
-  viewer of something nobody is delivering.
+  viewer of something nobody is delivering. **Before the colour session has been ingested
+  there is no LUT**, so the viewers show the log image and say so in place of pretending.
 - Each carries the frame number and the timecode, following the same Frames / Source TC /
   Record TC toggle the list uses (section 2). Cmd+T switches all three with the columns.
 - Center is `in + duration // 2`, integer, tracking the **current** In/Out rather than the
@@ -300,63 +303,12 @@ the same validation, and shows the same QC results.
 - Neighbours of In and Out are prefetched, because stepping is the common case and the frame
   after the one being looked at is the one about to be asked for.
 
-### Colour controls
-
-Four sliders for the selected row: **exposure, saturation, warm to cool, tint**. These are the
-AD notes layer. They sit on top of the shooter's CDL, are applied in ACEScct alongside it, and
-bake into the references and the stringout only, never the plate.
-
-**Every control is three controls.** Colour notes are adjusted, compared and typed in from
-a sheet, and a slider alone serves only the first of those. Each row therefore carries a
-drag, a nudge pair and a typed field, all editing the same value:
-
-```
-  Exposure                    +0.25 EV
-  [-] ---------o------------ [+]
-```
-
-- **The typed field is the one you read.** It sits next to the name at full weight, shows
-  the value to the control's own precision, and accepts a typed number. Enter or focus loss
-  commits, Escape abandons. The field holds what is typed as text while it has focus, so a
-  half finished `-0.` is not parsed and thrown away mid-keystroke.
-- **The nudge pair is the fine control.** A click moves one fine step; Shift moves one
-  coarse step. Up and down arrows in the typed field do the same, with the same Shift
-  behaviour, so a value can be walked without leaving the keyboard. One control does both
-  "creep" and "get me roughly there" without a mode to be in.
-- **The slider is for finding the neighbourhood**, which is why it gets the full width of
-  the panel rather than sharing a line with the label. Double clicking it returns that
-  control to neutral.
-- Every path quantises to the control's own precision, so repeated nudges cannot drift a
-  value to `0.15000000000000002` and put a number in the QC log that nobody typed.
-- The nudge buttons disable at the ends of the range. The slider and the field clamp.
-
-| control | range | fine | coarse | shown |
-|---|---|---|---|---|
-| Exposure | -2 to +2 | 0.05 | 0.25 | 2 dp, signed, `EV` |
-| Saturation | 0 to 2 | 0.01 | 0.10 | 2 dp |
-| Warm / cool | -100 to +100 | 1 | 10 | integer, signed |
-| Tint | -100 to +100 | 1 | 10 | integer, signed |
-
-Those numbers are a starting point and OQ-32 is the question of whether they are the right
-ones. The ranges are Settings values, not constants.
-- **Neutral is exactly identity.** With all four at their defaults no grade stage is built at
-  all, so an untouched clip's deliverables are bit for bit what they would have been without
-  the feature existing.
-- A non-neutral row shows a small mark in the list, the way an edited In/Out does, and raises
-  QC-037 in the log.
-- The controls are disabled with a reason shown when the row has no readable media, when the
-  row is skipped, or when the selection covers more than one row. Multi-row grading is not in
-  v01: it reads as a batch operation and would need an undo model the rest of the tool does
-  not have.
-- There is no copy or paste of a grade between clips in v01. If that turns out to be the first
-  thing anyone asks for, it is cheap to add and belongs with a proper undo stack.
-
 ### Empty and error states
 
 - No selection: three empty frames with the strip's chrome intact, so the layout does not jump.
 - Media not found or unreadable (QC-012, QC-014): the rule ID and message in place of the
-  image, not a broken icon. The colour controls are disabled.
+  image, not a broken icon.
 - Aux still and BTS rows are one frame, so all three viewers show the same frame and neither
   In nor Out steps. `is_picture_row` in `core/qc.py` already draws that line.
-- A row with no CDL (QC-017) views and renders ungraded. The strip says so once, quietly, so
-  the editor does not go looking for a grade that was never delivered.
+- A row with no CLF (QC-009) cannot render, and views as log. The strip says so once, quietly,
+  and names the rule, so the editor does not go looking for a grade that has not arrived yet.
