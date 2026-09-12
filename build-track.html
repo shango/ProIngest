@@ -277,7 +277,7 @@
   <header class="mast">
     <div class="eyebrow">
       <span>VFX turnover ingest &middot; macOS v01</span>
-      <span class="stamp">Updated <b>12 Sep 2026, 18:05 PDT</b></span>
+      <span class="stamp">Updated <b>12 Sep 2026, 19:40 PDT</b></span>
     </div>
     <h1>ProIngest Build Track</h1>
     <p class="standfirst">
@@ -297,7 +297,7 @@
       <div class="stat-l">Tests, Linux + macOS</div>
     </div>
     <div class="stat">
-      <div class="stat-n">24<span style="color:var(--faint);font-size:17px">/46</span></div>
+      <div class="stat-n">23<span style="color:var(--faint);font-size:17px">/46</span></div>
       <div class="stat-l">Questions open</div>
     </div>
     <div class="stat">
@@ -505,7 +505,7 @@
         <div class="ms-id">M4.6</div>
         <div class="ms-body">
           <div class="ms-head">
-            <span class="ms-name">Camera log mode</span>
+            <span class="ms-name">Per shot source format</span>
             <span class="pill block">Unblocked, not started</span>
           </div>
           <p class="ms-goal">
@@ -515,10 +515,19 @@
           </p>
           <div class="mods"><span>color.py</span><i>/</i><span>clf.py</span><i>/</i><span>scan.py</span><i>/</i><span>models.py</span></div>
           <div class="gate">
-            <b>On 12 September the studio reversed the decision M4.5 was built on, and then
-            answered the expensive half of it the same day.</b> There will most likely be no
-            single house log format: each shooter uses whatever their camera shoots and writes it
-            into the clip, with the house format kept as a mode the tool can be switched into.
+            <b>On 12 September the studio reversed the decision M4.5 was built on, then
+            answered the expensive half of it and simplified the rest, all the same day.</b>
+            There will most likely be no single house log format: each shooter uses whatever
+            their camera shoots and writes it into the clip.
+            <b>And there is no mode.</b> This was first written as a setting the tool could be
+            switched between, camera formats or the house one. The studio removed it: the house
+            wide gamut format <b>is not a mode, it is one more format</b>, and a clip encoded in
+            it says so in its own information exactly like a clip from a camera. So there is one
+            mechanism rather than two arrangements, a delivery may mix them freely - one shooter
+            on a house template and two on their cameras - and nothing has to be set before a
+            delivery is scanned. That removed a setting, a drop-down the interface work had been
+            told to build, and one quality check that asked whether a setting which no longer
+            exists made sense.
             <b>The important half is where the grading session starts from.</b> The colourist
             builds each shot's colour file from the camera's own format, or from the house format
             in the other mode. <b>So the colour file is the entire conversion</b>, from the pixels
@@ -547,9 +556,8 @@
             against one real export before a delivery depends on it. Until then the tool records
             which chain each shot went through, rather than leaving it to be worked out afterwards
             from a setting nobody wrote down.
-            <b>This does not hold up the interface.</b> M5 carries the mode control from the
-            start, because it is one drop-down and adding a mode to a finished settings page later
-            is worse than shipping one option that is not live yet.
+            <b>This does not hold up the interface</b>, and it made the interface work slightly
+            smaller rather than larger: there is no mode, so there is no control for one.
           </div>
         </div>
       </div>
@@ -585,8 +593,10 @@
             becomes a remembered setting rather than a command line flag, and with it the checks
             that refuse to render a shot whose colour has not arrived. The report already has its
             column for which grade each shot was rendered through, so there is nothing to build
-            behind it. <b>New on 12 September</b>: the settings page also carries the source
-            format mode, camera or house, even though only the house option works until M4.6.
+            behind it. <b>Smaller on 12 September</b>: a source format mode was added to this
+            page that morning and removed that evening, so the settings page carries the grading
+            session's location and the format table, and nothing about which format a delivery
+            is in.
             Two older decisions are still unlogged. <b>Frozen left columns</b> have no built-in QTreeView
             support and need the overlaid second-view trick. <b>Progress on the Dock icon</b> has
             no Qt 6 API, so it needs a small <code>NSDockTile</code> shim through PyObjC, isolated
@@ -713,8 +723,8 @@
           </tr>
           <tr class="resolved">
             <td class="id">OQ-39</td>
-            <td>Which log format the house standard is, if one is ever used - answered 12 September as Blackmagic's own wide format, and demoted in the same breath: the shooters deliver their camera's own format instead, so this now describes a mode the tool can be switched into rather than what arrives. It is not the format the earlier plan assumed, so the tool performs a real conversion in both modes now</td>
-            <td class="st"><span class="tag ok">Answered</span></td>
+            <td>Which log format the house standard is - answered 12 September as Blackmagic's own wide format, and then <b style="color:var(--text)">the question dissolved</b>, which is the better outcome. There is no house <i>mode</i>: the format is named per clip in the clip's own information, and the house wide gamut is simply one more entry in the format table that a clip may name, exactly like a camera's. Nothing has to be chosen before a delivery is scanned</td>
+            <td class="st"><span class="tag ok">Dissolved</span></td>
           </tr>
           <tr>
             <td class="id">OQ-42</td>
@@ -1471,7 +1481,7 @@
   <footer>
     <b>Source of truth</b> &middot; PROGRESS.md, docs/OPEN_QUESTIONS.md, PRD.md section 9<br>
     <b>Verify</b> &middot; pytest &middot; ruff check . &amp;&amp; mypy proingest &middot; python -m proingest scan &lt;folder&gt;<br>
-    <b>Last updated</b> &middot; 12 September 2026, 18:05 PDT. <b>The source format changed underneath the finished colour work, and the expensive half of it was answered the same day.</b> Each shooter will use their camera's own format and write it into the clip, with the house format kept as a mode. Crucially, <b>the grading session builds each shot's colour file starting from that format</b>, so the colour file is the entire conversion and the tool performs none of its own on a plate: it cannot disagree with Resolve about what a camera format is, and a camera nobody has mapped still delivers. The tool still carries a transform per format, because the studio asked for it and because a <b>colour chart is delivered ungraded</b> and is the one picture the tool converts alone - the sharpest place in the whole tool to be wrong, since a mis-converted chart still looks like a chart. <b>One risk is named rather than assumed away</b>: converting twice, which fails nothing and looks like a grade decision, so the tool records which chain each shot took and one real export should confirm it. That is <b>M4.6</b>; 873 tests green and no code has changed yet. <b>Next: the interface</b>, which is not blocked by any of it
+    <b>Last updated</b> &middot; 12 September 2026, 19:40 PDT. <b>The source format changed underneath the finished colour work, and then got simpler twice in one evening.</b> Each shooter will use their camera's own format and write it into the clip. <b>The grading session builds each shot's colour file starting from that format</b>, so the colour file is the entire conversion and the tool performs none of its own on a plate: it cannot disagree with Resolve about what a camera format is, and a camera nobody has mapped still delivers. <b>And there is no mode</b> - the house wide gamut format is one more entry in the format table rather than an arrangement to switch into, so a delivery may mix formats freely and nothing has to be set before it is scanned. That removed a setting, a drop-down, and a check. The tool still carries a transform per format, because a <b>colour chart is delivered ungraded</b> and is the one picture it converts alone - the sharpest place in the whole tool to be wrong, since a mis-converted chart still looks like a chart. <b>One risk is named rather than assumed away</b>: converting twice, which fails nothing and looks like a grade decision, so each shot records which chain it took and one real export should confirm it. That is <b>M4.6</b>; 873 tests green and no code has changed yet. <b>Next: the interface</b>, which is not blocked by any of it and got slightly smaller
   </footer>
 
 </div>
