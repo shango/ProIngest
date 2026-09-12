@@ -129,7 +129,7 @@ studio standard log ProRes 4444 (one per shot)
    |                                                  |
  PLATE branch                                     VIEW branch
    |                                                  |
- -> linear ACEScg                                 stays in ACEScct
+ -> linear ACEScg                                 -> linear ACEScg, from the CLF
    |                                                  |
  resize in numpy, unbounded                       ACES output transform -> sRGB
    |                                              ... input transform, CLF and output
@@ -151,13 +151,18 @@ them did not depend on where the grade came from.
 **The plate branch is unbounded and resizes in numpy.** Scene linear values run past 1.0, and
 `core/resize.py` exists so the HD downscale does not go through anything that clamps.
 
-**The view branch stays bounded until the final encode.** Everything before the output
-transform happens in ACEScct, which is bounded to 0..1. swscale clamps float to 0..1, so
-keeping the view branch in log is what lets ffmpeg do the reference resize in a single pass
-with no frames crossing into Python.
+**The view branch stays bounded everywhere ffmpeg can see it.** Corrected 2026-09-12, when
+M4.5.3 built it: this used to say everything before the output transform happens in ACEScct,
+which stopped being true when the CLF became the thing applied, because the CLF lands in linear
+ACEScg and the output transform starts there. What the property actually rests on is the LUT's
+own ends. ffmpeg reads the log source, bounded 0..1, applies one cube and gets display sRGB,
+bounded again; the unbounded stretch in between is inside the cube, where OCIO handles it and
+swscale never sees it. swscale clamps float to 0..1, and that is what would otherwise cost the
+reference its single pass.
 
-**The whole view branch collapses into one 3D LUT per shot**, generated in core: ACEScct in,
-sRGB display out, with the CLF and the ACES output transform inside it. **This is how an OCIO
+**The whole view branch collapses into one 3D LUT per shot**, generated in core by
+`color.view_lut`: studio log in, sRGB display out, with the input transform, the CLF and the
+ACES output transform inside it. **This is how an OCIO
 transform gets into ffmpeg**, which has no OCIO filter and does have `lut3d`, and it is what
 keeps the reference a single fast pass with no frames pulled through Python.
 
@@ -237,8 +242,10 @@ The pin is **`studio-config-v2.2.0_aces-v1.3_ocio-v2.4`**, and it lives in
 `core/color.BUILTIN_CONFIG` where nothing else restates it. The studio config rather than the
 cg one for two reasons: it carries the camera vendor log encodings, which is what OQ-39 may
 yet name, and it carries the full set of view transforms the viewing LUT is baked from. What
-is still open inside OQ-29 is which sRGB output transform within 1.3, and that is M4.5.3's
-question rather than this module's.
+What was still open inside OQ-29 is which sRGB output transform within 1.3, and M4.5.3 built
+it to a default: **`ACES 1.0 - SDR Video` on the `sRGB - Display` display**, in `color.VIEW`.
+The pinned config offers four views on that display and the other three are not candidates: two
+are a D60 simulation and an un-tone-mapped debug view, and `Raw` is no transform at all.
 
 ### The EXR writer stays as it is
 

@@ -8,10 +8,11 @@ commit.
 
 ## 1. Resume here
 
-**State at 2026-09-12. M1, M2, M3 and M4 complete; M4.5.1 and M4.5.2 done.** The colour session
-package is now read: `core/clf.py` takes Ben's final EDL as the conform and pairs each row with
-its CLF, loaded, hashed and probed.
-827 tests passing, `ruff` and `mypy --strict` clean. **Nothing is blocked.**
+**State at 2026-09-12. M1, M2, M3 and M4 complete; M4.5.1, M4.5.2 and M4.5.3 done.** The colour
+session package is now read and the view branch is bakeable: `core/clf.py` takes Ben's final EDL
+as the conform and pairs each row with its CLF, and `color.view_lut` collapses the view branch
+into the `.cube` ffmpeg will apply.
+838 tests passing, `ruff` and `mypy --strict` clean. **Nothing is blocked.**
 
 **M4 is done.** `core/exports.py` writes both spreadsheets, `proingest qc <batch>` writes them
 headless, and QC-053 parses camData through the new `core/camdata.py`. Proved end to end on a two
@@ -199,13 +200,54 @@ That is a Settings value (PRD section 7, Colour group) and the wiring belongs wi
 M5, not here. `core/clf.py` raises and returns the states those rules report, and nothing calls
 it yet.
 
-### Next task: M4.5.3, the viewing LUT
+### M4.5.3 is built: the view branch bakes to a cube
 
-The view branch collapsed into one `.cube` per shot: the CLF plus the ACES output transform for
-sRGB, baked through `ocio.Baker`, which is how an OCIO transform reaches ffmpeg's `lut3d`.
-`clf.load_clf` hands back the `FileTransform` it needs. **OQ-29's open half is which sRGB output
-transform**, and the pinned config offers `ACES 1.0 - SDR Video` on `sRGB - Display`, which is
-the default to build to.
+`color.output_transform` and `color.view_lut` finish the view branch, 11 tests. Four things in
+it should not be re-derived.
+
+- **OQ-29's open half has a default: `color.VIEW` is `ACES 1.0 - SDR Video` on `sRGB - Display`.**
+  The pinned config offers four views on that display and the other three are not candidates:
+  two are a D60 simulation and an un-tone-mapped debug view, and `Raw` is no transform at all.
+  A test asserts the name is in the config, so a rename in a later ACES version fails at the
+  first bake rather than in a delivered mp4.
+- **The cube is sampled from the processor, not baked with `ocio.Baker`.** Baker only bakes
+  between colour spaces a config names, so a chain with a `FileTransform` in it means a deep
+  copy of the config, a synthetic colour space and a round trip through ACES2065-1 to define
+  it. Sampling the processor on the cube's own grid is the chain exactly as composed, and the
+  file is 35937 lines of text that OCIO cannot write anyway: `GroupTransform.write` supports
+  CLF and CTF only, and answers "format resolve_cube does not support writing".
+- **Red varies fastest, and that is pinned from both ends.** It is the `.cube` format's
+  ordering, getting it wrong swaps channels in a way that looks like a grade, and two tests
+  hold it: OCIO reads the file back as the transform it was baked from, and **ffmpeg's `lut3d`
+  applies it to a 16 bit ramp and lands within 0.005 of what OCIO's own processor gives.**
+  That second test is the one that matters, because ffmpeg is what will actually apply it.
+- **Tetrahedral is not ffmpeg's problem, it is OCIO's.** ffmpeg's `lut3d` already defaults to
+  tetrahedral. `ocio.FileTransform` defaults to linear, and reading the same cube that way
+  moves mid grey twice as far off; a test pins the difference, which is what `INTERPOLATION`
+  exists for.
+- **COLOR_AND_FORMAT section 1 was corrected, not the code.** Its chain diagram had the view
+  branch "stays in ACEScct" after the CLF, which was true in the morning version where the
+  grade was a CDL and the plate branch did the conversion. The CLF lands in linear ACEScg, so
+  the output transform starts there, and `color.output_transform` takes `PLATE_SPACE`. The
+  bounded view branch property survives the correction and now rests on the LUT's own ends:
+  ffmpeg sees log in and display out, and the unbounded stretch is inside the cube where
+  swscale never sees it.
+
+### Next task: M4.5.4, where render and exr move onto the new chain
+
+The last colour chunk and the biggest: `render.py` splits into the plate branch and the view
+branch, the reference encode becomes an ffmpeg `lut3d` over the baked cube, and `exr.py`'s
+`CHROMATICITIES` goes from sRGB to AP1 with `COLORSPACE_ATTRIBUTE` from `scene_linear_sRGB` to
+`ACEScg`. The fenced display referred block at the bottom of `core/color.py` and its tests in
+`TestSupersededDisplayEncode` are deleted in that chunk, **together**, and not before.
+
+The EXR header gains what `core/clf.py` already produces: `proingest/clf`, `proingest/clf_hash`
+from `clf.clf_digest`, `proingest/source_encoding`, and the CDL as attributes plus its original
+`*ASC_SOP` / `*ASC_SAT` text. That is also when the QC log gains its CLF column per row.
+
+**It needs somewhere to put the cube**, one per shot per run, and the render job's temp area is
+the obvious place. `view_lut` renames onto its destination, so a cancelled bake leaves nothing
+for ffmpeg to read.
 
 **M4.3 is done, and the reason it was to be deferred turned out not to apply.** The plan had been
 colour first, so the QC log and the tracker would get the colour columns written once instead of
@@ -363,7 +405,7 @@ PDF viewer.
 | `core/media.py` | DirectoryIndex, sequence detection, path remap, probe cache | 465 |
 | `core/exr.py` | EXR header and pixel reading, delivery frame writing | 235 |
 | `core/resize.py` | antialiased Lanczos downscale for the EXR path | 96 |
-| `core/color.py` | the pinned OCIO config, the input and plate transforms, composing and applying them. Still carries M3's display referred block at the bottom, fenced, until M4.5.4 | 173 |
+| `core/color.py` | the pinned OCIO config, every leg of the chain but the CLF, composing and applying them, and the view branch baked to a `.cube`. Still carries M3's display referred block at the bottom, fenced, until M4.5.4 | 247 |
 | `core/timeline.py` | OTIO and EDL loading, audio association | 233 |
 | `core/clf.py` | the colour session package: the final EDL as the conform, the CDL, the CLF matched per row, loaded, hashed and probed | 402 |
 | `core/scan.py` | turnover folder -> Turnover + ShotRows | 388 |
@@ -437,7 +479,7 @@ with it, and what M4.5.2 reads is the colour session's package rather than the s
 |---|---|---|
 | M4.5.1 | OCIO in, `core/color.py` rebuilt as a pipeline, studio log to ACEScct to ACEScg | done, 24 tests |
 | M4.5.2 | `core/clf.py`: the final EDL read for conform, In/Out and CDL; the CLF matched per row, loaded and hashed | done, 42 tests. OQ-30 and OQ-33 built to their defaults |
-| M4.5.3 | The viewing LUT: CLF plus ACES output transform baked to one `.cube` per shot | not started |
+| M4.5.3 | The viewing LUT: CLF plus ACES output transform baked to one `.cube` per shot | done, 11 tests. OQ-29's open half built to its default |
 | M4.5.4 | `render` plate/view split, `lut3d` encode, `exr.py` AP1 constants and the new header attributes | not started |
 | ~~M4.5.5~~ | ~~`core/preview.py`, single frame fetch with cache~~ **dropped 2026-09-11 with the viewers** | n/a |
 
@@ -458,7 +500,7 @@ The stringout moved off this table: it is M6 and always was. The M3.5 row said "
 mp4 and stringout" and that was a mistake in the row, not a change of plan.
 
 Tests by file: qc 164, naming 115, render 66, planner 55, frames 55, media 46,
-clf 42, ffmpeg 40, models 37, timeline 33, exr 29, cli 26, scan 25, color 24,
+clf 42, ffmpeg 40, models 37, color 35, timeline 33, exr 29, cli 26, scan 25,
 exports 24, batchfile 18, resize 16, camdata 12.
 
 ---
