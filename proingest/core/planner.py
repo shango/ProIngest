@@ -18,7 +18,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Literal
 
-from proingest.core import frames, naming
+from proingest.core import clf, color, frames, naming
 from proingest.core.models import (
     Batch,
     Deliverable,
@@ -98,6 +98,20 @@ class DeliverableJob:
     could disagree with the scan about the source.
     """
 
+    shot_color: clf.ShotColor = clf.DEFAULT_SHOT_COLOR
+    """The chain this deliverable is rendered through. COLOR_AND_FORMAT section 1.
+
+    On the job for the same reason the source facts are: a worker is handed a job and
+    nothing else. It holds a CLF path rather than a transform because a job crosses a
+    spawn boundary and an OCIO object does not pickle.
+
+    A copy job carries the default and ignores it; bytes are bytes. So does an **aux
+    still**, deliberately: the aux names are `colorChart`, `mirrorBall`, `greyBall` and
+    `sizeRef`, and a grade applied to a colour chart destroys the one thing the chart is
+    delivered for. It still gets the input transform, so it lands in ACEScg like every
+    other EXR the tool writes, but never the shot's grade.
+    """
+
     @property
     def name(self) -> str:
         return self.destination.name
@@ -174,6 +188,7 @@ class _Shot:
     directory: Path
     version: int
     audio: Path | None
+    color: clf.ShotColor
 
 
 def effective_identity(
@@ -227,6 +242,7 @@ def plan_row(
     delivery_root: Path,
     version: int,
     show_pattern: str = naming.DEFAULT_SHOW_PATTERN,
+    shot_color: clf.ShotColor = clf.DEFAULT_SHOT_COLOR,
 ) -> RowPlan:
     """The deliverables one row owes at `version`. Pure: it touches no filesystem."""
     identity = plannable_identity(row, show_pattern)
@@ -242,6 +258,7 @@ def plan_row(
         directory=naming.shot_dir(delivery_root, identity),
         version=version,
         audio=_audio_source(row),
+        color=shot_color,
     )
     if identity.aux is not None:
         return _aux_plan(shot)
@@ -258,6 +275,8 @@ def plan_batch(
     batch: Batch,
     delivery_root: Path | None = None,
     show_pattern: str = naming.DEFAULT_SHOW_PATTERN,
+    session: clf.ColorSession | None = None,
+    source_encoding: str = color.DEFAULT_SOURCE_ENCODING,
 ) -> list[DeliverableJob]:
     """Plan every row of a batch and record the plan on the rows.
 
@@ -268,6 +287,13 @@ def plan_batch(
     This replaces each row's deliverable list, which is why it runs immediately before a
     run rather than when a batch is opened: the state recorded against a row belongs to
     the version that produced it, not to the one about to be written.
+
+    `session` is the colour session package, and it is optional here rather than
+    required because a batch is planned and previewed long before one exists
+    (COLOR_AND_FORMAT section 1). Without it every row plans ungraded: the deliverables
+    are the same files in the same places, and the difference is whether the CLF is in
+    them. QC-008 is what refuses a **run** in that state, and it is a rule about the
+    batch rather than something the planner decides.
     """
     root = delivery_root or batch.delivery_root
     if root is None:
@@ -278,6 +304,7 @@ def plan_batch(
     for row in batch.rows:
         identity = plannable_identity(row, show_pattern)
         if identity is None:
+            row.clf_path = None
             _record(row, RowPlan())
             continue
 
@@ -286,7 +313,9 @@ def plan_batch(
             versions[code] = resolve_version(naming.shot_dir(root, identity), show_pattern)
         version = versions[code]
 
-        plan = plan_row(row, root, version, show_pattern)
+        shot_color = _shot_color(session, row, source_encoding)
+        row.clf_path = shot_color.clf_path
+        plan = plan_row(row, root, version, show_pattern, shot_color)
         if version > 1:
             plan.qc.append(
                 QCResult(
@@ -300,6 +329,20 @@ def plan_batch(
         _record(row, plan)
         jobs.extend(plan.jobs)
     return jobs
+
+
+def _shot_color(
+    session: clf.ColorSession | None, row: ShotRow, source_encoding: str
+) -> clf.ShotColor:
+    """This row's colour: the session's answer, or the ungraded chain when there is none.
+
+    An ambiguous CLF propagates rather than being resolved to one of the candidates.
+    Two CLFs naming one shot is a redelivery nobody cleaned up, and picking either is
+    picking a grade (`clf.AmbiguousClfError`).
+    """
+    if session is None:
+        return clf.ShotColor(source_encoding=source_encoding)
+    return session.shot_color(row, source_encoding)
 
 
 def _record(row: ShotRow, plan: RowPlan) -> None:
@@ -332,6 +375,7 @@ def _picture_job(shot: _Shot, kind: JobKind, res: Resolution) -> DeliverableJob:
         rate=shot.media.rate,
         source_start_frame=shot.media.start_frame,
         source_start_timecode=shot.media.start_timecode,
+        shot_color=shot.color,
     )
 
 
@@ -417,6 +461,7 @@ def _aux_plan(shot: _Shot) -> RowPlan:
                     rate=shot.media.rate,
                     source_start_frame=shot.media.start_frame,
                     source_start_timecode=shot.media.start_timecode,
+                    shot_color=clf.ShotColor(source_encoding=shot.color.source_encoding),
                 )
             ]
         )

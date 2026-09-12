@@ -10,8 +10,10 @@ tests ask a written file what it actually does to a pixel rather than what it is
 from __future__ import annotations
 
 import hashlib
+import pickle
 from pathlib import Path
 
+import numpy as np
 import PyOpenColorIO as ocio
 import pytest
 
@@ -19,6 +21,9 @@ from proingest.core import clf, color, naming
 from proingest.core.models import FrameRate, MediaInfo, ShotRow
 
 RATE_24 = FrameRate(24)
+
+ACESCCT_MID_GREY = 0.413588
+"""The ACEScct encoding of 0.18 scene linear, as `tests/test_color.py` derives it."""
 
 FINAL_EDL = """TITLE: MELT_FINAL_v03
 FCM: NON-DROP FRAME
@@ -385,3 +390,117 @@ class TestSession:
         assert len(session.events) == 2
         assert session.clf_for("MELT0001") is not None
         assert session.clf_for("MELT0002") is None
+
+
+class TestShotColor:
+    """What rides on a render job: a path, a colour space name and the CDL.
+
+    The failure these guard against is the one COLOR_AND_FORMAT section 1 warns about
+    under the chain diagram: converting ACEScct to ACEScg twice, once in the CLF and
+    once after it. It raises nothing and looks like a grade.
+    """
+
+    def applied(self, shot_color: clf.ShotColor, value: float) -> float:
+        """One neutral ACEScct value through the plate branch, green channel out."""
+        loaded = shot_color.load()
+        pixels = np.array([[[value, value, value]]], dtype=np.float32)
+        color.apply(pixels, color.processor(*shot_color.plate_transforms(loaded)))
+        return float(pixels[0, 0, 1])
+
+    def viewed(self, shot_color: clf.ShotColor, value: float) -> float:
+        loaded = shot_color.load()
+        pixels = np.array([[[value, value, value]]], dtype=np.float32)
+        color.apply(pixels, color.processor(*shot_color.view_transforms(loaded)))
+        return float(pixels[0, 0, 1])
+
+    def test_with_no_clf_the_chain_supplies_the_conversion_itself(self) -> None:
+        """ACEScct mid grey is 0.18 scene linear, and nothing else is."""
+        assert self.applied(clf.DEFAULT_SHOT_COLOR, ACESCCT_MID_GREY) == pytest.approx(0.18, abs=1e-3)
+
+    def test_a_clf_that_only_converts_is_not_converted_again(self, tmp_path: Path) -> None:
+        """The trap: applying `plate_transform` after a CLF that already landed in ACEScg.
+
+        A second conversion would read 0.18 as an ACEScct code value and answer about
+        0.0105, which is a plausible looking dark plate rather than an error.
+        """
+        path = write_clf(
+            tmp_path / "MELT0001.clf",
+            ocio.ColorSpaceTransform(src=color.WORKING_SPACE, dst=color.PLATE_SPACE),
+        )
+        shot_color = clf.ShotColor(clf_path=path)
+        assert self.applied(shot_color, ACESCCT_MID_GREY) == pytest.approx(0.18, abs=1e-3)
+
+    def test_the_grade_in_the_clf_is_what_reaches_the_plate(self, tmp_path: Path) -> None:
+        """The fixture lifts red and drops blue, so an ungraded chain cannot pass this."""
+        shot_color = clf.ShotColor(clf_path=plate_clf(tmp_path / "MELT0001.clf"))
+        loaded = shot_color.load()
+        pixels = np.array([[[ACESCCT_MID_GREY] * 3]], dtype=np.float32)
+        color.apply(pixels, color.processor(*shot_color.plate_transforms(loaded)))
+        red, _, blue = (float(value) for value in pixels[0, 0])
+        assert red > blue
+
+    def test_the_plate_branch_is_unbounded_and_the_view_branch_is_not(self) -> None:
+        """ACEScct 1.0 is 222 in scene linear; every display rendering tone maps it.
+
+        Display range rather than clamped: OCIO clamps nothing, and what finally bounds
+        the reference is ffmpeg's own pixel format. 1.03 against 222 is the difference
+        the branch exists for.
+        """
+        assert self.applied(clf.DEFAULT_SHOT_COLOR, clf.ACESCCT_WHITE) > 200.0
+        assert self.viewed(clf.DEFAULT_SHOT_COLOR, clf.ACESCCT_WHITE) < 1.1
+
+    def test_the_view_branch_is_the_plate_branch_plus_one_leg(self) -> None:
+        """Compared by what each transform says it is: OCIO transforms compare by identity."""
+        default = clf.DEFAULT_SHOT_COLOR
+        plate = [str(item) for item in default.plate_transforms(None)]
+        view = [str(item) for item in default.view_transforms(None)]
+        assert view[: len(plate)] == plate
+        assert len(view) == len(plate) + 1
+
+    def test_no_clf_path_loads_nothing(self) -> None:
+        assert clf.DEFAULT_SHOT_COLOR.load() is None
+
+    def test_a_loaded_clf_carries_the_digest_of_the_file_on_disk(self, tmp_path: Path) -> None:
+        path = plate_clf(tmp_path / "MELT0001.clf")
+        loaded = clf.ShotColor(clf_path=path).load()
+        assert loaded is not None
+        assert loaded.digest == hashlib.sha256(path.read_bytes()).hexdigest()
+
+    def test_it_pickles(self) -> None:
+        """A job crosses a spawn boundary, so everything it carries has to survive one."""
+        shot_color = clf.ShotColor(clf_path=Path("/session/MELT0001.clf"))
+        assert pickle.loads(pickle.dumps(shot_color)) == shot_color
+
+
+class TestSessionShotColor:
+    def test_a_row_gets_its_own_clf_and_its_own_cdl(self, tmp_path: Path) -> None:
+        path = plate_clf(tmp_path / "MELT0001_grade.clf")
+        session = clf.load_session(edl(tmp_path), RATE_24)
+        shot_color = session.shot_color(row())
+        assert shot_color.clf_path == path
+        assert shot_color.cdl is not None
+        assert shot_color.cdl.saturation == pytest.approx(1.05)
+
+    def test_a_row_with_an_event_but_no_clf_still_records_the_cdl(self, tmp_path: Path) -> None:
+        """They are two different matches: a CDL is a record and costs a header line."""
+        session = clf.load_session(edl(tmp_path), RATE_24)
+        shot_color = session.shot_color(row())
+        assert shot_color.clf_path is None
+        assert shot_color.cdl is not None
+
+    def test_a_row_the_session_never_heard_of_gets_the_ungraded_chain(self, tmp_path: Path) -> None:
+        session = clf.load_session(edl(tmp_path), RATE_24)
+        shot_color = session.shot_color(row("MELT0009_pl01"))
+        assert shot_color.clf_path is None
+        assert shot_color.cdl is None
+
+    def test_the_source_encoding_passes_through(self, tmp_path: Path) -> None:
+        session = clf.load_session(edl(tmp_path), RATE_24)
+        assert session.shot_color(row(), "ACEScc").source_encoding == "ACEScc"
+
+    def test_two_clfs_naming_one_shot_raise_rather_than_choose(self, tmp_path: Path) -> None:
+        plate_clf(tmp_path / "MELT0001_v01.clf")
+        plate_clf(tmp_path / "MELT0001_v02.clf")
+        session = clf.load_session(edl(tmp_path), RATE_24)
+        with pytest.raises(clf.AmbiguousClfError):
+            session.shot_color(row())

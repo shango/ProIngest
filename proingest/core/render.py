@@ -20,6 +20,14 @@ The reference mp4 is the one deliverable this module does not build frame by fra
 It hands the source to ffmpeg and lets x264 read it directly, so there is no progress
 between its start and its finish, and a cancelled run waits for an encode already in
 flight rather than stopping it. The stringout is not here at all; it is M6.
+
+**Colour is where the two split.** COLOR_AND_FORMAT section 1 branches after the shot's
+CLF, and so does this module: the plate branch builds one OCIO processor per job and
+applies it to every frame on its way to an EXR, and the view branch bakes the same chain
+plus the ACES output transform into a `.cube` that ffmpeg applies as it encodes. Neither
+branch decides anything about colour. What to apply arrives on the job as a
+`clf.ShotColor`, which is a path, a colour space name and the CDL, because that is what
+survives the pickle into a worker process.
 """
 
 from __future__ import annotations
@@ -27,6 +35,7 @@ from __future__ import annotations
 import logging
 import multiprocessing
 import shutil
+import tempfile
 import threading
 from collections.abc import Callable, Generator, Sequence
 from concurrent.futures import ProcessPoolExecutor, as_completed
@@ -38,8 +47,9 @@ from typing import Any, Literal
 
 import numpy as np
 import numpy.typing as npt
+import PyOpenColorIO as ocio
 
-from proingest.core import batchfile, color, exr, ffmpeg, media, qc, resize
+from proingest.core import batchfile, clf, color, exr, ffmpeg, media, qc, resize
 from proingest.core.models import Batch, Deliverable, QCResult
 from proingest.core.planner import DeliverableJob
 
@@ -70,15 +80,15 @@ class RenderCancelled(RuntimeError):
 
 def render_job(
     job: DeliverableJob,
-    colorspace: color.SourceColorSpace = color.DEFAULT_SOURCE_COLORSPACE,
     on_frame: Callable[[int], None] | None = None,
     cancelled: Callable[[], bool] | None = None,
 ) -> Deliverable:
     """Produce one deliverable and return the record of what was written.
 
-    `colorspace` labels the EXR output and is never used to transform it, so it is
-    passed in rather than stored on the job: it is a Settings value about the whole
-    turnover, not a fact about this source.
+    The colour chain comes off `job.shot_color`, which the planner resolved from the
+    colour session. A job with no session carries the default, which renders the same
+    plate ungraded rather than refusing: QC-008 is what stops a run that needs a grade
+    and has none, and it is a rule about the batch rather than about this frame.
 
     `on_frame` is called with the running frame count, and `cancelled` is checked
     between frames. Both are plain callables rather than a queue and an event, so
@@ -94,13 +104,13 @@ def render_job(
     _prepare(job)
     try:
         if job.kind == "raw_dir":
-            _render_sequence(job, deliverable, colorspace, on_frame, cancelled)
+            _render_sequence(job, deliverable, on_frame, cancelled)
         elif job.kind == "aux_still":
-            _render_still(job, deliverable, colorspace)
+            _render_still(job, deliverable)
         elif job.kind == "audio":
             _render_audio(job, deliverable)
         elif job.kind == "ref_mp4":
-            _render_reference(job, deliverable, colorspace)
+            _render_reference(job, deliverable)
         elif job.kind in COPY_KINDS:
             _render_copy(job, deliverable)
         else:
@@ -171,10 +181,47 @@ def _record_file(deliverable: Deliverable, path: Path) -> None:
 # --- Raw EXR delivery. COLOR_AND_FORMAT sections 3 and 7. ---
 
 
+@dataclass(frozen=True)
+class _PlateBranch:
+    """The shot's plate chain, built once per job and applied to every frame.
+
+    Building a processor is expensive and applying it is not, which is why this is
+    resolved at the top of a job rather than inside the frame loop. It carries the
+    `LoadedClf` as well as the processor because the EXR header states what was
+    applied, and the header and the pixels must not be able to disagree.
+    """
+
+    loaded_clf: clf.LoadedClf | None
+    cpu: ocio.CPUProcessor
+
+    def apply(self, pixels: npt.NDArray[np.float32]) -> npt.NDArray[np.float32]:
+        """One decoded frame, transformed into linear ACEScg.
+
+        In place when the frame is already contiguous float32 RGB, which is what both
+        sources yield: a 4k frame is 95 MB and the branch holds one at a time.
+
+        **Alpha does not go through the chain.** It is coverage rather than colour, and
+        a transform applied to it would make an edge that was already correct wrong in
+        a way that only shows up over a comp.
+        """
+        rgb = np.ascontiguousarray(pixels[..., :3], dtype=np.float32)
+        color.apply(rgb, self.cpu)
+        if pixels.shape[2] == 3:
+            return rgb
+        alpha = np.asarray(pixels[..., 3:], dtype=np.float32)
+        return np.concatenate((rgb, alpha), axis=-1)
+
+
+def _plate_branch(job: DeliverableJob) -> _PlateBranch:
+    """Resolve the job's colour: load the CLF, compose the chain, build the processor."""
+    shot_color = job.shot_color
+    loaded = shot_color.load()
+    return _PlateBranch(loaded_clf=loaded, cpu=color.processor(*shot_color.plate_transforms(loaded)))
+
+
 def _render_sequence(
     job: DeliverableJob,
     deliverable: Deliverable,
-    colorspace: color.SourceColorSpace,
     on_frame: Callable[[int], None] | None = None,
     cancelled: Callable[[], bool] | None = None,
 ) -> None:
@@ -186,11 +233,12 @@ def _render_sequence(
     """
     job.temp.mkdir(parents=True)
     written = 0
+    graded = _plate_branch(job)
     stream = _source_pixels(job)
     try:
         for output_frame, pixels in zip(job.output_frames(), stream, strict=False):
             path = job.frame_path(output_frame, temp=True)
-            _write_frame(job, path, pixels, output_frame, colorspace)
+            _write_frame(job, path, graded.apply(pixels), output_frame, graded)
             deliverable.frame_checksums.append(file_digest(path))
             deliverable.size += path.stat().st_size
             written += 1
@@ -210,10 +258,9 @@ def _render_sequence(
     deliverable.frame_count = written
 
 
-def _render_still(
-    job: DeliverableJob, deliverable: Deliverable, colorspace: color.SourceColorSpace
-) -> None:
+def _render_still(job: DeliverableJob, deliverable: Deliverable) -> None:
     """One EXR from one source frame. An aux still is a file, not a folder."""
+    graded = _plate_branch(job)
     stream = _source_pixels(job)
     try:
         pixels = next(stream, None)
@@ -221,7 +268,7 @@ def _render_still(
         stream.close()
     if pixels is None:
         raise RenderError(f"{job.name}: the source gave no frame at {job.in_frame}")
-    _write_frame(job, job.temp, pixels, next(iter(job.output_frames())), colorspace)
+    _write_frame(job, job.temp, graded.apply(pixels), next(iter(job.output_frames())), graded)
     _record_file(deliverable, job.temp)
     deliverable.frame_count = 1
 
@@ -231,14 +278,15 @@ def _write_frame(
     path: Path,
     pixels: npt.NDArray[Any],
     output_frame: int,
-    colorspace: color.SourceColorSpace,
+    graded: _PlateBranch,
 ) -> None:
     exr.write_frame(
         path,
         pixels,
         timecode_frames=job.timecode_for(output_frame),
         fps=job.rate.as_float() if job.rate else 24.0,
-        colorspace=colorspace,
+        shot_color=job.shot_color,
+        loaded_clf=graded.loaded_clf,
     )
 
 
@@ -289,12 +337,15 @@ def _fit(
     return resize.lanczos_resize(pixels, target[0], target[1])
 
 
-# --- Reference mp4. COLOR_AND_FORMAT section 3. ---
+# --- Reference mp4. COLOR_AND_FORMAT sections 1 and 3. ---
+
+LUT_SUFFIX = ".cube"
+
+LUT_TEMP_PREFIX = "proingest-lut-"
+"""The viewing LUT's folder, on the system temp volume rather than the delivery root."""
 
 
-def _render_reference(
-    job: DeliverableJob, deliverable: Deliverable, colorspace: color.SourceColorSpace
-) -> None:
+def _render_reference(job: DeliverableJob, deliverable: Deliverable) -> None:
     """Encode the delivered range to a reference mp4, audio included when there is any.
 
     One ffmpeg pass reading the source itself, rather than the decode-and-write loop
@@ -304,10 +355,11 @@ def _render_reference(
     The consequence is that this is the only job kind with no per-frame progress and no
     mid-job cancellation: ffmpeg is running, and the job is over when it returns.
 
-    **The transfer is read from `color.display_transform`, never re-derived here.** It
-    returns a filter for a scene linear source and None for the baked sRGB source the
-    turnovers actually carry today, and applying the curve to pixels that already have
-    it washes out every reference without failing.
+    **The whole view branch goes in as one baked cube**, because ffmpeg has no OCIO
+    filter and the encode has to stay a single pass. The cube is written for this job
+    alone and deleted with the temp folder: it is not a deliverable, and the two
+    reference jobs of one shot each bake their own rather than sharing one, which costs
+    35937 samples through a processor and saves a lifetime nobody would own.
     """
     if job.in_frame is None or job.out_frame is None:
         raise RenderError(f"{job.name} has no frame range")
@@ -318,18 +370,19 @@ def _render_reference(
     # Same rule as the raw path: only scale when the size actually changes, so a 4k
     # reference off a 4k source never touches a resampler.
     scale = job.target_size if job.target_size != job.source_size else None
-    ffmpeg.encode_reference(
-        source,
-        job.temp,
-        job.in_frame,
-        job.out_frame,
-        is_sequence=job.source_is_sequence,
-        rate=f"{job.rate.numerator}/{job.rate.denominator}",
-        target_size=scale,
-        display_filter=color.display_transform(colorspace),
-        audio=job.audio_source,
-        audio_skip=_audio_skip(job),
-    )
+    with tempfile.TemporaryDirectory(prefix=LUT_TEMP_PREFIX) as folder:
+        ffmpeg.encode_reference(
+            source,
+            job.temp,
+            job.in_frame,
+            job.out_frame,
+            is_sequence=job.source_is_sequence,
+            rate=f"{job.rate.numerator}/{job.rate.denominator}",
+            target_size=scale,
+            lut=_view_lut(job, Path(folder)),
+            audio=job.audio_source,
+            audio_skip=_audio_skip(job),
+        )
     if not job.temp.is_file():
         raise RenderError(f"{job.name}: the encode reported success and wrote nothing")
 
@@ -344,6 +397,20 @@ def _render_reference(
         )
     _record_file(deliverable, job.temp)
     deliverable.frame_count = written
+
+
+def _view_lut(job: DeliverableJob, folder: Path) -> Path:
+    """Bake this job's view branch into `folder`, named after the deliverable.
+
+    **Not under `job.temp`**, which is the one place the atomic envelope guarantees is
+    cleaned but also sits in the delivery folder: that folder is a Google Drive mount
+    (OQ-25), and a megabyte of LUT written there is a megabyte synced up and back for a
+    file whose life is one encode. The name still carries the deliverable's, so the
+    ffmpeg command this module logs verbatim says which shot the cube belonged to.
+    """
+    shot_color = job.shot_color
+    transforms = shot_color.view_transforms(shot_color.load())
+    return color.view_lut(folder / f"{job.destination.stem}{LUT_SUFFIX}", *transforms)
 
 
 def _audio_skip(job: DeliverableJob) -> float:
@@ -448,7 +515,7 @@ def _publish(message: Progress) -> None:
         _QUEUE.put(message)
 
 
-def _worker(job: DeliverableJob, colorspace: color.SourceColorSpace) -> Deliverable:
+def _worker(job: DeliverableJob) -> Deliverable:
     """Run one job in a worker process. Always returns a record, never raises.
 
     A failure comes back as a `failed` Deliverable carrying QC-100, so one job going
@@ -463,7 +530,7 @@ def _worker(job: DeliverableJob, colorspace: color.SourceColorSpace) -> Delivera
 
     _publish(Progress(job.name, "started", 0, job.frame_count))
     try:
-        deliverable = render_job(job, colorspace, on_frame=on_frame, cancelled=cancelled)
+        deliverable = render_job(job, on_frame=on_frame, cancelled=cancelled)
     except RenderCancelled:
         skipped = job.to_deliverable()
         skipped.status = "skipped"
@@ -499,7 +566,6 @@ def _drain(
 
 def execute(
     jobs: Sequence[DeliverableJob],
-    colorspace: color.SourceColorSpace = color.DEFAULT_SOURCE_COLORSPACE,
     workers: int = DEFAULT_WORKERS,
     on_progress: Callable[[Progress], None] | None = None,
     cancel: EventType | None = None,
@@ -538,7 +604,7 @@ def execute(
             initargs=(queue, cancel),
         ) as pool:
             futures = {
-                pool.submit(_worker, job, colorspace): index for index, job in enumerate(jobs)
+                pool.submit(_worker, job): index for index, job in enumerate(jobs)
             }
             for future in as_completed(futures):
                 results[futures[future]] = future.result()

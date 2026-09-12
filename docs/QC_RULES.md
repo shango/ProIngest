@@ -111,7 +111,7 @@ QC-100 is the exception to that: it reports a render that never produced a file 
 `qc_ingest_log_<batch>_<date>.xlsx`
 
 - Summary: batch name, date, tool version, turnovers, rows, rows done / skipped / failed, rule counts by severity
-- Shots: one row per shot row. Columns: turnover, original clip name, final shot code, elem, source path, source fps, source res, snapshot In/Out (frames and TC), final In/Out, duration, max available, audio path, skip reason, warnings (IDs), errors (IDs)
+- Shots: one row per shot row. Columns: turnover, original clip name, final shot code, elem, source path, source fps, source res, snapshot In/Out (frames and TC), final In/Out, duration, max available, audio path, edited, **CLF** (the filename of the grade the row was rendered through, empty when it rendered ungraded), skip reason, warnings (IDs), errors (IDs)
 - Deliverables: one row per deliverable. Columns: shot code, elem, kind, res, version, path, frames, size bytes, checksum (or first/last frame hash for sequences), then one column per QC-1xx rule with PASS/FAIL/NA
 - Side Files: shot code, type, source path, dest path, checksum
 - Camera Data: shot code, key, value (one row per pair parsed from camData)

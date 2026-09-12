@@ -220,30 +220,3 @@ class TestViewLut:
         """Renamed onto the destination, so ffmpeg cannot read a half written cube."""
         color.view_lut(tmp_path / "MELT0001_view.cube", *self.chain(), size=9)
         assert [path.name for path in tmp_path.iterdir()] == ["MELT0001_view.cube"]
-
-
-class TestSupersededDisplayEncode:
-    """M3's display referred path, kept until M4.5.4 moves render and exr off it."""
-
-    def test_v01_sources_carry_a_baked_srgb_curve(self) -> None:
-        assert color.DEFAULT_SOURCE_COLORSPACE == color.SRGB_DISPLAY
-
-    def test_display_referred_attribute(self) -> None:
-        assert color.exr_attribute(color.SRGB_DISPLAY) == "sRGB_display"
-
-    def test_scene_referred_attribute(self) -> None:
-        assert color.exr_attribute(color.SCENE_LINEAR_SRGB) == "scene_linear_sRGB"
-
-    def test_the_two_are_distinguishable(self) -> None:
-        assert color.exr_attribute(color.SRGB_DISPLAY) != color.exr_attribute(
-            color.SCENE_LINEAR_SRGB
-        )
-
-    def test_a_baked_source_is_left_alone(self) -> None:
-        assert color.display_transform(color.SRGB_DISPLAY) is None
-
-    def test_a_linear_source_gets_the_transfer(self) -> None:
-        applied = color.display_transform(color.SCENE_LINEAR_SRGB)
-        assert applied is not None
-        assert "transferin=linear" in applied
-        assert "transfer=iec61966-2-1" in applied

@@ -281,20 +281,35 @@ class TestEncodeCommand:
         assert command[command.index("-colorspace") + 1] == "bt709"
         assert command[command.index("-color_trc") + 1] == "iec61966-2-1"
 
-    def test_the_display_transform_runs_after_the_scale(self) -> None:
-        """Section 4: the downscale runs on the values as delivered, curve and all."""
+    def test_the_lut_runs_after_the_scale(self) -> None:
+        """Section 1: the downscale runs on the log values, which are bounded 0..1.
+
+        swscale clamps float to that range, so the order is what keeps the reference a
+        single pass: everything unbounded is inside the cube.
+        """
         command = ffmpeg.encode_command(
             "plate.mov", Path("out.mp4.part"), 0, 3, is_sequence=False, rate="24/1",
-            target_size=(1920, 1080), display_filter="zscale=transferin=linear:transfer=iec61966-2-1",
+            target_size=(1920, 1080), lut=Path("/tmp/lut/MELT0001_ref_HD_v01.cube"),
         )
         filters = command[command.index("-vf") + 1].split(",")
-        assert filters[-2:] == [
+        assert filters[-3:] == [
             "scale=1920:1080:flags=lanczos",
-            "zscale=transferin=linear:transfer=iec61966-2-1",
+            "format=gbrpf32le",
+            "lut3d=/tmp/lut/MELT0001_ref_HD_v01.cube:interp=tetrahedral",
         ]
 
-    def test_a_baked_srgb_source_gets_no_transfer_at_all(self) -> None:
-        """`display_transform` returns None there, and None must mean no filter."""
+    def test_the_lut_is_applied_tetrahedrally(self) -> None:
+        """`lut3d` defaults to it. Stated anyway: trilinear is one word and looks wrong."""
+        assert "interp=tetrahedral" in ffmpeg.lut_filter(Path("/tmp/a.cube"))
+
+    def test_a_colon_in_the_lut_path_is_escaped_not_pasted(self) -> None:
+        """A filter argument is colon separated, so an unescaped path ends the filter."""
+        assert ffmpeg.lut_filter(Path("/tmp/a:b/lut.cube")).endswith(
+            "lut3d=/tmp/a\\:b/lut.cube:interp=tetrahedral"
+        )
+
+    def test_no_lut_means_no_filter_at_all(self) -> None:
+        """`encode_command` still has to build a command without one, for the tests above."""
         command = ffmpeg.encode_command(
             "plate.%04d.exr", Path("out.mp4.part"), 1001, 1004, is_sequence=True, rate="24/1"
         )

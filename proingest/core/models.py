@@ -359,6 +359,15 @@ class ShotRow:
     so the schema version does not move: an older batch simply reports none.
     """
 
+    clf_path: Path | None = None
+    """The CLF the colour session delivered for this shot, or None when it delivered none.
+
+    Recorded on the row because it is what the QC log's CLF column names and what a
+    reader compares a delivered EXR header against. The grade itself never lives here:
+    the transform is loaded in the worker that applies it. Additive, so the schema
+    version does not move and an older batch simply reports no CLF.
+    """
+
     side_files: SideFiles = field(default_factory=SideFiles)
     notes: str = ""
     skipped: bool = False
@@ -407,6 +416,7 @@ class ShotRow:
             "audio_path": str(self.audio_path) if self.audio_path else None,
             "audio": self.audio.to_dict() if self.audio else None,
             "audio_clip_count": self.audio_clip_count,
+            "clf_path": str(self.clf_path) if self.clf_path else None,
             "side_files": self.side_files.to_dict(),
             "notes": self.notes,
             "skipped": self.skipped,
@@ -434,6 +444,7 @@ class ShotRow:
             audio_path=_as_path(data.get("audio_path")),
             audio=AudioInfo.from_dict(data["audio"]) if data.get("audio") else None,
             audio_clip_count=int(data.get("audio_clip_count", 0)),
+            clf_path=_as_path(data.get("clf_path")),
             side_files=SideFiles.from_dict(data.get("side_files", {})),
             notes=str(data.get("notes", "")),
             skipped=bool(data.get("skipped", False)),

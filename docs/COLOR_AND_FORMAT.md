@@ -148,8 +148,12 @@ one word difference that nobody notices being wrong.
 Three properties carry over from the previous policy unchanged, because the reasoning behind
 them did not depend on where the grade came from.
 
-**The plate branch is unbounded and resizes in numpy.** Scene linear values run past 1.0, and
-`core/resize.py` exists so the HD downscale does not go through anything that clamps.
+**The plate branch is unbounded and no scene linear pixel goes through swscale.** Scene linear
+values run past 1.0 and swscale clamps float to 0..1, so `core/resize.py` exists for the HD
+downscale of a source that is already scene linear, which is an EXR sequence. A log source is
+bounded, so its downscale happens in the ffmpeg decode, **before** the transform rather than
+after it as the diagram draws it: the property that matters survives either way, and the
+difference between resampling in log and resampling in linear is OQ-43.
 
 **The view branch stays bounded everywhere ffmpeg can see it.** Corrected 2026-09-12, when
 M4.5.3 built it: this used to say everything before the output transform happens in ACEScct,
@@ -205,6 +209,16 @@ probes for it and raises QC-039, because the alternative is trusting a filename.
 Within that constraint a grade authored in ACEScct and converted back to linear keeps its float
 headroom. Values above 1.0 survive it.
 
+### The one picture the grade is never applied to
+
+**An aux still is delivered ungraded.** The aux names are `colorChart`, `mirrorBall`, `greyBall`
+and `sizeRef`, and every one of them is a reference a comp matches lighting or colour against. A
+creative grade applied to a colour chart destroys the only thing the chart is delivered for, and
+it does it invisibly: the chart still looks like a chart. So an aux still gets the input
+transform and lands in linear ACEScg like every other EXR the tool writes, and never the shot's
+CLF. It is the single exception to "the tool applies the CLF to everything it writes", and it is
+enforced in `planner._aux_plan` rather than left to the renderer.
+
 ### EXR metadata
 
 The header carries provenance, because a graded plate is only auditable if the file says what
@@ -212,19 +226,24 @@ was done to it.
 
 - `chromaticities` states **AP1** primaries. That constant is the difference between a file
   that is ACEScg and a file that lies about being ACEScg.
-- `proingest/colorspace` states `ACEScg`.
+- `proingest/colorspace` states `ACEScg`. It is a constant rather than a setting: the tool
+  transforms every plate into it, so the value is a fact about the deliverable.
 - `proingest/source_encoding` names the log encoding the source was read as, and therefore
   the input transform that was applied.
-- `proingest/clf` names the CLF and `proingest/clf_hash` is its digest. **The hash is what
+- `proingest/clf` names the CLF and `proingest/clf_hash` is its sha256. **The hash is what
   identifies the grade**: a CLF that is re-exported and redelivered gets a different one, so the
-  deliverables rendered from the old version stay findable afterwards.
-- `proingest/cdl` carries the CDL from the EDL, as machine readable slope, offset, power and
-  saturation attributes and as the **original `*ASC_SOP` / `*ASC_SAT` text**. It is a readable
-  approximation of what the CLF did, for a human or another facility's tool, and the header says
-  as much: **the CLF is what was applied.** Writing both is what makes a delivered plate legible
-  to someone who has neither the session nor an OCIO install.
-- `proingest/tool_version`, the shot ID, the frame range and the source timecode, per the
-  proposal's header list.
+  deliverables rendered from the old version stay findable afterwards. Both are **absent** from
+  an ungraded frame rather than present and empty, so a reader cannot mistake one for the other.
+- The CDL from the EDL, as machine readable numbers in `proingest/cdl_slope`,
+  `proingest/cdl_offset`, `proingest/cdl_power` and `proingest/cdl_saturation`, and as the
+  **original `*ASC_SOP` / `*ASC_SAT` text** in `proingest/cdl_asc_sop` and
+  `proingest/cdl_asc_sat`. It is a readable approximation of what the CLF did, for a human or
+  another facility's tool, and `proingest/cdl_note` says as much in the file: **the CLF is what
+  was applied.** Writing both is what makes a delivered plate legible to someone who has neither
+  the session nor an OCIO install.
+- The source timecode, as the standard `timeCode` attribute. **Not yet written:**
+  `proingest/tool_version`, the shot ID and the frame range, from the proposal's header list.
+  They are spec rather than code until something asks for them.
 
 ### OpenColorIO
 

@@ -11,10 +11,16 @@ from pathlib import Path
 
 import numpy as np
 import OpenEXR
+import PyOpenColorIO as ocio
 import pytest
 
-from proingest.core import color, exr, frames
+from proingest.core import clf, color, exr, frames
 from tests.fixtures import media as fixtures
+
+SOP_TEXT = (
+    "*ASC_SOP (1.020000 0.990000 1.010000)"
+    "(0.001000 -0.002000 0.000000)(0.980000 1.000000 1.020000)"
+)
 
 FPS = 24.0
 ONE_HOUR = frames.timecode_to_frames("01:00:00:00", FPS)
@@ -80,26 +86,29 @@ class TestWriteFrame:
 
 
 class TestWrittenMetadata:
-    def test_colour_space_is_stated_in_the_file(self, tmp_path: Path) -> None:
-        """v01 sources carry a baked sRGB curve, so that is what the file says (OQ-17)."""
+    def test_every_delivered_frame_states_acescg(self, tmp_path: Path) -> None:
+        """The tool transforms every plate into it, so the value is not a parameter."""
         path = tmp_path / "frame.exr"
         exr.write_frame(path, image())
         with OpenEXR.File(str(path)) as handle:
-            assert handle.header()[exr.COLORSPACE_ATTRIBUTE] == "sRGB_display"
+            assert handle.header()[exr.COLORSPACE_ATTRIBUTE] == color.PLATE_SPACE
 
-    def test_a_scene_linear_source_is_labelled_as_one(self, tmp_path: Path) -> None:
+    def test_the_source_encoding_is_named(self, tmp_path: Path) -> None:
+        """Which log the frame was read as, and therefore the input transform applied."""
         path = tmp_path / "frame.exr"
-        exr.write_frame(path, image(), colorspace=color.SCENE_LINEAR_SRGB)
+        exr.write_frame(path, image(), shot_color=clf.ShotColor(source_encoding="ARRI LogC3 (EI800)"))
         with OpenEXR.File(str(path)) as handle:
-            assert handle.header()[exr.COLORSPACE_ATTRIBUTE] == "scene_linear_sRGB"
+            assert handle.header()[exr.SOURCE_ENCODING_ATTRIBUTE] == "ARRI LogC3 (EI800)"
 
-    def test_the_label_does_not_change_the_pixels(self, tmp_path: Path) -> None:
-        """Raw output is never transformed, so the attribute is the only difference."""
-        display, linear = tmp_path / "d.exr", tmp_path / "l.exr"
-        source = image(value=0.75)
-        exr.write_frame(display, source, colorspace=color.SRGB_DISPLAY)
-        exr.write_frame(linear, source, colorspace=color.SCENE_LINEAR_SRGB)
-        assert np.array_equal(exr.read_pixels(display), exr.read_pixels(linear))
+    def test_an_ungraded_frame_carries_no_clf_attributes_at_all(self, tmp_path: Path) -> None:
+        """Absent rather than empty: an empty name would read as a lost filename."""
+        path = tmp_path / "frame.exr"
+        exr.write_frame(path, image())
+        with OpenEXR.File(str(path)) as handle:
+            header = handle.header()
+        assert exr.CLF_ATTRIBUTE not in header
+        assert exr.CLF_HASH_ATTRIBUTE not in header
+        assert not any(name in header for name in exr.CDL_ATTRIBUTES)
 
     def test_primaries_are_written(self, tmp_path: Path) -> None:
         path = tmp_path / "frame.exr"
@@ -107,6 +116,79 @@ class TestWrittenMetadata:
         with OpenEXR.File(str(path)) as handle:
             written = handle.header()["chromaticities"]
         assert np.allclose(np.asarray(written, dtype=np.float64), exr.CHROMATICITIES, atol=1e-6)
+
+    def test_the_primaries_are_ap1_and_not_rec709(self, tmp_path: Path) -> None:
+        """Written out rather than read off the constant: that constant is the file's
+
+        only claim to being ACEScg, and a regression to sRGB's red at 0.64 is exactly
+        the kind a test that reads the constant back cannot see.
+        """
+        path = tmp_path / "frame.exr"
+        exr.write_frame(path, image())
+        with OpenEXR.File(str(path)) as handle:
+            red_x, red_y, *_ = np.asarray(handle.header()["chromaticities"], dtype=np.float64)
+        assert (red_x, red_y) == pytest.approx((0.713, 0.293), abs=1e-6)
+
+
+class TestProvenance:
+    """What a graded plate says was done to it. COLOR_AND_FORMAT section 1.
+
+    A delivered EXR leaves the tool and the studio, so the header is the only record a
+    facility with no colour session has. These assert the file, not the dict.
+    """
+
+    def shot_color(self, tmp_path: Path) -> clf.ShotColor:
+        return clf.ShotColor(
+            clf_path=tmp_path / "MELT0001_grade.clf",
+            cdl=clf.CDL(
+                slope=(1.02, 0.99, 1.01),
+                offset=(0.001, -0.002, 0.0),
+                power=(0.98, 1.0, 1.02),
+                saturation=1.05,
+                sop_text=SOP_TEXT,
+                sat_text="*ASC_SAT 1.050000",
+            ),
+        )
+
+    def written(self, tmp_path: Path) -> dict[str, object]:
+        shot_color = self.shot_color(tmp_path)
+        path_to_clf = shot_color.clf_path or Path()
+        loaded = clf.LoadedClf(
+            path=path_to_clf,
+            digest="abc123",
+            transform=ocio.FileTransform(src=str(path_to_clf)),
+            is_scene_linear=True,
+        )
+        path = tmp_path / "frame.exr"
+        exr.write_frame(path, image(), shot_color=shot_color, loaded_clf=loaded)
+        with OpenEXR.File(str(path)) as handle:
+            return dict(handle.header())
+
+    def test_the_clf_is_named_and_hashed(self, tmp_path: Path) -> None:
+        """The hash identifies the grade: a re-exported CLF gets a new one."""
+        header = self.written(tmp_path)
+        assert header[exr.CLF_ATTRIBUTE] == "MELT0001_grade.clf"
+        assert header[exr.CLF_HASH_ATTRIBUTE] == "abc123"
+
+    def test_the_cdl_goes_in_as_numbers(self, tmp_path: Path) -> None:
+        header = self.written(tmp_path)
+        slope, offset, power, saturation, _, _, _ = exr.CDL_ATTRIBUTES
+        assert np.allclose(np.asarray(header[slope]), (1.02, 0.99, 1.01), atol=1e-6)
+        assert np.allclose(np.asarray(header[offset]), (0.001, -0.002, 0.0), atol=1e-6)
+        assert np.allclose(np.asarray(header[power]), (0.98, 1.0, 1.02), atol=1e-6)
+        assert header[saturation] == pytest.approx(1.05)
+
+    def test_the_cdl_also_goes_in_verbatim(self, tmp_path: Path) -> None:
+        """The original lines, because that is what another facility's tool reads."""
+        header = self.written(tmp_path)
+        _, _, _, _, sop, sat, _ = exr.CDL_ATTRIBUTES
+        assert str(header[sop]).startswith("*ASC_SOP (1.020000")
+        assert header[sat] == "*ASC_SAT 1.050000"
+
+    def test_the_header_says_the_cdl_was_not_the_thing_applied(self, tmp_path: Path) -> None:
+        """Two grade artifacts in one header is only safe if the file says which is which."""
+        header = self.written(tmp_path)
+        assert exr.CLF_ATTRIBUTE in str(header[exr.CDL_ATTRIBUTES[-1]])
 
     def test_a_frame_carries_its_own_timecode(self, tmp_path: Path) -> None:
         path = tmp_path / "frame.exr"

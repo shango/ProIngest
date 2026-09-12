@@ -446,6 +446,34 @@ sRGB either way. `-colorspace` is the matrix, and sRGB and Rec.709 share primari
 only the transfer names sRGB.
 """
 
+LUT_PIXEL_FORMAT = "gbrpf32le"
+"""What the cube is applied in. Planar float32 RGB, the same format the decode uses.
+
+Stated rather than left to ffmpeg's format negotiation, which would pick whatever
+`lut3d` and the decoder happen to share: that is a high bit depth format today and it
+is not something the delivered look should depend on.
+"""
+
+LUT_INTERPOLATION = "tetrahedral"
+"""`lut3d` already defaults to this. It is written out for the same reason
+`color.INTERPOLATION` exists: trilinear is visibly worse on saturated colour and it is
+a one word difference nobody notices being wrong."""
+
+
+def lut_filter(cube: Path) -> str:
+    """The filter that applies a baked `.cube`, COLOR_AND_FORMAT section 1.
+
+    **This is how an OCIO transform reaches ffmpeg**, which has no OCIO filter. The
+    whole view branch is inside the cube, so the encode stays one pass and no frame is
+    pulled through Python.
+
+    A filter argument is colon separated and backslash escaped, so the path is escaped
+    rather than pasted. Nothing the tool writes contains either character, and a
+    filtergraph that fails to parse is a render that fails on a temp directory name.
+    """
+    escaped = str(cube).replace("\\", "\\\\").replace(":", "\\:").replace("'", "\\'")
+    return f"format={LUT_PIXEL_FORMAT},lut3d={escaped}:interp={LUT_INTERPOLATION}"
+
 
 def encode_command(
     source: str,
@@ -455,7 +483,7 @@ def encode_command(
     is_sequence: bool,
     rate: str,
     target_size: tuple[int, int] | None = None,
-    display_filter: str | None = None,
+    lut: Path | None = None,
     audio: Path | None = None,
     audio_skip: float = 0.0,
     ffmpeg: Path | None = None,
@@ -477,8 +505,9 @@ def encode_command(
     - **`-f mp4` is stated.** The output is a `.part` path, so there is no extension to
       infer a muxer from. This is the same trap `extract_audio_command` documents.
 
-    `display_filter` is whatever `color.display_transform` returned, applied after the
-    scale so the resample runs on the values as delivered (section 4). `audio_skip`
+    `lut` is the viewing LUT `color.view_lut` baked for this shot, applied after the
+    scale so the downscale runs on the log values, which are bounded 0..1 the way
+    swscale needs them (section 1). Everything unbounded is inside the cube. `audio_skip`
     drops that many seconds off the front of the audio, which is how sound stays with
     the picture when the editor delivers a sub-range.
     """
@@ -504,8 +533,8 @@ def encode_command(
 
     if target_size is not None:
         filters.append(f"scale={target_size[0]}:{target_size[1]}:flags=lanczos")
-    if display_filter is not None:
-        filters.append(display_filter)
+    if lut is not None:
+        filters.append(lut_filter(lut))
     if filters:
         command += ["-vf", ",".join(filters)]
 
@@ -550,7 +579,7 @@ def encode_reference(
     is_sequence: bool,
     rate: str,
     target_size: tuple[int, int] | None = None,
-    display_filter: str | None = None,
+    lut: Path | None = None,
     audio: Path | None = None,
     audio_skip: float = 0.0,
     ffmpeg: Path | None = None,
@@ -569,7 +598,7 @@ def encode_reference(
         is_sequence,
         rate,
         target_size,
-        display_filter,
+        lut,
         audio,
         audio_skip,
         ffmpeg,

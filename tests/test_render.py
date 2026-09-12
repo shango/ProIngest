@@ -16,12 +16,15 @@ import multiprocessing
 from dataclasses import replace
 from pathlib import Path
 
+import numpy as np
+import numpy.typing as npt
 import OpenEXR
 import pytest
 
-from proingest.core import batchfile, color, exr, ffmpeg, frames, media, naming, qc, render
+from proingest.core import batchfile, clf, color, exr, ffmpeg, frames, media, naming, qc, render
 from proingest.core.models import Batch, Deliverable, FrameRate, QCResult, ShotRow
 from proingest.core.planner import DeliverableJob
+from tests.fixtures import color as color_fixtures
 from tests.fixtures import media as fixtures
 
 FPS = FrameRate(24)
@@ -40,6 +43,7 @@ def sequence_job(
     start_frame: int = 1001,
     start_timecode: int | None = ONE_HOUR,
     res: str | None = None,
+    shot_color: clf.ShotColor = clf.DEFAULT_SHOT_COLOR,
 ) -> DeliverableJob:
     """A picture job pointed at test media, with the source facts a worker needs.
 
@@ -61,6 +65,7 @@ def sequence_job(
         source_start_frame=start_frame,
         source_start_timecode=start_timecode,
         res=res,  # type: ignore[arg-type]
+        shot_color=shot_color,
     )
     return job
 
@@ -152,12 +157,80 @@ class TestRawSequence:
         render.render_job(job)
         assert exr.read_header(sorted(job.destination.iterdir())[0]).timecode is None
 
-    def test_the_colorspace_label_reaches_the_header(self, tmp_path: Path) -> None:
-        """It labels the file. Nothing here transforms the pixels either way."""
+    def test_every_delivered_frame_states_acescg(self, tmp_path: Path) -> None:
+        """The plate branch put it there, so the label is a fact rather than a setting."""
         job = raw_job(tmp_path, count=1)
-        render.render_job(job, colorspace=color.SCENE_LINEAR_SRGB)
+        render.render_job(job)
         with OpenEXR.File(str(job.frame_path(1001))) as handle:
-            assert handle.header()[exr.COLORSPACE_ATTRIBUTE] == "scene_linear_sRGB"
+            assert handle.header()[exr.COLORSPACE_ATTRIBUTE] == color.PLATE_SPACE
+
+
+class TestPlateBranch:
+    """The colour the plate is delivered in. COLOR_AND_FORMAT section 1.
+
+    The fixture writes a flat 0.2 into red, which is a code value in the source's log
+    encoding and not a scene linear one. What lands in the EXR is what the chain makes
+    of it, and the number is far enough from 0.2 that a chain that never ran shows up.
+    """
+
+    SOURCE_PIXEL = (0.2, 0.0, 0.0)
+    """What the fixture writes on the first of four frames: red is `1 / (4 + 1)`.
+
+    The whole triple, not just red: the session's CLF carries a saturation, which mixes
+    channels, so red out of a red-only pixel is not red out of a neutral one.
+    """
+
+    def delivered(
+        self, tmp_path: Path, shot_color: clf.ShotColor = clf.DEFAULT_SHOT_COLOR
+    ) -> npt.NDArray[np.float32]:
+        job = raw_job(tmp_path, count=4, shot_color=shot_color)
+        render.render_job(job)
+        return exr.read_pixels(job.frame_path(1001))
+
+    def expected(self, shot_color: clf.ShotColor) -> float:
+        """The source pixel through the same chain, asked of OCIO rather than typed out."""
+        pixels = np.array([[list(self.SOURCE_PIXEL)]], dtype=np.float32)
+        color.apply(pixels, color.processor(*shot_color.plate_transforms(shot_color.load())))
+        return float(pixels[0, 0, 0])
+
+    def test_the_source_is_transformed_and_not_passed_through(self, tmp_path: Path) -> None:
+        red = float(self.delivered(tmp_path)[0, 0, 0])
+        assert red == pytest.approx(self.expected(clf.DEFAULT_SHOT_COLOR), abs=0.002)
+        assert red != pytest.approx(self.SOURCE_PIXEL[0], abs=0.01)
+
+    def test_the_shot_s_clf_is_what_is_applied(self, tmp_path: Path) -> None:
+        """A different grade has to give a different plate, or nothing was applied."""
+        graded = clf.ShotColor(clf_path=color_fixtures.plate_clf(tmp_path / "MELT0001.clf"))
+        with_clf = self.delivered(tmp_path / "graded", shot_color=graded)
+        without = self.delivered(tmp_path / "plain")
+        assert float(with_clf[0, 0, 0]) != pytest.approx(float(without[0, 0, 0]), abs=0.002)
+        assert float(with_clf[0, 0, 0]) == pytest.approx(self.expected(graded), abs=0.002)
+
+    def test_the_header_names_the_clf_that_was_applied(self, tmp_path: Path) -> None:
+        """The header and the pixels come from the one `LoadedClf`, so they cannot differ."""
+        path = color_fixtures.plate_clf(tmp_path / "MELT0001_grade.clf")
+        job = raw_job(tmp_path, count=1, shot_color=clf.ShotColor(clf_path=path))
+        render.render_job(job)
+        with OpenEXR.File(str(job.frame_path(1001))) as handle:
+            # Copied rather than held: the mapping the bindings hand back empties when
+            # the file closes, and an assertion on it outside the block passes on nothing.
+            header = dict(handle.header())
+        assert header[exr.CLF_ATTRIBUTE] == "MELT0001_grade.clf"
+        assert header[exr.CLF_HASH_ATTRIBUTE] == clf.clf_digest(path)
+        assert header[exr.SOURCE_ENCODING_ATTRIBUTE] == color.DEFAULT_SOURCE_ENCODING
+
+    def test_alpha_does_not_go_through_the_chain(self) -> None:
+        """Coverage is not colour, and a transformed alpha only shows up over a comp."""
+        branch = render._plate_branch(DeliverableJob(
+            kind="raw_dir", source=Path("x"), destination=Path("y"), version=1,
+            shot_code="MELT0001", elem="pl01",
+        ))
+        pixels = np.full((2, 2, 4), 0.5, dtype=np.float32)
+        pixels[:, :, 3] = 0.25
+        out = branch.apply(pixels)
+        assert out.shape == (2, 2, 4)
+        assert np.all(out[:, :, 3] == 0.25)
+        assert not np.any(out[:, :, :3] == 0.5)
 
 
 class TestChecksums:
@@ -436,6 +509,73 @@ def streams(path: Path) -> list[dict[str, object]]:
 
 def video_stream(path: Path) -> dict[str, object]:
     return next(s for s in streams(path) if s["codec_type"] == "video")
+
+
+class TestViewBranch:
+    """The reference's colour, which reaches ffmpeg as a baked cube (section 1).
+
+    What these guard is the join: the cube has to exist, be a real LUT and be named in
+    the command **while ffmpeg runs**, and be gone afterwards. A missing cube is an
+    ffmpeg error nobody would misread; a stale one is a reference that silently carries
+    the wrong look.
+    """
+
+    def captured(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, object]:
+        """Render a reference with the encode stubbed, keeping what it was handed."""
+        seen: dict[str, object] = {}
+
+        def fake_encode(*args: object, **kwargs: object) -> None:
+            cube = kwargs["lut"]
+            assert isinstance(cube, Path)
+            seen["path"] = cube
+            seen["text"] = cube.read_text()
+            Path(str(args[1])).write_bytes(b"")  # the `.part` the real encode would write
+
+        monkeypatch.setattr(ffmpeg, "encode_reference", fake_encode)
+        monkeypatch.setattr(ffmpeg, "container_frame_count", lambda path: 4)
+        source = fixtures.make_mov(tmp_path / "src" / "plate.mov", count=8)
+        render.render_job(ref_job(tmp_path, source, 0, 3))
+        return seen
+
+    def test_the_encode_is_handed_a_real_cube(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        seen = self.captured(tmp_path, monkeypatch)
+        text = str(seen["text"])
+        assert text.startswith(f"LUT_3D_SIZE {color.LUT_SIZE}")
+        assert len(text.splitlines()) == color.LUT_SIZE**3 + 1
+
+    def test_the_cube_is_named_after_the_deliverable(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The ffmpeg command is logged verbatim, so the name has to say which shot."""
+        cube = self.captured(tmp_path, monkeypatch)["path"]
+        assert isinstance(cube, Path)
+        assert cube.name == f"MELT0001_pl01_ref_4k_v01{render.LUT_SUFFIX}"
+
+    def test_nothing_is_left_behind_once_the_encode_is_over(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The cube is not a deliverable, and it is not written to the delivery root."""
+        cube = self.captured(tmp_path, monkeypatch)["path"]
+        assert isinstance(cube, Path)
+        assert not cube.exists()
+        assert not cube.parent.exists()
+        assert render.LUT_SUFFIX not in [path.suffix for path in (tmp_path / "out").iterdir()]
+
+    def test_the_delivered_reference_is_not_the_raw_log(self, tmp_path: Path) -> None:
+        """End to end through the real ffmpeg: the view branch has to change the picture.
+
+        A reference encoded with no transform is the failure M3 shipped with, and it
+        looks flat and milky rather than broken, so the check is against an encode of
+        the same frames with no LUT at all.
+        """
+        source = fixtures.make_mov(tmp_path / "src" / "plate.mov", count=4)
+        job = ref_job(tmp_path, source, 0, 3)
+        render.render_job(job)
+        plain = tmp_path / "plain.mp4"
+        ffmpeg.encode_reference(str(source), plain, 0, 3, is_sequence=False, rate="24/1")
+        assert render.file_digest(job.destination) != render.file_digest(plain)
 
 
 class TestReferenceMp4:

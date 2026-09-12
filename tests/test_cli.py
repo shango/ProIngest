@@ -4,10 +4,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import OpenEXR
 import pytest
 
 from proingest.__main__ import _ProgressPrinter, main
-from proingest.core import batchfile, qc, render
+from proingest.core import batchfile, color, exr, qc, render
+from tests.fixtures import color as color_fixtures
 from tests.fixtures import media as fixtures
 
 FOLDER = "turnover001_02_23_2026_danielluckett"
@@ -197,6 +199,89 @@ class TestRunCommand:
         """The batch carries no root and none was passed, so there is nowhere to write."""
         assert main(["run", str(self.scanned(tmp_path))]) == 2
         assert "delivery root" in capsys.readouterr().err
+
+
+class TestColorSession:
+    """`run --color-session` is where the colour session package comes in until the
+
+    Settings page holds it (PRD section 7). The run has to work without one, and with
+    one the grade has to reach the file rather than just the command line.
+    """
+
+    def scanned(self, tmp_path: Path) -> Path:
+        folder = tmp_path / FOLDER
+        fixtures.make_turnover(folder, shots=1, frames=4, side_files=True)
+        rules = fixtures.write_rules_file(tmp_path / "rules.json")
+        batch_path = tmp_path / "batch.pibatch"
+        assert main(["scan", str(folder), "--rules", str(rules), "--save", str(batch_path)]) == 0
+        return batch_path
+
+    def session(self, tmp_path: Path) -> Path:
+        """A final EDL and one CLF, laid out the way the session exports them."""
+        folder = tmp_path / "session"
+        folder.mkdir()
+        edl = folder / "MELT_FINAL_v01.edl"
+        edl.write_text(
+            "TITLE: MELT_FINAL_v01\nFCM: NON-DROP FRAME\n\n"
+            "001  MELT0001 V     C        01:00:00:00 01:00:00:04 01:00:00:00 01:00:00:04\n"
+            "* FROM CLIP NAME: MELT0001_pl01.exr\n"
+            "*ASC_SOP (1.020000 0.990000 1.010000)"
+            "(0.001000 -0.002000 0.000000)(0.980000 1.000000 1.020000)\n"
+            "*ASC_SAT 1.050000\n"
+        )
+        color_fixtures.plate_clf(folder / "MELT0001_grade_v01.clf")
+        return edl
+
+    def test_the_grade_reaches_the_delivered_frames(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        batch_path = self.scanned(tmp_path)
+        delivery = tmp_path / "delivery"
+        main([
+            "run", str(batch_path), "--delivery-root", str(delivery),
+            "--color-session", str(self.session(tmp_path)),
+        ])
+        assert "colour session: 1 events, 1 shots with a CLF" in capsys.readouterr().out
+
+        frame = next((delivery / "MELT" / "MELT0001" / "MELT0001_pl01_raw_4k_v01").iterdir())
+        with OpenEXR.File(str(frame)) as handle:
+            header = dict(handle.header())
+        assert header[exr.CLF_ATTRIBUTE] == "MELT0001_grade_v01.clf"
+        assert header[exr.COLORSPACE_ATTRIBUTE] == color.PLATE_SPACE
+
+    def test_the_qc_log_names_the_clf_it_rendered_through(self, tmp_path: Path) -> None:
+        batch_path = self.scanned(tmp_path)
+        main([
+            "run", str(batch_path), "--delivery-root", str(tmp_path / "delivery"),
+            "--color-session", str(self.session(tmp_path)),
+        ])
+        reopened = batchfile.load(batch_path)
+        assert reopened.rows[0].clf_path is not None
+        assert reopened.rows[0].clf_path.name == "MELT0001_grade_v01.clf"
+
+    def test_an_unreadable_edl_stops_the_run_before_anything_is_written(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        batch_path = self.scanned(tmp_path)
+        delivery = tmp_path / "delivery"
+        code = main([
+            "run", str(batch_path), "--delivery-root", str(delivery),
+            "--color-session", str(tmp_path / "nothing.edl"),
+        ])
+        assert code == 2
+        assert "could not read" in capsys.readouterr().err
+        assert not delivery.exists()
+
+    def test_a_run_with_no_session_still_delivers_ungraded(self, tmp_path: Path) -> None:
+        """Scanning, review and In/Out all happen before a session exists."""
+        batch_path = self.scanned(tmp_path)
+        delivery = tmp_path / "delivery"
+        main(["run", str(batch_path), "--delivery-root", str(delivery)])
+        frame = next((delivery / "MELT" / "MELT0001" / "MELT0001_pl01_raw_4k_v01").iterdir())
+        with OpenEXR.File(str(frame)) as handle:
+            header = dict(handle.header())
+        assert exr.CLF_ATTRIBUTE not in header
+        assert header[exr.COLORSPACE_ATTRIBUTE] == color.PLATE_SPACE
 
 
 class TestQcCommand:

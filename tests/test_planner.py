@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from proingest.core import naming, planner
+from proingest.core import clf, color, naming, planner
 from proingest.core.models import (
     Batch,
     FrameRate,
@@ -397,3 +397,66 @@ class TestOutputNamesReadBack:
             parsed = naming.parse_output_name(job.name)
             assert parsed is not None
             assert parsed.kind == job.kind
+
+
+class TestShotColourOnJobs:
+    """Which chain each deliverable is rendered through. COLOR_AND_FORMAT section 1.
+
+    A job is self contained, so the colour rides on it. The one that matters here is
+    the aux still: `colorChart`, `mirrorBall`, `greyBall` and `sizeRef` are the
+    references a comp matches lighting against, and a creative grade applied to a
+    colour chart destroys the only thing the chart is delivered for.
+    """
+
+    def session(self, tmp_path: Path) -> clf.ColorSession:
+        edl = tmp_path / "MELT_FINAL.edl"
+        edl.write_text(
+            "TITLE: MELT_FINAL\nFCM: NON-DROP FRAME\n\n"
+            "001  MELT0001 V     C        01:00:00:00 01:00:10:00 01:00:00:00 01:00:10:00\n"
+            "* FROM CLIP NAME: MELT0001_pl01.mov\n"
+            "*ASC_SOP (1.020000 0.990000 1.010000)"
+            "(0.001000 -0.002000 0.000000)(0.980000 1.000000 1.020000)\n"
+            "*ASC_SAT 1.050000\n"
+        )
+        (tmp_path / "MELT0001_grade.clf").touch()
+        return clf.load_session(edl, RATE)
+
+    def test_a_picture_job_carries_the_session_s_clf_and_cdl(self, tmp_path: Path) -> None:
+        batch = Batch(name="b", rows=[row()], delivery_root=ROOT)
+        jobs = planner.plan_batch(batch, session=self.session(tmp_path))
+        picture = [job for job in jobs if job.kind in ("raw_dir", "ref_mp4")]
+        assert picture
+        for job in picture:
+            assert job.shot_color.clf_path == tmp_path / "MELT0001_grade.clf"
+            assert job.shot_color.cdl is not None
+
+    def test_the_row_records_the_clf_for_the_qc_log(self, tmp_path: Path) -> None:
+        batch = Batch(name="b", rows=[row()], delivery_root=ROOT)
+        planner.plan_batch(batch, session=self.session(tmp_path))
+        assert batch.rows[0].clf_path == tmp_path / "MELT0001_grade.clf"
+
+    def test_an_aux_still_is_never_given_the_shot_s_grade(self, tmp_path: Path) -> None:
+        """It still gets the input transform, so it lands in ACEScg like every EXR."""
+        aux = row("MELT0001_pl01_colorChart_01")
+        batch = Batch(name="b", rows=[aux], delivery_root=ROOT)
+        jobs = planner.plan_batch(batch, session=self.session(tmp_path))
+        still = next(job for job in jobs if job.kind == "aux_still")
+        assert still.shot_color.clf_path is None
+        assert still.shot_color.source_encoding == color.DEFAULT_SOURCE_ENCODING
+
+    def test_without_a_session_every_job_plans_ungraded(self) -> None:
+        """The same files in the same places; the CLF is the only difference."""
+        batch = Batch(name="b", rows=[row()], delivery_root=ROOT)
+        jobs = planner.plan_batch(batch)
+        assert all(job.shot_color == clf.DEFAULT_SHOT_COLOR for job in jobs)
+
+    def test_the_source_encoding_reaches_every_job(self) -> None:
+        batch = Batch(name="b", rows=[row()], delivery_root=ROOT)
+        jobs = planner.plan_batch(batch, source_encoding="ACEScc")
+        assert {job.shot_color.source_encoding for job in jobs} == {"ACEScc"}
+
+    def test_a_row_that_plans_nothing_records_no_clf(self, tmp_path: Path) -> None:
+        skipped = row(skipped=True)
+        batch = Batch(name="b", rows=[skipped], delivery_root=ROOT)
+        planner.plan_batch(batch, session=self.session(tmp_path))
+        assert skipped.clf_path is None

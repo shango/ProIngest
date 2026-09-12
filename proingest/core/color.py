@@ -27,7 +27,6 @@ from __future__ import annotations
 
 from functools import lru_cache
 from pathlib import Path
-from typing import Literal
 
 import numpy as np
 import numpy.typing as npt
@@ -208,40 +207,3 @@ def _identity_grid(size: int) -> npt.NDArray[np.float32]:
     grid[0, :, 2] = np.repeat(axis, size * size)
     return grid
 
-
-# --------------------------------------------------------------------------------------
-# Superseded: M3's display referred reference encode.
-#
-# This is the 2026-09-10 premise, where sources carried a baked sRGB curve and a
-# reference was encoded with no transform at all. Nothing above it is related to it.
-# `render.py` and `exr.py` still read it, and M4.5.4 is where they stop: the reference
-# becomes an ffmpeg `lut3d` from the viewing LUT and the EXR header states ACEScg. This
-# block and its tests go in that chunk, together, and not before.
-# --------------------------------------------------------------------------------------
-
-SourceColorSpace = Literal["srgb_display", "scene_linear_srgb"]
-
-SRGB_DISPLAY: SourceColorSpace = "srgb_display"
-"""Display referred: the sRGB curve is baked in."""
-
-SCENE_LINEAR_SRGB: SourceColorSpace = "scene_linear_srgb"
-"""Scene referred, sRGB primaries."""
-
-DEFAULT_SOURCE_COLORSPACE: SourceColorSpace = SRGB_DISPLAY
-
-_EXR_ATTRIBUTE_VALUES: dict[SourceColorSpace, str] = {
-    SRGB_DISPLAY: "sRGB_display",
-    SCENE_LINEAR_SRGB: "scene_linear_sRGB",
-}
-
-LINEAR_TO_SRGB_FILTER = "zscale=transferin=linear:transfer=iec61966-2-1"
-
-
-def exr_attribute(space: SourceColorSpace) -> str:
-    """What a written EXR states in `proingest/colorspace`."""
-    return _EXR_ATTRIBUTE_VALUES[space]
-
-
-def display_transform(space: SourceColorSpace) -> str | None:
-    """The ffmpeg filter that brings a source to display sRGB, or None when it is there."""
-    return LINEAR_TO_SRGB_FILTER if space == SCENE_LINEAR_SRGB else None

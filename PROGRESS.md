@@ -8,11 +8,11 @@ commit.
 
 ## 1. Resume here
 
-**State at 2026-09-12. M1, M2, M3 and M4 complete; M4.5.1, M4.5.2 and M4.5.3 done.** The colour
-session package is now read and the view branch is bakeable: `core/clf.py` takes Ben's final EDL
-as the conform and pairs each row with its CLF, and `color.view_lut` collapses the view branch
-into the `.cube` ffmpeg will apply.
-838 tests passing, `ruff` and `mypy --strict` clean. **Nothing is blocked.**
+**State at 2026-09-12. M1, M2, M3 and M4 complete; M4.5 is done, all four chunks.** The colour
+chain now reaches the files: a plate is delivered graded in linear ACEScg with AP1 primaries and
+a header that says what was applied to it, and a reference mp4 is encoded through the shot's
+grade and the ACES output transform baked into one cube. **M5, the UI, is next.**
+872 tests passing, `ruff` and `mypy --strict` clean. **Nothing is blocked.**
 
 **M4 is done.** `core/exports.py` writes both spreadsheets, `proingest qc <batch>` writes them
 headless, and QC-053 parses camData through the new `core/camdata.py`. Proved end to end on a two
@@ -23,9 +23,8 @@ M4.5.1 put OpenColorIO in and rebuilt `core/color.py` as the two ends of the cha
 transform from the studio standard log to ACEScct, the plate transform from ACEScct to linear
 ACEScg, and the machinery to compose them into one `GroupTransform` and apply it to a decoded
 frame in place. It did **not** need OQ-39: the source encoding is one OCIO colour space name in
-a constant, so the answer costs one string. The module still carries M3's display referred
-block at the bottom, fenced off and labelled, because `render.py` and `exr.py` read it until
-M4.5.4 moves them.
+a constant, so the answer costs one string. **The display referred block it kept under a fence
+is gone**, deleted with its tests in M4.5.4 as planned.
 
 ### First five minutes
 
@@ -71,7 +70,7 @@ exports an **updated final EDL** (conform, the approved trims, and the CDL as `*
 `*ASC_SAT` lines), **a `.clf` per shot**, and the stringout. The tool conforms from the EDL and
 **applies the CLF** to everything it writes, plates included, so the plate is delivered graded.
 
-### What changed today, and where it lives
+### What changed on 2026-09-11, and where it lives
 
 | decision | where it lives |
 |---|---|
@@ -194,11 +193,12 @@ Five things in it should not be re-derived.
 are built and both are pinned by tests, so one real EDL and one real CLF confirm or move one
 constant each.
 
-**The rules are not wired yet.** QC-008, QC-009, QC-019, QC-039 and QC-045 all read this module
-and none of them can fire until something tells a batch where its colour session package is.
-That is a Settings value (PRD section 7, Colour group) and the wiring belongs with M4.5.4 and
-M5, not here. `core/clf.py` raises and returns the states those rules report, and nothing calls
-it yet.
+**The rules are still not wired.** QC-008, QC-009, QC-019, QC-039 and QC-045 all read this
+module and none of them can fire until a batch knows where its colour session package is. That
+is a Settings value (PRD section 7, Colour group) and the wiring is **M5**. What M4.5.4 added is
+a caller: the planner asks a `ColorSession` for each row's `ShotColor`, and
+`proingest run --color-session` supplies the session headlessly. The rules themselves report
+nothing yet.
 
 ### M4.5.3 is built: the view branch bakes to a cube
 
@@ -233,56 +233,76 @@ it should not be re-derived.
   ffmpeg sees log in and display out, and the unbounded stretch is inside the cube where
   swscale never sees it.
 
-### Next task: M4.5.4, where render and exr move onto the new chain
+### M4.5.4 is built: render and exr are on the new chain
 
-The last colour chunk and the biggest: `render.py` splits into the plate branch and the view
-branch, the reference encode becomes an ffmpeg `lut3d` over the baked cube, and `exr.py`'s
-`CHROMATICITIES` goes from sRGB to AP1 with `COLORSPACE_ATTRIBUTE` from `scene_linear_sRGB` to
-`ACEScg`. The fenced display referred block at the bottom of `core/color.py` and its tests in
-`TestSupersededDisplayEncode` are deleted in that chunk, **together**, and not before.
+The last colour chunk, and the one that makes the other three visible in a file. 34 tests.
+`render.py` now splits the way COLOR_AND_FORMAT section 1 does: `_plate_branch` builds one OCIO
+processor per job and applies it to every frame on the way to an EXR, and `_view_lut` bakes the
+same chain plus the ACES output transform into a `.cube` that ffmpeg applies with `lut3d`.
+`exr.py` writes AP1 chromaticities, states `ACEScg`, and carries the CLF's name and sha256, the
+source encoding and the CDL both ways. The fenced display referred block and
+`TestSupersededDisplayEncode` are deleted. **M3's wrong reference encode is fixed**, which was
+the oldest item on the open list.
 
-The EXR header gains what `core/clf.py` already produces: `proingest/clf`, `proingest/clf_hash`
-from `clf.clf_digest`, `proingest/source_encoding`, and the CDL as attributes plus its original
-`*ASC_SOP` / `*ASC_SAT` text. That is also when the QC log gains its CLF column per row.
+Seven things in it should not be re-derived.
 
-**It needs somewhere to put the cube**, one per shot per run, and the render job's temp area is
-the obvious place. `view_lut` renames onto its destination, so a cancelled bake leaves nothing
-for ffmpeg to read.
+- **What a worker needs to know about colour rides on the job, as `clf.ShotColor`.** A path, a
+  colour space name and the CDL: three picklable things, because a job crosses a spawn boundary
+  and no `ocio` object survives one. The worker calls `ShotColor.load()` once per job to turn the
+  path back into a transform, which also means **the digest in the header is taken at render
+  time** and describes the file that was actually applied.
+- **`plate_transform` is applied only when there is no CLF**, and `ShotColor.plate_transforms`
+  is the one place that decides. Applying both converts ACEScct to ACEScg twice and delivers a
+  plate about seventeen times too dark, with no error anywhere. A test holds it by writing a CLF
+  that only converts and asserting mid grey still lands on 0.18.
+- **An aux still is never graded, and that is a decision rather than an oversight.** The aux
+  names are `colorChart`, `mirrorBall`, `greyBall` and `sizeRef`. A creative grade applied to a
+  colour chart destroys the only thing the chart is delivered for, and it does it invisibly. It
+  still gets the input transform, so it lands in ACEScg like every other EXR. Enforced in
+  `planner._aux_plan`, tested there, and now written into COLOR_AND_FORMAT section 1.
+- **The cube goes in a system temp directory, not under `job.temp`.** The handoff proposed the
+  job's temp area and the delivery folder is the wrong volume for it: that folder is a Google
+  Drive mount (OQ-25), and a megabyte of LUT written there is a megabyte synced up and back for
+  a file whose life is one encode. It is named after the deliverable so the ffmpeg command,
+  which is logged verbatim, still says which shot the cube belonged to.
+- **Both reference jobs of a shot bake their own cube.** Sharing one would mean a cache keyed by
+  shot across worker processes; baking is 35937 samples through a processor and costs
+  milliseconds.
+- **`format=gbrpf32le` precedes `lut3d` in the filtergraph.** Without it ffmpeg negotiates a
+  format between the decoder and `lut3d`, which is a high bit depth one today and is not
+  something the delivered look should rest on.
+- **An EXR header read back from the bindings empties when the file closes.** `handle.header()`
+  hands back a live mapping, so an assertion on it outside its `with` block passes on nothing
+  and a test that should have failed does not. Copy it with `dict(...)`. This cost twenty
+  minutes and the tests that read a header now all copy.
 
-**M4.3 is done, and the reason it was to be deferred turned out not to apply.** The plan had been
-colour first, so the QC log and the tracker would get the colour columns written once instead of
-twice. The real tracker settled that: it has **no colour column at all**, so nothing in the
-tracker export is waiting on M4.5. The QC log will want a CLF column per row when there is a CLF
-to name, which is one column appended to one sheet.
+**Two assumptions came out of it and both are recorded.** OQ-42: an EXR source is transformed as
+though it were the studio standard log, which is a wrong image rather than an error for a
+sequence already in ACEScg, and reading the source's own header is the way out. OQ-43: the
+resize happens before the colour transform rather than after it as the chain diagram draws it.
+Both orders are bounded so nothing clips and the property the diagram protects holds, but log
+and linear resampling ring differently on a high contrast edge. COLOR_AND_FORMAT section 1 was
+corrected to say where the resize actually is.
 
-One thing M4.5.1 settled that M4.5.2 must not undo: **the CLF ends in linear ACEScg itself**, so
-the plate branch adds nothing after it. `color.plate_transform()` exists for a chain with no CLF
-in it. Applying both converts twice, and that is a plausible looking wrong image rather than an
-error. COLOR_AND_FORMAT section 1 now says so under the chain diagram, which used to read as
-though the tool always performed that step.
+**`proingest run --color-session <final.edl>` is how the package gets in** until Settings holds
+it (PRD section 7). Without it the run produces every deliverable in ACEScg, ungraded; the CLF
+is the only difference. The EDL's rate comes from the first row that has media, and a batch
+carrying more than one rate prints which was used rather than choosing silently (OQ-19).
 
-**Three questions are open and the user has all of them:**
+### Next task: M5, the UI
 
-- **OQ-19, whether QC-026 should still be an error.** Reopened by the tracker's FPS column and
-  the only one that touches shipped behaviour: 29 of 262 rows on current turnovers are not 24,
-  so as it stands the rule blocks about one row in nine. **What settles it is one sentence from
-  the editor**: is that column the timeline rate, or the rate the camera shot at? Only the first
-  makes QC-026 fire.
+M4.5 is finished and the remaining colour work is not code. `docs/UI_SPEC.md` is the spec and it
+was already cut down when the four colour controls and the three viewers were dropped. The
+things M5 owes the colour chain are small and known:
 
-- **OQ-30 and OQ-33, how an EDL event and a CLF each find their row.** The EDL is now the
-  conform, so getting its event matching wrong misplaces the approved In/Out; pairing the wrong
-  CLF applies a neighbouring shot's grade. Both look entirely plausible when wrong. An EDL event
-  identifies itself by reel name, by `FROM CLIP NAME` and by source timecode, and Resolve
-  populates those differently depending on export settings; a CLF is matched by whatever names
-  it. **One real export from Ben's session answers both**, along with OQ-29 and OQ-39.
-- **OQ-39, which log encoding is the studio standard.** No longer a gate: M4.5.1 is built and
-  the encoding is one OCIO colour space name in `color.DEFAULT_SOURCE_ENCODING`, defaulted to
-  ACEScct and validated against the config. ACEScct keeps the input transform identity;
-  anything else costs one fixed transform and no code.
-
-**OQ-35 is open and does not block anything**: frame numbers at 1001, as the studio spec sheet
-and QC-102 say, or derived from source timecode as the user's proposal said. The default is
-1001 and changing it later costs `naming.py`, the planner, the EXR writer and their tests.
+- **The Colour settings group**, which is where `--color-session` and `--source-encoding` stop
+  being flags: the session's EDL path and the studio standard log encoding, both remembered
+  (PRD section 7).
+- **Wiring QC-008, QC-009, QC-019, QC-039 and QC-045**, which all read `core/clf.py` and none of
+  which can fire until a batch knows where its colour session is. QC-008 is the one that refuses
+  a run: a batch cannot produce final deliverables until its session exists.
+- **The QC log's CLF column is already written** and so is `ShotRow.clf_path`, so the UI has
+  something to show per row without any new plumbing.
 
 ### Two M3 decisions to revisit rather than rediscover
 
@@ -400,21 +420,21 @@ PDF viewer.
 |---|---|---|
 | `core/naming.py` | every output name, both directions; `next_version`; clip and shot code parsing | 324 |
 | `core/frames.py` | integer frame math, timecode, In/Out input grammar | 179 |
-| `core/models.py` | Batch, Turnover, ShotRow, Deliverable, MediaInfo, AudioInfo, FrameRate, QCResult | 563 |
-| `core/ffmpeg.py` | the only place anything shells out; tool lookup, ffprobe, decode, audio extract | 376 |
+| `core/models.py` | Batch, Turnover, ShotRow, Deliverable, MediaInfo, AudioInfo, FrameRate, QCResult | 583 |
+| `core/ffmpeg.py` | the only place anything shells out; tool lookup, ffprobe, decode, audio extract, reference encode through the viewing LUT | 608 |
 | `core/media.py` | DirectoryIndex, sequence detection, path remap, probe cache | 465 |
-| `core/exr.py` | EXR header and pixel reading, delivery frame writing | 235 |
+| `core/exr.py` | EXR header and pixel reading, delivery frame writing, and the provenance a graded plate carries | 299 |
 | `core/resize.py` | antialiased Lanczos downscale for the EXR path | 96 |
-| `core/color.py` | the pinned OCIO config, every leg of the chain but the CLF, composing and applying them, and the view branch baked to a `.cube`. Still carries M3's display referred block at the bottom, fenced, until M4.5.4 | 247 |
+| `core/color.py` | the pinned OCIO config, every leg of the chain but the CLF, composing and applying them, and the view branch baked to a `.cube` | 209 |
 | `core/timeline.py` | OTIO and EDL loading, audio association | 233 |
-| `core/clf.py` | the colour session package: the final EDL as the conform, the CDL, the CLF matched per row, loaded, hashed and probed | 402 |
+| `core/clf.py` | the colour session package: the final EDL as the conform, the CDL, the CLF matched per row, loaded, hashed and probed, and `ShotColor`, which is what rides on a job | 471 |
 | `core/scan.py` | turnover folder -> Turnover + ShotRows | 388 |
-| `core/planner.py` | type table, deliverable jobs, version resolution | 440 |
+| `core/planner.py` | type table, deliverable jobs, version resolution, the shot's colour attached to each job | 485 |
 | `core/batchfile.py` | `.pibatch` save/load, backup, filesystem reconciliation | 86 |
 | `core/camdata.py` | key/value pairs out of a camData `.txt` or `.rtf`, RTF stripped pragmatically | 62 |
-| `core/exports.py` | the QC log's five sheets and the studio tracker's rows to paste | 371 |
-| `core/render.py` | executing a job and a batch of them: atomic writes, pool, progress, cancel | 565 |
-| `core/qc.py` | rule registry: phase A, `RuleSettings`, `preflight`, phase B | 1325 |
+| `core/exports.py` | the QC log's five sheets and the studio tracker's rows to paste | 378 |
+| `core/render.py` | executing a job and a batch of them: atomic writes, the plate and view branches, pool, progress, cancel | 631 |
+| `core/qc.py` | rule registry: phase A, `RuleSettings`, `preflight`, phase B | 1416 |
 | `__main__.py` | `proingest scan`, `run` and `qc` CLI, `--rules` overrides | 382 |
 
 Not built yet: `core/settings.py`, and
@@ -457,7 +477,7 @@ Entry points worth knowing:
 | M2 | Naming and planning: type table, versioning, layout | complete, 66 tests |
 | M3 | Render | complete, 172 tests |
 | M4 | QC: all rules both phases, xlsx exports, `qc` CLI | complete, 175 tests |
-| M4.5 | Colour pipeline, core only. Studio log in, CLF applied, ACEScg out, the viewing LUT | respecified 2026-09-11, M4.5.1 done |
+| M4.5 | Colour pipeline, core only. Studio log in, CLF applied, ACEScg out, the viewing LUT | complete, 111 tests |
 | M5 | UI: the list, the FR-14 metadata pane, settings, log. **No viewers** | not started |
 | M6 | ~~Stringout with burn-ins~~ | **dropped 2026-09-11**, the colour session exports it |
 | M7 | Packaging: PyInstaller `.app`, dmg, Gatekeeper | not started, and needs a Mac (OQ-22) |
@@ -480,11 +500,14 @@ with it, and what M4.5.2 reads is the colour session's package rather than the s
 | M4.5.1 | OCIO in, `core/color.py` rebuilt as a pipeline, studio log to ACEScct to ACEScg | done, 24 tests |
 | M4.5.2 | `core/clf.py`: the final EDL read for conform, In/Out and CDL; the CLF matched per row, loaded and hashed | done, 42 tests. OQ-30 and OQ-33 built to their defaults |
 | M4.5.3 | The viewing LUT: CLF plus ACES output transform baked to one `.cube` per shot | done, 11 tests. OQ-29's open half built to its default |
-| M4.5.4 | `render` plate/view split, `lut3d` encode, `exr.py` AP1 constants and the new header attributes | not started |
+| M4.5.4 | `render` plate/view split, `lut3d` encode, `exr.py` AP1 constants and the new header attributes | done, 34 tests. OQ-42 and OQ-43 recorded |
 | ~~M4.5.5~~ | ~~`core/preview.py`, single frame fetch with cache~~ **dropped 2026-09-11 with the viewers** | n/a |
 
-Two constants in `exr.py` change in M4.5.4 and they matter: `CHROMATICITIES` goes from sRGB to
-AP1, and `COLORSPACE_ATTRIBUTE`'s value from `scene_linear_sRGB` to `ACEScg`.
+Two constants in `exr.py` changed in M4.5.4 and they matter: `CHROMATICITIES` went from sRGB to
+AP1, and `COLORSPACE_ATTRIBUTE`'s value from `scene_linear_sRGB` to `ACEScg`, which is now a
+constant rather than a parameter. A test asserts red sits at 0.713, 0.293 rather than reading
+the constant back, because a regression to Rec.709's 0.64 is exactly what a test that reads the
+constant cannot see.
 
 M3 detail:
 
@@ -769,11 +792,11 @@ from:
 - The seek is `decode_command`'s, unchanged: `-start_number` for a sequence, the
   frame-counting `trim` for a container, never `-ss`. Section 7 has the two traps that
   come with using it for an encode rather than a decode.
-- The transfer is read from `color.display_transform`, never re-derived. It returns the
-  linear-to-sRGB filter for a scene linear source and None for the baked sRGB source the
-  turnovers actually carry today, and the wrong branch washes out every reference without
-  failing. The scale runs before it, so the resample sees the values as delivered
-  (COLOR_AND_FORMAT section 4).
+- **Superseded by M4.5.4:** the transfer used to come from `color.display_transform`, which
+  returned a linear-to-sRGB filter or None. There is no such function now. The colour that
+  reaches ffmpeg is one baked cube applied with `lut3d`, built by `render._view_lut` from the
+  shot's own chain. The scale still runs before it, so the downscale sees the log values, which
+  are bounded the way swscale needs them (COLOR_AND_FORMAT sections 1 and 4).
 - Audio is a second input, AAC 192k, `-shortest`, and **seeked by the in-point offset** so
   the sound stays with a trimmed picture. That the wav starts where the picture media
   starts is an assumption, logged as OQ-27.
@@ -825,10 +848,11 @@ from:
   ProIngest's own bundle is the problem. Decide before handover, not at handover.
 
 **Colour (OQ-17, answered by the studio 2026-09-10). SUPERSEDED 2026-09-11, twice.**
-Kept as the record of what M3 was built against and why the reference encode looks the way it
-does. The live policy is COLOR_AND_FORMAT section 1: a studio standard log source, a CLF per
-shot applied, a graded ACEScg plate. Everything in this block is the display referred premise
-that `core/color.py` now carries under a fence and M4.5.4 deletes.
+Kept as the record of what M3 was built against and why its reference encodes looked the way
+they did. The live policy is COLOR_AND_FORMAT section 1: a studio standard log source, a CLF
+per shot applied, a graded ACEScg plate. **Nothing in this block is still in the code.** The
+display referred premise it describes lived under a fence in `core/color.py` until M4.5.4
+deleted it along with `TestSupersededDisplayEncode`.
 
 - Everything the shooters deliver today, **EXRs included, has the sRGB curve baked in**.
   The source is display referred, not scene referred. The EXRs are expected to become
@@ -1096,17 +1120,6 @@ is useful rather than not, but a test asserting "one stream" will fail on it.
 
 Nothing blocks the next task. These are live, in rough priority order:
 
-- **M3's reference encode is wrong as shipped, and it is known.** It applies no colour
-  transform, which was correct under OQ-17's original premise and is not under any of the
-  three specs since: a log source encoded with no output transform gives a flat, milky mp4.
-  Nothing is broken in a way tests can catch, because the tests assert the encode does what it
-  was told to do. M4.5.4 fixes it. Until then, do not trust the appearance of a reference mp4.
-- **`core/color.py` still carries the superseded display referred block.** `srgb_display` and
-  `scene_linear_srgb` were the 2026-09-10 premise and neither is real. M4.5.1 rebuilt the module
-  around them rather than deleting them, because `render.py` and `exr.py` read them and moving
-  those is M4.5.4's whole job. The block sits under a fence at the bottom of the file that says
-  as much, and its six tests sit in one class at the bottom of `tests/test_color.py`. **Delete
-  both in M4.5.4, together**, and nothing above the fence is related to them.
 - **No colour session has ever exported for this tool (OQ-31).** Every claim in
   COLOR_AND_FORMAT section 1 about what arrives is a specification, not an observation, until
   one session has run end to end on one shot. That single exercise answers OQ-29, OQ-30, OQ-33
@@ -1120,12 +1133,18 @@ Nothing blocks the next task. These are live, in rough priority order:
   per-frame progress, and a `Popen` with a poll on the cancel flag would give the kill;
   neither is built because neither is worth it until someone has watched a real 100 shot
   run. Section 6 has the reasoning.
-- **The reference path resamples through swscale, which clamps float to 0-1.** This is now
-  load bearing rather than a hazard, and COLOR_AND_FORMAT section 1 depends on it: the view
-  branch stays in ACEScct all the way to the `lut3d`, so everything swscale sees is bounded to
-  0..1 anyway and the clamp costs nothing. **The plate branch must never go near it.** That is
-  why `core/resize.py` exists, and why M4.5.4 has to keep the two branches apart rather than
-  letting the plate borrow the reference's resize.
+- **The reference path resamples through swscale, which clamps float to 0-1.** This is load
+  bearing rather than a hazard, and COLOR_AND_FORMAT section 1 depends on it: ffmpeg sees the
+  log source going in and display sRGB coming out, both bounded, and the unbounded stretch is
+  inside the cube. **The plate branch must never go near it**, which is why `core/resize.py`
+  exists and why M4.5.4 kept the two branches apart rather than letting the plate borrow the
+  reference's resize. What is worth measuring once is OQ-43: the log resize happens before the
+  transform rather than after it.
+- **The delivered EXR header is missing three fields the spec lists.**
+  `proingest/tool_version`, the shot ID and the frame range are in COLOR_AND_FORMAT's EXR
+  metadata list and are not written; the colour provenance and the `timeCode` attribute are.
+  They are cheap, they need only what the job already carries, and nothing has asked for them,
+  so the doc now says "not yet written" rather than describing them as built.
 
 - **QC-024, a letterboxed source, is the one phase A rule that cannot be a model
   function.** QC-023 now catches a source that is not 3840x2160, but a source that *is*

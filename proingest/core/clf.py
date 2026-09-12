@@ -139,6 +139,57 @@ class LoadedClf:
 
 
 @dataclass(frozen=True)
+class ShotColor:
+    """One shot's colour, in the form that survives a pickle to a worker process.
+
+    A render job is self contained (`planner.DeliverableJob`), so what a worker needs to
+    know about colour travels on it. That rules out holding an `ocio` object or a
+    `LoadedClf`: neither pickles, and a transform built in the parent could not cross a
+    spawn boundary anyway. What crosses is a path, a colour space name and the CDL, and
+    the worker calls `load` once per job to turn the path back into a transform.
+
+    Loading per job rather than per shot costs a few kilobytes read four times and buys
+    a digest taken at render time, which is the one that describes what was applied.
+
+    The default is the chain with no CLF in it: the source encoding from Settings, and
+    `color.plate_transform` supplying the conversion the grade would otherwise have
+    ended in. That is what a batch with no colour session renders, and what every
+    deliverable rendered before M4.5 was.
+    """
+
+    source_encoding: str = color.DEFAULT_SOURCE_ENCODING
+    clf_path: Path | None = None
+    cdl: CDL | None = None
+
+    def load(self) -> LoadedClf | None:
+        """The CLF, loaded hashed and probed, or None when the shot has no grade."""
+        return load_clf(self.clf_path) if self.clf_path is not None else None
+
+    def plate_transforms(self, clf: LoadedClf | None) -> list[ocio.Transform]:
+        """The plate branch: studio log to ACEScct, the grade, and out in linear ACEScg.
+
+        **`color.plate_transform` is applied only when there is no CLF.** A CLF ends in
+        linear ACEScg itself (QC-039), so adding the ACEScct to ACEScg conversion after
+        one converts twice, which is a plausible looking wrong image rather than an
+        error. COLOR_AND_FORMAT section 1 says the same thing under the chain diagram.
+        """
+        first = color.input_transform(self.source_encoding)
+        return [first, clf.transform] if clf is not None else [first, color.plate_transform()]
+
+    def view_transforms(self, clf: LoadedClf | None) -> list[ocio.Transform]:
+        """The view branch: the plate branch, then the ACES output transform to sRGB.
+
+        The two branches share everything up to linear ACEScg, which is why this is the
+        plate chain plus one leg rather than a chain of its own.
+        """
+        return [*self.plate_transforms(clf), color.output_transform()]
+
+
+DEFAULT_SHOT_COLOR = ShotColor()
+"""The ungraded chain, and the default a job carries until a session supplies one."""
+
+
+@dataclass(frozen=True)
 class ColorSession:
     """The package: one final EDL, and the CLFs delivered beside it."""
 
@@ -166,6 +217,24 @@ class ColorSession:
             names = ", ".join(path.name for path in found)
             raise AmbiguousClfError(f"{len(found)} CLFs name {shot_code}: {names}")
         return found[0] if found else None
+
+    def shot_color(
+        self, row: ShotRow, source_encoding: str = color.DEFAULT_SOURCE_ENCODING
+    ) -> ShotColor:
+        """What this row's deliverables are rendered through.
+
+        The CLF comes from the shot code and the CDL from the conform event, which are
+        two different matches on purpose: a row can have an event with no CLF beside it,
+        and the CDL is a record rather than a transform, so a missing one costs the
+        header a line and nothing else. A row with no CLF renders ungraded, which is
+        what QC-009 reports once the rules are wired.
+        """
+        event = self.event_for(row)
+        return ShotColor(
+            source_encoding=source_encoding,
+            clf_path=self.clf_for(row.shot_code) if row.shot_code else None,
+            cdl=event.cdl if event is not None else None,
+        )
 
     def _event_by_reel(self, row: ShotRow) -> ConformEvent | None:
         """Reel plus source timecode, which is OQ-30's fallback.

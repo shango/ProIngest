@@ -105,9 +105,15 @@ def _rule_ids(results: list[QCResult], severity: str) -> str:
 SHOTS_HEADERS = (
     "Turnover", "Clip name", "Shot code", "Elem", "Source", "FPS", "Res",
     "Delivered In", "Delivered Out", "Delivered In TC", "Delivered Out TC",
-    "Final In", "Final Out", "Duration", "Max available", "Audio", "Edited",
+    "Final In", "Final Out", "Duration", "Max available", "Audio", "Edited", "CLF",
     "Skip reason", "Warnings", "Errors",
 )  # fmt: skip
+"""The QC log's own columns, QC_RULES "QC log structure".
+
+The CLF column names the grade the row was rendered through, and it is the filename
+rather than the path: the session's folder is the same for every row, and the name is
+what a reader compares against `proingest/clf` in a delivered EXR header. Empty means
+the row rendered ungraded, which is QC-009 once the rules are wired."""
 
 DELIVERABLE_HEADERS = (
     "Shot code", "Elem", "Kind", "Res", "Version", "Path", "Frames", "Size", "Checksum",
@@ -184,6 +190,7 @@ def _write_shots(book: Workbook, batch: Batch) -> None:
             row.max_available_out or "",
             str(row.audio_path) if row.audio_path else "",
             "yes" if row.was_edited else "",
+            row.clf_path.name if row.clf_path else "",
             row.skip_reason or "",
             _rule_ids(row.qc, "warning"),
             _rule_ids(row.qc, "error"),

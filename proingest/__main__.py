@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from proingest import __version__
-from proingest.core import batchfile, exports, planner, qc, render, scan
+from proingest.core import batchfile, clf, color, exports, planner, qc, render, scan
 from proingest.core.models import Batch, Deliverable, ShotRow, Turnover
 
 COLUMNS = ("STATUS", "SHOT", "ELEM", "SOURCE", "RES", "FPS", "IN", "OUT", "DUR", "MAX", "AUDIO")
@@ -50,6 +50,17 @@ def main(argv: list[str] | None = None) -> int:
     run_parser.add_argument(
         "--dry-run", action="store_true", help="print the plan and write nothing"
     )
+    run_parser.add_argument(
+        "--color-session",
+        type=Path,
+        metavar="EDL",
+        help="the colour session's final EDL; its folder is searched for the CLFs",
+    )
+    run_parser.add_argument(
+        "--source-encoding",
+        default=color.DEFAULT_SOURCE_ENCODING,
+        help=f"the studio standard log encoding (default {color.DEFAULT_SOURCE_ENCODING})",
+    )
 
     qc_parser = subparsers.add_parser("qc", help="write the QC log and shot tracker for a batch")
     qc_parser.add_argument("batch", type=Path, help="a .pibatch file")
@@ -68,7 +79,14 @@ def main(argv: list[str] | None = None) -> int:
         return _scan(args.folders, args.save, args.name, args.rules)
 
     if args.command == "run":
-        return _run(args.batch, args.delivery_root, args.jobs, args.dry_run)
+        return _run(
+            args.batch,
+            args.delivery_root,
+            args.jobs,
+            args.dry_run,
+            args.color_session,
+            args.source_encoding,
+        )
 
     if args.command == "qc":
         return _qc(args.batch, args.delivery_root, args.out)
@@ -134,11 +152,22 @@ def _load_rule_overrides(path: Path | None) -> dict[str, Any]:
     return dict(data)
 
 
-def _run(batch_path: Path, delivery_root: Path | None, jobs: int, dry_run: bool) -> int:
+def _run(
+    batch_path: Path,
+    delivery_root: Path | None,
+    jobs: int,
+    dry_run: bool,
+    color_session: Path | None = None,
+    source_encoding: str = color.DEFAULT_SOURCE_ENCODING,
+) -> int:
     """Plan a saved batch and render it.
 
     Planning happens here rather than at scan time because the version depends on what
     is in the delivery folder at the moment the run starts (NAMING_SPEC section 4).
+
+    `--color-session` is where the colour session package lives until Settings holds it
+    (PRD section 7). Without it the run still produces every deliverable, in ACEScg,
+    ungraded; the CLF is the only difference.
     """
     try:
         batch = batchfile.load(batch_path)
@@ -146,10 +175,16 @@ def _run(batch_path: Path, delivery_root: Path | None, jobs: int, dry_run: bool)
         print(f"error: {exc}", file=sys.stderr)
         return 2
 
+    try:
+        session = _load_color_session(batch, color_session)
+    except (clf.ColorSessionError, color.ColorError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+
     root = delivery_root or batch.delivery_root
     try:
-        planned = planner.plan_batch(batch, root)
-    except ValueError as exc:
+        planned = planner.plan_batch(batch, root, session=session, source_encoding=source_encoding)
+    except (ValueError, clf.ClfError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
 
@@ -179,6 +214,25 @@ def _run(batch_path: Path, delivery_root: Path | None, jobs: int, dry_run: bool)
     batchfile.save(batch, batch_path)
 
     return _report_run(written, batch_path)
+
+
+def _load_color_session(batch: Batch, edl_path: Path | None) -> clf.ColorSession | None:
+    """Read the colour session package, or None when the run was given none.
+
+    The EDL's timecode is read at one rate and a batch can carry more than one (OQ-19
+    reopened this), so the rate is taken from the first row that has media and the
+    choice is printed rather than assumed silently.
+    """
+    if edl_path is None:
+        return None
+    rates = [row.media.rate for row in batch.rows if row.media is not None]
+    if not rates:
+        raise clf.ColorSessionError("no row has media, so there is no rate to read the EDL at")
+    if len({str(rate) for rate in rates}) > 1:
+        print(f"note: the batch carries more than one rate; reading the EDL at {rates[0]}")
+    session = clf.load_session(edl_path, rates[0])
+    print(f"colour session: {len(session.events)} events, {len(session.clfs)} shots with a CLF")
+    return session
 
 
 def _qc(batch_path: Path, delivery_root: Path | None, out: Path | None) -> int:

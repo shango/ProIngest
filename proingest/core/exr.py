@@ -21,26 +21,58 @@ import numpy as np
 import numpy.typing as npt
 import OpenEXR
 
-from proingest.core import color, frames
+from proingest.core import clf, color, frames
 
 DWA_COMPRESSION_LEVEL = 45.0
 """Required by COLOR_AND_FORMAT section 3. Written as a float attribute."""
 
-CHROMATICITIES = (0.64, 0.33, 0.30, 0.60, 0.15, 0.06, 0.3127, 0.3290)
-"""sRGB and Rec.709 primaries with a D65 white point, COLOR_AND_FORMAT section 1.
+CHROMATICITIES = (0.713, 0.293, 0.165, 0.830, 0.128, 0.044, 0.32168, 0.33767)
+"""**AP1 primaries with the ACES white point**, COLOR_AND_FORMAT section 1.
 
 Written as the eight floats the attribute is defined as, red through white, so a
-reader knows the primaries the linear data is in without being told.
+reader knows the primaries the linear data is in without being told. This constant is
+the difference between a file that is ACEScg and a file that lies about being ACEScg,
+and it moved here from sRGB and Rec.709 in M4.5.4 along with everything else that used
+to assume a display referred source.
 """
 
 COLORSPACE_ATTRIBUTE = "proingest/colorspace"
 """What the pixels are, stated in the file. COLOR_AND_FORMAT section 1.
 
-The tool applies no transform to raw output, so the value records the source's colour
-space rather than claiming a conversion happened. Which value that is comes from
-`core/color.py`, because it is a setting: today's turnovers carry a baked sRGB curve
-and tomorrow's are expected to be scene linear.
+Always `color.PLATE_SPACE` now, because the tool transforms every plate it writes into
+it rather than passing the source through. It was a parameter while the source's own
+space was what the file carried; the value is a fact about the deliverable, so it is a
+constant.
 """
+
+SOURCE_ENCODING_ATTRIBUTE = "proingest/source_encoding"
+"""The log encoding the source was read as, and therefore the input transform applied."""
+
+CLF_ATTRIBUTE = "proingest/clf"
+CLF_HASH_ATTRIBUTE = "proingest/clf_hash"
+"""The CLF's filename and its sha256. **The hash is what identifies the grade**: a CLF
+re-exported and redelivered gets a new one, so frames rendered from the old version stay
+findable afterwards. Both are absent from a frame rendered with no CLF, rather than
+present and empty, so a reader cannot mistake ungraded for graded-with-nothing."""
+
+CDL_ATTRIBUTES = (
+    "proingest/cdl_slope",
+    "proingest/cdl_offset",
+    "proingest/cdl_power",
+    "proingest/cdl_saturation",
+    "proingest/cdl_asc_sop",
+    "proingest/cdl_asc_sat",
+    "proingest/cdl_note",
+)
+"""The CDL from the final EDL, as numbers and as the lines it was written on.
+
+Both forms, because the numbers are what a tool reads and the verbatim text is what a
+human compares against the session. Neither was applied to these pixels, and
+`proingest/cdl_note` says so in the file: the CLF is the transform and the CDL is its
+readable record (COLOR_AND_FORMAT section 1, EXR metadata).
+"""
+
+CDL_NOTE = "record only; the CLF named in proingest/clf is what was applied"
 
 RGB_CHANNELS = "RGB"
 RGBA_CHANNELS = "RGBA"
@@ -177,13 +209,42 @@ def _colour_channel_names(channels: Any, path: Path) -> tuple[str, ...]:
 # --- Writing the raw deliverable. COLOR_AND_FORMAT section 3. ---
 
 
+def provenance(
+    shot_color: clf.ShotColor, loaded_clf: clf.LoadedClf | None = None
+) -> dict[str, Any]:
+    """The header's account of how these pixels got here. COLOR_AND_FORMAT section 1.
+
+    A graded plate is only auditable if the file says what was done to it, and the two
+    things that identify a grade are the CLF's hash and the source encoding it started
+    from. An attribute is written or absent, never written empty: a reader that finds
+    no `proingest/clf` knows the frame is ungraded, where an empty one would only mean
+    somebody lost the filename.
+    """
+    header: dict[str, Any] = {SOURCE_ENCODING_ATTRIBUTE: shot_color.source_encoding}
+    if loaded_clf is not None:
+        header[CLF_ATTRIBUTE] = loaded_clf.path.name
+        header[CLF_HASH_ATTRIBUTE] = loaded_clf.digest
+    cdl = shot_color.cdl
+    if cdl is not None:
+        slope, offset, power, saturation, sop, sat, note = CDL_ATTRIBUTES
+        header[slope] = cdl.slope
+        header[offset] = cdl.offset
+        header[power] = cdl.power
+        header[saturation] = float(cdl.saturation)
+        header[sop] = cdl.sop_text
+        header[sat] = cdl.sat_text
+        header[note] = CDL_NOTE
+    return header
+
+
 def write_frame(
     path: Path,
     pixels: npt.NDArray[Any],
     timecode_frames: int | None = None,
     fps: float = 24.0,
     compression_level: float = DWA_COMPRESSION_LEVEL,
-    colorspace: color.SourceColorSpace = color.DEFAULT_SOURCE_COLORSPACE,
+    shot_color: clf.ShotColor = clf.DEFAULT_SHOT_COLOR,
+    loaded_clf: clf.LoadedClf | None = None,
 ) -> None:
     """Write one delivery frame: DWAA, half float, data window equal to display window.
 
@@ -191,8 +252,10 @@ def write_frame(
     (OQ-13). The data window comes from the array shape, so the two windows always
     agree and QC-104 cannot fail for a frame this function wrote.
 
-    `colorspace` is stated in the header and nothing else. The values are written
-    exactly as they arrive, so this labels the file rather than changing it.
+    `shot_color` and `loaded_clf` are **recorded, never applied**: the pixels arrive
+    already transformed and this states what was done to them. They are the pair
+    `render.py` holds anyway, so the header cannot describe a chain other than the one
+    the frame went through.
 
     The file is not read back here. Every frame is opened again by QC-103 after the
     sequence lands, and doing it twice would double the IO for nothing.
@@ -205,7 +268,8 @@ def write_frame(
         "dwaCompressionLevel": float(compression_level),
         "type": OpenEXR.scanlineimage,
         "chromaticities": CHROMATICITIES,
-        COLORSPACE_ATTRIBUTE: color.exr_attribute(colorspace),
+        COLORSPACE_ATTRIBUTE: color.PLATE_SPACE,
+        **provenance(shot_color, loaded_clf),
     }
     if timecode_frames is not None:
         header["timeCode"] = _timecode_attribute(timecode_frames, fps)
