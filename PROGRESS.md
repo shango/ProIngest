@@ -111,7 +111,32 @@ so and says it is not a precedent.
   what dropping M6 gives up, and it is recorded in PRD FR-9 so it reads as a decision rather
   than an oversight.
 
-### Next task: M4.5.2, and it is the one that wants a real export
+### The studio tracker arrived, and it reshapes M4.3
+
+**On 2026-09-11 the user supplied the real shot tracker**, `docs/Pre Pro Shot Tracker - W1.csv`:
+790 rows across 55 turnovers of a live production. **OQ-2 is answered** and the full column
+mapping is in `QC_RULES.md` under the QC log structure. Three things came out of one file.
+
+- **The tracker has 39 columns and the tool owns nine of them.** The rest is production state
+  the vendor's team fills in for weeks after delivery: statuses, owners, difficulty grades,
+  callout movies, requesters. So `shot_tracker.xlsx` is **additive rows in the tracker's own
+  column order**, never a sheet of our own design, and never anything that could overwrite a
+  column someone else maintains. PRD section 6 already said "for paste into the studio tracker";
+  the sheet turns that from an intention into a specification.
+- **The guessed default template was wrong in ten of its eleven columns.** Only Shot Code
+  survived. Four of the columns it invented - duration, source TC in and out, version, delivery
+  path - have no home in the real tracker at all, and stay in the QC log where they already are.
+  Worth remembering the next time a default is written to stand in for a studio's real document.
+- **Two settled things came unsettled.** OQ-19 is reopened, because the FPS column says 24 is no
+  longer the only rate on current turnovers, and QC-026 is an error. OQ-41 is new: the stringout
+  filename checker accepts **none** of the 55 real names, so it must not ship as a checker.
+
+What the sheet confirmed is worth as much as what it broke. **628 of its 782 reference filenames
+parse under the existing output grammar**, to the right kind, and the misses are rows that
+predate the convention rather than disagreements with it. The shot code is four letters and four
+digits, which is what `naming.py` already reads, whatever the column header's `ABCD123` says.
+
+### Next task after that: M4.5.2, and it is the one that wants a real export
 
 M4.5.1 is done. M4.5.2 is `core/clf.py`: the colour session's final EDL read for the conform,
 the approved In/Out and the CDL, and a CLF matched per row, loaded and hashed.
@@ -171,10 +196,11 @@ and QC-102 say, or derived from source timecode as the user's proposal said. The
   `macos-latest` arm64 runner on every push, against the bundled ffmpeg 9.0.1 rather than this
   machine's Ubuntu 6.1.1. `h264_videotoolbox` was confirmed to open and encode there, which
   answered half of OQ-23.
-- **40 open questions, 18 of them still open.** Closed on 2026-09-11: OQ-12, OQ-15, OQ-32,
+- **41 open questions, 19 of them still open.** Closed on 2026-09-11: OQ-2, OQ-12, OQ-15, OQ-32,
   OQ-34, OQ-37, OQ-38 and OQ-40. **OQ-30 and OQ-33 each closed and reopened within the same
-  day**, as the grade carrier went CLF, then CDL, then CLF again. New: OQ-35, OQ-36, OQ-39.
-  OQ-29 is mostly answered, since the colour session pins ACES 1.3.
+  day**, as the grade carrier went CLF, then CDL, then CLF again, and **OQ-19 was reopened after
+  a day** by the real tracker's FPS column. New: OQ-35, OQ-36, OQ-39, OQ-41. OQ-29 is mostly
+  answered, since the colour session pins ACES 1.3, and its config half is now built.
 - **Everything through 2026-09-11 is pushed and CI is green on both runners.** Run
   34566217430: macOS arm64 in 56s, Linux in 1m17s. Pushing is still the user's call rather
   than an automatic step.
@@ -201,12 +227,14 @@ fix one and say which.**
 | `docs/QC_RULES.md` | every rule ID, severity and scope. IDs never change meaning |
 | `docs/ARCHITECTURE.md` | package layout, data flow, concurrency, batch file |
 | `docs/UI_SPEC.md` | the M5 interface, keyboard model, burn-ins |
-| `docs/OPEN_QUESTIONS.md` | OQ-1 to OQ-39, with defaults for the unanswered ones |
+| `docs/OPEN_QUESTIONS.md` | OQ-1 to OQ-41, with defaults for the unanswered ones |
 | `docs/PACKAGING.md` | M7, the `.app` and dmg, ffmpeg bundling, Gatekeeper |
 | `docs/MAC_SESSION.md` | the only work that needs a real Mac, and what to do on the day |
 
-The shooters' own spec sheet sits in `docs/` in two forms, the PDF and a CSV export of the
-same document. They are source material, not spec: what the app does with them is settled
+Two of the studio's own documents sit in `docs/` as source material. The shooters' spec sheet is
+there in two forms, the PDF and a CSV export of the same document, and **the shot tracker** is
+there as `Pre Pro Shot Tracker - W1.csv`, a live production sheet carrying real people's names,
+which is one more reason the repo is private. They are source material, not spec: what the app does with them is settled
 in `NAMING_SPEC.md`, which is where the known defects in their type table are recorded.
 Read the CSV when the question is what a row of that table actually says, since it needs no
 PDF viewer.
@@ -326,7 +354,7 @@ M4 detail. The milestone had no chunk table until M4.1; this is it:
 |---|---|---|
 | M4.1 | phase A registry, `RuleSettings`, `preflight`, `--rules` | done, 91 tests |
 | M4.2 | phase B verification, QC-1xx, wired into `render_job` | done, 47 tests |
-| M4.3 | `core/exports.py`, the xlsx sheets, `proingest qc <batch>`, QC-053 | pending |
+| M4.3 | `core/exports.py`, the xlsx sheets, `proingest qc <batch>`, QC-053 | pending, and **respecified 2026-09-11** by the real tracker: OQ-2 answered, the tracker sheet is additive rows in the studio's own 39 column order |
 
 M4.5 detail, respecified 2026-09-11, M4.5.1 built the same evening. It is **smaller than that
 morning's version**: the AD notes model is gone entirely, the viewers and their frame fetch went

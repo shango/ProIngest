@@ -55,7 +55,7 @@ Tokens: `{shotcode}` `{elem}` `{kind}` `{res}` `{ver}` `{frame}` `{aux}` `{auxid
 | aux still exr | `{shotcode}_{elem}_{aux}_{auxidx}_4k_v{ver}.exr` | `MELT0001_pl01_colorChart_01_4k_v01.exr` |
 | BTS | `{shotcode}_{elem}_BTS_{auxidx}_v{ver}.{ext}` | `MELT0001_pl01_BTS_01_v01.png` |
 | lens grid | `{camera}_{lens}_lensgrid_{mm}mm_v{ver}.png` | `SonyA7V_Tamron20-40_lensgrid_40mm_v01.png` (v01: the editor types this one, OQ-20) |
-| stringout | `turnover{tno:03d}_{MM}_{DD}_{YYYY}_{firstnamelastname}_v{ver}.mp4` | `turnover001_02_23_2026_danielluckett_v01.mp4`. **The tool no longer writes this file** (PRD FR-9, 2026-09-11). The pattern, `naming.stringout_mp4` and its parser branch are kept and still tested, because the name is now something a human types and the tool can still check it, exactly as with the lens grid (OQ-20) |
+| stringout | `turnover{tno:03d}_{MM}_{DD}_{YYYY}_{firstnamelastname}_v{ver}.mp4` | `turnover001_02_23_2026_danielluckett_v01.mp4`. **The tool no longer writes this file** (PRD FR-9, 2026-09-11). The pattern, `naming.stringout_mp4` and its parser branch are kept and still tested, because the name is now something a human types and the tool can still check it, exactly as with the lens grid (OQ-20). **This pattern is known wrong as a checker and must not be used as one until OQ-41 is answered**: measured against the 55 real stringout names in the studio tracker it matches none, because the real form carries a two digit year and an `SO` token and often no version at all (`turnover106_08_19_26_ericscheid_SO.mp4`). It is the builder's grammar, and the tool no longer builds |
 
 `{res}` is `4k` or `HD` exactly. `{ver}` is two digits. `{frame}` is four digits starting at 1001.
 
@@ -139,7 +139,7 @@ One anchored pattern per kind, tried in order. They are mutually exclusive becau
 | aux still exr | `^<sc>_(?P<aux>colorChart\|mirrorBall\|greyBall\|sizeRef)_(?P<auxidx>\d{2})_4k_v(?P<ver>\d{2})\.exr$` |
 | BTS | `^<sc>_BTS_(?P<auxidx>\d{2})_v(?P<ver>\d{2})\.(?P<ext>png\|jpg\|jpeg)$` |
 | lens grid | `^(?P<camera>[A-Za-z0-9]+)_(?P<lens>[A-Za-z0-9\-]+)_lensgrid_(?P<mm>\d+)mm_v(?P<ver>\d{2})\.png$` |
-| stringout | `^turnover(?P<tno>\d{3})_(?P<mm>\d{2})_(?P<dd>\d{2})_(?P<yyyy>\d{4})_(?P<shooter>[a-z0-9]+)_v(?P<ver>\d{2})\.mp4$` |
+| stringout | `^turnover(?P<tno>\d{3})_(?P<mm>\d{2})_(?P<dd>\d{2})_(?P<yyyy>\d{4})_(?P<shooter>[a-z0-9]+)_v(?P<ver>\d{2})\.mp4$` | **Checker side blocked on OQ-41**: this accepts none of the 55 real names.
 
 The `show` prefix pattern is the same configurable value as section 1, so a Settings change applies to both directions at once.
 

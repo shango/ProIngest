@@ -116,4 +116,44 @@ QC-100 is the exception to that: it reports a render that never produced a file 
 - Side Files: shot code, type, source path, dest path, checksum
 - Camera Data: shot code, key, value (one row per pair parsed from camData)
 
-`shot_tracker_<batch>_<date>.xlsx` columns come from the template file configured in Settings (OQ-2). Default template ships with: Shot Code, Element, Turnover, Shooter, Date, Duration (frames), Source TC In, Source TC Out, Version, Delivery Path, Notes.
+`shot_tracker_<batch>_<date>.xlsx` is written to be **pasted into the studio's own tracker**, so its
+columns are that tracker's columns and not a layout of ours. **OQ-2 is answered** from the real
+sheet (`docs/Pre Pro Shot Tracker - W1.csv`, 790 rows across 55 turnovers). The guessed default
+that used to be described here shared exactly one column with it, Shot Code, and is gone.
+
+The studio tracker has 39 columns. **Nine of them are the tool's**; the other thirty are
+production state that the vendor's team fills in over the weeks after delivery - statuses,
+owners, difficulty grades, callout movies, requesters - and the tool must never write them.
+The export is **additive**: one row per shot row of this batch, in the tracker's column order,
+with every column it does not own left empty so a paste cannot overwrite anything.
+
+| # | tracker column | what the tool writes |
+|---|---|---|
+| 2 | `Shot Code (ABCD123)` | the final shot code. The header says ABCD123; the real data is four letters and **four** digits, which is what `naming.py` already parses |
+| 3 | `Publish Folder` | the shot folder name, which equals the shot code |
+| 4 | `Plate Video` | the **HD** reference mp4's filename. 628 of 782 real values already parse as `ref_mp4` under section 7's grammar; the misses are rows that predate the convention |
+| 5 | `HDRI` | the delivered HDRI filename, blank when the shot has none |
+| 6 | `CAM Data` | the delivered camData filename, blank when the shot has none |
+| 7 | `PLATES` | `4K ✓` and `HD ✓` on two lines, one mark per raw sequence delivered, `—` for one that was not |
+| 8 | `FPS` | the row's rate. **Not always 24** - see the note below |
+| 9 | `Shot Audio?` | `✓` when the row delivered audio, blank otherwise |
+| 34 | `Turnover Stringout (Edit)` | the turnover's stringout filename, the same value on every row of the turnover |
+
+Column 0 is a checkbox the sheet owns (`FALSE`), and column 1 `Shot#` is a production number with
+duplicates in it, so neither is derivable. `Effect Category`, `Audio` (a spoken/effects annotation),
+`Pod Point of Contact`, the thumbnails and everything from `Cam Status` rightwards are the vendor's.
+
+**The tool knows more than the tracker has room for.** Duration, source timecode in and out,
+version, delivery path and notes have no column here, which is why they stay in the QC log's
+Shots and Deliverables sheets above rather than being forced into this one.
+
+**The FPS column says 24 is no longer the only rate**, which matters because QC-026 is an error.
+Of 778 rows carrying a rate, 677 are 24 and 101 are not. Splitting by turnover number tells the
+real story: every one of the 370 rows on turnovers before number 90 is 24, while the recent
+turnovers carry **27 rows at 23.976 and 2 at 30** out of 262. Rows not yet attached to a turnover
+are wider still: 29.97, 30, 25, 60 and 120 all appear. The premise under OQ-19, that everything is
+24 because the shooters conform in Resolve, held for the earlier turnovers and does not hold now.
+Whether that changes QC-026's severity depends on something this sheet cannot say - whether this
+column records the timeline rate or the rate the camera shot at - so OQ-19 is reopened rather than
+answered. The same rate is also typed both `23.976` and `23.98` here, so the column is hand entered
+and is evidence about the shoot rather than a machine record.
