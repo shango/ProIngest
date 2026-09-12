@@ -277,7 +277,7 @@
   <header class="mast">
     <div class="eyebrow">
       <span>VFX turnover ingest &middot; macOS v01</span>
-      <span class="stamp">Updated <b>12 Sep 2026, 10:55 PDT</b></span>
+      <span class="stamp">Updated <b>12 Sep 2026, 11:16 PDT</b></span>
     </div>
     <h1>ProIngest Build Track</h1>
     <p class="standfirst">
@@ -293,11 +293,11 @@
       <div class="stat-l">Milestones done</div>
     </div>
     <div class="stat">
-      <div class="stat-n good">838</div>
+      <div class="stat-n good">872</div>
       <div class="stat-l">Tests, Linux + macOS</div>
     </div>
     <div class="stat">
-      <div class="stat-n">19<span style="color:var(--faint);font-size:17px">/41</span></div>
+      <div class="stat-n">21<span style="color:var(--faint);font-size:17px">/43</span></div>
       <div class="stat-l">Questions open</div>
     </div>
     <div class="stat">
@@ -374,10 +374,10 @@
             leaves nothing behind, and one bad row cannot stop a hundred shot run. Proved end to
             end on a two shot turnover: <b>10 written, 0 failed</b>, references at 3840&times;2160
             and 1920&times;1080, H.264 High, correctly tagged, AAC at 193&nbsp;kbit/s.
-            <b>One known gap, and it is deliberate.</b> The reference videos apply no colour
-            transform, which was correct under the colour policy in force when they were built
-            and is not correct under the one settled later that day. M4.5 fixes it. Nothing
-            else here is affected: plates and copies were never a colour question until now.
+            <b>The one known gap here is now closed.</b> The reference videos were built
+            applying no colour transform, which was correct under the colour policy in force at
+            the time and wrong under the one settled later that day. M4.5 has since put the
+            approved look into them, and into the plates.
           </div>
         </div>
       </div>
@@ -423,12 +423,12 @@
         </div>
       </div>
 
-      <div class="ms now">
+      <div class="ms done">
         <div class="ms-id">M4.5</div>
         <div class="ms-body">
           <div class="ms-head">
             <span class="ms-name">Colour pipeline</span>
-            <span class="pill now">In progress &middot; 3 of 4 parts</span>
+            <span class="pill done">Complete &middot; 111 tests</span>
           </div>
           <p class="ms-goal">
             The approved grade from the colour session, applied to everything the tool writes.
@@ -479,21 +479,33 @@
             last part of a question first asked a fortnight ago, now has a built default: the
             standard one, since the other three the library offers are a simulation of a
             different display, a debug view and no transform at all.
-            <b>What is left is the last part</b>, where the renderer and the frame writer move
-            onto this chain: the plates written with the approved look and the header stating
-            what is in them, and the reference videos encoded through the new table instead of
-            through no transform at all. That is the part that finally corrects what the
-            reference videos have looked like since they were first built.
+            <b>The last part is built, and the chain now reaches the files.</b> Plates are
+            written with the approved look in them, in the wide scene-referred form, and each
+            frame states what was done to it: which colour file, its fingerprint, which format
+            the source was read as, and the readable short form of the grade for anyone without
+            colour software - with a line in the file saying which of the two was actually
+            applied, since carrying both is only safe if the file says. <b>Reference videos are
+            encoded through the lookup table</b>, in one pass, which corrects what they have
+            looked like since they were first built and closes the oldest item on the list.
+            <b>One picture is deliberately left ungraded.</b> The reference stills - the colour
+            chart, the grey and mirror balls, the size reference - are what a compositor matches
+            lighting and colour against, and a creative grade applied to a colour chart destroys
+            the only thing the chart is delivered for, while still looking exactly like a chart.
+            They are converted to the delivered form like everything else and the look is never
+            put on them.
+            <b>What is left is not code.</b> Pointing the tool at a grading session is a flag on
+            the command line today and becomes a setting in the interface, and the checks that
+            refuse to render a shot whose colour has not arrived switch on with it. Both are M5.
           </div>
         </div>
       </div>
 
-      <div class="ms">
+      <div class="ms now">
         <div class="ms-id">M5</div>
         <div class="ms-body">
           <div class="ms-head">
             <span class="ms-name">User interface</span>
-            <span class="pill">Not started</span>
+            <span class="pill now">Next</span>
           </div>
           <p class="ms-goal">
             Main window, shot list with the keyboard model, metadata pane, validation
@@ -515,6 +527,11 @@
             full field list in UI_SPEC section 12. Selecting a clip fills a read-only panel on the
             right with everything known about it, which is what the AD and supervisor read during
             review. It needs nothing from core, so it costs M5 time and nothing earlier.
+            <b>It also inherits the last of the colour work.</b> The grading session's location
+            becomes a remembered setting rather than a command line flag, and with it the checks
+            that refuse to render a shot whose colour has not arrived. The report already has its
+            column for which grade each shot was rendered through, so there is nothing to build
+            behind it.
             Two older decisions are still unlogged. <b>Frozen left columns</b> have no built-in QTreeView
             support and need the overlaid second-view trick. <b>Progress on the Dock icon</b> has
             no Qt 6 API, so it needs a small <code>NSDockTile</code> shim through PyObjC, isolated
@@ -618,6 +635,16 @@
             <td class="id">OQ-39</td>
             <td>Which log format the shooters deliver in. It decides whether the tool does any input conversion at all, and it no longer holds the work up: the format is one name in one setting</td>
             <td class="st"><span class="tag open">Unblocked</span></td>
+          </tr>
+          <tr>
+            <td class="id">OQ-42</td>
+            <td>What to do with a plate that arrives already converted. The delivery spec accepts one, with a warning, and the tool currently reads every source as the shooters' format: for one that is already converted that is a wrong picture rather than an error. Reading the file's own description of itself is the way out and nothing else needs a human</td>
+            <td class="st"><span class="tag open">New</span></td>
+          </tr>
+          <tr>
+            <td class="id">OQ-43</td>
+            <td>Whether the HD version should be resized before or after the look is applied. Both are safe and neither loses anything; they differ slightly on high contrast edges. The current order is a full decode cheaper per shot. One measurement on a real plate settles it</td>
+            <td class="st"><span class="tag open">New</span></td>
           </tr>
           <tr>
             <td class="id">OQ-35</td>
@@ -784,6 +811,25 @@
 
   <section>
     <h2>Corrections made to the spec</h2>
+      <div class="note">
+        <h3>The colour chart must never be given the grade</h3>
+        <p>
+          The rule for this pipeline is that everything the tool writes carries the approved look.
+          Building the last part of it turned up one thing that must not: the <b>reference
+          stills</b>. A shot can arrive with a colour chart, a grey ball, a mirror ball or a size
+          reference shot beside it, and every one of those exists so a compositor can match
+          lighting and colour against a known quantity.
+        </p>
+        <p>
+          Putting a creative grade on a colour chart destroys the only thing it is delivered for,
+          and it does it <b>invisibly</b>: the chart still looks like a chart, and the artist
+          matching against it has no way to tell. Nothing in the specification said so, because
+          nobody had had cause to write it down. The stills are now converted to the delivered
+          form like every other frame and the look is never applied to them, the rule lives where
+          the deliverables are decided rather than where they are written, and the colour document
+          says it out loud.
+        </p>
+      </div>
       <div class="note">
         <h3>The same diagram was wrong a second time, in the other branch</h3>
         <p>
@@ -1283,7 +1329,7 @@
   <footer>
     <b>Source of truth</b> &middot; PROGRESS.md, docs/OPEN_QUESTIONS.md, PRD.md section 9<br>
     <b>Verify</b> &middot; pytest &middot; ruff check . &amp;&amp; mypy proingest &middot; python -m proingest scan &lt;folder&gt;<br>
-    <b>Last updated</b> &middot; 12 September 2026, 10:55 PDT. <b>Three of the colour pipeline's four parts are built.</b> Each shot is now matched to its approved grade and to the approved in and out points from the grading session's own edit list, every colour file is opened and measured before it is trusted, and the viewing chain is baked into one lookup table per shot that the video tool has been run against and agrees with. 838 tests green on both machines. Next and last: the renderer and the frame writer move onto that chain, which is what finally corrects the reference videos
+    <b>Last updated</b> &middot; 12 September 2026, 11:16 PDT. <b>The colour pipeline is complete.</b> Plates are now written with the approved look in them and a header recording exactly which version of the grade that was, reference videos are encoded through it in one pass, and the reference stills are deliberately left ungraded because a graded colour chart is worse than useless. The oldest known defect, reference videos built with no colour transform at all, is closed. 872 tests green on both machines. <b>Next: the interface</b>, which is also where pointing at a grading session stops being a command line flag
   </footer>
 
 </div>
