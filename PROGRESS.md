@@ -8,10 +8,10 @@ commit.
 
 ## 1. Resume here
 
-**State at 2026-09-11, late. M1, M2, M3 and M4 complete; M4.5.1 done.** The colour workflow was
-replaced twice today, the first chunk of the new one is built, the studio's real shot tracker
-arrived, and M4.3 was built against it the same evening.
-785 tests passing, `ruff` and `mypy --strict` clean. **Nothing is blocked.**
+**State at 2026-09-12. M1, M2, M3 and M4 complete; M4.5.1 and M4.5.2 done.** The colour session
+package is now read: `core/clf.py` takes Ben's final EDL as the conform and pairs each row with
+its CLF, loaded, hashed and probed.
+827 tests passing, `ruff` and `mypy --strict` clean. **Nothing is blocked.**
 
 **M4 is done.** `core/exports.py` writes both spreadsheets, `proingest qc <batch>` writes them
 headless, and QC-053 parses camData through the new `core/camdata.py`. Proved end to end on a two
@@ -157,18 +157,55 @@ Three things in it are worth not re-deriving:
   caught it: it opens a file, exactly like QC-052 next to it. The first placement made the
   fixture row, the one documented as passing every default rule, emit a warning.
 
-### Next task: M4.5.2, and it is the one that wants a real export
+### M4.5.2 is built, and OQ-30 and OQ-33 are built to their defaults
 
-M4.5.1 is done. M4.5.2 is `core/clf.py`: the colour session's final EDL read for the conform,
-the approved In/Out and the CDL, and a CLF matched per row, loaded and hashed.
-`core/timeline.py` already walks EDL events, so half of that exists, and `core/color.py` now
-supplies the transform the CLF slots into.
+`core/clf.py` reads the colour session package: the final EDL as the conform, the approved
+In/Out and the CDL per event, and the CLF for a row, loaded, hashed and probed. 42 tests.
+Five things in it should not be re-derived.
 
-**M4.5.2 is where OQ-30 and OQ-33 stop being theoretical.** Both are about which field
-identifies a row, both fail by silently applying a neighbouring shot's grade, and one real
-export from Ben's session answers both. Building against the recorded defaults is possible and
-the defaults are good ones; what is not possible is checking them, so build the matching so the
-field it trusts is one named constant and QC-009 is what fires when nothing matches.
+- **The final EDL is parsed here rather than through `core/timeline.py`.** The plan said to
+  reuse the otio walk and half of it does exist, but otio's CMX3600 adapter hands back the CDL
+  as numbers and **drops the event id and the verbatim `*ASC_SOP` / `*ASC_SAT` lines**, which a
+  delivered EXR is specified to carry. Reading a fixed format event line directly costs less
+  than reconstructing what the adapter threw away. Timecode still goes through
+  `frames.timecode_to_frames`, so drop-frame is refused rather than misread, and the module
+  docstring says all of this so the next session does not undo it.
+- **OQ-30's answer is one constant, `clf.MATCH_FIELD`.** A row matches an event on
+  `FROM CLIP NAME`, compared without the extension and without case, because a case difference
+  between a Resolve export and a macOS filesystem is not a disagreement about which shot this
+  is. The fallback wants the reel **and** a source range inside the media's own timecode, since
+  reels repeat across a turnover and timecode repeats across anything not jam synced. Nothing
+  returns a nearest candidate: unmatched is None, and QC-009 is what fires.
+- **OQ-33's answer is the shot code in the CLF filename**, and two CLFs naming one shot raises
+  rather than choosing, because picking either is picking a grade. A CLF naming no shot at all
+  is nobody's rather than an error.
+- **An EDL's out timecode is the first frame after the cut and is converted on the way in.**
+  `ConformEvent` ranges are inclusive like every other range in the codebase, so nothing
+  downstream has to remember which convention the file used.
+- **QC-039 is a probe of what the CLF does to white, not of what it is called.** ACEScct 1.0 is
+  222 in scene linear; a display rendering tone maps it to about 1.0, four stops down still
+  answers 13.9, so `SCENE_LINEAR_FLOOR` is 2.0 and sits clear of both. The test fixture bakes a
+  real ACES output transform into a 3D LUT to make the failing case, which is also the only way
+  such a CLF can exist: the output transform uses ops CLF cannot express, so a session that
+  shipped one would have had to bake it exactly the same way.
+
+**What is still not checkable is which fields Ben's export actually populates.** Both defaults
+are built and both are pinned by tests, so one real EDL and one real CLF confirm or move one
+constant each.
+
+**The rules are not wired yet.** QC-008, QC-009, QC-019, QC-039 and QC-045 all read this module
+and none of them can fire until something tells a batch where its colour session package is.
+That is a Settings value (PRD section 7, Colour group) and the wiring belongs with M4.5.4 and
+M5, not here. `core/clf.py` raises and returns the states those rules report, and nothing calls
+it yet.
+
+### Next task: M4.5.3, the viewing LUT
+
+The view branch collapsed into one `.cube` per shot: the CLF plus the ACES output transform for
+sRGB, baked through `ocio.Baker`, which is how an OCIO transform reaches ffmpeg's `lut3d`.
+`clf.load_clf` hands back the `FileTransform` it needs. **OQ-29's open half is which sRGB output
+transform**, and the pinned config offers `ACES 1.0 - SDR Video` on `sRGB - Display`, which is
+the default to build to.
 
 **M4.3 is done, and the reason it was to be deferred turned out not to apply.** The plan had been
 colour first, so the QC log and the tracker would get the colour columns written once instead of
@@ -328,6 +365,7 @@ PDF viewer.
 | `core/resize.py` | antialiased Lanczos downscale for the EXR path | 96 |
 | `core/color.py` | the pinned OCIO config, the input and plate transforms, composing and applying them. Still carries M3's display referred block at the bottom, fenced, until M4.5.4 | 173 |
 | `core/timeline.py` | OTIO and EDL loading, audio association | 233 |
+| `core/clf.py` | the colour session package: the final EDL as the conform, the CDL, the CLF matched per row, loaded, hashed and probed | 402 |
 | `core/scan.py` | turnover folder -> Turnover + ShotRows | 388 |
 | `core/planner.py` | type table, deliverable jobs, version resolution | 440 |
 | `core/batchfile.py` | `.pibatch` save/load, backup, filesystem reconciliation | 86 |
@@ -337,7 +375,7 @@ PDF viewer.
 | `core/qc.py` | rule registry: phase A, `RuleSettings`, `preflight`, phase B | 1325 |
 | `__main__.py` | `proingest scan`, `run` and `qc` CLI, `--rules` overrides | 382 |
 
-Not built yet: `core/clf.py`, `core/settings.py`, and
+Not built yet: `core/settings.py`, and
 everything under `proingest/ui/`. **`core/stringout.py` will not be built**: M6 is dropped
 (PRD FR-9). `naming.stringout_mp4` and `naming.normalize_shooter` are therefore reachable
 from tests only; they are kept deliberately, because the stringout name is now something a
@@ -398,7 +436,7 @@ with it, and what M4.5.2 reads is the colour session's package rather than the s
 | chunk | scope | state |
 |---|---|---|
 | M4.5.1 | OCIO in, `core/color.py` rebuilt as a pipeline, studio log to ACEScct to ACEScg | done, 24 tests |
-| M4.5.2 | `core/clf.py`: the final EDL read for conform, In/Out and CDL; the CLF matched per row, loaded and hashed. **Wants OQ-30 and OQ-33** | not started |
+| M4.5.2 | `core/clf.py`: the final EDL read for conform, In/Out and CDL; the CLF matched per row, loaded and hashed | done, 42 tests. OQ-30 and OQ-33 built to their defaults |
 | M4.5.3 | The viewing LUT: CLF plus ACES output transform baked to one `.cube` per shot | not started |
 | M4.5.4 | `render` plate/view split, `lut3d` encode, `exr.py` AP1 constants and the new header attributes | not started |
 | ~~M4.5.5~~ | ~~`core/preview.py`, single frame fetch with cache~~ **dropped 2026-09-11 with the viewers** | n/a |
@@ -420,8 +458,8 @@ The stringout moved off this table: it is M6 and always was. The M3.5 row said "
 mp4 and stringout" and that was a mistake in the row, not a change of plan.
 
 Tests by file: qc 164, naming 115, render 66, planner 55, frames 55, media 46,
-ffmpeg 40, models 37, timeline 33, exr 29, cli 26, scan 25, color 24, exports 24,
-batchfile 18, resize 16, camdata 12.
+clf 42, ffmpeg 40, models 37, timeline 33, exr 29, cli 26, scan 25, color 24,
+exports 24, batchfile 18, resize 16, camdata 12.
 
 ---
 
