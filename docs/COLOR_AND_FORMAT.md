@@ -39,7 +39,7 @@ correct if they hold.
 | | |
 |---|---|
 | colour science | DaVinci YRGB Color Managed, **ACES 1.3** |
-| where the CLF starts | **the source encoding as delivered**: the clip's own camera log in camera mode, DaVinci Wide Gamut / DaVinci Intermediate in studio mode (answered 2026-09-12, OQ-37) |
+| where the CLF starts | **the source encoding as delivered**, whatever the clip's metadata names it as: a camera log, or DaVinci Wide Gamut / DaVinci Intermediate (answered 2026-09-12, OQ-37) |
 | where the CLF ends | **linear ACEScg**, with no display rendering in it. Unchanged, and still QC-039 |
 | grade | **primary only.** No windows, no qualifiers, no tracked secondaries |
 
@@ -98,57 +98,59 @@ described as a one-off rather than a re-edit facility.
 | | |
 |---|---|
 | picture | **ProRes 4444**, one file per shot, with handles beyond the cut |
-| encoding | **camera native log, named in the clip's metadata**, or one studio standard on every file when Settings says so (OQ-39, OQ-44) |
+| encoding | **named in the clip's metadata, per clip** (OQ-44). Camera native log is the expectation; DaVinci Wide Gamut / DaVinci Intermediate is one more value, not a separate mode. A turnover may mix them |
 | grade | one `.clf` per shot, applied; the CDL travels in the final EDL as the readable record |
 | conform | the colour session's final EDL: timecode, shot identity and the approved In/Out |
 
-### Two source modes, and the tool is told which one it is in
+### One mechanism: the clip's metadata names the source encoding
 
-**Decided 2026-09-12, and it reverses the 2026-09-11 decision that there is one studio standard
-log encoding on every file.** The expectation now is **camera native log**: each shooter
-delivers in whatever their camera shoots, and **writes that encoding into the clip's metadata**.
-The studio standard survives as the other half of a switch rather than being deleted, because
-the choice is not finally made and the whole difference between the two is where one string
-comes from.
+**Decided 2026-09-12, and simplified the same evening.** The expectation is **camera native
+log**: each shooter delivers in whatever their camera shoots, and **writes that encoding into
+the clip's metadata**. This reverses the 2026-09-11 decision that there is one studio standard
+log encoding on every file.
 
-Settings carries **Source encoding mode**, with two values:
+**There is no mode.** A first version of this section gave Settings a switch between "camera
+log" and "studio standard", which was the wrong shape: **DaVinci Wide Gamut / DaVinci
+Intermediate is not a mode, it is one more input transform**, and a clip encoded in it says so
+in its metadata like every other clip. A shooter working from a house template and a shooter
+delivering S-Log3 are the same case with different strings. So:
 
-| mode | what names the encoding | where the CLF starts |
-|---|---|---|
-| **Camera log** (the current expectation) | the clip's own metadata, written by the shooter (OQ-44) | that clip's camera log |
-| **Studio standard** | one Settings value for the whole batch | DaVinci Wide Gamut / DaVinci Intermediate |
+- **One mechanism.** The clip's metadata names the source encoding, always. Nothing in Settings
+  overrides it and nothing has to be switched before a turnover is scanned.
+- **`DaVinci Intermediate WideGamut` is a row in the table**, alongside the camera logs, not a
+  special path.
+- **A turnover may mix them freely**, including one shooter on a house template and two on their
+  cameras, which is a real possibility this design now costs nothing to support.
 
-**The studio standard, if it is ever used, is DaVinci Wide Gamut / DaVinci Intermediate**,
-which is `DaVinci Intermediate WideGamut` in the pinned config.
+What that deletes: the Settings mode, the batch-wide encoding value it selected, and the need
+to get either right before scanning. **QC-038 retires with them.** What survives is the table
+below, which was always the real work.
 
-### The tool applies no input transform, in either mode
+### The tool applies no input transform ahead of a CLF
 
-**Answered 2026-09-12, and it is the answer that makes the mode switch cheap.** The colourist
-builds the CLF from whatever the source is encoded in: camera log in camera mode, DaVinci Wide
-Gamut / DaVinci Intermediate in studio mode. **So the tool converts nothing before the grade.**
-It decodes the source to float and applies the CLF, and the CLF is the entire transform from
-what arrived to linear ACEScg.
+**Answered 2026-09-12.** The colourist builds each shot's CLF starting from whatever that shot
+is encoded in, camera log or DaVinci Wide Gamut alike. **So the tool converts nothing before the
+grade.** It decodes the source to float and applies the CLF, and the CLF is the entire transform
+from what arrived to linear ACEScg.
 
-This is OQ-37, asked and answered, and what it buys is worth listing because the previous
-version of this section spent a page on the bill it deletes:
+This is OQ-37, asked and answered, and what it buys is worth listing because an earlier version
+of this section spent a page on the bill it deletes:
 
-- **A plate does not depend on OQ-34's mapping table being right.** The tool does not turn
-  "S-Log3" into a colour space in order to render one, so a wrong table entry cannot reach a
-  plate. **The table is still built** and still has to be right, because the aux still uses it
-  and because a row with no CLF uses it: see below.
+- **A plate does not depend on the mapping table being right.** The tool does not turn "S-Log3"
+  into a colour space in order to render one, so a wrong table entry cannot reach a plate. **The
+  table is still built**, because the aux still uses it and because a row with no CLF uses it.
 - **The tool and Resolve cannot disagree about what a camera log is**, because only one of them
-  converts. That was the invisible failure in camera mode and it is gone rather than mitigated.
+  converts. That was the invisible failure and it is gone rather than mitigated.
 - **A camera nobody has mapped still delivers its plates.** A fourth camera arrives, the
   colourist grades from its log, and the tool applies the result. Its aux stills still need a
   table row, so "more may be added" is a row rather than a code change.
 - **ACEScct leaves the chain entirely**, and with it the one stage that existed only to get from
   the source to where the grade began.
 
-**What the two modes still differ in is one string, and it is no longer a transform.** The
-source encoding is now **provenance**: it goes in the EXR header so a delivered plate says what
-it was made from, it is what QC-018 compares the container's own tags against, and it is what
-QC-021 checks the delivery format against. A wrong one is a header that lies, which is worth
-catching and is not a wrong picture.
+**On a plate the source encoding is therefore provenance, not a transform.** It goes in the EXR
+header so a delivered frame says what it was made from, it is what QC-018 compares the
+container's own tags against, and it is what QC-021 checks the delivery format against. A wrong
+one is a header that lies, which is worth catching and is not a wrong picture.
 
 ### The input transform is a table, keyed on the metadata
 
@@ -191,9 +193,8 @@ QC-039 and it deserves the same treatment.
 
 **So whether the CLF contains the input transform is a fact about the colour session that the
 tool has to know, and it is recorded rather than guessed** (OQ-46). The user's answer on
-2026-09-12 was that the colourist always starts from camera log in camera mode and from DaVinci
-Wide Gamut in studio mode, which says the CLF does contain it and the table above is correct as
-written. It is worth confirming against one real export before a delivery depends on it, which
+2026-09-12 was that the colourist always starts from whatever the clip is encoded in, which
+says the CLF does contain it and the table above is correct as written. It is worth confirming against one real export before a delivery depends on it, which
 is the same exercise as OQ-31.
 
 ### The aux still is why the table is load bearing even so
@@ -378,9 +379,8 @@ was done to it.
   file can be checked against the session that made it. On an **aux still** it does name the
   transform applied, because that is the one chain with no CLF in it. **Not yet written:**
   `proingest/source_encoding_origin`, which says whether that name came from the clip's
-  metadata or from the Settings studio standard. The encoding is the fact that matters and the
-  origin is how a wrong one gets traced back to whoever wrote it, which is a different person
-  in each mode.
+  metadata or from a per row override. The encoding is the fact that matters and the origin is
+  how a wrong one gets traced back to whoever wrote it.
 - `proingest/clf` names the CLF and `proingest/clf_hash` is its sha256. **The hash is what
   identifies the grade**: a CLF that is re-exported and redelivered gets a different one, so the
   deliverables rendered from the old version stay findable afterwards. Both are **absent** from
@@ -430,13 +430,13 @@ and is recorded as OQ-36 rather than built.
 ## 2. Source formats accepted
 
 The studio sets the delivery spec and the shooters work to it, so this is a specification
-rather than a survey of what might turn up. **The container is fixed; the encoding depends on
-the mode** (section 1). In camera mode a turnover may carry several encodings and each clip's
-metadata says which; in studio mode it is one encoding on every file.
+rather than a survey of what might turn up. **The container is fixed; the encoding is per clip
+and its metadata says which** (section 1). A turnover may carry several encodings, including a
+mix of camera logs and a house wide gamut, and nothing has to be told which in advance.
 
 **Expected**, and what every QC rule is written around:
 
-- **ProRes 4444 or DNxHR 444, in the log encoding the mode calls for, 12 bit, 4:4:4, full range**,
+- **ProRes 4444 or DNxHR 444, in the log encoding the clip's metadata names, 12 bit, 4:4:4, full range**,
   one file per shot, with handles beyond the cut.
 
 4:4:4 matters more on a log source than it would on a display referred one. Subsampled chroma
@@ -457,8 +457,8 @@ in a log signal is stretched when the signal is linearised, and it shows on satu
 
 **The tool does not read the colour space off the container, it overrides it.** No standard
 transfer tag names any camera log or wide gamut log encoding, and a container that does carry tags is as
-likely to carry the wrong ones. **The authority is the clip's metadata in camera mode and the
-Settings studio standard in studio mode**, and the decode is forced to match whichever it is.
+likely to carry the wrong ones. **The authority is the clip's metadata**, and the decode is
+forced to match what it names.
 The distinction worth keeping is between a *colour tag*, which a container writes because it
 must write something, and a *named metadata field a shooter filled in deliberately*: the tool
 overrides the first and trusts the second. QC-018 fires when the file's own tags contradict the

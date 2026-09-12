@@ -71,10 +71,11 @@ a report about one.
 
 The user described it on 2026-09-11 and it is written up in `docs/COLOR_AND_FORMAT.md`
 section 1. In one paragraph: the shooters deliver **ProRes 4444 in their camera's native log**,
-each clip's metadata naming which (2026-09-12; S-Log3, C-Log3 and BM Film today, more later),
-with a **studio standard mode** in Settings as the alternative. Their CDL and their string-out
+each clip's metadata naming which (2026-09-12; S-Log3, C-Log3 and BM Film today, more later, and
+DaVinci Wide Gamut is one more value rather than a mode). Their CDL and their string-out
 are offline reference and **the tool reads neither**. After the AD meeting, a **colour session
-in Resolve**, where Ben works with the AD (ACES 1.3, ACEScct timeline, primary grades only),
+in Resolve**, where Ben works with the AD (ACES 1.3, primary grades only, the CLF starting at
+whatever the clip is encoded in),
 exports an **updated final EDL** (conform, the approved trims, and the CDL as `*ASC_SOP` /
 `*ASC_SAT` lines), **a `.clf` per shot**, and the stringout. The tool conforms from the EDL and
 **applies the CLF** to everything it writes, plates included, so the plate is delivered graded.
@@ -138,16 +139,22 @@ so and says it is not a precedent.
 
 The user's words: there will likely **not** be one studio standard log for the sources; each
 camera's native LOG is used and **the shooters write the correct LOG for their camera into the
-clip's metadata**. Keep it flexible to go either way: Settings gets a **mode**, Camera log or
-Studio standard, and if the studio standard is ever used it is **DaVinci Wide Gamut / DaVinci
-Intermediate**. The cameras today are **S-Log3, C-Log3 and BM Film**, and more may be added.
+clip's metadata**. The cameras today are **S-Log3, C-Log3 and BM Film**, and more may be added.
+
+**The shape of it changed twice inside the same evening and the final shape is the simplest
+one.** It was first written as a Settings **mode**, Camera log or Studio standard, with DaVinci
+Wide Gamut / DaVinci Intermediate as the studio standard. The user then removed the mode:
+**DaVinci Wide Gamut is not a mode, it is one more input transform, and a clip encoded in it
+says so in its metadata like any other clip.** So there is one mechanism, the metadata names the
+encoding per clip, a turnover may mix encodings freely, and nothing has to be switched before a
+scan. If a future session finds itself adding a batch-wide source encoding setting, this is the
+paragraph that says it was tried and removed within the hour.
 
 | decision | where it lives |
 |---|---|
-| Source encoding is **camera native log**, from the clip's metadata | COLOR_AND_FORMAT section 1, PRD section 4 and FR-15 |
-| A Settings **mode** switches to one studio standard for the batch | PRD FR-12 and FR-15, COLOR_AND_FORMAT section 1 |
-| The studio standard is **`DaVinci Intermediate WideGamut`**, not ACEScct | OQ-39, answered and demoted |
-| The input transform is a **real transform in both modes** now | COLOR_AND_FORMAT section 1 |
+| Source encoding is named **per clip in its own metadata** | COLOR_AND_FORMAT section 1, PRD section 4 and FR-15 |
+| **There is no mode.** `DaVinci Intermediate WideGamut` is one entry in the table | OQ-39, answered then dissolved; QC-038 retired |
+| A turnover may **mix encodings** freely | COLOR_AND_FORMAT section 1 |
 | Resolve's IDT names still do not match OCIO's, and the table is needed again | OQ-34, **reopened, then required** |
 | **The CLF starts at the source encoding**, so the tool applies no input transform on a graded plate | OQ-37, **answered yes** |
 | **ACEScct leaves the chain entirely** | COLOR_AND_FORMAT section 1 |
@@ -362,12 +369,11 @@ M4.5 is finished. `docs/UI_SPEC.md` is the spec and it was already cut down when
 controls and the three viewers were dropped. The things M5 owes the colour chain are small and
 known:
 
-- **The Colour settings group**, which is where `--color-session` and `--source-encoding` stop
-  being flags: the session's EDL path, the **source encoding mode** (Camera log or Studio
-  standard, new 2026-09-12) and the studio standard encoding the second mode uses, all
-  remembered (PRD section 7 FR-12). Build the mode control even though only studio mode works
-  until M4.6: it is one combo box, and retrofitting a mode into a settled settings model is
-  worse than leaving one option inert.
+- **The Colour settings group**, which is where `--color-session` stops being a flag: the
+  session's EDL path, the **input transform table** and its overrides, the ACES config version
+  and the output transform, all remembered (PRD section 7 FR-12). **Not a source encoding
+  value and not a mode**: the encoding is a per clip fact read from the metadata, and a
+  batch-wide setting for it was specified and removed on 2026-09-12.
 - **Wiring QC-008, QC-009, QC-019, QC-039 and QC-045**, which all read `core/clf.py` and none of
   which can fire until a batch knows where its colour session is. QC-008 is the one that refuses
   a run: a batch cannot produce final deliverables until its session exists.
@@ -375,9 +381,9 @@ known:
   something to show per row without any new plumbing. A source encoding column beside it is
   M4.6.4 and wants `ShotRow.source_encoding` first.
 
-**OQ-37 is answered**: the colourist starts the CLF from camera log in camera mode and from
-DaVinci Wide Gamut in studio mode, so the tool applies no input transform on a graded plate and
-ACEScct leaves the chain. Two things are still worth asking and neither is a build task. Ask
+**OQ-37 is answered**: the colourist starts the CLF from whatever the clip is encoded in, so
+the tool applies no input transform on a graded plate and ACEScct leaves the chain. **And there
+is no source encoding mode** to build a control for. Two things are still worth asking and neither is a build task. Ask
 **whoever briefs the shooters** which metadata field carries the log name and exactly what
 string goes in it (OQ-44), remembering that "S-Log3" names four colour spaces in the pinned
 config. And confirm **OQ-46** against one real export, because the difference between a CLF
@@ -558,7 +564,7 @@ Entry points worth knowing:
 | M3 | Render | complete, 172 tests |
 | M4 | QC: all rules both phases, xlsx exports, `qc` CLI | complete, 175 tests |
 | M4.5 | Colour pipeline, core only. Source log in, CLF applied, ACEScg out, the viewing LUT | complete, 111 tests |
-| M4.6 | Camera log mode: the source encoding read per shot from the clip metadata, the name mapping, QC-046 and QC-047 | **not started, and waiting on answers** (OQ-37, OQ-44) |
+| M4.6 | Per shot source encoding: read from the clip metadata, the input transform table, the input transform out of the graded chains, QC-046 to QC-048 | **not started, unblocked** (OQ-37 answered; OQ-46 wants confirming) |
 | M5 | UI: the list, the FR-14 metadata pane, settings, log. **No viewers** | not started |
 | M6 | ~~Stringout with burn-ins~~ | **dropped 2026-09-11**, the colour session exports it |
 | M7 | Packaging: PyInstaller `.app`, dmg, Gatekeeper | not started, and needs a Mac (OQ-22) |
@@ -596,7 +602,7 @@ happens when it cannot be resolved.
 
 | chunk | scope | state |
 |---|---|---|
-| M4.6.1 | `ShotRow.source_encoding` (additive, like `clf_path`), and a Settings `SourceEncodingMode` the planner reads | not started |
+| M4.6.1 | `ShotRow.source_encoding` (additive, like `clf_path`), read per row rather than from one Settings value. **No mode**: `DEFAULT_SOURCE_ENCODING` stops being a batch-wide authority | not started |
 | M4.6.2 | **Take the input transform out of the graded chains.** `ShotColor.plate_transforms` drops `input_transform` when a CLF is present, `WORKING_SPACE` and `plate_transform` collapse into one source-to-ACEScg leg, and `view_lut` bakes the CLF and the output transform only | not started, and it is the correctness half |
 | M4.6.3 | The mapping table in `core/color.py`: what a shooter writes to one OCIO colour space, extensible by a row, refusing the unrecognised and the ambiguous | not started |
 | M4.6.4 | Read the encoding at scan time from the carrier OQ-44 names, and QC-046, QC-047 and QC-048 | **wants OQ-44, and has a default** |
@@ -618,10 +624,11 @@ it to be re-derived later.
 selected by the file metadata and because the aux still needs one regardless: a colour chart is
 delivered ungraded, never gets the CLF, and still has to reach ACEScg.
 
-**M5 is not blocked by any of this.** Its Settings page should carry the mode control from the
-start, because the control is one combo box and retrofitting a mode into a settled settings
-model is worse than leaving one option inert. Until M4.6 lands, camera mode is a control that
-refuses to run rather than one that renders wrong pixels.
+**M5 is not blocked by any of this, and it got smaller on 2026-09-12.** An earlier version of
+this note told M5 to carry a source encoding mode control from the start. **There is no mode**,
+so there is no control: the Settings Colour group carries the colour session location, the input
+transform table and its overrides, the ACES config version and the output transform, and nothing
+about which encoding a batch is in.
 
 M3 detail:
 
@@ -1250,17 +1257,18 @@ Nothing blocks the next task. These are live, in rough priority order:
 
 - **Camera log mode is specified and not built (M4.6).** The source encoding went back to
   camera native log on 2026-09-12 and the tool still reads one value from Settings for every
-  row. What is missing is camera mode entirely: the per shot encoding, the table of input
-  transforms the user asked for, and where that table is allowed to be applied.
+  row. What is missing: the per shot encoding, the table of input transforms the user asked
+  for, and where that table is allowed to be applied.
   **OQ-44** (which metadata field, and what string) has a default and blocks nothing.
   COLOR_AND_FORMAT section 1 has the whole of it.
 
-- **The studio standard is no longer ACEScct, so the input transform is never identity.**
-  OQ-39 was answered on 2026-09-12 as **`DaVinci Intermediate WideGamut`** and demoted to the
-  fallback mode in the same breath. `color.DEFAULT_SOURCE_ENCODING` is still `ACEScct` in the
-  code, which is now the wrong default in both modes and is a one line change with M4.6.1. It
-  is harmless until a batch runs without an explicit encoding, and it is exactly the kind of
-  stale constant that renders a plausible looking wrong image, so it should not wait long.
+- **`color.DEFAULT_SOURCE_ENCODING` is `ACEScct`, which is now wrong and is also the wrong
+  shape.** OQ-39 was answered on 2026-09-12 as `DaVinci Intermediate WideGamut` and then
+  dissolved: there is no batch-wide source encoding at all, because the encoding is a per clip
+  fact. So this constant does not want a new value, it wants to stop being an authority; what
+  replaces it is `ShotRow.source_encoding` and the table (M4.6.1, M4.6.3). It is harmless until
+  a batch runs without an explicit encoding, and it is exactly the kind of stale constant that
+  renders a plausible looking wrong image.
 
 - **No colour session has ever exported for this tool (OQ-31).** Every claim in
   COLOR_AND_FORMAT section 1 about what arrives is a specification, not an observation, until
