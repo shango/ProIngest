@@ -277,7 +277,7 @@
   <header class="mast">
     <div class="eyebrow">
       <span>VFX turnover ingest &middot; macOS v01</span>
-      <span class="stamp">Updated <b>11 Sep 2026, 23:40 PDT</b></span>
+      <span class="stamp">Updated <b>12 Sep 2026, 10:55 PDT</b></span>
     </div>
     <h1>ProIngest Build Track</h1>
     <p class="standfirst">
@@ -293,7 +293,7 @@
       <div class="stat-l">Milestones done</div>
     </div>
     <div class="stat">
-      <div class="stat-n good">785</div>
+      <div class="stat-n good">838</div>
       <div class="stat-l">Tests, Linux + macOS</div>
     </div>
     <div class="stat">
@@ -428,7 +428,7 @@
         <div class="ms-body">
           <div class="ms-head">
             <span class="ms-name">Colour pipeline</span>
-            <span class="pill now">In progress &middot; 1 of 4 parts</span>
+            <span class="pill now">In progress &middot; 3 of 4 parts</span>
           </div>
           <p class="ms-goal">
             The approved grade from the colour session, applied to everything the tool writes.
@@ -456,10 +456,34 @@
             log format the shooters deliver in no longer holds anything up</b>: the format is one
             name in one setting, checked when a run starts, so whichever answer comes back costs
             a single word and no rebuilding.
-            <b>Next is matching the grade to the shot</b>, and that is the part that wants a
-            single real export from the grading session rather than an opinion: how an entry in
-            the edit list, and how a colour file, each find their shot. Picking the wrong one
-            applies a neighbouring shot's colour, and looks entirely plausible while doing it.
+            <b>Matching the grade to the shot is built, and it refuses to guess.</b> The
+            session's edit list is now what the tool conforms from - it carries the approved in
+            and out points as well as the colour - and each shot is paired with its own colour
+            file by the shot code in the name. A shot the tool cannot match gets no grade and is
+            reported, rather than being given the nearest one: a neighbouring shot's colour
+            looks entirely plausible and would ship. Two shots claiming the same colour file
+            stops the run rather than picking one, for the same reason. Every colour file is
+            also <b>opened and measured before it is trusted</b>, because the one failure that
+            cannot be seen on a monitor is a colour file that already contains the viewing
+            transform: the plate would then be a picture of the look rather than the wide
+            scene-referred original, and it would look completely normal until someone tried to
+            work on it. A fingerprint of each colour file is recorded with every frame it
+            touched, so a plate can be traced to the exact version of the grade months later.
+            <b>The viewing copies' colour is built too.</b> The whole viewing chain - the
+            shooters' format, the approved grade, and the industry standard viewing transform -
+            is collapsed into a single lookup table per shot, which is how the video tool
+            applies it in one pass without frames passing through the application at all. It is
+            checked from both ends: the colour engine reads the table back as the chain it was
+            built from, and <b>the video tool itself is run against it</b> and lands within a
+            quarter of one code value of the engine's own answer. Which viewing transform, the
+            last part of a question first asked a fortnight ago, now has a built default: the
+            standard one, since the other three the library offers are a simulation of a
+            different display, a debug view and no transform at all.
+            <b>What is left is the last part</b>, where the renderer and the frame writer move
+            onto this chain: the plates written with the approved look and the header stating
+            what is in them, and the reference videos encoded through the new table instead of
+            through no transform at all. That is the part that finally corrects what the
+            reference videos have looked like since they were first built.
           </div>
         </div>
       </div>
@@ -577,8 +601,8 @@
         <tbody>
           <tr>
             <td class="id">OQ-30</td>
-            <td><b style="color:var(--text)">Wants one real edit list.</b> Which field of an edit list entry identifies a shot, so a neighbouring shot's colour is never applied to the wrong one. It looks plausible when it goes wrong, which is what makes it worth pinning down</td>
-            <td class="st"><span class="tag hot">Open</span></td>
+            <td><b style="color:var(--text)">Built to its default.</b> Which field of an edit list entry identifies a shot, so a neighbouring shot's colour is never applied to the wrong one. The tool now trusts the clip name, falls back to the reel and the timecode together, and reports rather than guesses. One real edit list would confirm the session fills that field in</td>
+            <td class="st"><span class="tag open">Built</span></td>
           </tr>
           <tr class="resolved">
             <td class="id">OQ-40</td>
@@ -587,8 +611,8 @@
           </tr>
           <tr>
             <td class="id">OQ-33</td>
-            <td>What pairs a colour file with its shot: a filename convention, or a small index file. The same failure mode as OQ-30, and the same one real export answers both</td>
-            <td class="st"><span class="tag hot">Open</span></td>
+            <td>What pairs a colour file with its shot - built to the obvious default: the shot code in the filename, with two files claiming one shot refusing to run rather than choosing. The same one real export still confirms it</td>
+            <td class="st"><span class="tag open">Built</span></td>
           </tr>
           <tr>
             <td class="id">OQ-39</td>
@@ -612,8 +636,8 @@
           </tr>
           <tr>
             <td class="id">OQ-29</td>
-            <td>Which version of the industry colour standard the viewing copies use. Mostly answered: the session is ACES 1.3, and the tool now pins that exact version in code. What is left is which viewing transform within it</td>
-            <td class="st"><span class="tag open">Narrowed</span></td>
+            <td>Which version of the industry colour standard the viewing copies use - answered: the session is ACES 1.3 and the tool pins that exact version in code. The remaining half, which viewing transform within it, is now built to the standard one; a test fails at the first build if a future version renames it</td>
+            <td class="st"><span class="tag ok">Built</span></td>
           </tr>
           <tr class="resolved">
             <td class="id">OQ-38</td>
@@ -760,6 +784,25 @@
 
   <section>
     <h2>Corrections made to the spec</h2>
+      <div class="note">
+        <h3>The same diagram was wrong a second time, in the other branch</h3>
+        <p>
+          The colour document's chain diagram had the viewing branch staying in the shooters'
+          format after the grade is applied. That was true in the version written on the morning
+          of 11 September, where the grade was a short numeric one and the conversion happened
+          later. It stopped being true that afternoon, when the grade became a full colour file
+          that <b>already ends in the delivered form</b>. The building work found it: the viewing
+          transform has to start where the colour file lands, and the diagram said somewhere else.
+        </p>
+        <p>
+          <b>The document was corrected rather than the code</b>, and the property the sentence
+          was there to protect survives the correction. The reason the viewing branch was
+          described as staying in the shooters' format is that the video tool cannot carry values
+          brighter than white through a resize without clipping them. That still holds, and for a
+          better reason: everything unbounded now happens <b>inside</b> the single lookup table,
+          where the colour engine handles it and the video tool never sees it.
+        </p>
+      </div>
       <div class="note">
         <h3>A configuration point was removed rather than built</h3>
         <p>
@@ -1240,7 +1283,7 @@
   <footer>
     <b>Source of truth</b> &middot; PROGRESS.md, docs/OPEN_QUESTIONS.md, PRD.md section 9<br>
     <b>Verify</b> &middot; pytest &middot; ruff check . &amp;&amp; mypy proingest &middot; python -m proingest scan &lt;folder&gt;<br>
-    <b>Last updated</b> &middot; 11 September 2026, 23:40 PDT. <b>The quality and reporting milestone is complete.</b> Both spreadsheets are written against the studio's real tracker, which arrived the same evening, and a headless command produces them. 785 tests green on both machines. Earlier today the colour engine went in. Next: matching each shot to its approved grade, which wants one real export from the grading session
+    <b>Last updated</b> &middot; 12 September 2026, 10:55 PDT. <b>Three of the colour pipeline's four parts are built.</b> Each shot is now matched to its approved grade and to the approved in and out points from the grading session's own edit list, every colour file is opened and measured before it is trusted, and the viewing chain is baked into one lookup table per shot that the video tool has been run against and agrees with. 838 tests green on both machines. Next and last: the renderer and the frame writer move onto that chain, which is what finally corrects the reference videos
   </footer>
 
 </div>
