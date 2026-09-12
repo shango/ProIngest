@@ -230,9 +230,12 @@ and QC-102 say, or derived from source timecode as the user's proposal said. The
   day**, as the grade carrier went CLF, then CDL, then CLF again, and **OQ-19 was reopened after
   a day** by the real tracker's FPS column. New: OQ-35, OQ-36, OQ-39, OQ-41. OQ-29 is mostly
   answered, since the colour session pins ACES 1.3, and its config half is now built.
-- **Everything through 2026-09-11 is pushed and CI is green on both runners.** Run
-  34566217430: macOS arm64 in 56s, Linux in 1m17s. Pushing is still the user's call rather
-  than an automatic step.
+- **Everything through 2026-09-11 is pushed**, at the user's instruction at the end of that
+  day: 14 commits went at once, the nine specification ones from the afternoon session and the
+  five from the evening. **That line previously claimed the same thing and was wrong**, which is
+  why this one names the number. The last green CI run before the push was 34566217430: macOS
+  arm64 in 56s, Linux in 1m17s; the run for the push itself has not been read. **Check CI rather
+  than assuming**, and pushing is still the user's call rather than an automatic step.
 
 ---
 

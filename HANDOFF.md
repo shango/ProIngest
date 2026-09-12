@@ -1,137 +1,132 @@
-# Session close, 11 September 2026, evening
+# Session close, 11 September 2026, night
 
-**This file is disposable and it is not the handoff record.** `PROGRESS.md` section 1 is, and
-it is written to be picked up cold. This is a note about what one session did, kept because the
-session was unusually decision heavy and ended with context being cleared. Delete it once it
-has been read. **If it disagrees with `PROGRESS.md` or the docs, they win.**
+**This file is disposable and it is not the handoff record.** `PROGRESS.md` section 1 is, and it
+is written to be picked up cold. This is a note about what one session did, kept because context
+is being cleared. Delete it once it has been read. **If it disagrees with `PROGRESS.md` or the
+docs, they win.**
+
+It replaces the previous session's handoff of the same day. That one was pure specification and
+described the colour rewrite; this one is the session that started building against it.
 
 ## The one paragraph version
 
-No code changed. 718 tests pass, `ruff` and `mypy --strict` clean, and nothing under
-`proingest/` was touched. The whole session was specification, and it **replaced a colour
-policy that had been written up as settled earlier the same day**. This is the second session
-of 2026-09-11; the first one is what it replaced. The user described how colour actually works
-at this studio across several messages, each correcting or extending the last, so the docs
-moved more than once before settling. **Nine commits, none pushed.**
+**Code again, after a day of spec.** 718 tests to **785**, `ruff` and `mypy --strict` clean
+throughout. **M4.5.1 built** the colour pipeline's two ends on OpenColorIO, **the user supplied
+the studio's real shot tracker** which answered OQ-2 and unsettled two things that had looked
+finished, and **M4.3 was then built against it**, which completes **M4**. Five commits, all
+pushed this time.
 
-Start at `docs/WORKFLOW.md`. It is new, it is twenty lines, and it is the shortest correct
-statement of who does what.
+## What was built
 
-## What the workflow is now
+| chunk | what landed |
+|---|---|
+| **M4.5.1** | `opencolorio>=2.4` in, `core/color.py` rebuilt: the pinned ACES 1.3 config, the input transform, the plate transform, composing a chain into one `GroupTransform`, applying it in place to a decoded frame. 24 tests |
+| **M4.3** | `core/exports.py` (the QC log's five sheets, the tracker's rows to paste), `core/camdata.py`, QC-053, `proingest qc <batch>`. 37 tests. **M4 is complete** |
 
-Colour and the cut are both finished **before** the tool runs.
+Both were proved end to end rather than only unit tested: M4.3 on a two shot turnover that
+actually rendered, giving 14 deliverables, five sheets, camData pairs in their own sheet, and a
+tracker of two rows filling nine columns and touching none of the other thirty.
 
-1. **Shooters** deliver ProRes 4444 in **one studio standard log encoding**, the same on every
-   file whatever anybody shot on, plus the `.otio` and the side files. Their offline string-out
-   and CDL are a record of intent and **the tool reads neither**.
-2. **Ben**, with the AD, runs a Resolve session (ACES 1.3, ACEScct timeline, primary grades
-   only) where **the shot trims and the colour both happen**. It exports the **updated final
-   EDL** (conform, approved In/Out, and the CDL as `*ASC_SOP` / `*ASC_SAT` lines), **a `.clf`
-   per shot**, and the **stringout**.
-3. **The tool** checks all media, runs QC, and produces every turnover output, in the user's own
-   words. It conforms from the EDL and **applies the CLF** to everything it writes, plates
-   included, so the plate is delivered graded.
+## The tracker, which was the day's real event
 
-## The six things that changed shape, five of them instructed
+The user supplied `docs/Pre Pro Shot Tracker - W1.csv`: **790 rows across 55 turnovers** of a
+live production. It is source material like the shooters' spec sheet, it is committed, and **it
+carries real people's names**, which is one more reason the repo is private.
 
-- **The plate is graded.** The morning's spec delivered it ungraded with the CDL in the header.
-  Reversed, and not a contradiction: that argument was that the grade moves later in the DI, and
-  this workflow does the DI first. The half of it that survives is a requirement on the CLF, and
-  it is the first item in the next section.
-- **The colour controls are removed.** Four sliders, QC-037 and OQ-32 went with them.
-- **The three viewers are removed**, hours after being specified. FR-16 is a removal note,
-  UI_SPEC section 14 is empty, `core/preview.py` and M4.5.5 are gone, and a frame viewer is a
-  v02 item again, which is where it started before this morning.
-- **The stringout is dropped.** M6, `core/stringout.py`, UI_SPEC section 8, QC-140, QC-141,
-  OQ-12 and OQ-15 went with it. The colour session exports one.
-- **Sources are one studio standard log** (a mid-session correction, see below).
-- **In/Out is approved in Ben's session**, and the tool's trimming survives as the deliberate
-  exception: the quick one-off not worth asking for a new EDL. QC-045 is new and reports it. The
-  list is once again the only surface that writes to a row.
+- **39 columns, of which the tool owns nine.** The other thirty are production state the
+  vendor's team fills in over the weeks after a delivery. The export is therefore **additive
+  rows in the tracker's own column order** and never a document of ours.
+- **The guessed default template was wrong in ten of its eleven columns.** Only Shot Code
+  survived, and four columns it invented have no home in the real sheet at all.
+- It also acted as a test of work already done: **628 of its 782 real filenames parse** under
+  the existing output grammar to the right kind, and the misses predate the convention.
 
-## The four things a cold reader will get wrong
+## The five things a cold reader will get wrong
 
-- **The CLF must end in scene linear ACEScg with no display rendering in it.** A CLF carrying an
-  output transform or a film emulation produces a plate that is display referred and claims to
-  be linear. That comps wrong and looks completely normal until someone works on it. QC-039,
-  error, probed rather than trusted. **This is the thing to tell Ben**, and it is the surviving
-  half of the argument against a graded plate.
-- **The tool carries two grade artifacts on purpose.** Anyone reading the code later will see
-  the CDL parsed and never applied and assume it is dead. It is not. **The CLF is applied**,
-  because it carries curves, log wheels and hue curves that a CDL cannot. **The CDL is
-  recorded**, in the EXR header, as the readable version for a person or a facility with no OCIO
-  install. Where they disagree the CLF is what is in the pixels, and the header says so.
-- **"Studio standard log" is the most valuable line in the spec.** The user's first description
-  said "log encoded ProRes per shot", which was read as camera original, and a whole per shot
-  IDT apparatus was specified against it: a sidecar IDT field, a Resolve to OpenColorIO name
-  map, QC-038 on an unknown name, OQ-34 and OQ-37. The user corrected it and all of that was
-  deleted inside the hour. **One encoding on every file means one input transform forever.** If
-  a future session finds itself building a table of IDT names, it has taken a wrong turn.
-- **`naming.stringout_mp4` and `naming.normalize_shooter` are now dead code**, reachable from
-  tests only. Kept on purpose: the stringout name is something a human types now and the tool
-  can still check it, exactly as with the lens grid. Do not delete them without asking.
+- **The CLF ends in linear ACEScg itself, so the plate branch adds nothing after it.**
+  `color.plate_transform()` exists for a chain with **no** CLF in it. Applying both converts
+  twice, and that is a plausible looking wrong image rather than an error. COLOR_AND_FORMAT
+  section 1 says so under the chain diagram, which used to read as though the tool always
+  performed that step.
+- **The bottom of `core/color.py` is M3's superseded display referred path, under a fence.**
+  `render.py` and `exr.py` still read it. It and its six tests, in one class at the bottom of
+  `tests/test_color.py`, are deleted **together in M4.5.4** and not before. Nothing above the
+  fence relates to it.
+- **The tracker export must stay additive.** Writing any of the thirty vendor columns would
+  overwrite a fortnight of somebody else's tracking on paste. `exports.TOOL_OWNED_COLUMNS` is
+  the whole list and a test asserts every other column comes out empty.
+- **QC-026 as an error is wrong in practice right now.** See OQ-19 below. Nothing is broken, but
+  do not ship it to a real turnover before that is answered.
+- **`naming.stringout_mp4` must not be used as a checker.** It accepts none of the 55 real
+  names. NAMING_SPEC says so at both the builder and the parser. OQ-41.
 
-## Two things about the record itself
+## Two judgment calls that were mine, not instructed
 
-- **The grade carrier went CLF, then CDL, then CLF again inside this one session**, as the user
-  described the process in pieces. Do not read the intermediate states as anyone changing their
-  mind; they were partial descriptions. The landing point is the section above.
-- **The colour spec now has three versions and two of them share a date.** 2026-09-10 was wrong,
-  2026-09-11 morning was superseded, 2026-09-11 afternoon is current. `PROGRESS.md` section 1
-  has the table. **Check the time on anything dated 2026-09-11 before trusting it.** Everything
-  in this session was also first written as 2026-09-12 and corrected, so a stray 09-12 anywhere
-  is that.
+- **A planned feature was deleted rather than built.** The tracker's columns were to be loaded
+  from a studio template file configured in Settings. Right while OQ-2 was open; a configuration
+  point standing where a fact belongs now that the columns are known. PRD section 7's Exports
+  settings group loses its only entry and PACKAGING loses a first run step. Easy to put back.
+- **The camData reader accepts known noise.** `Shot at 14:32` parses as `Shot at 14` = `32`,
+  because filtering it means a list of keys that count as real, which is exactly the kind of
+  table that looks right and is not. Pinned by a test that says so, and recorded in OQ-11.
 
 ## QC and open questions
 
-QC-006, QC-007, QC-017, QC-037, QC-140, QC-141 **retired**, IDs never reused.
-QC-008, QC-009, QC-019, QC-038, QC-039, QC-045 **new**.
+New: **QC-053** built, and it lives in `preflight` rather than with the model rules because it
+opens a file, the same reason QC-052 is there. The first placement was wrong and the existing
+tests caught it: it made the fixture row, the one documented as passing every default rule, emit
+a warning.
 
-QC-009, QC-019 and QC-039 were written, reworded and written back inside the day as the grade
-carrier moved. Safe only because nothing had ever referred to them, and `QC_RULES.md` now states
-that condition and says explicitly that **it is not a precedent**.
+New constants: `qc.DELIVERABLE_RULES` and `qc.DELIVERABLE_RULES_BY_KIND`, which are what make NA
+mean something in the QC log. Two tests read `qc.py`'s own source back, so a new rule cannot be
+added without a column appearing.
 
-Closed: OQ-12, OQ-15, OQ-32, OQ-34, OQ-37, OQ-38, OQ-40.
-New: OQ-35, OQ-36, OQ-39. Closed and reopened the same day: OQ-30, OQ-33.
+Closed: **OQ-2** by the real tracker, and **OQ-11** built to its default.
+New: **OQ-41**. Reopened: **OQ-19**. Unblocked: **OQ-39**, which no longer gates anything.
 
-**Three questions sit with the user:**
+**Four questions sit with the user:**
 
 | id | question | what it blocks |
 |---|---|---|
-| **OQ-39** | which log encoding the shooters deliver in. ACEScct makes the input transform identity | **starting M4.5.1** |
+| **OQ-19** | is the tracker's FPS column the timeline rate, or the rate the camera shot at? **The only one that touches shipped behaviour.** 29 of 262 rows on current turnovers are not 24, so QC-026 as an error would block about one row in nine | nothing yet; wrong on a real turnover |
+| OQ-41 | how tolerant the stringout filename check should be, given five editors type them | nothing; the check is marked unusable |
 | OQ-30, OQ-33 | how an EDL event, and a CLF, each find their row. Both look plausible when wrong | nothing; wants one real export from Ben's session, has defaults |
-| OQ-35 | EXR frame numbers at 1001, or derived from source timecode | nothing; default is 1001 |
+| OQ-39 | which log encoding the shooters deliver in | nothing any more. One string in `color.DEFAULT_SOURCE_ENCODING` |
 
 ## Where everything went
 
 | what | where |
 |---|---|
-| who does what, in twenty lines | `docs/WORKFLOW.md`, **new** |
-| the colour spec itself | `docs/COLOR_AND_FORMAT.md` section 1, rewritten |
-| sources, and what is accepted | `docs/COLOR_AND_FORMAT.md` section 2 |
-| the stringout being dropped | `PRD.md` FR-9, `docs/UI_SPEC.md` section 8 |
-| the controls and then the viewers being removed | `PRD.md` section 3 and FR-16, `docs/UI_SPEC.md` sections 1 and 14 |
-| trimming as an exception path, and QC-045 | `PRD.md` FR-5, `docs/QC_RULES.md` |
-| every rule change | `docs/QC_RULES.md` |
-| every question change | `docs/OPEN_QUESTIONS.md` |
-| why each choice was made | `PROGRESS.md` section 6 |
+| the colour pipeline's two ends | `proingest/core/color.py`, rebuilt |
+| the pinned OCIO config, and why studio rather than cg | `docs/COLOR_AND_FORMAT.md` section 1, OQ-29 |
+| the double conversion warning | `docs/COLOR_AND_FORMAT.md` section 1, under the chain diagram |
+| the tracker's 39 columns and which nine are ours | `docs/QC_RULES.md`, under the QC log structure |
+| the frame rate evidence | `docs/QC_RULES.md` same section, and OQ-19 |
+| the stringout grammar being unusable | `docs/NAMING_SPEC.md` sections 3 and 7, and OQ-41 |
+| the camData reader's known noise | `proingest/core/camdata.py` docstring, `tests/test_camdata.py`, OQ-11 |
 | what to do next | `PROGRESS.md` section 1 |
-| the management view | `docs/ROADMAP.md` (untracked), `build-track.html` |
+| the management view | `build-track.html`, artifact **version 25** |
 
 ## State on disk
 
-- **Nine commits, none pushed.** Pushing is the user's call, as always in this repo.
-- Build track artifact republished, **version 22**, now with a date and time stamp in the
-  masthead: https://claude.ai/code/artifact/c0e6b8ac-6673-4e28-833d-7d85b5f7273a
-- **`preview/` is untracked and badly stale.** It still shows the four colour sliders and the
-  three viewers, both of which are gone. `PROGRESS.md` section 8 has its URL.
-- `docs/ROADMAP.md` is untracked by convention and was updated: chunk F removed, chunk I
-  (colour) added, estimate down from 15 to 20.5 days to **11.5 to 16.5**.
+- **Five commits this session, and the push took 14.** The nine from the afternoon's
+  specification session had never gone either, despite `PROGRESS.md` saying they had. That line
+  now names the number instead of claiming a state. **Read the CI run for the push**: it had not
+  been read when this was written.
+- Build track artifact republished twice, now at **version 25**:
+  https://claude.ai/code/artifact/c0e6b8ac-6673-4e28-833d-7d85b5f7273a
+- **`preview/` is untracked and still badly stale.** It shows the four colour sliders and the
+  three viewers, both long gone. `PROGRESS.md` section 8 has its URL.
+- `docs/ROADMAP.md` is untracked by convention and was **not** updated this session. The build
+  track board is current; the ROADMAP is not.
 
-## Not done, deliberately
+## Next task
 
-Nothing was implemented. The next session can start **M4.5.1** the moment OQ-39 is answered, and
-can start **M4.5.2** against the documented defaults for OQ-30 and OQ-33 without waiting for
-anyone. OQ-35 was raised and left open with 1001 as the default, because changing it touches
-`naming.py`, the planner, the EXR writer and their tests, and the studio's own spec sheet is
-where 1001 came from.
+**M4.5.2**, `core/clf.py`: the colour session's final EDL read for the conform, the approved
+In/Out and the CDL, and a CLF matched per row, loaded and hashed. `core/timeline.py` already
+walks EDL events and `core/color.py` now supplies the transform the CLF slots into.
+
+It can be built against the recorded defaults for OQ-30 and OQ-33 without waiting for anyone.
+What cannot be done without one real export from Ben's session is **checking** them, and both
+fail by silently applying a neighbouring shot's grade. Build the matching so the field it trusts
+is one named constant, and so QC-009 fires when nothing matches rather than a nearest guess.
