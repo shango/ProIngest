@@ -26,8 +26,9 @@ touching none of the other thirty.
 M4.5.1 put OpenColorIO in and rebuilt `core/color.py` as the two ends of the chain: the input
 transform from the studio standard log to ACEScct, the plate transform from ACEScct to linear
 ACEScg, and the machinery to compose them into one `GroupTransform` and apply it to a decoded
-frame in place. It did **not** need OQ-39: the source encoding is one OCIO colour space name in
-a constant, so the answer costs one string. **The display referred block it kept under a fence
+frame in place. **Both ends of that sentence were overtaken on 2026-09-12**: ACEScct is gone
+from the chain and the input transform no longer runs ahead of a CLF, which is M4.6.2. The
+composition machinery is untouched and is what the whole thing still rests on. **The display referred block it kept under a fence
 is gone**, deleted with its tests in M4.5.4 as planned.
 
 ### First five minutes
@@ -51,7 +52,7 @@ trusting it: two of the three versions below share that date.
 | 2026-09-10 | sources display referred, sRGB baked in, references apply no transfer | wrong |
 | 2026-09-11 am | sources ACEScct, plate **ungraded**, CDL read from the shooters' EDL, four colour controls in the tool | superseded |
 | 2026-09-11 pm | colour finished before ingest, **CLF per shot applied**, plate **graded**, no controls, no viewers, no stringout | current, except the source |
-| 2026-09-12 | the source goes back to **camera native log**, named in the clip's metadata, with the studio standard demoted to a Settings mode | current |
+| 2026-09-12 | the source goes back to **camera native log**, named in the clip's metadata. Settled that evening: **no mode**, DaVinci Wide Gamut is one more entry in an input transform table, **the CLF starts at the source encoding** so the tool applies no input transform ahead of it, and **ACEScct leaves the chain** | current |
 
 The mechanics survived all three rewrites almost intact: ACEScg working space, OCIO for every
 transform, the plate branch unbounded in numpy, the view branch bounded and collapsed into one
