@@ -334,17 +334,30 @@ class TestEncodeCommand:
         assert command[command.index("1:a:0") - 1] == "-map"
         assert command[command.index("-c:a") + 1] == "aac"
         assert command[command.index("-b:a") + 1] == "192k"
-        assert "-shortest" in command
 
-    def test_the_audio_is_padded_so_a_short_wav_cannot_cut_the_picture(self) -> None:
-        """`apad` and `-shortest` are one idiom. Without the pad, `-shortest` ends the
-        output when the audio does, and the picture is truncated with it."""
+    def test_the_audio_is_padded_and_then_cut_to_the_picture(self) -> None:
+        """`apad` and `atrim` are one idiom and neither half is about the other stream.
+
+        The pad covers a wav shorter than the delivered range, which OQ-27 makes
+        reachable whenever the editor extends Out into the handles; the trim covers one
+        that overruns. Stated outright rather than left to `-shortest`, which lets audio
+        buffer ahead of a video stream still inside a filtergraph by a margin that
+        varies with the ffmpeg version.
+        """
         command = ffmpeg.encode_command(
             "plate.mov", Path("out.mp4.part"), 0, 3, is_sequence=False, rate="24/1",
             audio=Path("a.wav"),
         )
-        assert command[command.index("-af") + 1] == "apad"
-        assert command.index("-af") < command.index("-shortest")
+        assert command[command.index("-af") + 1] == "apad,atrim=duration=0.166667"
+        assert "-shortest" not in command
+
+    def test_the_audio_length_is_exact_at_a_fractional_rate(self) -> None:
+        """24 frames at 23.976 is 1.001 seconds, not 1.0: the rate stays a fraction."""
+        command = ffmpeg.encode_command(
+            "plate.mov", Path("out.mp4.part"), 0, 23, is_sequence=False, rate="24000/1001",
+            audio=Path("a.wav"),
+        )
+        assert command[command.index("-af") + 1].endswith("atrim=duration=1.001000")
 
     def test_an_audio_skip_seeks_the_audio_input_and_not_the_picture(self) -> None:
         """-ss binds to the input that follows it, so its position is the whole point."""

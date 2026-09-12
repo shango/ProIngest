@@ -650,9 +650,9 @@ class TestReferenceMp4:
     def test_audio_shorter_than_the_picture_does_not_truncate_it(self, tmp_path: Path) -> None:
         """OQ-27: the wav is cut to cut, so extending Out into the handles outruns it.
 
-        `-shortest` on its own ends the output at whichever stream runs out first, which
-        made a short wav cut the picture down: 24 frames asked for, 12 delivered. The
-        picture is what the deliverable is, so it wins and the audio is padded.
+        The picture is what the deliverable is, so it wins and the audio is padded with
+        silence. Before the pad existed a short wav cut the picture down with it: 24
+        frames asked for, 12 delivered.
         """
         source = fixtures.make_mov(tmp_path / "src" / "plate.mov", count=24)
         wav = fixtures.make_wav(tmp_path / "src" / "short.wav", seconds=0.5)
@@ -662,7 +662,12 @@ class TestReferenceMp4:
         assert deliverable.frame_count == 24
 
     def test_audio_longer_than_the_picture_is_still_cut_to_it(self, tmp_path: Path) -> None:
-        """Padding the audio must not stop `-shortest` trimming a wav that overruns."""
+        """Padding the audio must not stop a wav that overruns being cut back.
+
+        This is the test that caught `-shortest` letting audio buffer ahead of the
+        `lut3d` filtergraph: on ffmpeg 9.0.1 it delivered 0.98 seconds of sound against
+        a third of a second of picture, and only the macOS runner saw it.
+        """
         source = fixtures.make_mov(tmp_path / "src" / "plate.mov", count=8)
         wav = fixtures.make_wav(tmp_path / "src" / "long.wav", seconds=5.0)
         job = ref_job(tmp_path, source, 0, 7, audio=wav)

@@ -12,7 +12,7 @@ commit.
 chain now reaches the files: a plate is delivered graded in linear ACEScg with AP1 primaries and
 a header that says what was applied to it, and a reference mp4 is encoded through the shot's
 grade and the ACES output transform baked into one cube. **M5, the UI, is next.**
-872 tests passing, `ruff` and `mypy --strict` clean. **Nothing is blocked.**
+873 tests passing, `ruff` and `mypy --strict` clean. **Nothing is blocked.**
 
 **M4 is done.** `core/exports.py` writes both spreadsheets, `proingest qc <batch>` writes them
 headless, and QC-053 parses camData through the new `core/camdata.py`. Proved end to end on a two
@@ -275,6 +275,15 @@ Seven things in it should not be re-derived.
   hands back a live mapping, so an assertion on it outside its `with` block passes on nothing
   and a test that should have failed does not. Copy it with `dict(...)`. This cost twenty
   minutes and the tests that read a header now all copy.
+
+**CI caught the one thing the dev machine could not.** Putting a `lut3d` in the encode's
+filtergraph made `-shortest` stop bounding the audio: on the bundled ffmpeg 9.0.1 a
+reference delivered 0.98 seconds of sound against a third of a second of picture, where
+6.1.1 on this machine was still correct. The audio's length is now stated outright,
+`apad,atrim=duration=<seconds>` from integer frames and the exact rational rate, so it
+depends on no ffmpeg heuristic at all. **The lesson generalises**: a filter added to the
+video chain changes the timing of the audio chain, and only the runner with the shipped
+binary will say so.
 
 **Two assumptions came out of it and both are recorded.** OQ-42: an EXR source is transformed as
 though it were the studio standard log, which is a wrong image rather than an error for a
@@ -733,10 +742,16 @@ from:
   a shot gets longer. `-shortest` ends the output at whichever stream finishes first, so
   that truncated the picture: 24 frames asked for, 12 delivered, measured. The M3.5 frame
   count check caught it, but it would have failed a legitimate render.
-- `-af apad` with `-shortest` is one idiom, not two options. The pad makes the audio
-  endless so the shortest stream is always the picture, which `-frames:v` bounds. Audio
-  that runs out becomes silence, which is the honest answer for a shot extended past the
-  sound. Both directions are pinned by tests.
+- `-af apad,atrim=duration=<seconds>` is one idiom, not two options, and **neither half
+  is about the other stream**. The pad makes the audio endless, so a wav the picture
+  outruns becomes silence, which is the honest answer for a shot extended past the sound;
+  the trim cuts one that overruns back to the delivered range. Both directions are pinned
+  by tests. **It was `apad` and `-shortest` until 2026-09-12**, and `-shortest` is a
+  heuristic: it lets audio buffer ahead of a video stream still inside a filtergraph, by
+  a margin that varies with the ffmpeg version. M4.5.4 put a `lut3d` in that graph and
+  ffmpeg 9.0.1 delivered 0.98 seconds of sound against a third of a second of picture.
+  The duration is computed from integer frames and the exact rational rate, divided only
+  at the ffmpeg boundary, so 23.976 cannot drift over a long shot.
 - QC-043 now has an expectation rather than a guess, and the same warning means two
   different things: before an edit a malformed turnover, after an edit the editor's own
   trim, since the wav deliverable is a byte copy and is never trimmed.
@@ -797,9 +812,9 @@ from:
   reaches ffmpeg is one baked cube applied with `lut3d`, built by `render._view_lut` from the
   shot's own chain. The scale still runs before it, so the downscale sees the log values, which
   are bounded the way swscale needs them (COLOR_AND_FORMAT sections 1 and 4).
-- Audio is a second input, AAC 192k, `-shortest`, and **seeked by the in-point offset** so
-  the sound stays with a trimmed picture. That the wav starts where the picture media
-  starts is an assumption, logged as OQ-27.
+- Audio is a second input, AAC 192k, cut to the picture with `apad,atrim`, and **seeked by
+  the in-point offset** so the sound stays with a trimmed picture. That the wav starts
+  where the picture media starts is an assumption, logged as OQ-27.
 
 **Witness cam is a normal deliverable (confirmed by the user 2026-09-10).**
 

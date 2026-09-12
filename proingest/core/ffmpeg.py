@@ -555,20 +555,36 @@ def encode_command(
         *REFERENCE_TAGS,
     ]
     if audio is not None:
-        # `apad` then `-shortest` is one idiom, not two options, and it has to be both.
-        # `-shortest` alone ends the output at whichever stream runs out first, so a wav
-        # shorter than the picture truncates the **video**: measured, a 24 frame range
-        # against half a second of audio delivered 12 frames. That is reachable whenever
-        # the editor extends Out into the handles, since OQ-27 says the wav is cut to cut.
-        # `apad` makes the audio endless, so the shortest stream is always the picture,
-        # which `-frames:v` already bounds. Audio that runs out becomes silence.
+        # `apad` then `atrim` states the audio's length outright: pad it to endless,
+        # then cut it to exactly the picture. Both halves are needed and neither is
+        # about the other stream. A wav shorter than the picture is padded with silence,
+        # because OQ-27 says the wav runs cut to cut and the editor can extend Out into
+        # the handles; a wav that overruns is cut back to the delivered range.
+        #
+        # **This used to be `apad` and `-shortest`, and `-shortest` is a heuristic.** It
+        # ends the output when the shortest stream does, but it lets audio buffer ahead
+        # of a video stream that is still in a filtergraph, and how far ahead depends on
+        # the ffmpeg version. M4.5.4 put a `lut3d` in that graph and ffmpeg 9.0.1, which
+        # is the bundled build, delivered 0.98 seconds of audio against a third of a
+        # second of picture; ffmpeg 6.1.1 on the dev machine did not, so only CI saw it.
+        # A duration computed from integer frames does not depend on either.
         command += [
             "-c:a", "aac",
             "-b:a", REFERENCE_AUDIO_BITRATE,
-            "-af", "apad",
-            "-shortest",
+            "-af", f"apad,atrim=duration={_seconds(count, rate):.6f}",
         ]
     return [*command, "-movflags", "+faststart", "-f", "mp4", str(destination)]
+
+
+def _seconds(count: int, rate: str) -> float:
+    """`count` frames at `rate`, as seconds. The only place that division happens.
+
+    `rate` arrives as the exact fraction `encode_command` passes to ffmpeg, so 23.976
+    stays 24000/1001 until here and the audio cannot drift against the picture over a
+    long shot.
+    """
+    numerator, _, denominator = rate.partition("/")
+    return count * int(denominator or 1) / int(numerator)
 
 
 def encode_reference(
