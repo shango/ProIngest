@@ -127,8 +127,10 @@ it without an interface.
 
 ## State on disk
 
-- **Three commits this session, all pushed.** `main` and `origin/main` are both at `2c044ed`.
-  The four commits from the previous session went up with them; nothing is now unpushed.
+- **Everything from this session is pushed, and `main` and `origin/main` agree.** The four
+  commits the previous session left behind went up with them, so nothing is unpushed at all.
+  The last of this session's is the one carrying this file, so `git log` is one ahead of the
+  last commit CI ran the suite against; that commit is documentation only.
 - **CI is green on both runners**, run **34711316654**. The run before it, 34711057397, is the
   red one that caught the audio regression and is worth keeping in mind rather than deleting.
 - 873 tests, `ruff` and `mypy --strict` clean, working tree clean apart from this file.
