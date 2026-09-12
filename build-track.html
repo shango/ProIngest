@@ -277,7 +277,7 @@
   <header class="mast">
     <div class="eyebrow">
       <span>VFX turnover ingest &middot; macOS v01</span>
-      <span class="stamp">Updated <b>12 Sep 2026, 15:50 PDT</b></span>
+      <span class="stamp">Updated <b>12 Sep 2026, 16:46 PDT</b></span>
     </div>
     <h1>ProIngest Build Track</h1>
     <p class="standfirst">
@@ -293,7 +293,7 @@
       <div class="stat-l">Milestones done</div>
     </div>
     <div class="stat">
-      <div class="stat-n good">876</div>
+      <div class="stat-n good">882</div>
       <div class="stat-l">Tests, Linux + macOS</div>
     </div>
     <div class="stat">
@@ -506,7 +506,7 @@
         <div class="ms-body">
           <div class="ms-head">
             <span class="ms-name">Per shot source format</span>
-            <span class="pill part">In progress &middot; 1 of 5</span>
+            <span class="pill part">In progress &middot; 2 of 5</span>
           </div>
           <p class="ms-goal">
             Read each shot's log format from its own clip information, carry a transform for each
@@ -581,6 +581,21 @@
             replacement that does separate them, and deliberately not changed here, because it is
             a change to what the check means rather than to the chain. The direction of the
             failure is the safe one: a good grade refused rather than a bad plate delivered.
+            <b>The format is now a fact about each clip rather than a setting, and that is
+            built too.</b> Each shot carries whatever its own clip information names, and it is
+            that value which reaches every file the shot produces. The single value the tool used
+            to apply to a whole delivery is <b>deleted rather than given a better default</b>: a
+            delivery may mix formats freely, so any one guess would have been wrong for every
+            clip it was not guessed for, and wrong invisibly, because a plate converted from the
+            wrong format reads as a grade decision rather than a fault. The command line option
+            that carried one went with it.
+            <b>A shot whose clip names no format, and which has no colour file either, is now
+            refused rather than converted on a guess.</b> There is nothing that turns those pixels
+            into the delivered form, and passing them through would write a log picture under a
+            header claiming otherwise. A graded shot is unaffected, because its colour file is the
+            whole conversion; what it loses is one line of provenance in the file. Nothing fills
+            that value in yet - the scan reads no clip information until the next chunk but one -
+            so the two want to land close together.
             <b>This does not hold up the interface</b>, and it made the interface work slightly
             smaller rather than larger: there is no mode, so there is no control for one.
           </div>
@@ -1511,7 +1526,7 @@
   <footer>
     <b>Source of truth</b> &middot; PROGRESS.md, docs/OPEN_QUESTIONS.md, PRD.md section 9<br>
     <b>Verify</b> &middot; pytest &middot; ruff check . &amp;&amp; mypy proingest &middot; python -m proingest scan &lt;folder&gt;<br>
-    <b>Last updated</b> &middot; 12 September 2026, 15:50 PDT. <b>The tool no longer converts anything ahead of the grade.</b> Until today it converted the delivered pixels into a common working format and then applied the shot's colour file, which already contains that conversion - two conversions where one was wanted, which fails nothing and reads as a grade decision. A graded shot is now the colour file and nothing else; the tool's own conversion is one step and is used only where there is no colour file, which is the reference stills and any shot not yet graded. <b>Nothing was ever delivered wrong</b>, because nothing has been rendered against a real grading session yet, and this was the only remaining piece that could have changed a delivered plate. <b>The tests now pin which conversions a chain contains</b>, not only what it does to a pixel - the extra step did nothing measurable under the default format, so every number in the suite had been agreeing with the bug. <b>One check came out of it weaker and is written up rather than quietly patched</b>: white is worth 222 out of the old working format and 14.7 out of Canon's log, so a dark grade on a Canon now lands where a baked-in viewing transform lands and the check cannot separate them. Measured, with a replacement that can, and left for the studio to weigh because it changes what the check means. 876 tests green, four chunks of <b>M4.6</b> left and none of them touches a plate. <b>Next: the interface</b>, still not blocked by any of it
+    <b>Last updated</b> &middot; 12 September 2026, 16:46 PDT. <b>The tool no longer converts anything ahead of the grade.</b> Until today it converted the delivered pixels into a common working format and then applied the shot's colour file, which already contains that conversion - two conversions where one was wanted, which fails nothing and reads as a grade decision. A graded shot is now the colour file and nothing else; the tool's own conversion is one step and is used only where there is no colour file, which is the reference stills and any shot not yet graded. <b>Nothing was ever delivered wrong</b>, because nothing has been rendered against a real grading session yet, and this was the only remaining piece that could have changed a delivered plate. <b>The tests now pin which conversions a chain contains</b>, not only what it does to a pixel - the extra step did nothing measurable under the default format, so every number in the suite had been agreeing with the bug. <b>One check came out of it weaker and is written up rather than quietly patched</b>: white is worth 222 out of the old working format and 14.7 out of Canon's log, so a dark grade on a Canon now lands where a baked-in viewing transform lands and the check cannot separate them. Measured, with a replacement that can, and left for the studio to weigh because it changes what the check means. <b>And the format is now a fact about each clip rather than a setting</b>: each shot carries what its own clip information names, the single delivery-wide value is deleted rather than given a better default, and a shot with neither a format nor a colour file is refused rather than converted on a guess. 882 tests green, three chunks of <b>M4.6</b> left and none of them touches a plate. <b>Next: the interface</b>, still not blocked by any of it
   </footer>
 
 </div>
