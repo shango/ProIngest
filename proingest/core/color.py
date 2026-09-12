@@ -62,6 +62,34 @@ PLATE_SPACE = "ACEScg"
 # the grade began. The CLF no longer starts there, so the space is gone from the chain
 # entirely and the leg that reached it collapsed into `input_transform`.
 
+INPUT_TRANSFORMS: dict[str, str] = {
+    "c-log3": "CanonLog3 CinemaGamut D55",
+    "bm film": "BMDFilm WideGamut Gen5",
+    "davinci wide gamut": "DaVinci Intermediate WideGamut",
+}
+"""What a shooter writes, to one colour space in the pinned config. COLOR_AND_FORMAT
+section 1.
+
+Keys are casefolded with their whitespace collapsed, which `resolve_encoding` does to
+both sides before it looks. That is still an exact lookup: a Resolve export and a
+shooter's typing differ in case and spacing far more often than they disagree about
+which camera shot the clip.
+
+**A table, not a search.** No prefix matching and no nearest miss: a name that is not an
+entry and not a colour space the config knows is QC-047, because a near miss converts a
+picture plausibly and wrongly. **Adding a camera is adding a row**, which is why "more
+may be added" costs nothing.
+
+**Only the names the config does not already know need a row.** Every colour space in
+the pinned config resolves to itself, aliases and casing included, so a clip that names
+`S-Log3 S-Gamut3.Cine` or `DaVinci Intermediate WideGamut` needs nothing here. The
+`davinci wide gamut` row is what the house template's shorter name lands on.
+
+**`S-Log3` is deliberately absent.** It names four colour spaces in this config, since a
+curve does not choose a gamut, and a row picking one of them would be picking a gamut on
+the shooter's behalf. It resolves to nothing and QC-047 names the four candidates.
+"""
+
 INTERPOLATION = ocio.INTERP_TETRAHEDRAL
 """Read from here, never re-derived, wherever a LUT is loaded or baked.
 
@@ -85,6 +113,49 @@ def check_encoding(name: str) -> None:
     """
     if config().getColorSpace(name) is None:
         raise ColorError(f"{name!r} is not a colour space in {BUILTIN_CONFIG}")
+
+
+def resolve_encoding(written: str) -> str:
+    """What a clip's metadata names, as one colour space in the pinned config (QC-047).
+
+    Three ways in, in order: the config's own name for it, including aliases and any
+    casing, then a row of `INPUT_TRANSFORMS`, then nothing. What comes back is the
+    config's canonical name, so a clip that said `acescg` and one that said `ACEScg`
+    record the same provenance in their headers.
+
+    Raises rather than reaching for the nearest entry. The failure this prevents is a
+    mis-converted colour chart: it is the one picture the tool transforms on its own
+    authority, it is delivered precisely to be matched against, and a wrong one still
+    looks exactly like a chart.
+    """
+    key = " ".join(written.split()).casefold()
+    if not key:
+        raise ColorError("the clip names no source encoding")
+    known = config().getColorSpace(key)
+    if known is not None:
+        return str(known.getName())
+    mapped = INPUT_TRANSFORMS.get(key)
+    if mapped is not None:
+        return mapped
+    raise ColorError(f"{written!r} {_unresolved_reason(key)}")
+
+
+def _unresolved_reason(key: str) -> str:
+    """Why a name did not resolve, for QC-047's message. Never used to match.
+
+    A name that appears inside several colour space names is a curve without a gamut,
+    which is the common case and the one worth naming the candidates for: "S-Log3" is
+    four colour spaces here. The search is for the sentence only - resolving to any of
+    them would be the nearest miss this module refuses to make.
+    """
+    contains = [
+        name for name in config().getColorSpaceNames() if key in " ".join(name.split()).casefold()
+    ]
+    if len(contains) > 1:
+        return f"names {len(contains)} colour spaces in {BUILTIN_CONFIG}: {', '.join(contains)}"
+    return (
+        f"is not a colour space in {BUILTIN_CONFIG} and is not in the input transform table"
+    )
 
 
 def input_transform(source_encoding: str) -> ocio.ColorSpaceTransform:

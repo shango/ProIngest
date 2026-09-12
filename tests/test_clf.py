@@ -569,6 +569,17 @@ class TestSessionShotColor:
         session = clf.load_session(edl(tmp_path), RATE_24)
         assert session.shot_color(row(source_encoding="ACEScc")).source_encoding == "ACEScc"
 
+    def test_the_encoding_is_resolved_through_the_table_on_the_way(self, tmp_path: Path) -> None:
+        """What the shooter wrote in, a colour space out (M4.6.3)."""
+        session = clf.load_session(edl(tmp_path), RATE_24)
+        shot_color = session.shot_color(row(source_encoding="BM Film"))
+        assert shot_color.source_encoding == "BMDFilm WideGamut Gen5"
+
+    def test_a_name_the_table_cannot_resolve_is_carried_as_none(self, tmp_path: Path) -> None:
+        """QC-047 is where this is reported. A graded row renders regardless."""
+        session = clf.load_session(edl(tmp_path), RATE_24)
+        assert session.shot_color(row(source_encoding="S-Log3")).source_encoding is None
+
     def test_a_row_naming_no_encoding_gets_a_chain_that_names_none(self, tmp_path: Path) -> None:
         """Renderable where the CLF is the whole chain, and QC-046 where it is not."""
         session = clf.load_session(edl(tmp_path), RATE_24)

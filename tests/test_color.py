@@ -60,6 +60,59 @@ class TestConfig:
         assert color.INTERPOLATION == ocio.INTERP_TETRAHEDRAL
 
 
+class TestResolveEncoding:
+    """The input transform table (M4.6.3). A table, not a search: COLOR_AND_FORMAT section 1."""
+
+    def test_a_colour_space_the_config_knows_resolves_to_itself(self) -> None:
+        assert color.resolve_encoding("S-Log3 S-Gamut3.Cine") == "S-Log3 S-Gamut3.Cine"
+
+    def test_it_comes_back_as_the_config_s_own_spelling(self) -> None:
+        """So two clips that named the same space the two ways record one provenance."""
+        assert color.resolve_encoding("acescg") == color.PLATE_SPACE
+
+    @pytest.mark.parametrize(
+        ("written", "expected"),
+        [
+            ("C-Log3", "CanonLog3 CinemaGamut D55"),
+            ("BM Film", "BMDFilm WideGamut Gen5"),
+            ("DaVinci Wide Gamut", "DaVinci Intermediate WideGamut"),
+        ],
+    )
+    def test_the_names_the_shooters_were_given_resolve(self, written: str, expected: str) -> None:
+        """The three encodings named on 2026-09-12, as the shooters write them."""
+        assert color.resolve_encoding(written) == expected
+
+    def test_case_and_spacing_are_not_a_disagreement_about_the_camera(self) -> None:
+        assert color.resolve_encoding("  bm   FILM ") == "BMDFilm WideGamut Gen5"
+
+    def test_every_row_of_the_table_names_a_real_colour_space(self) -> None:
+        """A row added for a fourth camera fails here rather than inside a render."""
+        for name in color.INPUT_TRANSFORMS.values():
+            assert color.config().getColorSpace(name) is not None, name
+
+    def test_a_curve_without_a_gamut_is_refused_and_the_candidates_are_named(self) -> None:
+        """`S-Log3` is four colour spaces, and picking one is picking a gamut."""
+        with pytest.raises(color.ColorError) as raised:
+            color.resolve_encoding("S-Log3")
+        message = str(raised.value)
+        assert "4 colour spaces" in message
+        assert "S-Log3 S-Gamut3.Cine" in message
+        assert "S-Log3 Venice S-Gamut3" in message
+
+    def test_a_name_inside_exactly_one_colour_space_still_does_not_resolve(self) -> None:
+        """No prefix matching: the nearest miss is what converts a chart plausibly wrong."""
+        with pytest.raises(color.ColorError, match="not a colour space"):
+            color.resolve_encoding("CanonLog3")
+
+    def test_an_unrecognised_camera_is_refused_rather_than_approximated(self) -> None:
+        with pytest.raises(color.ColorError, match="input transform table"):
+            color.resolve_encoding("Arri LogC9")
+
+    def test_a_clip_that_wrote_nothing_but_spaces_names_nothing(self) -> None:
+        with pytest.raises(color.ColorError, match="names no source encoding"):
+            color.resolve_encoding("   ")
+
+
 class TestInputTransform:
     """The one leg this module supplies, and only where there is no CLF (OQ-37)."""
 

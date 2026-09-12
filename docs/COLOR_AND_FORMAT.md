@@ -173,6 +173,16 @@ Three rules on that table, and none of them are style:
 - **Adding a camera is adding a row.** "More may be added" is the reason this is a table at all,
   and a new camera must not need a code path.
 
+**Built 2026-09-12 as `color.INPUT_TRANSFORMS` and `color.resolve_encoding`** (M4.6.3). Two
+things about the shape are worth knowing before adding to it. The config's own colour space
+names, its aliases and any casing resolve **without a row**, and what comes back is the
+config's own spelling, so the table carries only the names OpenColorIO does not already know:
+`c-log3`, `bm film` and `davinci wide gamut` today. And **`S-Log3` has no row on purpose**,
+because it names four colour spaces here; it resolves to nothing and the error names all four.
+Keys are compared with their case and their spacing normalised, which is still an exact lookup:
+a Resolve export and a shooter's typing differ that way far more often than they disagree about
+which camera shot the clip.
+
 ### Where that transform is applied, and where it must not be
 
 **This is the one place in the pipeline where doing the obvious thing twice produces a wrong

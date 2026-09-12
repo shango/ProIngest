@@ -333,17 +333,18 @@ def plan_batch(
 def _shot_color(session: clf.ColorSession | None, row: ShotRow) -> clf.ShotColor:
     """This row's colour: the session's answer, or the ungraded chain when there is none.
 
-    The source encoding comes off the row, because the clip's own metadata is what names
-    it and a turnover may mix encodings freely (COLOR_AND_FORMAT section 1). There is
-    nothing batch wide to fall back to: a row that names none carries none, which renders
-    where the CLF is the whole chain and is QC-046 where it is not.
+    The source encoding comes off the row and through the input transform table, because
+    the clip's own metadata is what names it and a turnover may mix encodings freely
+    (COLOR_AND_FORMAT section 1). There is nothing batch wide to fall back to: a row that
+    names none, or names one that does not resolve, carries none, which renders where the
+    CLF is the whole chain and is QC-046 or QC-047 where it is not.
 
     An ambiguous CLF propagates rather than being resolved to one of the candidates.
     Two CLFs naming one shot is a redelivery nobody cleaned up, and picking either is
     picking a grade (`clf.AmbiguousClfError`).
     """
     if session is None:
-        return clf.ShotColor(source_encoding=row.source_encoding)
+        return clf.ShotColor(source_encoding=clf.resolved_encoding(row))
     return session.shot_color(row)
 
 

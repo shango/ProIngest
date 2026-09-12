@@ -9,7 +9,7 @@ commit.
 ## 1. Resume here
 
 **State at 2026-09-12 (late). M1, M2, M3 and M4 complete; M4.5 is done, all four chunks, and
-M4.6.1 and M4.6.2 are done.** The colour chain now reaches the files: a plate is delivered graded in linear
+M4.6.1, M4.6.2 and M4.6.3 are done.** The colour chain now reaches the files: a plate is delivered graded in linear
 ACEScg with AP1 primaries and a header that says what was applied to it, and a reference mp4 is
 encoded through the shot's grade and the ACES output transform baked into one cube. **The chain
 no longer converts ahead of the CLF**, which was the one thing in the code that would have
@@ -424,13 +424,34 @@ is deleted**, and so is every parameter that carried a batch-wide value down to 
   row names no encoding, and `tests/test_cli.py` stamps one onto a saved batch before it runs
   it. That helper is scaffolding with a date on it: M4.6.4 deletes it.
 
+### M4.6.3 is built: the input transform table
+
+Built 2026-09-12. `color.INPUT_TRANSFORMS` maps what a shooter writes onto one colour space in
+the pinned config and `color.resolve_encoding` is the only way in. 897 tests. Four things in it
+should not be re-derived.
+
+- **The table only carries names the config does not already know.** OCIO's own lookup takes
+  aliases and any casing, so `S-Log3 S-Gamut3.Cine`, `acescg` and `DaVinci Intermediate
+  WideGamut` all resolve with no row at all, and what comes back is the config's own spelling
+  so two clips that named one space two ways record the same provenance. Three rows exist:
+  `c-log3`, `bm film` and `davinci wide gamut`, which are the names the shooters were given.
+- **`S-Log3` has no row on purpose.** It names four colour spaces in this config, a curve does
+  not choose a gamut, and a row picking one would be picking a gamut on the shooter's behalf.
+  It resolves to nothing and the error names all four.
+- **The candidate list in the message is built by a substring search, and that search never
+  matches.** It exists so QC-047 can say "S-Log3 names 4 colour spaces here" rather than "not
+  found". Resolving to any of them would be the nearest miss the table exists to refuse.
+- **An unresolvable name is not an exception on the way to a job.** `clf.resolved_encoding`
+  catches it and carries None, because a graded row renders correctly without it and both
+  paths that build a `ShotColor`, with a session and without, need the same answer. QC-047 is
+  where it is reported, and that is M4.6.4.
+
 ### Next task: M5, the UI, or the rest of M4.6
 
-M4.5 is finished and so are M4.6.1 and M4.6.2. What is left of M4.6 is **M4.6.3, M4.6.4 and
-M4.6.5**, none of which changes a delivered plate any more: they are what the encoding resolves
-to, where it is read from, and where it is recorded. M4.6.3 is the natural next one, and
-M4.6.4 wants to land close behind it, because until the scan reads the clip's metadata every
-row names no encoding at all.
+M4.5 is finished and so are M4.6.1, M4.6.2 and M4.6.3. What is left of M4.6 is **M4.6.4 and
+M4.6.5**, neither of which changes a delivered plate: they are where the encoding is read from,
+and where it is recorded. M4.6.4 is the next one and the table is waiting on it, because until
+the scan reads the clip's metadata every row names no encoding at all.
 
 `docs/UI_SPEC.md` is M5's spec and it was already cut down when the four colour controls and
 the three viewers were dropped. The things M5 owes the colour chain are small and known:
@@ -631,7 +652,7 @@ Entry points worth knowing:
 | M3 | Render | complete, 172 tests |
 | M4 | QC: all rules both phases, xlsx exports, `qc` CLI | complete, 175 tests |
 | M4.5 | Colour pipeline, core only. Source log in, CLF applied, ACEScg out, the viewing LUT | complete, 111 tests |
-| M4.6 | Per shot source encoding: read from the clip metadata, the input transform table, the input transform out of the graded chains, QC-046 to QC-048 | **M4.6.1 and M4.6.2 done**, three chunks left (OQ-37 answered; OQ-46 wants confirming) |
+| M4.6 | Per shot source encoding: read from the clip metadata, the input transform table, the input transform out of the graded chains, QC-046 to QC-048 | **M4.6.1, M4.6.2 and M4.6.3 done**, two chunks left (OQ-37 answered; OQ-46 wants confirming) |
 | M5 | UI: the list, the FR-14 metadata pane, settings, log. **No viewers** | not started |
 | M6 | ~~Stringout with burn-ins~~ | **dropped 2026-09-11**, the colour session exports it |
 | M7 | Packaging: PyInstaller `.app`, dmg, Gatekeeper | not started, and needs a Mac (OQ-22) |
@@ -671,7 +692,7 @@ happens when it cannot be resolved.
 |---|---|---|
 | M4.6.1 | `ShotRow.source_encoding` (additive, like `clf_path`), read per row rather than from one Settings value. **No mode**: `DEFAULT_SOURCE_ENCODING` stops being a batch-wide authority | **done, 882 tests.** The constant is deleted rather than redefined |
 | M4.6.2 | **Take the input transform out of the graded chains.** `ShotColor.plate_transforms` drops `input_transform` when a CLF is present, `WORKING_SPACE` and `plate_transform` collapse into one source-to-ACEScg leg, and `view_lut` bakes the CLF and the output transform only | **done, 876 tests.** OQ-47 found on the way |
-| M4.6.3 | The mapping table in `core/color.py`: what a shooter writes to one OCIO colour space, extensible by a row, refusing the unrecognised and the ambiguous | not started |
+| M4.6.3 | The mapping table in `core/color.py`: what a shooter writes to one OCIO colour space, extensible by a row, refusing the unrecognised and the ambiguous | **done, 897 tests.** `INPUT_TRANSFORMS` and `resolve_encoding` |
 | M4.6.4 | Read the encoding at scan time from the carrier OQ-44 names, and QC-046, QC-047 and QC-048 | **wants OQ-44, and has a default** |
 | M4.6.5 | `proingest/source_encoding_origin` in the EXR header, and the source encoding column in the QC log beside the CLF one | not started |
 
@@ -710,9 +731,9 @@ M3 detail:
 The stringout moved off this table: it is M6 and always was. The M3.5 row said "ref
 mp4 and stringout" and that was a mistake in the row, not a change of plan.
 
-Tests by file: qc 164, naming 115, render 74, planner 62, clf 61, frames 55, media 46,
-ffmpeg 43, models 38, exr 35, timeline 33, cli 30, color 29, exports 26, scan 25,
-batchfile 18, resize 16, camdata 12. 882 in total, counted rather than carried forward.
+Tests by file: qc 164, naming 115, render 74, planner 64, clf 63, frames 55, media 46,
+ffmpeg 43, color 40, models 38, exr 35, timeline 33, cli 30, exports 26, scan 25,
+batchfile 18, resize 16, camdata 12. 897 in total, counted rather than carried forward.
 
 ---
 

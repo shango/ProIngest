@@ -215,6 +215,24 @@ class ShotColor:
         return [*self.plate_transforms(clf), color.output_transform()]
 
 
+def resolved_encoding(row: ShotRow) -> str | None:
+    """The colour space this row's clip named, or None when nothing resolves to one.
+
+    One definition because two paths build a `ShotColor`: with a colour session and
+    without one. None covers both a clip that named no encoding (QC-046) and one whose
+    name the input transform table could not resolve (QC-047); the chain treats them
+    identically, since neither gives it anything to convert with, and the rules are
+    where the difference is reported. An unresolvable name is not raised here because a
+    graded row renders correctly without it: the CLF is the whole chain.
+    """
+    if row.source_encoding is None:
+        return None
+    try:
+        return color.resolve_encoding(row.source_encoding)
+    except color.ColorError:
+        return None
+
+
 DEFAULT_SHOT_COLOR = ShotColor()
 """No grade and no encoding: what a job carries until the planner fills it in.
 
@@ -257,7 +275,8 @@ class ColorSession:
 
         The source encoding comes off the row rather than from a parameter, because the
         clip's own metadata is what names it (COLOR_AND_FORMAT section 1) and a session
-        has no opinion about it.
+        has no opinion about it. It is resolved through the input transform table on the
+        way, so what a job carries is a colour space rather than a shooter's typing.
 
         The CLF comes from the shot code and the CDL from the conform event, which are
         two different matches on purpose: a row can have an event with no CLF beside it,
@@ -267,7 +286,7 @@ class ColorSession:
         """
         event = self.event_for(row)
         return ShotColor(
-            source_encoding=row.source_encoding,
+            source_encoding=resolved_encoding(row),
             clf_path=self.clf_for(row.shot_code) if row.shot_code else None,
             cdl=event.cdl if event is not None else None,
         )

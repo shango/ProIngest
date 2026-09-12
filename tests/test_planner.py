@@ -456,6 +456,18 @@ class TestShotColourOnJobs:
         jobs = planner.plan_batch(batch)
         assert {job.shot_color.source_encoding for job in jobs} == {"ACEScc"}
 
+    def test_what_the_shooter_wrote_reaches_the_job_as_a_colour_space(self) -> None:
+        """The table resolves it at plan time, so a worker is handed a space (M4.6.3)."""
+        batch = Batch(name="b", rows=[row(source_encoding="C-Log3")], delivery_root=ROOT)
+        jobs = planner.plan_batch(batch)
+        assert {job.shot_color.source_encoding for job in jobs} == {"CanonLog3 CinemaGamut D55"}
+
+    def test_a_name_that_does_not_resolve_leaves_the_job_naming_none(self) -> None:
+        """`S-Log3` is four colour spaces. QC-047 reports it; the chain carries nothing."""
+        batch = Batch(name="b", rows=[row(source_encoding="S-Log3")], delivery_root=ROOT)
+        jobs = planner.plan_batch(batch)
+        assert {job.shot_color.source_encoding for job in jobs} == {None}
+
     def test_two_rows_may_name_two_different_encodings(self) -> None:
         """A turnover may mix encodings freely, so nothing batch wide can stand in."""
         rows = [
