@@ -111,8 +111,11 @@ New: **OQ-41**. Reopened: **OQ-19**. Unblocked: **OQ-39**, which no longer gates
 
 - **Five commits this session, and the push took 14.** The nine from the afternoon's
   specification session had never gone either, despite `PROGRESS.md` saying they had. That line
-  now names the number instead of claiming a state. **Read the CI run for the push**: it had not
-  been read when this was written.
+  now names the number instead of claiming a state.
+- **CI run 34675636686 is green on both runners**, Linux in 1m35s and macOS arm64 in 1m24s.
+  That run is the first proof of the thing this session could not check locally: **the
+  OpenColorIO wheel installs on Apple Silicon and all 785 tests pass there**, against the
+  bundled ffmpeg 9.0.1 rather than this machine's Ubuntu build.
 - Build track artifact republished twice, now at **version 25**:
   https://claude.ai/code/artifact/c0e6b8ac-6673-4e28-833d-7d85b5f7273a
 - **`preview/` is untracked and still badly stale.** It shows the four colour sliders and the
