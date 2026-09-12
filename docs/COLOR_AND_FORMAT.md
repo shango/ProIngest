@@ -39,9 +39,17 @@ correct if they hold.
 | | |
 |---|---|
 | colour science | DaVinci YRGB Color Managed, **ACES 1.3** |
-| timeline space | **ACEScct** |
-| input transform | the clip's own camera log in camera mode, one studio standard in studio mode (OQ-39, OQ-44) |
+| where the CLF starts | **the source encoding as delivered**: the clip's own camera log in camera mode, DaVinci Wide Gamut / DaVinci Intermediate in studio mode (answered 2026-09-12, OQ-37) |
+| where the CLF ends | **linear ACEScg**, with no display rendering in it. Unchanged, and still QC-039 |
 | grade | **primary only.** No windows, no qualifiers, no tracked secondaries |
+
+**ACEScct is no longer part of this.** It was the session's timeline space and the CLF's
+starting point in every version of this document before 2026-09-12, and the tool converted into
+it. The colourist now builds the CLF from the source encoding directly, so the tool converts
+into nothing and ACEScct appears nowhere in the chain. Whatever the session uses internally is
+its own business: **the only thing the tool depends on is the CLF's two ends**, which is a
+smaller thing to depend on than a timeline setting and is the reason this row was rewritten as
+a pair rather than as a working space.
 
 **Primary only is a hard requirement rather than a stylistic preference.** A CLF is a static
 transform of a pixel value. A window, a qualifier or a tracked secondary is a function of where
@@ -64,7 +72,7 @@ The session exports three things and the tool uses all three:
 | export | what it is for |
 |---|---|
 | the **updated final EDL** | the conform: timecode, shot identity, and the **approved In/Out** from Ben and the AD's trims. It also carries the CDL as `*ASC_SOP` / `*ASC_SAT` comment lines. Supersedes the shooters' EDL entirely |
-| a **`.clf` per shot** | **the transform the tool applies**, encoding `ACEScct in > grade > linear ACEScg out`, with no display rendering in it |
+| a **`.clf` per shot** | **the whole of what the tool applies**, encoding `source encoding in > grade > linear ACEScg out`, with no display rendering in it |
 | the **stringout** | a ProRes QT with the look and burn-ins. The tool does not build one, and it is what the tool's own references should be checked against |
 
 **The CDL and the CLF both come from this session and they have different jobs**, which is worth
@@ -105,54 +113,118 @@ comes from.
 
 Settings carries **Source encoding mode**, with two values:
 
-| mode | what names the encoding | input transform |
+| mode | what names the encoding | where the CLF starts |
 |---|---|---|
-| **Camera log** (the current expectation) | the clip's own metadata, written by the shooter (OQ-44) | one per shot, that camera's log to ACEScct |
-| **Studio standard** | one Settings value for the whole batch | one constant, the same on every row |
+| **Camera log** (the current expectation) | the clip's own metadata, written by the shooter (OQ-44) | that clip's camera log |
+| **Studio standard** | one Settings value for the whole batch | DaVinci Wide Gamut / DaVinci Intermediate |
 
 **The studio standard, if it is ever used, is DaVinci Wide Gamut / DaVinci Intermediate**,
-which is `DaVinci Intermediate WideGamut` in the pinned config. It is **not** ACEScct, which is
-what OQ-39 spent a day pushing for, so the input transform is now a real transform in **both**
-modes and the "identity, therefore nothing between the decode and the grade can be silently
-wrong" argument is gone. What survives of it is smaller and still worth having: in studio mode
-it is **one** transform, verified once, rather than one per camera.
+which is `DaVinci Intermediate WideGamut` in the pinned config.
 
-**Everything downstream of the input transform is identical in both modes.** The CLF, the two
-branches, the LUT bake, the EXR header and every QC rule take the source encoding as a string
-and none of them care where the string came from. That is why this is a switch and not a fork:
-`clf.ShotColor` has carried `source_encoding` per shot since M4.5.1, so studio mode is simply
-the case where every row's string is the same one.
+### The tool applies no input transform, in either mode
 
-**What camera mode costs**, stated plainly, because it is precisely the bill the 2026-09-11
-spec was written to avoid:
+**Answered 2026-09-12, and it is the answer that makes the mode switch cheap.** The colourist
+builds the CLF from whatever the source is encoded in: camera log in camera mode, DaVinci Wide
+Gamut / DaVinci Intermediate in studio mode. **So the tool converts nothing before the grade.**
+It decodes the source to float and applies the CLF, and the CLF is the entire transform from
+what arrived to linear ACEScg.
 
-- **A per shot input transform, and a name to resolve for each one.** The metadata says
-  something a human typed in Resolve; OCIO wants one of its own colour space names. That
-  mapping is **OQ-34, reopened**, and it is exactly the kind of table that looks correct and
-  is not.
-- **The log is not the whole answer; the gamut is the other half.** The pinned config has no
-  colour space called "S-Log3". It has `S-Log3 S-Gamut3`, `S-Log3 S-Gamut3.Cine`,
-  `S-Log3 Venice S-Gamut3` and `S-Log3 Venice S-Gamut3.Cine`. A shooter who writes "S-Log3" has
-  named four things. **Whatever the shooters are asked to write must name the curve and the
-  gamut together**, and the cheapest way to guarantee that is to ask them to write the Resolve
-  input transform name verbatim rather than to describe their camera.
-- **Some encodings the pinned config cannot express at all.** It carries `ARRI LogC3 (EI800)`
-  and no other exposure index, and LogC3 is exposure index dependent where LogC4 is not. A
-  LogC3 shoot at EI 400 has no colour space here, so the tool **refuses** it (QC-047) rather
-  than applying the EI800 curve, which would be wrong by an amount nobody sees on a monitor.
-  The same shape of gap catches a Blackmagic Gen 4 and a Canon shot in BT.2020 gamut; the
-  table below says which.
-- **The tool and Resolve now have to agree, per camera, about what a camera log is.** The
-  colour session reaches its ACEScct timeline through Resolve's own IDT and the CLF is authored
-  on top of that. If the tool's input transform differs from Resolve's even slightly, the CLF
-  is handed pixels it was not built for. In studio mode that is one agreement to check once. In
-  camera mode it is one per camera, and a near miss is invisible.
+This is OQ-37, asked and answered, and what it buys is worth listing because the previous
+version of this section spent a page on the bill it deletes:
+
+- **A plate does not depend on OQ-34's mapping table being right.** The tool does not turn
+  "S-Log3" into a colour space in order to render one, so a wrong table entry cannot reach a
+  plate. **The table is still built** and still has to be right, because the aux still uses it
+  and because a row with no CLF uses it: see below.
+- **The tool and Resolve cannot disagree about what a camera log is**, because only one of them
+  converts. That was the invisible failure in camera mode and it is gone rather than mitigated.
+- **A camera nobody has mapped still delivers its plates.** A fourth camera arrives, the
+  colourist grades from its log, and the tool applies the result. Its aux stills still need a
+  table row, so "more may be added" is a row rather than a code change.
+- **ACEScct leaves the chain entirely**, and with it the one stage that existed only to get from
+  the source to where the grade began.
+
+**What the two modes still differ in is one string, and it is no longer a transform.** The
+source encoding is now **provenance**: it goes in the EXR header so a delivered plate says what
+it was made from, it is what QC-018 compares the container's own tags against, and it is what
+QC-021 checks the delivery format against. A wrong one is a header that lies, which is worth
+catching and is not a wrong picture.
+
+### The input transform is a table, keyed on the metadata
+
+**Required 2026-09-12.** The tool carries **multiple input transforms and picks one per shot
+from what the clip's metadata says**, rather than one transform named in Settings. That is the
+whole of OQ-34 and it is now a build requirement rather than a question: a table from the
+string a shooter wrote to one OpenColorIO colour space, extensible as cameras are added, and
+**refusing anything it cannot resolve to exactly one entry** rather than reaching for the
+nearest.
+
+Three rules on that table, and none of them are style:
+
+- **It is a table, not a search.** No prefix matching, no fuzzy matching, no "contains". A name
+  that is not an entry is an error (QC-047). The failure this prevents is a near miss, which
+  produces a plausible looking wrong image that nothing downstream notices.
+- **An entry names a curve and a gamut together**, because a curve alone does not identify a
+  colour space: "S-Log3" matches four entries in the pinned config. The table's keys are
+  therefore whatever the shooters are actually told to write (OQ-44), and the safest instruction
+  is the Resolve input transform name verbatim.
+- **Adding a camera is adding a row.** "More may be added" is the reason this is a table at all,
+  and a new camera must not need a code path.
+
+### Where that transform is applied, and where it must not be
+
+**This is the one place in the pipeline where doing the obvious thing twice produces a wrong
+image**, so it is stated as a rule rather than left to a diagram.
+
+| chain | CLF | input transform | why |
+|---|---|---|---|
+| plate, graded | applied | **not applied** | the CLF starts at the source encoding, so it already contains this leg |
+| reference, graded | applied | **not applied** | same chain plus the output transform |
+| **aux still** | **never** | **applied** | delivered ungraded by design, and still has to reach ACEScg |
+| any row with no CLF | none | applied | a batch with no colour session yet, and what every deliverable before M4.5 was |
+
+**Applying both is the failure to design against.** A CLF that begins at camera log, fed pixels
+that have already been converted to a working space, produces an image that is wrong in a way
+that looks like a grade decision. Nothing errors, every check passes, and the mistake is
+invisible until a compositor tries to work against it. That is the same class of failure as
+QC-039 and it deserves the same treatment.
+
+**So whether the CLF contains the input transform is a fact about the colour session that the
+tool has to know, and it is recorded rather than guessed** (OQ-46). The user's answer on
+2026-09-12 was that the colourist always starts from camera log in camera mode and from DaVinci
+Wide Gamut in studio mode, which says the CLF does contain it and the table above is correct as
+written. It is worth confirming against one real export before a delivery depends on it, which
+is the same exercise as OQ-31.
+
+### The aux still is why the table is load bearing even so
+
+**An aux still is delivered ungraded** (see below) and never gets the shot's CLF, so it is the
+**one picture the tool transforms on its own authority**, whatever the CLF contains. That alone
+is enough to require the table, which is why the requirement stands independently of OQ-46.
+
+It is also the sharpest place to be wrong. The aux names are `colorChart`, `mirrorBall`,
+`greyBall` and `sizeRef`, and every one of them exists so a compositor can match against a
+known quantity. **A mis-converted colour chart still looks exactly like a chart**, and the
+artist matching against it has no way to tell. So an unresolvable encoding blocks that
+deliverable (QC-047) rather than converting it approximately.
+
+Two consequences worth being explicit about:
+
+- **A row with no aux still and a CLF does not need its encoding resolved to render.** QC-046
+  and QC-047 are therefore errors where there is an aux still to convert and lesser elsewhere,
+  because blocking a plate over a string the plate never uses is a rule that gets switched off.
+  If OQ-46 comes back the other way, they become errors everywhere and this note is what says
+  why the severity moved.
+- **The aux still is the one deliverable whose colour the colourist does not underwrite.**
+  Everything else is the session's work and can be checked against the session's own stringout.
+  Asking the session to hand the stills over already converted would delete the tool's last
+  transform of its own: OQ-45, recorded and not decided.
 
 ### The three encodings expected today
 
 The shooters named on 2026-09-12 are **S-Log3, C-Log3 and BM Film**, and **more may be added**.
-All three exist in the pinned config, which is the first piece of good news camera mode has
-produced:
+Since OQ-37 was answered this table matters **only for aux stills**, which is the one place the
+tool converts from the source encoding itself. All three exist in the pinned config:
 
 | written as | the colour space in the pinned config | the catch |
 |---|---|---|
@@ -162,25 +234,20 @@ produced:
 
 Each of the three was built through `color.input_transform` against the pin on 2026-09-12 and
 each produced a processor, so this is checked rather than assumed. **What is not checked is
-that the string a shooter types lands on the right row of that table**, and that is the whole
-of OQ-34.
+that the string a shooter types lands on the right row of that table**, and that is what is
+left of OQ-34.
 
 "more may be added" is why the mapping is a table rather than three branches, and why an
-unrecognised name is QC-047 rather than a fallback: a fourth camera turning up should stop a
-row, not render it through whatever the last one used.
+unrecognised name blocks an aux still rather than converting it approximately: a fourth camera
+turning up should stop that one deliverable, not convert a colour chart through whatever the
+last camera used. **A plate on that same row still renders**, because the CLF carries it and
+needs no table.
 
-**The escape from all of this is OQ-37, reopened: ask the colourist to export the CLF
-starting at camera log rather than at ACEScct.** Then the tool applies no input transform at
-all in camera mode, the mapping table is never built, and the tool and Resolve cannot disagree
-about what an IDT is because only one of them performs one. The cost is that the CLF stops
-being portable across sources, which nobody was going to do anyway. **This is the thing to ask
-for before the mapping table is built**, and it is worth asking before OQ-44 is answered too,
-because a CLF that starts at camera log makes the metadata question much less load bearing.
-
-**Which encoding was applied is recorded on every deliverable**, because a plate rendered
-through the wrong input transform looks entirely normal. `proingest/source_encoding` already
-names it. What the header does not yet say is where that name came from, which is what
-`proingest/source_encoding_origin` is specified for below.
+**The source encoding is recorded on every deliverable**, and since 2026-09-12 that is the
+whole of its job on a plate: the tool did not apply it, the CLF did. It is still worth writing,
+because a plate that does not say what it was made from cannot be checked against the session
+that made it. `proingest/source_encoding` names it, and
+`proingest/source_encoding_origin` is specified below for where the name came from.
 
 ### The chain
 
@@ -192,23 +259,26 @@ camera log ProRes 4444, or studio standard log (one per shot)
         |
         |  decode to float RGB, colour tags overridden, range confirmed
         |
-  input:  source log -> ACEScct         (per shot in camera mode, one constant in studio mode)
-        |
-     CLF:  the approved grade                     (per shot, from the colour session)
+     CLF:  source encoding -> the approved grade -> linear ACEScg
+        |        (per shot, from the colour session. The whole transform)
         |
    +----+--------------------------------------------+
    |                                                  |
  PLATE branch                                     VIEW branch
    |                                                  |
- -> linear ACEScg                                 -> linear ACEScg, from the CLF
+ (already linear ACEScg, from the CLF)            (already linear ACEScg, from the CLF)
    |                                                  |
  resize in numpy, unbounded                       ACES output transform -> sRGB
-   |                                              ... input transform, CLF and output
+   |                                              ... CLF and output transform
  EXR: ACEScg, AP1, graded                             collapsed into one 3D LUT
                                                       |
                                                   ffmpeg lut3d, tetrahedral, resize bounded
                                                       |
                                                   mp4: sRGB display
+
+the AUX STILL branch, and the only one with a transform of its own:
+
+ aux still -> source encoding -> linear ACEScg    (never the CLF. See above)
 ```
 
 **Every transform is a single OCIO `GroupTransform`, interpolated tetrahedrally.** Not a
@@ -226,17 +296,17 @@ bounded, so its downscale happens in the ffmpeg decode, **before** the transform
 after it as the diagram draws it: the property that matters survives either way, and the
 difference between resampling in log and resampling in linear is OQ-43.
 
-**The view branch stays bounded everywhere ffmpeg can see it.** Corrected 2026-09-12, when
-M4.5.3 built it: this used to say everything before the output transform happens in ACEScct,
-which stopped being true when the CLF became the thing applied, because the CLF lands in linear
-ACEScg and the output transform starts there. What the property actually rests on is the LUT's
-own ends. ffmpeg reads the log source, bounded 0..1, applies one cube and gets display sRGB,
+**The view branch stays bounded everywhere ffmpeg can see it.** Corrected twice on 2026-09-12.
+It used to say everything before the output transform happens in ACEScct, which stopped being
+true when the CLF became the thing applied and stopped being true a second time when ACEScct
+left the chain altogether. What the property actually rests on is the LUT's own ends, which is
+why it survived both corrections unharmed. ffmpeg reads the log source, bounded 0..1, applies one cube and gets display sRGB,
 bounded again; the unbounded stretch in between is inside the cube, where OCIO handles it and
 swscale never sees it. swscale clamps float to 0..1, and that is what would otherwise cost the
 reference its single pass.
 
 **The whole view branch collapses into one 3D LUT per shot**, generated in core by
-`color.view_lut`: source log in, sRGB display out, with the input transform, the CLF and the
+`color.view_lut`: source log in, sRGB display out, with the CLF and the
 ACES output transform inside it. **This is how an OCIO
 transform gets into ffmpeg**, which has no OCIO filter and does have `lut3d`, and it is what
 keeps the reference a single fast pass with no frames pulled through Python.
@@ -252,13 +322,16 @@ authored, and its output is display referred and therefore bounded. **The plate 
 use one**, because scene linear output is unbounded; that path applies the GroupTransform to
 float pixels directly.
 
-**Read the plate branch's `-> linear ACEScg` as a statement of where the pixels are, not as a
-step the tool always performs.** The CLF is specified to end in linear ACEScg itself, so for a
-graded shot that arrow is the CLF's own tail and the tool adds nothing after it; applying the
-ACEScct to ACEScg conversion as well would convert twice, which is a plausible looking wrong
-image rather than an error. The conversion exists as its own transform in `core/color.py`
-because a chain without a CLF still needs it, and because QC-039 is what tells the tool which
-case it is in: it probes the CLF for where it lands rather than trusting a filename.
+**The plate branch adds nothing to the CLF.** The CLF is specified to start at the source
+encoding and end in linear ACEScg, so for a graded shot it is the entire transform and anything
+applied after it would convert twice, which is a plausible looking wrong image rather than an
+error. QC-039 is what tells the tool it is in that case: it probes the CLF for where it lands
+rather than trusting a filename.
+
+**The conversion from the source encoding to ACEScg still exists in `core/color.py`**, because
+two chains have no CLF in them: an aux still, which must never have one, and a batch with no
+colour session at all. Both want the same single transform now that ACEScct is gone, which is
+what collapsed `input_transform` and `plate_transform` into one leg.
 
 ### The plate is graded, and what that costs
 
@@ -277,8 +350,8 @@ display range produces a file that is display referred and says it is linear. Th
 and comps wrong, and it looks completely normal until someone tries to work on it. The tool
 probes for it and raises QC-039, because the alternative is trusting a filename.
 
-Within that constraint a grade authored in ACEScct and converted back to linear keeps its float
-headroom. Values above 1.0 survive it.
+Within that constraint a grade authored in a log working space and landing in linear keeps its
+float headroom. Values above 1.0 survive it.
 
 ### The one picture the grade is never applied to
 
@@ -299,8 +372,11 @@ was done to it.
   that is ACEScg and a file that lies about being ACEScg.
 - `proingest/colorspace` states `ACEScg`. It is a constant rather than a setting: the tool
   transforms every plate into it, so the value is a fact about the deliverable.
-- `proingest/source_encoding` names the log encoding the source was read as, and therefore
-  the input transform that was applied. **Not yet written:**
+- `proingest/source_encoding` names the log encoding the source was read as. **Since
+  2026-09-12 it does not name a transform the tool applied**, because the CLF starts there and
+  the tool converts nothing before it. It is provenance: what the plate was made from, so the
+  file can be checked against the session that made it. On an **aux still** it does name the
+  transform applied, because that is the one chain with no CLF in it. **Not yet written:**
   `proingest/source_encoding_origin`, which says whether that name came from the clip's
   metadata or from the Settings studio standard. The encoding is the fact that matters and the
   origin is how a wrong one gets traced back to whoever wrote it, which is a different person
@@ -326,7 +402,7 @@ Transforms come from **OpenColorIO**, not from hand written curves and matrices.
 `Config.CreateFromBuiltinConfig(...)` carries the ACES transforms inside the wheel, so **no
 config files ship**. The macOS arm64 wheel is 5.7 MB, which is nothing against the 300 MB
 budget in PRD section 8, and a Windows wheel exists for v02. `FileTransform` loads the CLF and
-`ColorSpaceTransform` supplies the input transform and the output transform.
+`ColorSpaceTransform` supplies the aux still's conversion and the output transform.
 
 The session is ACES 1.3, so the config is pinned to an ACES 1.3 built-in config rather than
 tracking `studio-config-latest`. Matching the colour session matters more than being current,
@@ -380,7 +456,7 @@ in a log signal is stretched when the signal is linearised, and it shows on satu
   the moment it is linearised.
 
 **The tool does not read the colour space off the container, it overrides it.** No standard
-transfer tag names ACEScct or any camera log, and a container that does carry tags is as
+transfer tag names any camera log or wide gamut log encoding, and a container that does carry tags is as
 likely to carry the wrong ones. **The authority is the clip's metadata in camera mode and the
 Settings studio standard in studio mode**, and the decode is forced to match whichever it is.
 The distinction worth keeping is between a *colour tag*, which a container writes because it
@@ -458,7 +534,7 @@ Editing:
 
 ```
 ffmpeg -i <src> -f rawvideo -pix_fmt gbrpf32le - | numpy frames
-    -> OCIO GroupTransform (input transform, CLF), tetrahedral
+    -> OCIO GroupTransform (the CLF; or the source-to-ACEScg leg for an aux still), tetrahedral
     -> float16 -> OpenEXR (DWAA, level 45)
 ```
 

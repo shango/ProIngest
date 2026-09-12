@@ -14,7 +14,9 @@ a header that says what was applied to it, and a reference mp4 is encoded throug
 grade and the ACES output transform baked into one cube. **M5, the UI, is next**, and a new
 **M4.6** sits beside it: the source encoding went back to camera native log on 2026-09-12 and
 the tool has to read it per shot. 873 tests passing, `ruff` and `mypy --strict` clean.
-**M5 is not blocked. M4.6 is, on two questions nobody has asked yet (OQ-37, OQ-44).**
+**M5 is not blocked, and M4.6 is no longer blocked either**: OQ-37 came back the same day and
+answered the expensive half of it. One question is open and it is about correctness rather than
+scope, OQ-46.
 
 **M4 is done.** `core/exports.py` writes both spreadsheets, `proingest qc <batch>` writes them
 headless, and QC-053 parses camData through the new `core/camdata.py`. Proved end to end on a two
@@ -120,10 +122,13 @@ so and says it is not a precedent.
   which do not agree; a session that finds itself building an IDT table has taken a wrong turn.
   **The tool is now expected to build exactly that table** (OQ-34, reopened), because the
   shooters deliver camera native log and name it in the clip metadata. That is not a wrong
-  turn any more, it is the price of the workflow the user wants - but the bill is still real,
-  and **OQ-37 is how it is avoided without giving the workflow up**: a CLF exported starting at
-  camera log means the tool applies no input transform at all and the table is never built.
-  Ask that before writing a line of the table.
+  turn any more, it is the price of the workflow the user wants. **OQ-37 came back the same
+  day and paid most of the bill**: the colourist starts the CLF from the source encoding, so a
+  graded plate never goes through the tool's own conversion and a wrong table entry cannot
+  reach one. The table is still built, because the user asked for multiple input transforms
+  selected by the metadata and because the **aux still** needs one whatever the CLF contains.
+  What is left of the original hazard is OQ-46: applying the table *and* a CLF that already
+  contains it converts twice, and that is invisible.
 - **The tool's stringout would have been the only one cut to the edited In/Out.** The colour
   session's QT and the shooters' offline are both cut to the turnover as delivered. That is
   what dropping M6 gives up, and it is recorded in PRD FR-9 so it reads as a decision rather
@@ -143,10 +148,15 @@ Intermediate**. The cameras today are **S-Log3, C-Log3 and BM Film**, and more m
 | A Settings **mode** switches to one studio standard for the batch | PRD FR-12 and FR-15, COLOR_AND_FORMAT section 1 |
 | The studio standard is **`DaVinci Intermediate WideGamut`**, not ACEScct | OQ-39, answered and demoted |
 | The input transform is a **real transform in both modes** now | COLOR_AND_FORMAT section 1 |
-| Resolve's IDT names still do not match OCIO's, and the table is needed again | OQ-34, **reopened** |
-| A CLF starting at camera log would delete the table entirely | OQ-37, **reopened**, and the cheapest question here |
+| Resolve's IDT names still do not match OCIO's, and the table is needed again | OQ-34, **reopened, then required** |
+| **The CLF starts at the source encoding**, so the tool applies no input transform on a graded plate | OQ-37, **answered yes** |
+| **ACEScct leaves the chain entirely** | COLOR_AND_FORMAT section 1 |
+| The tool still carries **multiple input transforms, picked per shot from the metadata** | PRD FR-15, OQ-34 |
+| Applied on the **aux still** and on rows with no CLF, never alongside a CLF | COLOR_AND_FORMAT section 1, QC-048 |
 | What field the metadata is in, and what string goes in it | OQ-44, **new** |
-| An unnamed or unresolvable encoding blocks the row | QC-046, QC-047, **new** |
+| An unnamed or unresolvable encoding blocks the aux still | QC-046, QC-047, **new** |
+| Whether a session's CLF really contains the conversion | OQ-46, **new, and the one open risk** |
+| Whether the session should hand aux stills over already converted | OQ-45, **new** |
 
 **Three things checked rather than assumed on 2026-09-12.** All three of today's cameras exist
 in the pinned config, as `S-Log3 S-Gamut3.Cine` and three siblings, `CanonLog3 CinemaGamut D55`
@@ -365,12 +375,14 @@ known:
   something to show per row without any new plumbing. A source encoding column beside it is
   M4.6.4 and wants `ShotRow.source_encoding` first.
 
-**Before M4.6 is built, two questions are worth asking and neither is a build task.** Ask the
-colourist whether the colour session can export a CLF that starts at **camera log** rather than
-at ACEScct (OQ-37): if it can, the tool applies no input transform at all in camera mode and
-OQ-34's mapping table is never built. Ask whoever briefs the shooters **which metadata field**
-carries the log name and **exactly what string** goes in it (OQ-44), remembering that "S-Log3"
-names four colour spaces in the pinned config.
+**OQ-37 is answered**: the colourist starts the CLF from camera log in camera mode and from
+DaVinci Wide Gamut in studio mode, so the tool applies no input transform on a graded plate and
+ACEScct leaves the chain. Two things are still worth asking and neither is a build task. Ask
+**whoever briefs the shooters** which metadata field carries the log name and exactly what
+string goes in it (OQ-44), remembering that "S-Log3" names four colour spaces in the pinned
+config. And confirm **OQ-46** against one real export, because the difference between a CLF
+that contains the conversion and one that does not is two plausible looking images and no
+error.
 
 ### Two M3 decisions to revisit rather than rediscover
 
@@ -585,14 +597,26 @@ happens when it cannot be resolved.
 | chunk | scope | state |
 |---|---|---|
 | M4.6.1 | `ShotRow.source_encoding` (additive, like `clf_path`), and a Settings `SourceEncodingMode` the planner reads | not started |
-| M4.6.2 | The name mapping in `core/color.py`: a table from what a shooter writes to an OCIO colour space, refusing the unrecognised and the ambiguous | **blocked on OQ-34, which is blocked on OQ-37** |
-| M4.6.3 | Read the encoding at scan time from the carrier OQ-44 names, and QC-046 and QC-047 | **blocked on OQ-44** |
-| M4.6.4 | `proingest/source_encoding_origin` in the EXR header, and the QC log column beside the CLF one | not started |
+| M4.6.2 | **Take the input transform out of the graded chains.** `ShotColor.plate_transforms` drops `input_transform` when a CLF is present, `WORKING_SPACE` and `plate_transform` collapse into one source-to-ACEScg leg, and `view_lut` bakes the CLF and the output transform only | not started, and it is the correctness half |
+| M4.6.3 | The mapping table in `core/color.py`: what a shooter writes to one OCIO colour space, extensible by a row, refusing the unrecognised and the ambiguous | not started |
+| M4.6.4 | Read the encoding at scan time from the carrier OQ-44 names, and QC-046, QC-047 and QC-048 | **wants OQ-44, and has a default** |
+| M4.6.5 | `proingest/source_encoding_origin` in the EXR header, and the source encoding column in the QC log beside the CLF one | not started |
 
-**Two answers unblock nearly all of it, and one of them may delete M4.6.2 outright.** Ask the
-colourist whether Resolve can export a CLF starting at camera log (OQ-37); if yes, the tool
-applies no input transform in camera mode and the mapping table is never built. Ask whoever
-briefs the shooters which metadata field they will write and exactly what string (OQ-44).
+**M4.6.2 is the chunk to get right and it is the only one that changes a delivered plate.**
+Today `ShotColor.plate_transforms` returns `[input_transform, clf]`, which under the answered
+OQ-37 converts twice: the CLF already starts at the source encoding. That is a wrong image that
+passes every check, so it lands with tests that pin **which** transforms a chain contains rather
+than only what it produces.
+
+**One question is still open and it is the one that decides M4.6.2's direction: OQ-46**, whether
+a given session's CLF really does contain the conversion. The user's answer to OQ-37 says it
+does. Confirm it against one real export before a delivery depends on it, which is the same
+exercise as OQ-31. QC-048 exists so that a run records which chain it used rather than leaving
+it to be re-derived later.
+
+**M4.6.3 is required whatever OQ-46 says**, because the user asked for multiple input transforms
+selected by the file metadata and because the aux still needs one regardless: a colour chart is
+delivered ungraded, never gets the CLF, and still has to reach ACEScg.
 
 **M5 is not blocked by any of this.** Its Settings page should carry the mode control from the
 start, because the control is one combo box and retrofitting a mode into a settled settings
@@ -1216,13 +1240,20 @@ is useful rather than not, but a test asserting "one stream" will fail on it.
 
 Nothing blocks the next task. These are live, in rough priority order:
 
+- **The graded chains convert twice under the answered OQ-37, and that is now the most
+  important open item.** `ShotColor.plate_transforms` returns `[input_transform, clf]`. The
+  colourist builds the CLF from the source encoding, so the input transform is already inside
+  it and applying both is a wrong image that passes every check and looks like a grade
+  decision. Nothing is delivered wrong today because nothing has rendered against a real
+  session, and M4.6.2 is the fix. **OQ-46 is the confirmation it wants** and it is worth having
+  before a delivery depends on it.
+
 - **Camera log mode is specified and not built (M4.6).** The source encoding went back to
   camera native log on 2026-09-12 and the tool still reads one value from Settings for every
-  row. Nothing renders wrong today, because studio mode is what the code does and it is a real
-  mode; what is missing is camera mode entirely. Two questions come before the code and one of
-  them may delete a third of it: **OQ-37** (can the CLF start at camera log, deleting the
-  mapping table) and **OQ-44** (which metadata field, and what string). **OQ-34 is reopened**
-  and is the table itself. COLOR_AND_FORMAT section 1 has the whole of it.
+  row. What is missing is camera mode entirely: the per shot encoding, the table of input
+  transforms the user asked for, and where that table is allowed to be applied.
+  **OQ-44** (which metadata field, and what string) has a default and blocks nothing.
+  COLOR_AND_FORMAT section 1 has the whole of it.
 
 - **The studio standard is no longer ACEScct, so the input transform is never identity.**
   OQ-39 was answered on 2026-09-12 as **`DaVinci Intermediate WideGamut`** and demoted to the
