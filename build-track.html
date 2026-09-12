@@ -277,7 +277,7 @@
   <header class="mast">
     <div class="eyebrow">
       <span>VFX turnover ingest &middot; macOS v01</span>
-      <span class="stamp">Updated <b>12 Sep 2026, 16:20 PDT</b></span>
+      <span class="stamp">Updated <b>12 Sep 2026, 18:05 PDT</b></span>
     </div>
     <h1>ProIngest Build Track</h1>
     <p class="standfirst">
@@ -297,7 +297,7 @@
       <div class="stat-l">Tests, Linux + macOS</div>
     </div>
     <div class="stat">
-      <div class="stat-n">23<span style="color:var(--faint);font-size:17px">/44</span></div>
+      <div class="stat-n">24<span style="color:var(--faint);font-size:17px">/46</span></div>
       <div class="stat-l">Questions open</div>
     </div>
     <div class="stat">
@@ -506,49 +506,50 @@
         <div class="ms-body">
           <div class="ms-head">
             <span class="ms-name">Camera log mode</span>
-            <span class="pill">Waiting on two answers</span>
+            <span class="pill block">Unblocked, not started</span>
           </div>
           <p class="ms-goal">
-            Read each shot's log format from its own clip information rather than from one
-            setting, and refuse a shot whose format cannot be identified.
+            Read each shot's log format from its own clip information, carry a transform for each
+            format the shooters use, and take the tool's own conversion back out of the chains
+            that no longer need it.
           </p>
           <div class="mods"><span>color.py</span><i>/</i><span>clf.py</span><i>/</i><span>scan.py</span><i>/</i><span>models.py</span></div>
           <div class="gate">
-            <b>On 12 September the studio reversed the decision M4.5 was built on.</b> There will
-            most likely be no single house log format after all: each shooter uses whatever their
-            camera shoots, and <b>writes that format into the clip's own information</b> so the
-            tool can read it. Three cameras are expected today, Sony, Canon and Blackmagic, and
-            more may be added. The house format stays available as a <b>mode the tool can be
-            switched into</b>, and if it is ever used it will be Blackmagic's own wide format
-            rather than the one the earlier plan assumed.
-            <b>Most of this is already built, which is the one piece of luck here.</b> The colour
-            work has carried the source format <b>per shot</b> since its first chunk, so
-            everything downstream - the grade, both output branches, the lookup table, what each
-            delivered frame records about itself, every check - already takes the format as a
-            value rather than a constant. The house-format mode is simply the case where every
-            shot's value is the same. This is a switch, not a second pipeline.
-            <b>What it costs is a name to resolve, once per shot, and that is the whole risk.</b>
-            The clip says something a person typed into Resolve; the colour engine wants one of
-            its own names. All four formats in play were checked against the shipped engine on 12
-            September and all four are there, so the transforms exist. <b>The names are the
-            problem.</b> Two traps, and neither looks wrong on a monitor: a format name on its own
-            does not always identify one thing, since Sony's log alone matches four entries and
-            only naming the camera's colour range as well narrows it to one; and the engine
-            carries one variant where a camera offers several, so a Blackmagic on an older
-            generation or a Canon set to a different colour range has no entry at all. Both cases
-            <b>stop the shot</b> rather than picking the nearest, because a shot rendered through
-            a near miss looks entirely normal and every downstream artist inherits it.
-            <b>One question to one person may delete a third of this.</b> If the grading session
-            can export its colour files starting from the camera's own format rather than from the
-            common working format, the tool applies no conversion at all and the whole matching
-            table is never built - and the tool and Resolve then cannot disagree about what a
-            camera format is, because only one of them would be converting. That is worth asking
-            before any of the table is written. The second question is for whoever briefs the
-            shooters: <b>which field</b> they write it in, and <b>exactly what</b> they write.
+            <b>On 12 September the studio reversed the decision M4.5 was built on, and then
+            answered the expensive half of it the same day.</b> There will most likely be no
+            single house log format: each shooter uses whatever their camera shoots and writes it
+            into the clip, with the house format kept as a mode the tool can be switched into.
+            <b>The important half is where the grading session starts from.</b> The colourist
+            builds each shot's colour file from the camera's own format, or from the house format
+            in the other mode. <b>So the colour file is the entire conversion</b>, from the pixels
+            as delivered to the wide scene-referred form the plates are in, and the tool converts
+            nothing before it. The common working format that sat between the two, in every
+            version of this plan since the colour work began, is simply gone.
+            <b>What that buys.</b> The tool never has to turn a camera's format name into one of
+            the colour engine's own names in order to render a plate, so it cannot get that
+            wrong. It cannot disagree with Resolve about what a camera format is, because only one
+            of them converts. And a fourth camera nobody has ever mapped delivers its plates with
+            no code change at all.
+            <b>The tool still carries a transform per format, because two things need one.</b>
+            The studio asked for it directly, and the reference stills need it whatever the colour
+            file contains: a colour chart is delivered <b>ungraded</b> by design, so it never gets
+            the shot's colour file and the tool has to convert it alone. That makes it <b>the one
+            picture the tool transforms on its own authority</b>, and the sharpest place in the
+            whole tool to be wrong - a mis-converted chart still looks exactly like a chart, and
+            the artist matching against it has no way to tell. So the format table is an explicit
+            list rather than a search, a new camera is a new row rather than a code path, and a
+            name it cannot resolve to exactly one entry stops that still rather than converting it
+            approximately.
+            <b>One risk is left and it is worth naming.</b> Applying the tool's conversion
+            <i>and</i> a colour file that already contains one converts twice. Nothing fails,
+            every check passes, and the result looks like a grade decision rather than a defect.
+            The studio's answer says the colour file contains it, and that should be confirmed
+            against one real export before a delivery depends on it. Until then the tool records
+            which chain each shot went through, rather than leaving it to be worked out afterwards
+            from a setting nobody wrote down.
             <b>This does not hold up the interface.</b> M5 carries the mode control from the
             start, because it is one drop-down and adding a mode to a finished settings page later
-            is worse than shipping one option that is not live yet. Until M4.6 lands, the camera
-            mode is a control that declines to run rather than one that renders the wrong picture.
+            is worse than shipping one option that is not live yet.
           </div>
         </div>
       </div>
@@ -670,20 +671,30 @@
           <tr><th>ID</th><th>Question</th><th>State</th></tr>
         </thead>
         <tbody>
-          <tr>
+          <tr class="resolved">
             <td class="id">OQ-37</td>
-            <td><b style="color:var(--text)">Reopened 12 September, and the cheapest question on this board.</b> Can the grading session export its colour files starting from the camera's own format rather than from the common working format? If it can, the tool performs no conversion of its own, the whole per-camera matching table is never built, and the tool and Resolve cannot disagree about what a camera format is because only one of them would be converting. One question, to one person, before any of that table is written</td>
-            <td class="st"><span class="tag hot">Ask first</span></td>
+            <td><b style="color:var(--text)">Answered the same day, and it was the cheapest question on the board.</b> The grading session starts each shot's colour file from the camera's own format, or from the house format in the other mode. So the colour file is the entire conversion and the tool performs none of its own on a plate, it cannot disagree with Resolve about what a camera format is, and a camera nobody has mapped still delivers. The common working format that used to sit in between is gone from the chain</td>
+            <td class="st"><span class="tag ok">Answered</span></td>
+          </tr>
+          <tr>
+            <td class="id">OQ-46</td>
+            <td><b style="color:var(--text)">New 12 September, and the one open risk.</b> Whether a given session's colour file really does contain the conversion. If the tool also converts, it converts <b>twice</b>: nothing fails, every check passes, and the result looks like a grade decision rather than a defect. Both readings of what was said are reasonable and the format table gets built either way; what moves is whether it is applied ahead of the colour file. Confirm against one real export, and until then the tool records which chain it used rather than inferring it</td>
+            <td class="st"><span class="tag hot">Confirm</span></td>
+          </tr>
+          <tr>
+            <td class="id">OQ-45</td>
+            <td>Whether the grading session should hand over the reference stills already converted. A colour chart is delivered ungraded by design, so it never gets the shot's colour file and is the one picture the tool converts on its own authority - the one deliverable whose colour nobody upstream has looked at. If the session can hand them over converted, the tool's last transform of its own disappears. Cheap to leave as it is if the answer is no</td>
+            <td class="st"><span class="tag open">New</span></td>
           </tr>
           <tr>
             <td class="id">OQ-44</td>
-            <td><b style="color:var(--text)">New 12 September.</b> Where in a clip's information the shooters write their camera's log format, and exactly what they write. Which field, and which carrier: the timeline file, the media file itself, or the grading session's edit list. The tool reads all three already, so this is about which one Resolve actually fills in. The string matters as much as the field: a log name on its own can match four entries, so the instruction has to ask for the camera's colour range too</td>
-            <td class="st"><span class="tag hot">Blocks M4.6</span></td>
+            <td><b style="color:var(--text)">New 12 September.</b> Where in a clip's information the shooters write their camera's log format, and exactly what they write. Which field, and which carrier: the timeline file, the media file itself, or the grading session's edit list. The tool reads all three already, so this is about which one Resolve actually fills in. The string matters as much as the field: a log name on its own can match four entries, so the instruction has to ask for the camera's colour range too. Smaller since OQ-37: a plate no longer needs this to resolve, so a missing one costs a line of provenance rather than a picture</td>
+            <td class="st"><span class="tag open">Has a default</span></td>
           </tr>
           <tr>
             <td class="id">OQ-34</td>
-            <td><b style="color:var(--text)">Reopened 12 September, one day after it was closed.</b> Resolve's format names and the colour engine's names do not match, and with camera formats back, the tool has to turn one into the other per shot. All four formats in play were checked against the shipped engine and all four exist, so the transforms are fine; the table that maps a typed name onto one of them is the risk, and it is exactly the kind of table that looks correct and is not. Only needed if OQ-37 comes back no</td>
-            <td class="st"><span class="tag open">Reopened</span></td>
+            <td><b style="color:var(--text)">Reopened 12 September, then required the same day.</b> Resolve's format names and the colour engine's names do not match, so the tool has to turn one into the other. All four formats in play were checked against the shipped engine and all four exist, so the transforms are fine; the table that maps a typed name onto one of them is the risk. <b>OQ-37 took the plates out of its reach</b>, which is most of the danger gone, but the studio asked for the table directly and the reference stills need it regardless, so it is being built. Rules: a list rather than a search, a new camera is a row, and a name it cannot resolve to exactly one entry stops that still</td>
+            <td class="st"><span class="tag open">Required</span></td>
           </tr>
           <tr>
             <td class="id">OQ-30</td>
@@ -1460,7 +1471,7 @@
   <footer>
     <b>Source of truth</b> &middot; PROGRESS.md, docs/OPEN_QUESTIONS.md, PRD.md section 9<br>
     <b>Verify</b> &middot; pytest &middot; ruff check . &amp;&amp; mypy proingest &middot; python -m proingest scan &lt;folder&gt;<br>
-    <b>Last updated</b> &middot; 12 September 2026, 16:20 PDT. <b>The source format changed underneath the finished colour work.</b> There will most likely be no single house log format: each shooter uses their camera's own and writes it into the clip, with the house format kept as a mode the tool can be switched into. That is <b>M4.6</b>, and most of it is already built, because the colour work has carried the format per shot since its first chunk. What it adds is a name to resolve once per shot, which is the whole risk: all four formats in play exist in the shipped colour engine, but a name typed by a person can match four entries or none, and both cases now stop the shot rather than rendering a picture that looks entirely normal and is wrong. <b>One question to the colourist may delete a third of it</b>, and it should be asked before any of it is written. 873 tests green on both machines; no code changed today. <b>Next: the interface</b>, which is not blocked by any of this and carries the new mode control from the start
+    <b>Last updated</b> &middot; 12 September 2026, 18:05 PDT. <b>The source format changed underneath the finished colour work, and the expensive half of it was answered the same day.</b> Each shooter will use their camera's own format and write it into the clip, with the house format kept as a mode. Crucially, <b>the grading session builds each shot's colour file starting from that format</b>, so the colour file is the entire conversion and the tool performs none of its own on a plate: it cannot disagree with Resolve about what a camera format is, and a camera nobody has mapped still delivers. The tool still carries a transform per format, because the studio asked for it and because a <b>colour chart is delivered ungraded</b> and is the one picture the tool converts alone - the sharpest place in the whole tool to be wrong, since a mis-converted chart still looks like a chart. <b>One risk is named rather than assumed away</b>: converting twice, which fails nothing and looks like a grade decision, so the tool records which chain each shot took and one real export should confirm it. That is <b>M4.6</b>; 873 tests green and no code has changed yet. <b>Next: the interface</b>, which is not blocked by any of it
   </footer>
 
 </div>
