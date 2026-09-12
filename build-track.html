@@ -277,7 +277,7 @@
   <header class="mast">
     <div class="eyebrow">
       <span>VFX turnover ingest &middot; macOS v01</span>
-      <span class="stamp">Updated <b>12 Sep 2026, 11:16 PDT</b></span>
+      <span class="stamp">Updated <b>12 Sep 2026, 11:38 PDT</b></span>
     </div>
     <h1>ProIngest Build Track</h1>
     <p class="standfirst">
@@ -293,7 +293,7 @@
       <div class="stat-l">Milestones done</div>
     </div>
     <div class="stat">
-      <div class="stat-n good">872</div>
+      <div class="stat-n good">873</div>
       <div class="stat-l">Tests, Linux + macOS</div>
     </div>
     <div class="stat">
@@ -812,6 +812,27 @@
   <section>
     <h2>Corrections made to the spec</h2>
       <div class="note">
+        <h3>The test machine and the shipping machine disagreed, and the runner won</h3>
+        <p>
+          The colour work put a new step into the video processing chain of every reference
+          video. On the development machine all 872 checks passed. On the hosted Apple Silicon
+          runner, which uses the <b>exact video tools the product ships</b>, one failed: a
+          reference came out with a second of sound against a third of a second of picture.
+        </p>
+        <p>
+          The cause is worth recording because it will happen again. The instruction that bounded
+          the sound was <b>"end when the shorter stream ends"</b>, which is a best-effort rule
+          rather than a measurement, and how far the sound is allowed to run ahead of picture that
+          is still being processed depends on the version of the video tool. Adding a step to the
+          <b>picture</b> chain changed the behaviour of the <b>sound</b>. The fix states the
+          sound's length outright, computed from the frame count and the exact frame rate, so it
+          now depends on no version-specific behaviour at all. <b>The gap this closed is the
+          reason that runner exists</b>: it was added a few days ago precisely because the
+          development machine tests against video tools three major versions behind the shipped
+          ones.
+        </p>
+      </div>
+      <div class="note">
         <h3>The colour chart must never be given the grade</h3>
         <p>
           The rule for this pipeline is that everything the tool writes carries the approved look.
@@ -1329,7 +1350,7 @@
   <footer>
     <b>Source of truth</b> &middot; PROGRESS.md, docs/OPEN_QUESTIONS.md, PRD.md section 9<br>
     <b>Verify</b> &middot; pytest &middot; ruff check . &amp;&amp; mypy proingest &middot; python -m proingest scan &lt;folder&gt;<br>
-    <b>Last updated</b> &middot; 12 September 2026, 11:16 PDT. <b>The colour pipeline is complete.</b> Plates are now written with the approved look in them and a header recording exactly which version of the grade that was, reference videos are encoded through it in one pass, and the reference stills are deliberately left ungraded because a graded colour chart is worse than useless. The oldest known defect, reference videos built with no colour transform at all, is closed. 872 tests green on both machines. <b>Next: the interface</b>, which is also where pointing at a grading session stops being a command line flag
+    <b>Last updated</b> &middot; 12 September 2026, 11:16 PDT. <b>The colour pipeline is complete.</b> Plates are now written with the approved look in them and a header recording exactly which version of the grade that was, reference videos are encoded through it in one pass, and the reference stills are deliberately left ungraded because a graded colour chart is worse than useless. The oldest known defect, reference videos built with no colour transform at all, is closed. 873 tests green on both machines, including one the Apple Silicon runner caught and the development machine could not: the new picture step changed how far the sound was allowed to run ahead of it, which is now stated outright rather than left to the video tool. <b>Next: the interface</b>, which is also where pointing at a grading session stops being a command line flag
   </footer>
 
 </div>

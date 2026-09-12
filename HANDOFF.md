@@ -9,28 +9,29 @@ It replaces the previous session's file of the same name, which named M4.5.4 as 
 
 ## The one paragraph version
 
-**M4.5.4, and with it M4.5.** 838 tests to **872**, `ruff` and `mypy --strict` clean. The colour
+**M4.5.4, and with it M4.5.** 838 tests to **873**, `ruff` and `mypy --strict` clean. The colour
 chain now reaches the files: a plate is delivered graded in linear ACEScg with AP1 primaries and
 a header stating what was applied to it, and a reference mp4 is encoded through the shot's grade
 and the ACES output transform baked into one cube. **M3's reference encode, wrong since it was
-built, is fixed** - that was the oldest item on the open list. One commit, **not pushed**.
-**M5, the UI, is next.**
+built, is fixed** - the oldest item on the open list. **Everything is pushed and CI is green on
+both runners**, which took a second commit: the macOS runner caught a regression the dev machine
+could not see. **M5, the UI, is next.**
 
 ## What was built
 
 | where | what landed |
 |---|---|
-| `core/clf.py` | `ShotColor`, the picklable carrier a job rides with, and `ColorSession.shot_color`. +69 lines |
-| `core/render.py` | `_PlateBranch` and `_plate_branch`, `_view_lut`, `colorspace` gone from four signatures. +66 |
-| `core/exr.py` | AP1 `CHROMATICITIES`, `ACEScg` as a constant, `provenance()` and five new attribute names. +64 |
-| `core/ffmpeg.py` | `lut_filter`, and `display_filter` replaced by `lut` on the encode. +29 |
-| `core/planner.py` | `DeliverableJob.shot_color`, the session threaded through `plan_batch`. +45 |
-| `core/models.py` | `ShotRow.clf_path`, additive, schema version unmoved. +20 |
+| `core/clf.py` | `ShotColor`, the picklable carrier a job rides with, and `ColorSession.shot_color` |
+| `core/render.py` | `_PlateBranch` and `_plate_branch`, `_view_lut`; `colorspace` gone from four signatures |
+| `core/exr.py` | AP1 `CHROMATICITIES`, `ACEScg` as a constant, `provenance()` and five new attribute names |
+| `core/ffmpeg.py` | `lut_filter`, `display_filter` replaced by `lut`, and the audio bound by `apad,atrim` |
+| `core/planner.py` | `DeliverableJob.shot_color`, the session threaded through `plan_batch` |
+| `core/models.py` | `ShotRow.clf_path`, additive, schema version unmoved |
 | `core/exports.py` | the QC log's Shots sheet gains a CLF column |
 | `__main__.py` | `run --color-session <edl>` and `--source-encoding` |
 | `tests/fixtures/color.py` | new: `write_clf` and `plate_clf`, shared by the render and CLI tests |
 
-## The six things a cold reader will get wrong
+## The seven things a cold reader will get wrong
 
 - **`plate_transform` is applied only when there is no CLF**, and `ShotColor.plate_transforms` is
   the single place that decides. A CLF already ends in linear ACEScg, so applying both converts
@@ -53,10 +54,33 @@ built, is fixed** - that was the oldest item on the open list. One commit, **not
 - **`format=gbrpf32le` before `lut3d` is deliberate.** Without it ffmpeg negotiates a format
   between the decoder and the filter. That is a high bit depth format today and it is not
   something the delivered look should rest on.
+- **The reference's audio states its own length and must keep doing so.** `-af
+  apad,atrim=duration=<seconds>`, the seconds computed from integer frames and the exact rational
+  rate. **Do not put `-shortest` back.** See below.
 - **`handle.header()` from the OpenEXR bindings empties when the file closes.** Assert inside the
   `with` block or copy it with `dict(...)`. A test that reads it afterwards sees an empty mapping
   and a `KeyError`, which looks exactly like the writer not writing the attribute. This cost
   twenty minutes; every header test now copies.
+
+## The regression CI caught, which is the most reusable thing here
+
+The first push was green on Linux and **failed on the macOS runner**, on a test written back in
+M3.5: a reference delivered **0.98 seconds of sound against a third of a second of picture**.
+
+Adding the `lut3d` to the encode's **video** filtergraph changed the behaviour of the **audio**.
+`-shortest` is a heuristic, not a measurement: it ends the output when the shortest stream does,
+but it lets audio buffer ahead of a video stream that is still inside a filtergraph, and how far
+ahead depends on the ffmpeg version. The bundled build is 9.0.1 and the dev machine's is 6.1.1,
+which was still correct, so **no amount of local testing would have found it**.
+
+The fix states the length outright rather than tuning the heuristic, so it depends on no version
+specific behaviour at all. Two lessons worth carrying:
+
+- **A filter added to one stream's chain can change another stream's timing.** Nothing about the
+  colour work looked like it touched audio.
+- **The Apple Silicon runner earns its keep on exactly this.** It was added days ago because the
+  dev machine tests against ffmpeg three major versions behind the shipped one, and this is the
+  first defect it has caught that nothing else could.
 
 ## Two judgment calls that were mine, not instructed
 
@@ -64,21 +88,24 @@ built, is fixed** - that was the oldest item on the open list. One commit, **not
   chart, because nobody had had cause to write it down. It is now in the doc as well as the code.
 - **`run --color-session` exists at all.** The wiring was described as "M4.5.4 and M5". The
   Settings page is M5, but without an entry point the chunk is untestable end to end, and
-  CLAUDE.md's definition of done asks for the feature to be reachable. The flag is the smaller
-  half; the EDL's rate comes from the first row that has media and a mixed-rate batch prints
-  which rate it used rather than choosing silently.
+  CLAUDE.md's definition of done asks for the feature to be reachable. The EDL's rate comes from
+  the first row that has media, and a mixed-rate batch prints which rate it used rather than
+  choosing silently.
 
 ## Docs changed
 
-- **`docs/COLOR_AND_FORMAT.md`**: the EXR metadata list now names the real attributes, says which
-  of the proposal's fields are **not yet written**, and carries the aux still exception as its own
-  short section. The resize claim was corrected: the plate branch's downscale happens in the
+- **`docs/COLOR_AND_FORMAT.md`**: the EXR metadata list names the real attributes and says which
+  of the proposal's fields are **not yet written**; the aux still exception is its own short
+  section; the resize claim is corrected, since the plate branch's downscale happens in the
   decode, before the transform, and the property it protects survives (OQ-43).
 - **`docs/QC_RULES.md`**: the Shots sheet's column list gains CLF. No new rule IDs.
 - **`docs/OPEN_QUESTIONS.md`**: OQ-42 and OQ-43, both new, both mine.
-- **`PROGRESS.md`**: section 1 carries M4.5.4 and now points at M5; the module, milestone and
-  M4.5 chunk tables are current; two open items are struck because they are done; one decision
-  entry that described `color.display_transform` says what replaced it.
+- **`PROGRESS.md`**: section 1 carries M4.5.4 and points at M5; the module, milestone and M4.5
+  chunk tables are current; two open items are struck because they are done; the decision entries
+  describing `color.display_transform` and the `apad`/`-shortest` idiom say what replaced them.
+- **`docs/MAC_SESSION.md`** needed nothing: it already says judging encode quality never needs a
+  rented Mac, and CI covers the bundled binaries. The audio regression is evidence for that line
+  rather than against it.
 
 ## Open questions
 
@@ -100,20 +127,16 @@ it without an interface.
 
 ## State on disk
 
-- **One commit this session, not pushed.** `main` is ahead of `origin/main` by **four**.
-  Pushing is the user's call.
-- **CI has not seen any of the last four commits.** Last green run is 34675636686, four commits
-  back. The one thing that could differ on the macOS runner is the bundled ffmpeg, 9.0.1 there
-  against 6.1.1 here, in the `lut3d` tests. `lut3d`, `.cube` and `format=gbrpf32le` are old and
-  stable in both. Check the run rather than assuming.
-- 872 tests, `ruff` and `mypy --strict` clean, working tree clean apart from this file.
-- Build track artifact republished, now at **version 27**:
+- **Three commits this session, all pushed.** `main` and `origin/main` are both at `2c044ed`.
+  The four commits from the previous session went up with them; nothing is now unpushed.
+- **CI is green on both runners**, run **34711316654**. The run before it, 34711057397, is the
+  red one that caught the audio regression and is worth keeping in mind rather than deleting.
+- 873 tests, `ruff` and `mypy --strict` clean, working tree clean apart from this file.
+- Build track artifact republished twice, now at **version 28**:
   https://claude.ai/code/artifact/c0e6b8ac-6673-4e28-833d-7d85b5f7273a
 - **`preview/` is untracked and still badly stale.** It shows the four colour sliders and the
   three viewers, both long gone. `PROGRESS.md` section 8 has its URL.
 - `docs/ROADMAP.md` is untracked by convention and was **not** updated this session.
-- `docs/MAC_SESSION.md` needed nothing: the file says judging encode quality never needs a Mac,
-  and CI covers the `lut3d` behaviour on the real bundled binaries.
 
 ## Next task
 
