@@ -16,6 +16,14 @@ from proingest.core import color
 
 CLF_FORMAT = "Academy/ASC Common LUT Format"
 
+CLF_SOURCE = "ACEScct"
+"""Where these fixture CLFs start, which the tool no longer needs to know.
+
+A real session's CLF starts at whatever its clip is encoded in (OQ-37), and since the
+tool applies the CLF alone, which log a fixture picks is free. ACEScct because the
+numeric anchors in the colour tests are ACEScct code values.
+"""
+
 
 def write_clf(path: Path, *transforms: ocio.Transform) -> Path:
     """Bake a chain into a CLF at `path`."""
@@ -29,7 +37,7 @@ def write_clf(path: Path, *transforms: ocio.Transform) -> Path:
 
 
 def plate_clf(path: Path) -> Path:
-    """What the session is specified to export: ACEScct in, a primary, linear ACEScg out.
+    """What the session is specified to export: source encoding in, a primary, ACEScg out.
 
     The grade lifts red and drops blue hard enough that a plate it was not applied to is
     obvious in one pixel.
@@ -39,5 +47,5 @@ def plate_clf(path: Path) -> Path:
         ocio.CDLTransform(
             slope=[1.4, 1.0, 0.7], offset=[0.0] * 3, power=[1.0] * 3, sat=1.1
         ),
-        ocio.ColorSpaceTransform(src=color.WORKING_SPACE, dst=color.PLATE_SPACE),
+        ocio.ColorSpaceTransform(src=CLF_SOURCE, dst=color.PLATE_SPACE),
     )

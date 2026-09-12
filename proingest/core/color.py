@@ -8,15 +8,16 @@ ship and there is nothing for an installer to get wrong.
 
 The chain, with this module supplying every leg except the CLF:
 
-    studio standard log -> ACEScct -> [the shot's CLF] -> linear ACEScg   the plate branch
-                                                      -> sRGB display    the view branch
+    source encoding -> [the shot's CLF] -> linear ACEScg   the plate branch
+                                        -> sRGB display    the view branch
 
-`input_transform` is the first leg, `plate_transform` the plate branch's last and
-`output_transform` the view branch's. The CLF in the middle is loaded rather than built
-(`core/clf.py`), which is why this module composes transforms and hands back a processor
-instead of owning the whole chain. It also means the caller decides whether the plate
-branch's last leg is needed at all: a CLF is specified to end in linear ACEScg itself
-(QC-039), so applying `plate_transform` after one would convert twice.
+**The CLF is the whole of a graded chain.** It starts at whatever the clip is encoded in
+and ends in linear ACEScg (OQ-37, answered 2026-09-12), so this module supplies nothing
+ahead of it and `output_transform` is the only leg a graded chain takes from here.
+`input_transform` is the same source to ACEScg leg for the chains that have no CLF: an
+aux still, which is delivered ungraded by design, and any row the colour session has no
+grade for. The CLF itself is loaded rather than built (`core/clf.py`), which is why this
+module composes transforms and hands back a processor instead of owning the whole chain.
 
 Building a processor is expensive and applying it is not, so the two are separate
 calls. Build one per shot, apply it per frame. The view branch is built once per shot
@@ -47,20 +48,21 @@ encodings, which is what OQ-39 may yet name, and the full set of view transforms
 bakes into the viewing LUT.
 """
 
-WORKING_SPACE = "ACEScct"
-"""The colour session's timeline space, and therefore where every CLF starts."""
-
 PLATE_SPACE = "ACEScg"
-"""Scene linear, AP1 primaries. What a delivered EXR is."""
+"""Scene linear, AP1 primaries. What a delivered EXR is, and where every CLF ends."""
 
-DEFAULT_SOURCE_ENCODING = WORKING_SPACE
-"""The one log encoding every shooter delivers in, whatever they shot on (OQ-39).
+DEFAULT_SOURCE_ENCODING = "ACEScct"
+"""What a clip is taken to be in until its own metadata is read (M4.6.1).
 
-One encoding on every file means one input transform forever: no per shot IDT, no
-exposure index question, and no mapping of Resolve's transform names onto OpenColorIO's,
-which do not agree. This is a Settings value rather than a constant because which
-encoding is not settled, and it is one string either way. ACEScct is the default and
-makes the input transform identity, which is why it is the one to push for.
+**The last batch-wide authority over a per clip fact**, and it exists only because
+nothing reads the metadata yet: the encoding is named in each clip (COLOR_AND_FORMAT
+section 1) and `ShotRow.source_encoding` is what replaces this. ACEScct because that is
+what every deliverable rendered before 2026-09-12 was treated as, so collapsing the
+chain changed no ungraded render; it is not a value anyone should deliver against.
+
+There was a working space constant here too, ACEScct, where the input transform landed
+and the grade began. The CLF no longer starts there, so the space is gone from the chain
+entirely and the leg that reached it collapsed into `input_transform`.
 """
 
 INTERPOLATION = ocio.INTERP_TETRAHEDRAL
@@ -89,22 +91,20 @@ def check_encoding(name: str) -> None:
 
 
 def input_transform(source_encoding: str = DEFAULT_SOURCE_ENCODING) -> ocio.ColorSpaceTransform:
-    """The studio standard log encoding to ACEScct, where the CLF begins.
+    """The source encoding to linear ACEScg, in one leg. COLOR_AND_FORMAT section 1.
 
-    Identity when the studio standard is ACEScct itself, in which case the decode leads
-    straight into the grade with nothing between them that could be silently wrong.
+    **Only for a chain with no CLF in it**: an aux still, which is delivered ungraded by
+    design, and a row the colour session has no grade for. A graded chain gets the CLF
+    alone, because the CLF starts at the source encoding itself (OQ-37), and a
+    conversion ahead of one is a second conversion that raises nothing.
+
+    One leg rather than the two this used to be. The first landed in ACEScct because
+    that is where the grade began and the second carried the result to ACEScg; the grade
+    begins at the source now, so there is no intermediate space to arrive in and no way
+    to apply half a chain.
     """
     check_encoding(source_encoding)
-    return ocio.ColorSpaceTransform(src=source_encoding, dst=WORKING_SPACE)
-
-
-def plate_transform() -> ocio.ColorSpaceTransform:
-    """ACEScct to linear ACEScg: the tail of the plate branch.
-
-    Only for a chain that does not already land in ACEScg. The CLF is specified to end
-    there itself, so a graded plate must not have this applied after it.
-    """
-    return ocio.ColorSpaceTransform(src=WORKING_SPACE, dst=PLATE_SPACE)
+    return ocio.ColorSpaceTransform(src=source_encoding, dst=PLATE_SPACE)
 
 
 def processor(*transforms: ocio.Transform) -> ocio.CPUProcessor:
@@ -162,8 +162,8 @@ that only shows up on the delivered reference.
 def output_transform() -> ocio.DisplayViewTransform:
     """Linear ACEScg to sRGB display: the tail of the view branch (OQ-29).
 
-    Takes ACEScg because that is where the CLF lands, which is the same reason
-    `plate_transform` is not applied after a CLF.
+    Takes ACEScg because that is where the CLF lands, which is the same reason nothing
+    of this module's is applied ahead of one.
     """
     return ocio.DisplayViewTransform(src=PLATE_SPACE, display=DISPLAY, view=VIEW)
 

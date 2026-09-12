@@ -25,6 +25,15 @@ RATE_24 = FrameRate(24)
 ACESCCT_MID_GREY = 0.413588
 """The ACEScct encoding of 0.18 scene linear, as `tests/test_color.py` derives it."""
 
+CLF_SOURCE = "ACEScct"
+"""Where the CLFs written here start.
+
+A real session's CLF starts at whatever its clip is encoded in (OQ-37), and the tool
+applies the CLF alone, so which log a fixture picks is free. ACEScct because the
+anchors here are ACEScct code values, and because a CLF that starts somewhere the
+`ShotColor` does not name is exactly the case `test_the_tool_converts_nothing_ahead_of_a_clf`
+needs."""
+
 FINAL_EDL = """TITLE: MELT_FINAL_v03
 FCM: NON-DROP FRAME
 
@@ -83,11 +92,11 @@ def write_clf(path: Path, *transforms: ocio.Transform) -> Path:
 
 
 def plate_clf(path: Path) -> Path:
-    """What the colour session is specified to export: ACEScct in, linear ACEScg out."""
+    """What the colour session is specified to export: source encoding in, ACEScg out."""
     return write_clf(
         path,
         ocio.CDLTransform(slope=[1.05, 1.0, 0.95], offset=[0.0, 0.0, 0.0], power=[1.0, 1.0, 1.0], sat=1.1),
-        ocio.ColorSpaceTransform(src=color.WORKING_SPACE, dst=color.PLATE_SPACE),
+        ocio.ColorSpaceTransform(src=CLF_SOURCE, dst=color.PLATE_SPACE),
     )
 
 
@@ -99,7 +108,7 @@ def display_clf(path: Path, size: int = 9) -> Path:
     had to bake it, exactly as here.
     """
     view = ocio.DisplayViewTransform(
-        src=color.WORKING_SPACE, display="sRGB - Display", view="ACES 1.0 - SDR Video"
+        src=CLF_SOURCE, display="sRGB - Display", view="ACES 1.0 - SDR Video"
     )
     cpu = color.config().getProcessor(view).getDefaultCPUProcessor()
     lut = ocio.Lut3DTransform(gridSize=size, interpolation=color.INTERPOLATION)
@@ -346,7 +355,7 @@ class TestLoadClf:
         regraded = write_clf(
             tmp_path / "MELT0001_v03.clf",
             ocio.CDLTransform(slope=[1.4, 1.0, 0.7], sat=1.0),
-            ocio.ColorSpaceTransform(src=color.WORKING_SPACE, dst=color.PLATE_SPACE),
+            ocio.ColorSpaceTransform(src=CLF_SOURCE, dst=color.PLATE_SPACE),
         )
         assert clf.load_clf(regraded).digest != first
 
@@ -367,7 +376,7 @@ class TestLoadClf:
         dark = write_clf(
             tmp_path / "MELT0003.clf",
             ocio.CDLTransform(offset=[-4 / 17.52] * 3, sat=1.0),
-            ocio.ColorSpaceTransform(src=color.WORKING_SPACE, dst=color.PLATE_SPACE),
+            ocio.ColorSpaceTransform(src=CLF_SOURCE, dst=color.PLATE_SPACE),
         )
         assert clf.load_clf(dark).is_scene_linear
 
@@ -396,8 +405,10 @@ class TestShotColor:
     """What rides on a render job: a path, a colour space name and the CDL.
 
     The failure these guard against is the one COLOR_AND_FORMAT section 1 warns about
-    under the chain diagram: converting ACEScct to ACEScg twice, once in the CLF and
-    once after it. It raises nothing and looks like a grade.
+    under the chain diagram: converting to ACEScg twice, once in the CLF and once
+    outside it. It raises nothing and looks like a grade. So these ask **which**
+    transforms a chain contains as well as what it does to a pixel, because the two
+    arrangements agree on a pixel whenever the tool's own leg happens to be identity.
     """
 
     def applied(self, shot_color: clf.ShotColor, value: float) -> float:
@@ -417,17 +428,34 @@ class TestShotColor:
         """ACEScct mid grey is 0.18 scene linear, and nothing else is."""
         assert self.applied(clf.DEFAULT_SHOT_COLOR, ACESCCT_MID_GREY) == pytest.approx(0.18, abs=1e-3)
 
-    def test_a_clf_that_only_converts_is_not_converted_again(self, tmp_path: Path) -> None:
-        """The trap: applying `plate_transform` after a CLF that already landed in ACEScg.
+    def test_a_graded_plate_chain_is_the_clf_and_nothing_else(self, tmp_path: Path) -> None:
+        """OQ-37: the CLF starts at the source encoding, so it is the whole transform."""
+        shot_color = clf.ShotColor(
+            source_encoding="S-Log3 S-Gamut3.Cine", clf_path=plate_clf(tmp_path / "MELT0001.clf")
+        )
+        loaded = shot_color.load()
+        assert loaded is not None
+        assert shot_color.plate_transforms(loaded) == [loaded.transform]
 
-        A second conversion would read 0.18 as an ACEScct code value and answer about
-        0.0105, which is a plausible looking dark plate rather than an error.
+    def test_an_ungraded_plate_chain_is_one_leg_to_acescg(self) -> None:
+        """The aux still's chain, and every row the session has no grade for."""
+        transforms = clf.DEFAULT_SHOT_COLOR.plate_transforms(None)
+        assert len(transforms) == 1
+        assert transforms[0].getDst() == color.PLATE_SPACE
+
+    def test_the_tool_converts_nothing_ahead_of_a_clf(self, tmp_path: Path) -> None:
+        """The trap, in numbers: a source encoding that is not where the CLF starts.
+
+        The CLF here converts ACEScct to ACEScg and nothing else. Applying an S-Log3
+        leg ahead of it, which is what the chain did before M4.6.2, reads the same
+        pixel as S-Log3, lands it somewhere else entirely, and hands the CLF a value it
+        converts a second time. Nothing raises and the result looks like a grade.
         """
         path = write_clf(
             tmp_path / "MELT0001.clf",
-            ocio.ColorSpaceTransform(src=color.WORKING_SPACE, dst=color.PLATE_SPACE),
+            ocio.ColorSpaceTransform(src=CLF_SOURCE, dst=color.PLATE_SPACE),
         )
-        shot_color = clf.ShotColor(clf_path=path)
+        shot_color = clf.ShotColor(source_encoding="S-Log3 S-Gamut3.Cine", clf_path=path)
         assert self.applied(shot_color, ACESCCT_MID_GREY) == pytest.approx(0.18, abs=1e-3)
 
     def test_the_grade_in_the_clf_is_what_reaches_the_plate(self, tmp_path: Path) -> None:
@@ -446,8 +474,8 @@ class TestShotColor:
         the reference is ffmpeg's own pixel format. 1.03 against 222 is the difference
         the branch exists for.
         """
-        assert self.applied(clf.DEFAULT_SHOT_COLOR, clf.ACESCCT_WHITE) > 200.0
-        assert self.viewed(clf.DEFAULT_SHOT_COLOR, clf.ACESCCT_WHITE) < 1.1
+        assert self.applied(clf.DEFAULT_SHOT_COLOR, clf.LOG_WHITE) > 200.0
+        assert self.viewed(clf.DEFAULT_SHOT_COLOR, clf.LOG_WHITE) < 1.1
 
     def test_the_view_branch_is_the_plate_branch_plus_one_leg(self) -> None:
         """Compared by what each transform says it is: OCIO transforms compare by identity."""
@@ -456,6 +484,15 @@ class TestShotColor:
         view = [str(item) for item in default.view_transforms(None)]
         assert view[: len(plate)] == plate
         assert len(view) == len(plate) + 1
+
+    def test_a_graded_view_branch_is_the_clf_and_the_output_transform(self, tmp_path: Path) -> None:
+        """Two transforms, which is what `view_lut` bakes into a shot's cube."""
+        shot_color = clf.ShotColor(clf_path=plate_clf(tmp_path / "MELT0001.clf"))
+        loaded = shot_color.load()
+        assert loaded is not None
+        view = shot_color.view_transforms(loaded)
+        assert view[0] is loaded.transform
+        assert len(view) == 2
 
     def test_no_clf_path_loads_nothing(self) -> None:
         assert clf.DEFAULT_SHOT_COLOR.load() is None

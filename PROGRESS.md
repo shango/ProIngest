@@ -8,15 +8,17 @@ commit.
 
 ## 1. Resume here
 
-**State at 2026-09-12. M1, M2, M3 and M4 complete; M4.5 is done, all four chunks.** The colour
-chain now reaches the files: a plate is delivered graded in linear ACEScg with AP1 primaries and
-a header that says what was applied to it, and a reference mp4 is encoded through the shot's
-grade and the ACES output transform baked into one cube. **M5, the UI, is next**, and a new
+**State at 2026-09-12 (late). M1, M2, M3 and M4 complete; M4.5 is done, all four chunks, and
+M4.6.2 is done.** The colour chain now reaches the files: a plate is delivered graded in linear
+ACEScg with AP1 primaries and a header that says what was applied to it, and a reference mp4 is
+encoded through the shot's grade and the ACES output transform baked into one cube. **The chain
+no longer converts ahead of the CLF**, which was the one thing in the code that would have
+delivered a wrong plate against a real session. **M5, the UI, is next**, and the rest of
 **M4.6** sits beside it: the source encoding went back to camera native log on 2026-09-12 and
-the tool has to read it per shot. 873 tests passing, `ruff` and `mypy --strict` clean.
+the tool still has to read it per shot. 876 tests passing, `ruff` and `mypy --strict` clean.
 **M5 is not blocked, and M4.6 is no longer blocked either**: OQ-37 came back the same day and
-answered the expensive half of it. One question is open and it is about correctness rather than
-scope, OQ-46.
+answered the expensive half of it. Two questions are open and both are about correctness rather
+than scope, OQ-46 and **OQ-47, which is new and was found by building M4.6.2**.
 
 **M4 is done.** `core/exports.py` writes both spreadsheets, `proingest qc <batch>` writes them
 headless, and QC-053 parses camData through the new `core/camdata.py`. Proved end to end on a two
@@ -27,8 +29,8 @@ M4.5.1 put OpenColorIO in and rebuilt `core/color.py` as the two ends of the cha
 transform from the studio standard log to ACEScct, the plate transform from ACEScct to linear
 ACEScg, and the machinery to compose them into one `GroupTransform` and apply it to a decoded
 frame in place. **Both ends of that sentence were overtaken on 2026-09-12**: ACEScct is gone
-from the chain and the input transform no longer runs ahead of a CLF, which is M4.6.2. The
-composition machinery is untouched and is what the whole thing still rests on. **The display referred block it kept under a fence
+from the chain and the input transform no longer runs ahead of a CLF, **which M4.6.2 built on
+2026-09-12**. The composition machinery is untouched and is what the whole thing still rests on. **The display referred block it kept under a fence
 is gone**, deleted with its tests in M4.5.4 as planned.
 
 ### First five minutes
@@ -364,11 +366,48 @@ it (PRD section 7). Without it the run produces every deliverable in ACEScg, ung
 is the only difference. The EDL's rate comes from the first row that has media, and a batch
 carrying more than one rate prints which was used rather than choosing silently (OQ-19).
 
-### Next task: M5, the UI, with M4.6 waiting on two questions
+### M4.6.2 is built: the tool converts nothing ahead of a CLF
 
-M4.5 is finished. `docs/UI_SPEC.md` is the spec and it was already cut down when the four colour
-controls and the three viewers were dropped. The things M5 owes the colour chain are small and
-known:
+The correctness half of M4.6, built 2026-09-12 and the only chunk that changes a delivered
+plate. `ShotColor.plate_transforms` returns **the CLF alone** where there is one, and where
+there is none it returns one leg, source encoding to linear ACEScg. 876 tests. Four things in
+it should not be re-derived.
+
+- **The chain lost a space, not just a call.** `color.WORKING_SPACE` and
+  `color.plate_transform` are gone, and `color.input_transform` now goes straight from the
+  source encoding to ACEScg. They were two legs because the first landed where the grade began,
+  in ACEScct; the grade begins at the source now, so there is no intermediate space to arrive
+  in and no way to apply half a chain. ACEScct survives in exactly one place, as the
+  placeholder value of `DEFAULT_SOURCE_ENCODING`, and M4.6.1 removes that.
+- **The tests pin which transforms a chain contains, not only what it does to a pixel.** That
+  is the point: before this, `plate_transforms` returned `[input_transform, clf]` and every
+  numeric test still passed, because the default source encoding made the extra leg identity.
+  A test that only checks pixels cannot see this bug at all. `test_the_tool_converts_nothing_ahead_of_a_clf`
+  is the numeric one that can, and it works by setting the source encoding to something the
+  CLF does **not** start at, which is exactly the real case.
+- **The CLF fixtures still start at ACEScct and that is now arbitrary rather than wrong.** A
+  real session's CLF starts at whatever its clip is encoded in, the tool applies it whole, and
+  so the fixture's choice of starting space no longer means anything to the tool. It is named
+  `CLF_SOURCE` in the fixtures rather than borrowed from `core/color.py`, so nothing reads a
+  constant of the tool's as though it were a fact about the session.
+- **QC-039's probe came out of this looking weaker than it went in, and that is OQ-47.** The
+  probe feeds log white through the CLF and wants the answer above 2.0. That floor was set
+  when white meant 222, which is what ACEScct white is worth; out of C-Log3 white is worth
+  **14.7**, so four stops of grade answers 0.92 and the probe cannot tell it from a display
+  rendering's 1.0. Measured, not estimated, and a ratio probe separates every case cleanly
+  (1.88 to 3.37 against 1.010 to 1.015, and invariant to how dark the grade is). **Not changed
+  here**, because it is QC-039's definition rather than this chunk's chain, and because the
+  failure is a valid grade refused rather than a bad one delivered.
+
+### Next task: M5, the UI, or the rest of M4.6
+
+M4.5 is finished and so is M4.6.2. What is left of M4.6 is **M4.6.1, M4.6.3, M4.6.4 and
+M4.6.5**, none of which changes a delivered plate any more: they are where the source encoding
+comes from, what it resolves to, and where it is recorded. M4.6.1 is the natural next one, and
+it is the one that deletes `DEFAULT_SOURCE_ENCODING`.
+
+`docs/UI_SPEC.md` is M5's spec and it was already cut down when the four colour controls and
+the three viewers were dropped. The things M5 owes the colour chain are small and known:
 
 - **The Colour settings group**, which is where `--color-session` stops being a flag: the
   session's EDL path, the **input transform table** and its overrides, the ACES config version
@@ -382,9 +421,10 @@ known:
   something to show per row without any new plumbing. A source encoding column beside it is
   M4.6.4 and wants `ShotRow.source_encoding` first.
 
-**OQ-37 is answered**: the colourist starts the CLF from whatever the clip is encoded in, so
-the tool applies no input transform on a graded plate and ACEScct leaves the chain. **And there
-is no source encoding mode** to build a control for. Two things are still worth asking and neither is a build task. Ask
+**OQ-37 is answered and the code now matches it**: the colourist starts the CLF from whatever
+the clip is encoded in, so the tool applies no input transform on a graded plate and ACEScct has
+left the chain. **And there is no source encoding mode** to build a control for. Two things are
+still worth asking and neither is a build task. Ask
 **whoever briefs the shooters** which metadata field carries the log name and exactly what
 string goes in it (OQ-44), remembering that "S-Log3" names four colour spaces in the pinned
 config. And confirm **OQ-46** against one real export, because the difference between a CLF
@@ -514,7 +554,7 @@ PDF viewer.
 | `core/resize.py` | antialiased Lanczos downscale for the EXR path | 96 |
 | `core/color.py` | the pinned OCIO config, every leg of the chain but the CLF, composing and applying them, and the view branch baked to a `.cube` | 209 |
 | `core/timeline.py` | OTIO and EDL loading, audio association | 233 |
-| `core/clf.py` | the colour session package: the final EDL as the conform, the CDL, the CLF matched per row, loaded, hashed and probed, and `ShotColor`, which is what rides on a job | 471 |
+| `core/clf.py` | the colour session package: the final EDL as the conform, the CDL, the CLF matched per row, loaded, hashed and probed, and `ShotColor`, which is what rides on a job | 489 |
 | `core/scan.py` | turnover folder -> Turnover + ShotRows | 388 |
 | `core/planner.py` | type table, deliverable jobs, version resolution, the shot's colour attached to each job | 485 |
 | `core/batchfile.py` | `.pibatch` save/load, backup, filesystem reconciliation | 86 |
@@ -565,7 +605,7 @@ Entry points worth knowing:
 | M3 | Render | complete, 172 tests |
 | M4 | QC: all rules both phases, xlsx exports, `qc` CLI | complete, 175 tests |
 | M4.5 | Colour pipeline, core only. Source log in, CLF applied, ACEScg out, the viewing LUT | complete, 111 tests |
-| M4.6 | Per shot source encoding: read from the clip metadata, the input transform table, the input transform out of the graded chains, QC-046 to QC-048 | **not started, unblocked** (OQ-37 answered; OQ-46 wants confirming) |
+| M4.6 | Per shot source encoding: read from the clip metadata, the input transform table, the input transform out of the graded chains, QC-046 to QC-048 | **M4.6.2 done**, four chunks left (OQ-37 answered; OQ-46 wants confirming) |
 | M5 | UI: the list, the FR-14 metadata pane, settings, log. **No viewers** | not started |
 | M6 | ~~Stringout with burn-ins~~ | **dropped 2026-09-11**, the colour session exports it |
 | M7 | Packaging: PyInstaller `.app`, dmg, Gatekeeper | not started, and needs a Mac (OQ-22) |
@@ -604,16 +644,16 @@ happens when it cannot be resolved.
 | chunk | scope | state |
 |---|---|---|
 | M4.6.1 | `ShotRow.source_encoding` (additive, like `clf_path`), read per row rather than from one Settings value. **No mode**: `DEFAULT_SOURCE_ENCODING` stops being a batch-wide authority | not started |
-| M4.6.2 | **Take the input transform out of the graded chains.** `ShotColor.plate_transforms` drops `input_transform` when a CLF is present, `WORKING_SPACE` and `plate_transform` collapse into one source-to-ACEScg leg, and `view_lut` bakes the CLF and the output transform only | not started, and it is the correctness half |
+| M4.6.2 | **Take the input transform out of the graded chains.** `ShotColor.plate_transforms` drops `input_transform` when a CLF is present, `WORKING_SPACE` and `plate_transform` collapse into one source-to-ACEScg leg, and `view_lut` bakes the CLF and the output transform only | **done, 876 tests.** OQ-47 found on the way |
 | M4.6.3 | The mapping table in `core/color.py`: what a shooter writes to one OCIO colour space, extensible by a row, refusing the unrecognised and the ambiguous | not started |
 | M4.6.4 | Read the encoding at scan time from the carrier OQ-44 names, and QC-046, QC-047 and QC-048 | **wants OQ-44, and has a default** |
 | M4.6.5 | `proingest/source_encoding_origin` in the EXR header, and the source encoding column in the QC log beside the CLF one | not started |
 
-**M4.6.2 is the chunk to get right and it is the only one that changes a delivered plate.**
-Today `ShotColor.plate_transforms` returns `[input_transform, clf]`, which under the answered
-OQ-37 converts twice: the CLF already starts at the source encoding. That is a wrong image that
-passes every check, so it lands with tests that pin **which** transforms a chain contains rather
-than only what it produces.
+**M4.6.2 was the chunk to get right and it was the only one that changes a delivered plate.**
+It returned `[input_transform, clf]`, which under the answered OQ-37 converts twice: the CLF
+already starts at the source encoding. That is a wrong image that passes every check, so it
+landed with tests that pin **which** transforms a chain contains rather than only what it
+produces. See the M4.6.2 note in section 1.
 
 **One question is still open and it is the one that decides M4.6.2's direction: OQ-46**, whether
 a given session's CLF really does contain the conversion. The user's answer to OQ-37 says it
@@ -644,9 +684,9 @@ M3 detail:
 The stringout moved off this table: it is M6 and always was. The M3.5 row said "ref
 mp4 and stringout" and that was a mistake in the row, not a change of plan.
 
-Tests by file: qc 164, naming 115, render 66, planner 55, frames 55, media 46,
-clf 42, ffmpeg 40, models 37, color 35, timeline 33, exr 29, cli 26, scan 25,
-exports 24, batchfile 18, resize 16, camdata 12.
+Tests by file: qc 164, naming 115, render 74, planner 61, clf 58, frames 55, media 46,
+ffmpeg 43, models 37, exr 34, timeline 33, cli 30, color 29, exports 26, scan 25,
+batchfile 18, resize 16, camdata 12. 876 in total, counted rather than carried forward.
 
 ---
 
@@ -1248,28 +1288,32 @@ is useful rather than not, but a test asserting "one stream" will fail on it.
 
 Nothing blocks the next task. These are live, in rough priority order:
 
-- **The graded chains convert twice under the answered OQ-37, and that is now the most
-  important open item.** `ShotColor.plate_transforms` returns `[input_transform, clf]`. The
-  colourist builds the CLF from the source encoding, so the input transform is already inside
-  it and applying both is a wrong image that passes every check and looks like a grade
-  decision. Nothing is delivered wrong today because nothing has rendered against a real
-  session, and M4.6.2 is the fix. **OQ-46 is the confirmation it wants** and it is worth having
-  before a delivery depends on it.
+- **QC-039's probe cannot separate a dark C-Log3 grade from a display rendering (OQ-47).**
+  New 2026-09-12, found while building M4.6.2, and the most important open item because it is
+  the only one that can refuse a valid delivery. The probe wants the CLF's white above 2.0,
+  which was calibrated when white meant ACEScct's 222; out of C-Log3 white is worth 14.7, so a
+  CLF graded four stops down answers 0.92 and a display rendering answers 1.0. The direction of
+  the failure is the safe one, an error on a good CLF rather than a bad plate delivered.
+  **The fix is measured and written up in OQ-47**: `out(1.0) / out(0.9)`, which is invariant to
+  how dark the grade is and separates every encoding in play by an order of magnitude. Left
+  alone in M4.6.2 because it is QC-039's definition rather than the chain.
 
-- **Camera log mode is specified and not built (M4.6).** The source encoding went back to
-  camera native log on 2026-09-12 and the tool still reads one value from Settings for every
-  row. What is missing: the per shot encoding, the table of input transforms the user asked
-  for, and where that table is allowed to be applied.
+- **Where the source encoding comes from is specified and not built (M4.6.1, M4.6.3 to
+  M4.6.5).** The source encoding went back to camera native log on 2026-09-12 and the tool
+  still reads one value from Settings for every row. What is missing: the per shot encoding,
+  the table of input transforms the user asked for, and the two places it is recorded.
+  **The chain half of this is done**: since M4.6.2 the encoding reaches no graded plate at all,
+  so a wrong one costs a header line and an aux still rather than a delivery.
   **OQ-44** (which metadata field, and what string) has a default and blocks nothing.
   COLOR_AND_FORMAT section 1 has the whole of it.
 
-- **`color.DEFAULT_SOURCE_ENCODING` is `ACEScct`, which is now wrong and is also the wrong
-  shape.** OQ-39 was answered on 2026-09-12 as `DaVinci Intermediate WideGamut` and then
-  dissolved: there is no batch-wide source encoding at all, because the encoding is a per clip
-  fact. So this constant does not want a new value, it wants to stop being an authority; what
-  replaces it is `ShotRow.source_encoding` and the table (M4.6.1, M4.6.3). It is harmless until
-  a batch runs without an explicit encoding, and it is exactly the kind of stale constant that
-  renders a plausible looking wrong image.
+- **`color.DEFAULT_SOURCE_ENCODING` is still `ACEScct` and is the last batch-wide authority
+  over a per clip fact.** OQ-39 was answered on 2026-09-12 as `DaVinci Intermediate WideGamut`
+  and then dissolved: there is no batch-wide source encoding at all. So this constant does not
+  want a new value, it wants to stop being an authority; what replaces it is
+  `ShotRow.source_encoding` and the table (M4.6.1, M4.6.3). Its blast radius shrank in M4.6.2 -
+  it can no longer reach a graded plate - and what is left is an aux still and a row with no
+  CLF, which is the one picture the tool transforms on its own authority.
 
 - **No colour session has ever exported for this tool (OQ-31).** Every claim in
   COLOR_AND_FORMAT section 1 about what arrives is a specification, not an observation, until

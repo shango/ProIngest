@@ -3,6 +3,9 @@
 COLOR_AND_FORMAT section 1. Every failure this guards against is a plausible looking
 wrong image rather than a crash, which is why the anchors here are real numbers and not
 just shapes: mid grey has to land on 0.18 and a highlight has to stay above 1.0.
+
+Since M4.6.2 this module supplies **one** leg of its own, source encoding to linear
+ACEScg, and a graded chain takes none of it: the CLF is the whole transform (OQ-37).
 """
 
 from __future__ import annotations
@@ -36,7 +39,7 @@ class TestConfig:
         assert color.config() is color.config()
 
     def test_it_carries_the_spaces_the_chain_names(self) -> None:
-        for name in (color.WORKING_SPACE, color.PLATE_SPACE, color.DEFAULT_SOURCE_ENCODING):
+        for name in (color.PLATE_SPACE, color.DEFAULT_SOURCE_ENCODING):
             assert color.config().getColorSpace(name) is not None
 
     def test_it_carries_camera_vendor_logs(self) -> None:
@@ -50,48 +53,57 @@ class TestConfig:
 
 
 class TestInputTransform:
-    def test_the_default_encoding_is_identity(self) -> None:
-        """OQ-39's default: ACEScct in means nothing happens between decode and grade."""
-        assert color.DEFAULT_SOURCE_ENCODING == color.WORKING_SPACE
-        assert color.processor(color.input_transform()).isNoOp()
+    """The one leg this module supplies, and only where there is no CLF (OQ-37)."""
 
-    def test_a_vendor_log_costs_one_real_transform(self) -> None:
-        assert not color.processor(color.input_transform("ARRI LogC4")).isNoOp()
+    def test_it_lands_in_the_plate_space_rather_than_a_working_space(self) -> None:
+        """One leg, source to ACEScg. The ACEScct the grade used to start at is gone."""
+        transform = color.input_transform()
+        assert transform.getSrc() == color.DEFAULT_SOURCE_ENCODING
+        assert transform.getDst() == color.PLATE_SPACE
 
-    def test_an_unknown_encoding_is_refused_by_name(self) -> None:
-        """A setting a human typed, caught at the edge rather than mid render."""
-        with pytest.raises(color.ColorError, match="Arri LogC9"):
-            color.input_transform("Arri LogC9")
-
-
-class TestPlateTransform:
     def test_mid_grey_lands_on_scene_linear_018(self) -> None:
         pixels = grey_frame(ACESCCT_MID_GREY)
-        color.apply(pixels, color.processor(color.plate_transform()))
+        color.apply(pixels, color.processor(color.input_transform()))
         assert pixels[0, 0] == pytest.approx([0.18, 0.18, 0.18], abs=1e-4)
 
     def test_a_highlight_stays_above_one(self) -> None:
         """The plate branch is unbounded. A clamp here is the failure resize.py exists for."""
         pixels = grey_frame(1.0)
-        color.apply(pixels, color.processor(color.plate_transform()))
+        color.apply(pixels, color.processor(color.input_transform()))
         assert pixels[0, 0, 0] > 200.0
+
+    def test_a_camera_log_lands_on_scene_linear_018_as_well(self) -> None:
+        """The aux still's chain for a real shooter, anchored on Sony's own number.
+
+        S-Log3 puts 18% grey at 10 bit code 420, which is the published value rather
+        than one read back out of OCIO, so this says the table entry is the encoding it
+        claims to be rather than that OCIO agrees with itself.
+        """
+        pixels = grey_frame(420 / 1023)
+        color.apply(pixels, color.processor(color.input_transform("S-Log3 S-Gamut3.Cine")))
+        assert pixels[0, 0] == pytest.approx([0.18, 0.18, 0.18], abs=1e-3)
 
     def test_it_is_not_its_own_inverse(self) -> None:
         """Applying it twice is the double conversion a graded plate must not get."""
         once, twice = grey_frame(ACESCCT_MID_GREY), grey_frame(ACESCCT_MID_GREY)
-        cpu = color.processor(color.plate_transform())
+        cpu = color.processor(color.input_transform())
         color.apply(once, cpu)
         color.apply(twice, cpu)
         color.apply(twice, cpu)
         assert twice[0, 0, 0] != pytest.approx(once[0, 0, 0], abs=1e-3)
 
+    def test_an_unknown_encoding_is_refused_by_name(self) -> None:
+        """A string a shooter wrote, caught at the edge rather than mid render."""
+        with pytest.raises(color.ColorError, match="Arri LogC9"):
+            color.input_transform("Arri LogC9")
+
 
 class TestProcessor:
     def test_a_chain_is_one_group(self) -> None:
-        """Input and plate together, which is what a run with no CLF would apply."""
+        """The ungraded view branch: the input leg and the output transform together."""
         chained = grey_frame(ACESCCT_MID_GREY)
-        color.apply(chained, color.processor(color.input_transform(), color.plate_transform()))
-        assert chained[0, 0] == pytest.approx([0.18, 0.18, 0.18], abs=1e-4)
+        color.apply(chained, color.processor(color.input_transform(), color.output_transform()))
+        assert chained[0, 0, 0] == pytest.approx(0.356, abs=0.01)
 
     def test_an_empty_chain_does_nothing(self) -> None:
         assert color.processor().isNoOp()
@@ -102,24 +114,24 @@ class TestApply:
         """In place: a 4k float32 frame is 95 MB and a copy would be thrown away."""
         pixels = grey_frame(ACESCCT_MID_GREY)
         before = pixels.copy()
-        color.apply(pixels, color.processor(color.plate_transform()))
+        color.apply(pixels, color.processor(color.input_transform()))
         assert not np.array_equal(pixels, before)
 
     def test_alpha_is_refused(self) -> None:
         pixels = np.zeros((1, 1, 4), dtype=np.float32)
         with pytest.raises(color.ColorError, match="RGB"):
-            color.apply(pixels, color.processor(color.plate_transform()))
+            color.apply(pixels, color.processor(color.input_transform()))
 
     def test_half_float_is_refused(self) -> None:
         pixels = np.zeros((1, 1, 3), dtype=np.float16)
         with pytest.raises(color.ColorError, match="float32"):
-            color.apply(pixels, color.processor(color.plate_transform()))  # type: ignore[arg-type]
+            color.apply(pixels, color.processor(color.input_transform()))  # type: ignore[arg-type]
 
     def test_a_non_contiguous_view_is_refused(self) -> None:
         """OCIO reads the buffer directly, so a strided view would transform the wrong bytes."""
         pixels = np.zeros((1, 4, 3), dtype=np.float32)[:, ::2]
         with pytest.raises(color.ColorError, match="contiguous"):
-            color.apply(pixels, color.processor(color.plate_transform()))
+            color.apply(pixels, color.processor(color.input_transform()))
 
 
 class TestOutputTransform:
@@ -134,13 +146,13 @@ class TestOutputTransform:
     def test_white_comes_out_in_display_range(self) -> None:
         """222 in scene linear arrives at 1. This is the tone map QC-039 probes for."""
         pixels = grey_frame(1.0)
-        color.apply(pixels, color.processor(color.plate_transform(), color.output_transform()))
+        color.apply(pixels, color.processor(color.input_transform(), color.output_transform()))
         assert pixels[0, 0, 0] == pytest.approx(1.0, abs=0.05)
 
     def test_mid_grey_comes_out_where_aces_puts_it(self) -> None:
         """0.18 lands at 0.36, not at sRGB's 0.46: the ODT is a rendering, not a curve."""
         pixels = grey_frame(ACESCCT_MID_GREY)
-        color.apply(pixels, color.processor(color.plate_transform(), color.output_transform()))
+        color.apply(pixels, color.processor(color.input_transform(), color.output_transform()))
         assert pixels[0, 0, 0] == pytest.approx(0.356, abs=0.01)
 
 
@@ -148,8 +160,8 @@ class TestViewLut:
     """The view branch as one `.cube`, which is how an OCIO transform reaches ffmpeg."""
 
     def chain(self) -> tuple[ocio.Transform, ...]:
-        """A view branch with no CLF in it: input, plate, output transform."""
-        return (color.input_transform(), color.plate_transform(), color.output_transform())
+        """A view branch with no CLF in it: the input leg and the output transform."""
+        return (color.input_transform(), color.output_transform())
 
     def test_it_writes_a_cube_of_the_stated_size(self, tmp_path: Path) -> None:
         cube = color.view_lut(tmp_path / "MELT0001_view.cube", *self.chain(), size=17)

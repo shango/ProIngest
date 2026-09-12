@@ -48,16 +48,31 @@ settings and a reel is not required to be unique.
 SCENE_LINEAR_FLOOR = 2.0
 """What a CLF's white has to exceed for the output to be scene linear (QC-039).
 
-ACEScct 1.0 is 222 in scene linear, and every output transform tone maps the top end
-into display range, so a CLF with a display rendering baked into it answers about 1.0.
-An ungraded chain answers 222, four stops down answers 13.9 and six stops down 3.5, so
-2.0 sits clear of a grade darker than anyone would deliver and clear of every display
-render. What it does not catch is a transfer curve with no tone map in it, which is not
-something an ACES session exports.
+Every output transform tone maps the top end into display range, so a CLF with a
+display rendering baked into it answers about 1.0 at white, where a scene linear one
+answers what the log encoding's top is worth: 222 from ACEScct, 100 from DaVinci
+Intermediate, 38 from S-Log3. A grade in the CLF scales that, so the margin is what is
+left after the darkest grade anyone would deliver.
+
+**The margin depends on the source encoding, and since 2026-09-12 that is per clip.**
+The floor was calibrated when every CLF started at ACEScct and 2.0 sat clear of both
+ends. It no longer does for every camera: C-Log3 white is worth 14.7, so four stops of
+grade in the CLF answers 0.92 and this probe calls a valid CLF a display rendering.
+Recorded as OQ-47 with the numbers, and not changed here, because it is QC-039's
+definition rather than M4.6.2's chain.
+
+What it does not catch either way is a transfer curve with no tone map in it, which is
+not something an ACES session exports.
 """
 
-ACESCCT_WHITE = 1.0
-"""The probe value: the top of the log encoding, where a tone map is unmissable."""
+LOG_WHITE = 1.0
+"""The probe value: the top of the log encoding, where a tone map is unmissable.
+
+Whichever log the CLF starts at. It was named for ACEScct, which was the only thing a
+CLF could start at before 2026-09-12; the value is 1.0 for the same reason under every
+camera log, which is that the top of the code range is where a display rendering is
+forced to give itself away.
+"""
 
 
 class ColorSessionError(RuntimeError):
@@ -151,10 +166,9 @@ class ShotColor:
     Loading per job rather than per shot costs a few kilobytes read four times and buys
     a digest taken at render time, which is the one that describes what was applied.
 
-    The default is the chain with no CLF in it: the source encoding from Settings, and
-    `color.plate_transform` supplying the conversion the grade would otherwise have
-    ended in. That is what a batch with no colour session renders, and what every
-    deliverable rendered before M4.5 was.
+    The default is the chain with no CLF in it: one leg from the source encoding to
+    linear ACEScg, which is what a batch with no colour session renders, what every
+    deliverable rendered before M4.5 was, and what an aux still gets on purpose.
     """
 
     source_encoding: str = color.DEFAULT_SOURCE_ENCODING
@@ -166,15 +180,19 @@ class ShotColor:
         return load_clf(self.clf_path) if self.clf_path is not None else None
 
     def plate_transforms(self, clf: LoadedClf | None) -> list[ocio.Transform]:
-        """The plate branch: studio log to ACEScct, the grade, and out in linear ACEScg.
+        """The plate branch: the CLF alone, or the source encoding to ACEScg where there is none.
 
-        **`color.plate_transform` is applied only when there is no CLF.** A CLF ends in
-        linear ACEScg itself (QC-039), so adding the ACEScct to ACEScg conversion after
-        one converts twice, which is a plausible looking wrong image rather than an
-        error. COLOR_AND_FORMAT section 1 says the same thing under the chain diagram.
+        **The tool applies no input transform ahead of a CLF** (OQ-37, answered
+        2026-09-12). The colourist starts each shot's CLF at whatever that clip is
+        encoded in and ends it in linear ACEScg (QC-039), so the CLF is the entire
+        transform and anything applied either side of it converts twice. That is a
+        plausible looking wrong image rather than an error, which is why this returns
+        the transforms a chain contains rather than leaving the rule to a caller.
+        COLOR_AND_FORMAT section 1 states the same thing as a table.
         """
-        first = color.input_transform(self.source_encoding)
-        return [first, clf.transform] if clf is not None else [first, color.plate_transform()]
+        if clf is not None:
+            return [clf.transform]
+        return [color.input_transform(self.source_encoding)]
 
     def view_transforms(self, clf: LoadedClf | None) -> list[ocio.Transform]:
         """The view branch: the plate branch, then the ACES output transform to sRGB.
@@ -466,6 +484,6 @@ def _probe_scene_linear(cpu: ocio.CPUProcessor) -> bool:
     until someone tries to comp it. What it catches is a tone map, which is what every
     output transform and film emulation ends with.
     """
-    white = np.array([[[ACESCCT_WHITE, ACESCCT_WHITE, ACESCCT_WHITE]]], dtype=np.float32)
+    white = np.array([[[LOG_WHITE, LOG_WHITE, LOG_WHITE]]], dtype=np.float32)
     color.apply(white, cpu)
     return bool(white.max() > SCENE_LINEAR_FLOOR)
