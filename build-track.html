@@ -277,7 +277,7 @@
   <header class="mast">
     <div class="eyebrow">
       <span>VFX turnover ingest &middot; macOS v01</span>
-      <span class="stamp">Updated <b>11 Sep 2026, 20:59 PDT</b></span>
+      <span class="stamp">Updated <b>11 Sep 2026, 22:10 PDT</b></span>
     </div>
     <h1>ProIngest Build Track</h1>
     <p class="standfirst">
@@ -297,7 +297,7 @@
       <div class="stat-l">Tests, Linux + macOS</div>
     </div>
     <div class="stat">
-      <div class="stat-n">18<span style="color:var(--faint);font-size:17px">/40</span></div>
+      <div class="stat-n">19<span style="color:var(--faint);font-size:17px">/41</span></div>
       <div class="stat-l">Questions open</div>
     </div>
     <div class="stat">
@@ -405,8 +405,15 @@
             finished is deleted. Proved end to end: <b>14 deliverables written, 0 failed</b>,
             every one verified. Thresholds are settings rather than constants, so the studio's
             numbers replace the defaults without a code change.
-            <b>What is left is the spreadsheets</b>: the QC log, the shot tracker whose columns
-            wait on <b>OQ-2</b>, and a headless <code class="mono">qc</code> command. Three rules
+            <b>What is left is the spreadsheets</b>, and the studio just supplied the real one.
+            The shot tracker's columns were the last thing waiting on an answer, and the answer
+            arrived as the production's own sheet: <b>790 shots across 55 turnovers</b>. It has 39
+            columns and <b>the tool owns nine of them</b> - the shot code, the folder, the names of
+            the reference video, the HDRI and the camera data, the plate ticks, the rate, and the
+            turnover name. The other thirty are the vendor's own production state, filled in over
+            the weeks after a delivery. So the tool writes <b>rows to paste in</b>, in their column
+            order, and cannot overwrite a column anybody else maintains. Still to build: the QC log
+            sheet and a headless <code class="mono">qc</code> command. Three rules
             are deliberately unbuilt and each is written down: a letterboxed source needs pixels
             rather than a header, camera data needs the parser that fills its sheet, and a
             re-render skip needs a setting that does not exist yet.
@@ -626,10 +633,20 @@
             <td>Turnover folder structure and desired delivery layout</td>
             <td class="st"><span class="tag open">Open</span></td>
           </tr>
-          <tr>
+          <tr class="resolved">
             <td class="id">OQ-2</td>
-            <td>Shot tracker column layout, for the xlsx export</td>
-            <td class="st"><span class="tag open">Open</span></td>
+            <td>Shot tracker column layout - answered with the production's real sheet. 39 columns, the tool fills nine of them, and the export is rows to paste rather than a document of ours</td>
+            <td class="st"><span class="tag ok">Answered</span></td>
+          </tr>
+          <tr>
+            <td class="id">OQ-19</td>
+            <td><b style="color:var(--text)">Settled, then unsettled by the same sheet.</b> A check treats any shot not at 24 frames a second as an error, on the basis that everything is conformed to 24. The recent turnovers say otherwise. Whether the check should still be an error depends on which rate that column records</td>
+            <td class="st"><span class="tag hot">Reopened</span></td>
+          </tr>
+          <tr>
+            <td class="id">OQ-41</td>
+            <td>How tolerant the check on the review movie's filename should be. Measured against 55 real ones, the current rule accepts none: five different editors type them and the variation is the norm</td>
+            <td class="st"><span class="tag open">New</span></td>
           </tr>
 
           <tr>
@@ -728,11 +745,7 @@
             <td>ffprobe.exe missing - pulled from the matching release</td>
             <td class="st"><span class="tag ok">Resolved</span></td>
           </tr>
-          <tr class="resolved">
-            <td class="id">OQ-19</td>
-            <td>QC-026 severity - stays an error; everything is 24 in Resolve</td>
-            <td class="st"><span class="tag ok">Resolved</span></td>
-          </tr>
+
         </tbody>
       </table>
     </div>
@@ -740,6 +753,52 @@
 
   <section>
     <h2>Corrections made to the spec</h2>
+      <div class="note">
+        <h3>The real shot tracker arrived, and a guess had stood in for it</h3>
+        <p>
+          The one thing the reporting work was waiting on was the studio's tracker layout. It has
+          now been supplied as the live sheet itself: <b>790 shots across 55 turnovers</b>. A
+          placeholder layout had been written months ago to keep building against, eleven columns
+          of what a tracker plausibly holds. <b>Exactly one of those columns exists in the real
+          sheet.</b> Four more that it invented - duration, source timecode in and out, version,
+          delivery path - have no column at all, and stay in the tool's own quality report where
+          they were already recorded.
+        </p>
+        <p>
+          The more useful discovery is what the sheet is. Thirty of its thirty-nine columns are
+          filled in by the vendor's team in the weeks after a delivery: who is working the shot,
+          how hard it is, which review movie was sent back. <b>The tool must never write those</b>,
+          so it produces rows to paste rather than a spreadsheet to hand over, and a re-export can
+          not destroy a fortnight of someone else's tracking.
+        </p>
+        <p>
+          It also acted as a test of work already done. <b>628 of its 782 real filenames parse
+          correctly</b> under the naming rules built from the written spec, to the right kind of
+          deliverable, and the ones that do not are older rows from before the convention existed.
+          That is the first time any of this has met the production's own data.
+        </p>
+      </div>
+      <div class="note">
+        <h3>Two settled answers did not survive contact with that sheet</h3>
+        <p>
+          <b>Not everything is 24 frames a second any more.</b> A check was made an error on the
+          basis that the shooters conform all footage to 24, so anything else means a file escaped
+          the conform. Every one of the 370 shots on the older turnovers is indeed 24. On the
+          recent ones, <b>29 of 262 are not</b>, mostly 23.976. Left as it is, that check would
+          reject about one shot in nine of a current turnover, which is a rule that gets switched
+          off rather than obeyed. What the sheet cannot say is whether that column records the
+          edit's rate or the rate the camera shot at, and only the first would trip the check.
+          That is now a question for the editor.
+        </p>
+        <p>
+          <b>The check on the review movie's filename accepts none of the 55 real ones.</b> It was
+          written from the spec's pattern and kept on purpose after the tool stopped producing that
+          file, so a human-typed name could still be checked. The real names carry a two-digit year
+          and a token the spec never mentions, a third of them have no version, and the rest vary
+          by capitalisation between five editors. A check that flags every correct file is worse
+          than no check, so it is marked unusable until the tolerance is decided.
+        </p>
+      </div>
       <div class="note">
         <h3>One diagram would have had the tool apply the same conversion twice</h3>
         <p>
@@ -1154,7 +1213,7 @@
   <footer>
     <b>Source of truth</b> &middot; PROGRESS.md, docs/OPEN_QUESTIONS.md, PRD.md section 9<br>
     <b>Verify</b> &middot; pytest &middot; ruff check . &amp;&amp; mypy proingest &middot; python -m proingest scan &lt;folder&gt;<br>
-    <b>Last updated</b> &middot; 11 September 2026, 20:59 PDT. The colour pipeline stopped being a specification and started being code: the colour engine is in, pinned to the grading session's own standard version, with 736 tests green on both machines. Next: matching each shot to its approved grade, which wants one real export from the session
+    <b>Last updated</b> &middot; 11 September 2026, 22:10 PDT. The studio's real shot tracker arrived and answered the last open question blocking the reporting work, while unsettling two answers that had looked finished. Earlier today: the colour engine went in, 736 tests green on both machines. Next: building the two spreadsheets against the real columns
   </footer>
 
 </div>
