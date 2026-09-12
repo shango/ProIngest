@@ -277,7 +277,7 @@
   <header class="mast">
     <div class="eyebrow">
       <span>VFX turnover ingest &middot; macOS v01</span>
-      <span class="stamp">Updated <b>11 Sep 2026, 22:10 PDT</b></span>
+      <span class="stamp">Updated <b>11 Sep 2026, 23:40 PDT</b></span>
     </div>
     <h1>ProIngest Build Track</h1>
     <p class="standfirst">
@@ -289,11 +289,11 @@
 
   <div class="stats">
     <div class="stat">
-      <div class="stat-n">3<span style="color:var(--faint);font-size:17px">/8</span></div>
+      <div class="stat-n">4<span style="color:var(--faint);font-size:17px">/8</span></div>
       <div class="stat-l">Milestones done</div>
     </div>
     <div class="stat">
-      <div class="stat-n good">736</div>
+      <div class="stat-n good">785</div>
       <div class="stat-l">Tests, Linux + macOS</div>
     </div>
     <div class="stat">
@@ -382,12 +382,12 @@
         </div>
       </div>
 
-      <div class="ms part">
+      <div class="ms done">
         <div class="ms-id">M4</div>
         <div class="ms-body">
           <div class="ms-head">
             <span class="ms-name">QC and exports</span>
-            <span class="pill part">Rules done &middot; exports next</span>
+            <span class="pill done">Complete &middot; 175 tests</span>
           </div>
           <p class="ms-goal">
             All rules, both phases, xlsx exports. CLI <code class="mono">proingest qc &lt;batch&gt;</code>.
@@ -405,15 +405,17 @@
             finished is deleted. Proved end to end: <b>14 deliverables written, 0 failed</b>,
             every one verified. Thresholds are settings rather than constants, so the studio's
             numbers replace the defaults without a code change.
-            <b>What is left is the spreadsheets</b>, and the studio just supplied the real one.
-            The shot tracker's columns were the last thing waiting on an answer, and the answer
-            arrived as the production's own sheet: <b>790 shots across 55 turnovers</b>. It has 39
-            columns and <b>the tool owns nine of them</b> - the shot code, the folder, the names of
-            the reference video, the HDRI and the camera data, the plate ticks, the rate, and the
-            turnover name. The other thirty are the vendor's own production state, filled in over
-            the weeks after a delivery. So the tool writes <b>rows to paste in</b>, in their column
-            order, and cannot overwrite a column anybody else maintains. Still to build: the QC log
-            sheet and a headless <code class="mono">qc</code> command. Three rules
+            <b>The spreadsheets are written, and the studio's real tracker is what they were
+            built against.</b> It arrived the same evening: <b>790 shots across 55 turnovers</b>,
+            39 columns, of which <b>the tool owns nine</b> - the shot code, the folder, the names of
+            the reference video, the HDRI and the camera data, the plate ticks, the rate and the
+            audio tick. The other thirty are the vendor's own production state, filled in over the
+            weeks after a delivery, so the tool writes <b>rows to paste in</b> and cannot overwrite
+            a column anybody else maintains. The quality report is its own five sheet document,
+            because it knows far more than that tracker has room for. A headless
+            <code class="mono">qc</code> command writes both. <b>Proved end to end</b> on a two shot
+            turnover: 14 deliverables, five sheets, camera data read out of its file into its own
+            sheet, and two tracker rows touching none of the thirty columns that are not ours. Three rules
             are deliberately unbuilt and each is written down: a letterboxed source needs pixels
             rather than a header, camera data needs the parser that fills its sheet, and a
             re-render skip needs a setting that does not exist yet.
@@ -634,6 +636,11 @@
             <td class="st"><span class="tag open">Open</span></td>
           </tr>
           <tr class="resolved">
+            <td class="id">OQ-11</td>
+            <td>Camera data file format - built to the assumed one: every key-and-value line becomes a pair. The files turn out to be rich text as often as plain, and the reader copes. Nothing from it reaches the studio tracker, which has no column for a camera field</td>
+            <td class="st"><span class="tag ok">Built</span></td>
+          </tr>
+          <tr class="resolved">
             <td class="id">OQ-2</td>
             <td>Shot tracker column layout - answered with the production's real sheet. 39 columns, the tool fills nine of them, and the export is rows to paste rather than a document of ours</td>
             <td class="st"><span class="tag ok">Answered</span></td>
@@ -753,6 +760,26 @@
 
   <section>
     <h2>Corrections made to the spec</h2>
+      <div class="note">
+        <h3>A configuration point was removed rather than built</h3>
+        <p>
+          The tracker's columns were to be loaded from a template file the studio could edit, so
+          its layout could change without a code change. That was the right shape while nobody
+          knew what the columns were. <b>They are known now</b>, and a template loader would be a
+          setting standing where a fact belongs: one more thing to configure, to ship a default
+          for, to create on first run, and to get wrong. All of it is gone, and the settings page
+          loses a section that had one entry in it.
+        </p>
+        <p>
+          The report the tool writes for itself went the other way. Five sheets, carrying what the
+          tracker has no room for: every shot's timecodes, every delivered file's size and
+          checksum, and <b>a column for every single quality check</b>, reading pass, fail or
+          not-applicable. That last one needed the list of checks to exist in one place rather
+          than being inferred from whichever ones happened to fail. Otherwise a check that passed
+          everywhere silently has no column at all, and a video file reads "pass" on a check about
+          image sequences that was never run against it.
+        </p>
+      </div>
       <div class="note">
         <h3>The real shot tracker arrived, and a guess had stood in for it</h3>
         <p>
@@ -1213,7 +1240,7 @@
   <footer>
     <b>Source of truth</b> &middot; PROGRESS.md, docs/OPEN_QUESTIONS.md, PRD.md section 9<br>
     <b>Verify</b> &middot; pytest &middot; ruff check . &amp;&amp; mypy proingest &middot; python -m proingest scan &lt;folder&gt;<br>
-    <b>Last updated</b> &middot; 11 September 2026, 22:10 PDT. The studio's real shot tracker arrived and answered the last open question blocking the reporting work, while unsettling two answers that had looked finished. Earlier today: the colour engine went in, 736 tests green on both machines. Next: building the two spreadsheets against the real columns
+    <b>Last updated</b> &middot; 11 September 2026, 23:40 PDT. <b>The quality and reporting milestone is complete.</b> Both spreadsheets are written against the studio's real tracker, which arrived the same evening, and a headless command produces them. 785 tests green on both machines. Earlier today the colour engine went in. Next: matching each shot to its approved grade, which wants one real export from the grading session
   </footer>
 
 </div>
