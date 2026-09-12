@@ -29,6 +29,7 @@ from proingest.core.models import (
     Turnover,
 )
 from proingest.core.planner import DeliverableJob
+from tests.fixtures import color as color_fixtures
 from tests.fixtures import media as fixtures
 
 RATE_24 = FrameRate(24)
@@ -732,6 +733,7 @@ def picture_job(
         rate=RATE_24,
         source_start_frame=in_frame,
         source_start_timecode=ONE_HOUR,
+        shot_color=color_fixtures.UNGRADED,
         **extra,  # type: ignore[arg-type]
     )
 

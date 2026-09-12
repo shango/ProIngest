@@ -15,6 +15,20 @@ from tests.fixtures import media as fixtures
 FOLDER = "turnover001_02_23_2026_danielluckett"
 
 
+def stamp_source_encoding(batch_path: Path) -> None:
+    """Name a source encoding on every row of a saved batch.
+
+    The scan reads this off the clip's own metadata in M4.6.4. Until it does, a row
+    scanned from a fixture turnover names none, and an ungraded plate has nothing to
+    convert it to ACEScg with: there is no batch-wide default to fall back on, by
+    design (M4.6.1).
+    """
+    batch = batchfile.load(batch_path)
+    for row in batch.rows:
+        row.source_encoding = color_fixtures.SOURCE_ENCODING
+    batchfile.save(batch, batch_path)
+
+
 class TestScanCommand:
     def test_clean_turnover_exits_zero(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
         folder = tmp_path / FOLDER
@@ -124,6 +138,7 @@ class TestRunCommand:
         rules = fixtures.write_rules_file(tmp_path / "rules.json")
         batch_path = tmp_path / "batch.pibatch"
         assert main(["scan", str(folder), "--rules", str(rules), "--save", str(batch_path)]) == 0
+        stamp_source_encoding(batch_path)
         return batch_path
 
     def test_a_dry_run_prints_the_plan_and_writes_nothing(
@@ -214,6 +229,7 @@ class TestColorSession:
         rules = fixtures.write_rules_file(tmp_path / "rules.json")
         batch_path = tmp_path / "batch.pibatch"
         assert main(["scan", str(folder), "--rules", str(rules), "--save", str(batch_path)]) == 0
+        stamp_source_encoding(batch_path)
         return batch_path
 
     def session(self, tmp_path: Path) -> Path:
@@ -295,6 +311,7 @@ class TestQcCommand:
         batch_path = tmp_path / "batch.pibatch"
         delivery = tmp_path / "delivery"
         main(["scan", str(folder), "--rules", str(rules), "--save", str(batch_path)])
+        stamp_source_encoding(batch_path)
         main(["run", str(batch_path), "--delivery-root", str(delivery), "--jobs", "2"])
         return batch_path, delivery
 

@@ -359,6 +359,16 @@ class ShotRow:
     so the schema version does not move: an older batch simply reports none.
     """
 
+    source_encoding: str | None = None
+    """The log encoding this clip's own metadata names, verbatim, or None when it names none.
+
+    **A per clip fact, which is why it lives on the row** (COLOR_AND_FORMAT section 1): a
+    turnover may mix encodings freely and nothing batch wide can stand in for this. What
+    is stored is the string a shooter wrote, not a colour space: `core/color.py` maps it
+    onto one, and QC-047 is what a string that maps onto nothing reports. Additive, so
+    the schema version does not move and an older batch simply names no encoding.
+    """
+
     clf_path: Path | None = None
     """The CLF the colour session delivered for this shot, or None when it delivered none.
 
@@ -416,6 +426,7 @@ class ShotRow:
             "audio_path": str(self.audio_path) if self.audio_path else None,
             "audio": self.audio.to_dict() if self.audio else None,
             "audio_clip_count": self.audio_clip_count,
+            "source_encoding": self.source_encoding,
             "clf_path": str(self.clf_path) if self.clf_path else None,
             "side_files": self.side_files.to_dict(),
             "notes": self.notes,
@@ -444,6 +455,7 @@ class ShotRow:
             audio_path=_as_path(data.get("audio_path")),
             audio=AudioInfo.from_dict(data["audio"]) if data.get("audio") else None,
             audio_clip_count=int(data.get("audio_clip_count", 0)),
+            source_encoding=data.get("source_encoding"),
             clf_path=_as_path(data.get("clf_path")),
             side_files=SideFiles.from_dict(data.get("side_files", {})),
             notes=str(data.get("notes", "")),

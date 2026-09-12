@@ -34,6 +34,13 @@ anchors here are ACEScct code values, and because a CLF that starts somewhere th
 `ShotColor` does not name is exactly the case `test_the_tool_converts_nothing_ahead_of_a_clf`
 needs."""
 
+UNGRADED = clf.ShotColor(source_encoding="ACEScct")
+"""A row the session delivered no CLF for, in a clip whose metadata named ACEScct.
+
+The encoding has to be stated now that no default stands in for one (M4.6.1), and
+ACEScct keeps the numeric anchors here where they were.
+"""
+
 FINAL_EDL = """TITLE: MELT_FINAL_v03
 FCM: NON-DROP FRAME
 
@@ -55,12 +62,15 @@ def edl(tmp_path: Path, text: str = FINAL_EDL) -> Path:
     return path
 
 
-def row(clip_name: str = "MELT0001_pl01", **kwargs: object) -> ShotRow:
+def row(
+    clip_name: str = "MELT0001_pl01", source_encoding: str | None = None, **kwargs: object
+) -> ShotRow:
     """A scanned row: 240 frames of ProRes starting at 01:00:00:00."""
     return ShotRow(
         turnover_id="turnover001",
         clip_name=clip_name,
         identity=naming.parse_clip_name(clip_name),
+        source_encoding=source_encoding,
         media=MediaInfo(
             path=Path(f"/turnover/{clip_name}.mov"),
             codec="prores",
@@ -426,7 +436,7 @@ class TestShotColor:
 
     def test_with_no_clf_the_chain_supplies_the_conversion_itself(self) -> None:
         """ACEScct mid grey is 0.18 scene linear, and nothing else is."""
-        assert self.applied(clf.DEFAULT_SHOT_COLOR, ACESCCT_MID_GREY) == pytest.approx(0.18, abs=1e-3)
+        assert self.applied(UNGRADED, ACESCCT_MID_GREY) == pytest.approx(0.18, abs=1e-3)
 
     def test_a_graded_plate_chain_is_the_clf_and_nothing_else(self, tmp_path: Path) -> None:
         """OQ-37: the CLF starts at the source encoding, so it is the whole transform."""
@@ -439,9 +449,32 @@ class TestShotColor:
 
     def test_an_ungraded_plate_chain_is_one_leg_to_acescg(self) -> None:
         """The aux still's chain, and every row the session has no grade for."""
-        transforms = clf.DEFAULT_SHOT_COLOR.plate_transforms(None)
+        transforms = UNGRADED.plate_transforms(None)
         assert len(transforms) == 1
         assert transforms[0].getDst() == color.PLATE_SPACE
+
+    def test_a_graded_row_renders_even_though_its_clip_named_no_encoding(
+        self, tmp_path: Path
+    ) -> None:
+        """The CLF is the whole chain, so the string is provenance there and nothing more.
+
+        This is why QC-046 is not an error on a graded plate: the row renders correctly
+        without it, and what it costs is a line of the EXR header.
+        """
+        shot_color = clf.ShotColor(clf_path=plate_clf(tmp_path / "MELT0001.clf"))
+        loaded = shot_color.load()
+        assert loaded is not None
+        assert shot_color.plate_transforms(loaded) == [loaded.transform]
+
+    def test_no_clf_and_no_encoding_is_refused_rather_than_guessed(self) -> None:
+        """The one chain that cannot be built. Nothing turns those pixels into ACEScg.
+
+        Passing them through would deliver a log frame under a header claiming ACEScg,
+        which is the silent wrong image this module is written to make impossible.
+        QC-046 and QC-047 stop the row long before a worker reaches this.
+        """
+        with pytest.raises(clf.ClfError, match="no source encoding"):
+            clf.DEFAULT_SHOT_COLOR.plate_transforms(None)
 
     def test_the_tool_converts_nothing_ahead_of_a_clf(self, tmp_path: Path) -> None:
         """The trap, in numbers: a source encoding that is not where the CLF starts.
@@ -474,14 +507,14 @@ class TestShotColor:
         the reference is ffmpeg's own pixel format. 1.03 against 222 is the difference
         the branch exists for.
         """
-        assert self.applied(clf.DEFAULT_SHOT_COLOR, clf.LOG_WHITE) > 200.0
-        assert self.viewed(clf.DEFAULT_SHOT_COLOR, clf.LOG_WHITE) < 1.1
+        assert self.applied(UNGRADED, clf.LOG_WHITE) > 200.0
+        assert self.viewed(UNGRADED, clf.LOG_WHITE) < 1.1
 
     def test_the_view_branch_is_the_plate_branch_plus_one_leg(self) -> None:
         """Compared by what each transform says it is: OCIO transforms compare by identity."""
-        default = clf.DEFAULT_SHOT_COLOR
-        plate = [str(item) for item in default.plate_transforms(None)]
-        view = [str(item) for item in default.view_transforms(None)]
+        ungraded = UNGRADED
+        plate = [str(item) for item in ungraded.plate_transforms(None)]
+        view = [str(item) for item in ungraded.view_transforms(None)]
         assert view[: len(plate)] == plate
         assert len(view) == len(plate) + 1
 
@@ -531,9 +564,15 @@ class TestSessionShotColor:
         assert shot_color.clf_path is None
         assert shot_color.cdl is None
 
-    def test_the_source_encoding_passes_through(self, tmp_path: Path) -> None:
+    def test_the_source_encoding_comes_off_the_row(self, tmp_path: Path) -> None:
+        """A per clip fact, so the session neither carries it nor is asked for it."""
         session = clf.load_session(edl(tmp_path), RATE_24)
-        assert session.shot_color(row(), "ACEScc").source_encoding == "ACEScc"
+        assert session.shot_color(row(source_encoding="ACEScc")).source_encoding == "ACEScc"
+
+    def test_a_row_naming_no_encoding_gets_a_chain_that_names_none(self, tmp_path: Path) -> None:
+        """Renderable where the CLF is the whole chain, and QC-046 where it is not."""
+        session = clf.load_session(edl(tmp_path), RATE_24)
+        assert session.shot_color(row()).source_encoding is None
 
     def test_two_clfs_naming_one_shot_raise_rather_than_choose(self, tmp_path: Path) -> None:
         plate_clf(tmp_path / "MELT0001_v01.clf")

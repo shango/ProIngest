@@ -12,9 +12,22 @@ from pathlib import Path
 
 import PyOpenColorIO as ocio
 
-from proingest.core import color
+from proingest.core import clf, color
 
 CLF_FORMAT = "Academy/ASC Common LUT Format"
+
+SOURCE_ENCODING = "ACEScct"
+"""What a fixture clip is taken to be encoded in.
+
+A real clip says this in its own metadata and the scan reads it (M4.6.4); a fixture has
+to state it somewhere, and stating it here keeps it a fact about the fixture rather than
+a constant of the tool's. ACEScct because that is what every test rendered through
+before the encoding became a per clip fact, so the numbers in the render tests did not
+move when it did.
+"""
+
+UNGRADED = clf.ShotColor(source_encoding=SOURCE_ENCODING)
+"""The chain a row with no CLF renders through: the source encoding to ACEScg, no grade."""
 
 CLF_SOURCE = "ACEScct"
 """Where these fixture CLFs start, which the tool no longer needs to know.

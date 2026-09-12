@@ -43,7 +43,7 @@ def sequence_job(
     start_frame: int = 1001,
     start_timecode: int | None = ONE_HOUR,
     res: str | None = None,
-    shot_color: clf.ShotColor = clf.DEFAULT_SHOT_COLOR,
+    shot_color: clf.ShotColor = color_fixtures.UNGRADED,
 ) -> DeliverableJob:
     """A picture job pointed at test media, with the source facts a worker needs.
 
@@ -181,7 +181,7 @@ class TestPlateBranch:
     """
 
     def delivered(
-        self, tmp_path: Path, shot_color: clf.ShotColor = clf.DEFAULT_SHOT_COLOR
+        self, tmp_path: Path, shot_color: clf.ShotColor = color_fixtures.UNGRADED
     ) -> npt.NDArray[np.float32]:
         job = raw_job(tmp_path, count=4, shot_color=shot_color)
         render.render_job(job)
@@ -195,12 +195,15 @@ class TestPlateBranch:
 
     def test_the_source_is_transformed_and_not_passed_through(self, tmp_path: Path) -> None:
         red = float(self.delivered(tmp_path)[0, 0, 0])
-        assert red == pytest.approx(self.expected(clf.DEFAULT_SHOT_COLOR), abs=0.002)
+        assert red == pytest.approx(self.expected(color_fixtures.UNGRADED), abs=0.002)
         assert red != pytest.approx(self.SOURCE_PIXEL[0], abs=0.01)
 
     def test_the_shot_s_clf_is_what_is_applied(self, tmp_path: Path) -> None:
         """A different grade has to give a different plate, or nothing was applied."""
-        graded = clf.ShotColor(clf_path=color_fixtures.plate_clf(tmp_path / "MELT0001.clf"))
+        graded = clf.ShotColor(
+            source_encoding=color_fixtures.SOURCE_ENCODING,
+            clf_path=color_fixtures.plate_clf(tmp_path / "MELT0001.clf"),
+        )
         with_clf = self.delivered(tmp_path / "graded", shot_color=graded)
         without = self.delivered(tmp_path / "plain")
         assert float(with_clf[0, 0, 0]) != pytest.approx(float(without[0, 0, 0]), abs=0.002)
@@ -209,7 +212,10 @@ class TestPlateBranch:
     def test_the_header_names_the_clf_that_was_applied(self, tmp_path: Path) -> None:
         """The header and the pixels come from the one `LoadedClf`, so they cannot differ."""
         path = color_fixtures.plate_clf(tmp_path / "MELT0001_grade.clf")
-        job = raw_job(tmp_path, count=1, shot_color=clf.ShotColor(clf_path=path))
+        shot_color = clf.ShotColor(
+            source_encoding=color_fixtures.SOURCE_ENCODING, clf_path=path
+        )
+        job = raw_job(tmp_path, count=1, shot_color=shot_color)
         render.render_job(job)
         with OpenEXR.File(str(job.frame_path(1001))) as handle:
             # Copied rather than held: the mapping the bindings hand back empties when
@@ -217,13 +223,13 @@ class TestPlateBranch:
             header = dict(handle.header())
         assert header[exr.CLF_ATTRIBUTE] == "MELT0001_grade.clf"
         assert header[exr.CLF_HASH_ATTRIBUTE] == clf.clf_digest(path)
-        assert header[exr.SOURCE_ENCODING_ATTRIBUTE] == color.DEFAULT_SOURCE_ENCODING
+        assert header[exr.SOURCE_ENCODING_ATTRIBUTE] == color_fixtures.SOURCE_ENCODING
 
     def test_alpha_does_not_go_through_the_chain(self) -> None:
         """Coverage is not colour, and a transformed alpha only shows up over a comp."""
         branch = render._plate_branch(DeliverableJob(
             kind="raw_dir", source=Path("x"), destination=Path("y"), version=1,
-            shot_code="MELT0001", elem="pl01",
+            shot_code="MELT0001", elem="pl01", shot_color=color_fixtures.UNGRADED,
         ))
         pixels = np.full((2, 2, 4), 0.5, dtype=np.float32)
         pixels[:, :, 3] = 0.25

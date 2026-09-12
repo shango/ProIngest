@@ -18,7 +18,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Literal
 
-from proingest.core import clf, color, frames, naming
+from proingest.core import clf, frames, naming
 from proingest.core.models import (
     Batch,
     Deliverable,
@@ -276,7 +276,6 @@ def plan_batch(
     delivery_root: Path | None = None,
     show_pattern: str = naming.DEFAULT_SHOW_PATTERN,
     session: clf.ColorSession | None = None,
-    source_encoding: str = color.DEFAULT_SOURCE_ENCODING,
 ) -> list[DeliverableJob]:
     """Plan every row of a batch and record the plan on the rows.
 
@@ -313,7 +312,7 @@ def plan_batch(
             versions[code] = resolve_version(naming.shot_dir(root, identity), show_pattern)
         version = versions[code]
 
-        shot_color = _shot_color(session, row, source_encoding)
+        shot_color = _shot_color(session, row)
         row.clf_path = shot_color.clf_path
         plan = plan_row(row, root, version, show_pattern, shot_color)
         if version > 1:
@@ -331,18 +330,21 @@ def plan_batch(
     return jobs
 
 
-def _shot_color(
-    session: clf.ColorSession | None, row: ShotRow, source_encoding: str
-) -> clf.ShotColor:
+def _shot_color(session: clf.ColorSession | None, row: ShotRow) -> clf.ShotColor:
     """This row's colour: the session's answer, or the ungraded chain when there is none.
+
+    The source encoding comes off the row, because the clip's own metadata is what names
+    it and a turnover may mix encodings freely (COLOR_AND_FORMAT section 1). There is
+    nothing batch wide to fall back to: a row that names none carries none, which renders
+    where the CLF is the whole chain and is QC-046 where it is not.
 
     An ambiguous CLF propagates rather than being resolved to one of the candidates.
     Two CLFs naming one shot is a redelivery nobody cleaned up, and picking either is
     picking a grade (`clf.AmbiguousClfError`).
     """
     if session is None:
-        return clf.ShotColor(source_encoding=source_encoding)
-    return session.shot_color(row, source_encoding)
+        return clf.ShotColor(source_encoding=row.source_encoding)
+    return session.shot_color(row)
 
 
 def _record(row: ShotRow, plan: RowPlan) -> None:

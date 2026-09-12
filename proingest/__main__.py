@@ -56,11 +56,6 @@ def main(argv: list[str] | None = None) -> int:
         metavar="EDL",
         help="the colour session's final EDL; its folder is searched for the CLFs",
     )
-    run_parser.add_argument(
-        "--source-encoding",
-        default=color.DEFAULT_SOURCE_ENCODING,
-        help=f"the studio standard log encoding (default {color.DEFAULT_SOURCE_ENCODING})",
-    )
 
     qc_parser = subparsers.add_parser("qc", help="write the QC log and shot tracker for a batch")
     qc_parser.add_argument("batch", type=Path, help="a .pibatch file")
@@ -85,7 +80,6 @@ def main(argv: list[str] | None = None) -> int:
             args.jobs,
             args.dry_run,
             args.color_session,
-            args.source_encoding,
         )
 
     if args.command == "qc":
@@ -158,7 +152,6 @@ def _run(
     jobs: int,
     dry_run: bool,
     color_session: Path | None = None,
-    source_encoding: str = color.DEFAULT_SOURCE_ENCODING,
 ) -> int:
     """Plan a saved batch and render it.
 
@@ -183,7 +176,7 @@ def _run(
 
     root = delivery_root or batch.delivery_root
     try:
-        planned = planner.plan_batch(batch, root, session=session, source_encoding=source_encoding)
+        planned = planner.plan_batch(batch, root, session=session)
     except (ValueError, clf.ClfError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2

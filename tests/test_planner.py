@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from proingest.core import clf, color, naming, planner
+from proingest.core import clf, naming, planner
 from proingest.core.models import (
     Batch,
     FrameRate,
@@ -437,12 +437,12 @@ class TestShotColourOnJobs:
 
     def test_an_aux_still_is_never_given_the_shot_s_grade(self, tmp_path: Path) -> None:
         """It still gets the input transform, so it lands in ACEScg like every EXR."""
-        aux = row("MELT0001_pl01_colorChart_01")
+        aux = row("MELT0001_pl01_colorChart_01", source_encoding="ACEScc")
         batch = Batch(name="b", rows=[aux], delivery_root=ROOT)
         jobs = planner.plan_batch(batch, session=self.session(tmp_path))
         still = next(job for job in jobs if job.kind == "aux_still")
         assert still.shot_color.clf_path is None
-        assert still.shot_color.source_encoding == color.DEFAULT_SOURCE_ENCODING
+        assert still.shot_color.source_encoding == "ACEScc"
 
     def test_without_a_session_every_job_plans_ungraded(self) -> None:
         """The same files in the same places; the CLF is the only difference."""
@@ -450,10 +450,22 @@ class TestShotColourOnJobs:
         jobs = planner.plan_batch(batch)
         assert all(job.shot_color == clf.DEFAULT_SHOT_COLOR for job in jobs)
 
-    def test_the_source_encoding_reaches_every_job(self) -> None:
-        batch = Batch(name="b", rows=[row()], delivery_root=ROOT)
-        jobs = planner.plan_batch(batch, source_encoding="ACEScc")
+    def test_the_source_encoding_reaches_every_job_from_its_own_row(self) -> None:
+        """Per clip, off the row the clip's metadata was read into (M4.6.1)."""
+        batch = Batch(name="b", rows=[row(source_encoding="ACEScc")], delivery_root=ROOT)
+        jobs = planner.plan_batch(batch)
         assert {job.shot_color.source_encoding for job in jobs} == {"ACEScc"}
+
+    def test_two_rows_may_name_two_different_encodings(self) -> None:
+        """A turnover may mix encodings freely, so nothing batch wide can stand in."""
+        rows = [
+            row("MELT0001_pl01", source_encoding="ACEScc"),
+            row("MELT0002_pl01", source_encoding="S-Log3 S-Gamut3.Cine"),
+        ]
+        batch = Batch(name="b", rows=rows, delivery_root=ROOT)
+        jobs = planner.plan_batch(batch)
+        by_shot = {job.shot_code: job.shot_color.source_encoding for job in jobs}
+        assert by_shot == {"MELT0001": "ACEScc", "MELT0002": "S-Log3 S-Gamut3.Cine"}
 
     def test_a_row_that_plans_nothing_records_no_clf(self, tmp_path: Path) -> None:
         skipped = row(skipped=True)

@@ -166,12 +166,19 @@ class ShotColor:
     Loading per job rather than per shot costs a few kilobytes read four times and buys
     a digest taken at render time, which is the one that describes what was applied.
 
-    The default is the chain with no CLF in it: one leg from the source encoding to
-    linear ACEScg, which is what a batch with no colour session renders, what every
-    deliverable rendered before M4.5 was, and what an aux still gets on purpose.
+    The default is a shot with no grade and no encoding resolved for it, which is the
+    honest starting point rather than a usable chain: a row with no CLF renders through
+    the input transform alone, and that needs an encoding the clip's metadata names.
     """
 
-    source_encoding: str = color.DEFAULT_SOURCE_ENCODING
+    source_encoding: str | None = None
+    """The colour space the input transform starts at, resolved from what the clip named.
+
+    None where the clip's metadata named no encoding, or named one the input transform
+    table could not resolve (QC-046, QC-047). That is renderable on a graded row, since
+    the CLF is the whole chain there, and it is not renderable on any other.
+    """
+
     clf_path: Path | None = None
     cdl: CDL | None = None
 
@@ -192,6 +199,11 @@ class ShotColor:
         """
         if clf is not None:
             return [clf.transform]
+        if self.source_encoding is None:
+            raise ClfError(
+                "no CLF and no source encoding: nothing turns these pixels into "
+                f"{color.PLATE_SPACE}. QC-046 and QC-047 report this before a render"
+            )
         return [color.input_transform(self.source_encoding)]
 
     def view_transforms(self, clf: LoadedClf | None) -> list[ocio.Transform]:
@@ -204,7 +216,11 @@ class ShotColor:
 
 
 DEFAULT_SHOT_COLOR = ShotColor()
-"""The ungraded chain, and the default a job carries until a session supplies one."""
+"""No grade and no encoding: what a job carries until the planner fills it in.
+
+A copy job carries this and ignores it, because bytes are bytes. Anything that renders
+pixels is given a real one, and a row that cannot be given one is what QC-046 reports.
+"""
 
 
 @dataclass(frozen=True)
@@ -236,10 +252,12 @@ class ColorSession:
             raise AmbiguousClfError(f"{len(found)} CLFs name {shot_code}: {names}")
         return found[0] if found else None
 
-    def shot_color(
-        self, row: ShotRow, source_encoding: str = color.DEFAULT_SOURCE_ENCODING
-    ) -> ShotColor:
+    def shot_color(self, row: ShotRow) -> ShotColor:
         """What this row's deliverables are rendered through.
+
+        The source encoding comes off the row rather than from a parameter, because the
+        clip's own metadata is what names it (COLOR_AND_FORMAT section 1) and a session
+        has no opinion about it.
 
         The CLF comes from the shot code and the CDL from the conform event, which are
         two different matches on purpose: a row can have an event with no CLF beside it,
@@ -249,7 +267,7 @@ class ColorSession:
         """
         event = self.event_for(row)
         return ShotColor(
-            source_encoding=source_encoding,
+            source_encoding=row.source_encoding,
             clf_path=self.clf_for(row.shot_code) if row.shot_code else None,
             cdl=event.cdl if event is not None else None,
         )

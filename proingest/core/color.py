@@ -51,19 +51,16 @@ bakes into the viewing LUT.
 PLATE_SPACE = "ACEScg"
 """Scene linear, AP1 primaries. What a delivered EXR is, and where every CLF ends."""
 
-DEFAULT_SOURCE_ENCODING = "ACEScct"
-"""What a clip is taken to be in until its own metadata is read (M4.6.1).
-
-**The last batch-wide authority over a per clip fact**, and it exists only because
-nothing reads the metadata yet: the encoding is named in each clip (COLOR_AND_FORMAT
-section 1) and `ShotRow.source_encoding` is what replaces this. ACEScct because that is
-what every deliverable rendered before 2026-09-12 was treated as, so collapsing the
-chain changed no ungraded render; it is not a value anyone should deliver against.
-
-There was a working space constant here too, ACEScct, where the input transform landed
-and the grade began. The CLF no longer starts there, so the space is gone from the chain
-entirely and the leg that reached it collapsed into `input_transform`.
-"""
+# There is no default source encoding, and that is deliberate. A constant lived here
+# until M4.6.1, standing in for the clip metadata nothing read yet. The encoding is a
+# per clip fact (COLOR_AND_FORMAT section 1), a turnover may mix encodings freely, and a
+# batch-wide value would be wrong for every clip it was not guessed for.
+# `ShotRow.source_encoding` carries what the clip itself names, and a row that names
+# nothing is QC-046 rather than a row converted through a guess.
+#
+# A working space constant lived here too, ACEScct, where the input transform landed and
+# the grade began. The CLF no longer starts there, so the space is gone from the chain
+# entirely and the leg that reached it collapsed into `input_transform`.
 
 INTERPOLATION = ocio.INTERP_TETRAHEDRAL
 """Read from here, never re-derived, wherever a LUT is loaded or baked.
@@ -90,7 +87,7 @@ def check_encoding(name: str) -> None:
         raise ColorError(f"{name!r} is not a colour space in {BUILTIN_CONFIG}")
 
 
-def input_transform(source_encoding: str = DEFAULT_SOURCE_ENCODING) -> ocio.ColorSpaceTransform:
+def input_transform(source_encoding: str) -> ocio.ColorSpaceTransform:
     """The source encoding to linear ACEScg, in one leg. COLOR_AND_FORMAT section 1.
 
     **Only for a chain with no CLF in it**: an aux still, which is delivered ungraded by

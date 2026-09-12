@@ -173,8 +173,15 @@ class TestShotRow:
             skip_reason="blocked by QC-012",
             deliverables=[Deliverable("raw", "n.exr", Path("/d/n.exr"), 1, res="4k")],
             qc=[QCResult("QC-030", "warning", "row", "handles")],
+            source_encoding="S-Log3 S-Gamut3.Cine",
         )
         assert ShotRow.from_dict(row.to_dict()) == row
+
+    def test_a_row_saved_before_the_encoding_existed_reads_back_naming_none(self) -> None:
+        """Additive, so the schema version does not move (M4.6.1)."""
+        data = make_row().to_dict()
+        del data["source_encoding"]
+        assert ShotRow.from_dict(data).source_encoding is None
 
     def test_round_trip_of_an_unparsed_row(self) -> None:
         """A QC-010 row still appears so the editor can fix the name in place."""

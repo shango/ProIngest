@@ -218,9 +218,12 @@ def provenance(
     things that identify a grade are the CLF's hash and the source encoding it started
     from. An attribute is written or absent, never written empty: a reader that finds
     no `proingest/clf` knows the frame is ungraded, where an empty one would only mean
-    somebody lost the filename.
+    somebody lost the filename. The source encoding follows the same rule: a clip whose
+    metadata named none (QC-046) leaves the attribute out rather than claiming a guess.
     """
-    header: dict[str, Any] = {SOURCE_ENCODING_ATTRIBUTE: shot_color.source_encoding}
+    header: dict[str, Any] = {}
+    if shot_color.source_encoding is not None:
+        header[SOURCE_ENCODING_ATTRIBUTE] = shot_color.source_encoding
     if loaded_clf is not None:
         header[CLF_ATTRIBUTE] = loaded_clf.path.name
         header[CLF_HASH_ATTRIBUTE] = loaded_clf.digest

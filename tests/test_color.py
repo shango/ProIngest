@@ -18,6 +18,14 @@ import pytest
 
 from proingest.core import color, ffmpeg
 
+SOURCE = "ACEScct"
+"""The encoding these tests read their pixels as.
+
+Named here rather than taken from a constant of the module's: since M4.6.1 there is no
+default source encoding, because a clip's own metadata is what names one. ACEScct keeps
+the anchors below where they were.
+"""
+
 ACESCCT_MID_GREY = 0.413588
 """The ACEScct encoding of 0.18 scene linear. `(log2(0.18) + 9.72) / 17.52`."""
 
@@ -39,7 +47,7 @@ class TestConfig:
         assert color.config() is color.config()
 
     def test_it_carries_the_spaces_the_chain_names(self) -> None:
-        for name in (color.PLATE_SPACE, color.DEFAULT_SOURCE_ENCODING):
+        for name in (color.PLATE_SPACE, SOURCE):
             assert color.config().getColorSpace(name) is not None
 
     def test_it_carries_camera_vendor_logs(self) -> None:
@@ -57,19 +65,19 @@ class TestInputTransform:
 
     def test_it_lands_in_the_plate_space_rather_than_a_working_space(self) -> None:
         """One leg, source to ACEScg. The ACEScct the grade used to start at is gone."""
-        transform = color.input_transform()
-        assert transform.getSrc() == color.DEFAULT_SOURCE_ENCODING
+        transform = color.input_transform(SOURCE)
+        assert transform.getSrc() == SOURCE
         assert transform.getDst() == color.PLATE_SPACE
 
     def test_mid_grey_lands_on_scene_linear_018(self) -> None:
         pixels = grey_frame(ACESCCT_MID_GREY)
-        color.apply(pixels, color.processor(color.input_transform()))
+        color.apply(pixels, color.processor(color.input_transform(SOURCE)))
         assert pixels[0, 0] == pytest.approx([0.18, 0.18, 0.18], abs=1e-4)
 
     def test_a_highlight_stays_above_one(self) -> None:
         """The plate branch is unbounded. A clamp here is the failure resize.py exists for."""
         pixels = grey_frame(1.0)
-        color.apply(pixels, color.processor(color.input_transform()))
+        color.apply(pixels, color.processor(color.input_transform(SOURCE)))
         assert pixels[0, 0, 0] > 200.0
 
     def test_a_camera_log_lands_on_scene_linear_018_as_well(self) -> None:
@@ -86,7 +94,7 @@ class TestInputTransform:
     def test_it_is_not_its_own_inverse(self) -> None:
         """Applying it twice is the double conversion a graded plate must not get."""
         once, twice = grey_frame(ACESCCT_MID_GREY), grey_frame(ACESCCT_MID_GREY)
-        cpu = color.processor(color.input_transform())
+        cpu = color.processor(color.input_transform(SOURCE))
         color.apply(once, cpu)
         color.apply(twice, cpu)
         color.apply(twice, cpu)
@@ -102,7 +110,7 @@ class TestProcessor:
     def test_a_chain_is_one_group(self) -> None:
         """The ungraded view branch: the input leg and the output transform together."""
         chained = grey_frame(ACESCCT_MID_GREY)
-        color.apply(chained, color.processor(color.input_transform(), color.output_transform()))
+        color.apply(chained, color.processor(color.input_transform(SOURCE), color.output_transform()))
         assert chained[0, 0, 0] == pytest.approx(0.356, abs=0.01)
 
     def test_an_empty_chain_does_nothing(self) -> None:
@@ -114,24 +122,24 @@ class TestApply:
         """In place: a 4k float32 frame is 95 MB and a copy would be thrown away."""
         pixels = grey_frame(ACESCCT_MID_GREY)
         before = pixels.copy()
-        color.apply(pixels, color.processor(color.input_transform()))
+        color.apply(pixels, color.processor(color.input_transform(SOURCE)))
         assert not np.array_equal(pixels, before)
 
     def test_alpha_is_refused(self) -> None:
         pixels = np.zeros((1, 1, 4), dtype=np.float32)
         with pytest.raises(color.ColorError, match="RGB"):
-            color.apply(pixels, color.processor(color.input_transform()))
+            color.apply(pixels, color.processor(color.input_transform(SOURCE)))
 
     def test_half_float_is_refused(self) -> None:
         pixels = np.zeros((1, 1, 3), dtype=np.float16)
         with pytest.raises(color.ColorError, match="float32"):
-            color.apply(pixels, color.processor(color.input_transform()))  # type: ignore[arg-type]
+            color.apply(pixels, color.processor(color.input_transform(SOURCE)))  # type: ignore[arg-type]
 
     def test_a_non_contiguous_view_is_refused(self) -> None:
         """OCIO reads the buffer directly, so a strided view would transform the wrong bytes."""
         pixels = np.zeros((1, 4, 3), dtype=np.float32)[:, ::2]
         with pytest.raises(color.ColorError, match="contiguous"):
-            color.apply(pixels, color.processor(color.input_transform()))
+            color.apply(pixels, color.processor(color.input_transform(SOURCE)))
 
 
 class TestOutputTransform:
@@ -146,13 +154,13 @@ class TestOutputTransform:
     def test_white_comes_out_in_display_range(self) -> None:
         """222 in scene linear arrives at 1. This is the tone map QC-039 probes for."""
         pixels = grey_frame(1.0)
-        color.apply(pixels, color.processor(color.input_transform(), color.output_transform()))
+        color.apply(pixels, color.processor(color.input_transform(SOURCE), color.output_transform()))
         assert pixels[0, 0, 0] == pytest.approx(1.0, abs=0.05)
 
     def test_mid_grey_comes_out_where_aces_puts_it(self) -> None:
         """0.18 lands at 0.36, not at sRGB's 0.46: the ODT is a rendering, not a curve."""
         pixels = grey_frame(ACESCCT_MID_GREY)
-        color.apply(pixels, color.processor(color.input_transform(), color.output_transform()))
+        color.apply(pixels, color.processor(color.input_transform(SOURCE), color.output_transform()))
         assert pixels[0, 0, 0] == pytest.approx(0.356, abs=0.01)
 
 
@@ -161,7 +169,7 @@ class TestViewLut:
 
     def chain(self) -> tuple[ocio.Transform, ...]:
         """A view branch with no CLF in it: the input leg and the output transform."""
-        return (color.input_transform(), color.output_transform())
+        return (color.input_transform(SOURCE), color.output_transform())
 
     def test_it_writes_a_cube_of_the_stated_size(self, tmp_path: Path) -> None:
         cube = color.view_lut(tmp_path / "MELT0001_view.cube", *self.chain(), size=17)

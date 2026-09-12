@@ -100,6 +100,13 @@ class TestWrittenMetadata:
         with OpenEXR.File(str(path)) as handle:
             assert handle.header()[exr.SOURCE_ENCODING_ATTRIBUTE] == "ARRI LogC3 (EI800)"
 
+    def test_a_clip_that_named_no_encoding_leaves_the_attribute_out(self, tmp_path: Path) -> None:
+        """Absent rather than a guess. There is no default to write (M4.6.1, QC-046)."""
+        path = tmp_path / "frame.exr"
+        exr.write_frame(path, image())
+        with OpenEXR.File(str(path)) as handle:
+            assert exr.SOURCE_ENCODING_ATTRIBUTE not in handle.header()
+
     def test_an_ungraded_frame_carries_no_clf_attributes_at_all(self, tmp_path: Path) -> None:
         """Absent rather than empty: an empty name would read as a lost filename."""
         path = tmp_path / "frame.exr"
