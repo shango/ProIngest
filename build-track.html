@@ -277,7 +277,7 @@
   <header class="mast">
     <div class="eyebrow">
       <span>VFX turnover ingest &middot; macOS v01</span>
-      <span class="stamp">Updated <b>12 Sep 2026, 11:38 PDT</b></span>
+      <span class="stamp">Updated <b>12 Sep 2026, 16:20 PDT</b></span>
     </div>
     <h1>ProIngest Build Track</h1>
     <p class="standfirst">
@@ -297,7 +297,7 @@
       <div class="stat-l">Tests, Linux + macOS</div>
     </div>
     <div class="stat">
-      <div class="stat-n">21<span style="color:var(--faint);font-size:17px">/43</span></div>
+      <div class="stat-n">23<span style="color:var(--faint);font-size:17px">/44</span></div>
       <div class="stat-l">Questions open</div>
     </div>
     <div class="stat">
@@ -442,9 +442,7 @@
             final edit list plus one colour transform per shot. The tool applies those and never
             authors any colour, which is why the four on-screen colour controls and the three
             frame viewers that were planned that morning have both been removed.
-            <b>What changes:</b> shooters deliver one log format no matter what camera they
-            shot on, which removes an entire class of per-camera problems before it starts.
-            Every delivered file carries the approved look, plates included, and every plate
+            <b>What changes:</b> every delivered file carries the approved look, plates included, and every plate
             records exactly which version of the grade is in its pixels, so a frame can be
             traced back months later without the grading session. A shot whose colour has not
             arrived is not delivered ungraded; it is not delivered.
@@ -454,8 +452,9 @@
             the plates are delivered in. It ships no configuration files of its own, so there is
             nothing for an installer to place or a user to point at. <b>The question about which
             log format the shooters deliver in no longer holds anything up</b>: the format is one
-            name in one setting, checked when a run starts, so whichever answer comes back costs
-            a single word and no rebuilding.
+            name carried per shot, checked when a run starts, so whichever answer comes back costs
+            a single word and no rebuilding. That turned out to matter more than it looked, and
+            M4.6 is why.
             <b>Matching the grade to the shot is built, and it refuses to guess.</b> The
             session's edit list is now what the tool conforms from - it carries the approved in
             and out points as well as the colour - and each shot is paired with its own colour
@@ -493,9 +492,63 @@
             the only thing the chart is delivered for, while still looking exactly like a chart.
             They are converted to the delivered form like everything else and the look is never
             put on them.
-            <b>What is left is not code.</b> Pointing the tool at a grading session is a flag on
-            the command line today and becomes a setting in the interface, and the checks that
-            refuse to render a shot whose colour has not arrived switch on with it. Both are M5.
+            <b>What is left of M4.5 is not code.</b> Pointing the tool at a grading session is a
+            flag on the command line today and becomes a setting in the interface, and the checks
+            that refuse to render a shot whose colour has not arrived switch on with it. Both are
+            M5. <b>What is left of the colour work overall is M4.6</b>, added on 12 September when
+            the shooters' delivery format changed underneath it.
+          </div>
+        </div>
+      </div>
+
+      <div class="ms block">
+        <div class="ms-id">M4.6</div>
+        <div class="ms-body">
+          <div class="ms-head">
+            <span class="ms-name">Camera log mode</span>
+            <span class="pill">Waiting on two answers</span>
+          </div>
+          <p class="ms-goal">
+            Read each shot's log format from its own clip information rather than from one
+            setting, and refuse a shot whose format cannot be identified.
+          </p>
+          <div class="mods"><span>color.py</span><i>/</i><span>clf.py</span><i>/</i><span>scan.py</span><i>/</i><span>models.py</span></div>
+          <div class="gate">
+            <b>On 12 September the studio reversed the decision M4.5 was built on.</b> There will
+            most likely be no single house log format after all: each shooter uses whatever their
+            camera shoots, and <b>writes that format into the clip's own information</b> so the
+            tool can read it. Three cameras are expected today, Sony, Canon and Blackmagic, and
+            more may be added. The house format stays available as a <b>mode the tool can be
+            switched into</b>, and if it is ever used it will be Blackmagic's own wide format
+            rather than the one the earlier plan assumed.
+            <b>Most of this is already built, which is the one piece of luck here.</b> The colour
+            work has carried the source format <b>per shot</b> since its first chunk, so
+            everything downstream - the grade, both output branches, the lookup table, what each
+            delivered frame records about itself, every check - already takes the format as a
+            value rather than a constant. The house-format mode is simply the case where every
+            shot's value is the same. This is a switch, not a second pipeline.
+            <b>What it costs is a name to resolve, once per shot, and that is the whole risk.</b>
+            The clip says something a person typed into Resolve; the colour engine wants one of
+            its own names. All four formats in play were checked against the shipped engine on 12
+            September and all four are there, so the transforms exist. <b>The names are the
+            problem.</b> Two traps, and neither looks wrong on a monitor: a format name on its own
+            does not always identify one thing, since Sony's log alone matches four entries and
+            only naming the camera's colour range as well narrows it to one; and the engine
+            carries one variant where a camera offers several, so a Blackmagic on an older
+            generation or a Canon set to a different colour range has no entry at all. Both cases
+            <b>stop the shot</b> rather than picking the nearest, because a shot rendered through
+            a near miss looks entirely normal and every downstream artist inherits it.
+            <b>One question to one person may delete a third of this.</b> If the grading session
+            can export its colour files starting from the camera's own format rather than from the
+            common working format, the tool applies no conversion at all and the whole matching
+            table is never built - and the tool and Resolve then cannot disagree about what a
+            camera format is, because only one of them would be converting. That is worth asking
+            before any of the table is written. The second question is for whoever briefs the
+            shooters: <b>which field</b> they write it in, and <b>exactly what</b> they write.
+            <b>This does not hold up the interface.</b> M5 carries the mode control from the
+            start, because it is one drop-down and adding a mode to a finished settings page later
+            is worse than shipping one option that is not live yet. Until M4.6 lands, the camera
+            mode is a control that declines to run rather than one that renders the wrong picture.
           </div>
         </div>
       </div>
@@ -531,7 +584,8 @@
             becomes a remembered setting rather than a command line flag, and with it the checks
             that refuse to render a shot whose colour has not arrived. The report already has its
             column for which grade each shot was rendered through, so there is nothing to build
-            behind it.
+            behind it. <b>New on 12 September</b>: the settings page also carries the source
+            format mode, camera or house, even though only the house option works until M4.6.
             Two older decisions are still unlogged. <b>Frozen left columns</b> have no built-in QTreeView
             support and need the overlaid second-view trick. <b>Progress on the Dock icon</b> has
             no Qt 6 API, so it needs a small <code>NSDockTile</code> shim through PyObjC, isolated
@@ -617,6 +671,21 @@
         </thead>
         <tbody>
           <tr>
+            <td class="id">OQ-37</td>
+            <td><b style="color:var(--text)">Reopened 12 September, and the cheapest question on this board.</b> Can the grading session export its colour files starting from the camera's own format rather than from the common working format? If it can, the tool performs no conversion of its own, the whole per-camera matching table is never built, and the tool and Resolve cannot disagree about what a camera format is because only one of them would be converting. One question, to one person, before any of that table is written</td>
+            <td class="st"><span class="tag hot">Ask first</span></td>
+          </tr>
+          <tr>
+            <td class="id">OQ-44</td>
+            <td><b style="color:var(--text)">New 12 September.</b> Where in a clip's information the shooters write their camera's log format, and exactly what they write. Which field, and which carrier: the timeline file, the media file itself, or the grading session's edit list. The tool reads all three already, so this is about which one Resolve actually fills in. The string matters as much as the field: a log name on its own can match four entries, so the instruction has to ask for the camera's colour range too</td>
+            <td class="st"><span class="tag hot">Blocks M4.6</span></td>
+          </tr>
+          <tr>
+            <td class="id">OQ-34</td>
+            <td><b style="color:var(--text)">Reopened 12 September, one day after it was closed.</b> Resolve's format names and the colour engine's names do not match, and with camera formats back, the tool has to turn one into the other per shot. All four formats in play were checked against the shipped engine and all four exist, so the transforms are fine; the table that maps a typed name onto one of them is the risk, and it is exactly the kind of table that looks correct and is not. Only needed if OQ-37 comes back no</td>
+            <td class="st"><span class="tag open">Reopened</span></td>
+          </tr>
+          <tr>
             <td class="id">OQ-30</td>
             <td><b style="color:var(--text)">Built to its default.</b> Which field of an edit list entry identifies a shot, so a neighbouring shot's colour is never applied to the wrong one. The tool now trusts the clip name, falls back to the reel and the timecode together, and reports rather than guesses. One real edit list would confirm the session fills that field in</td>
             <td class="st"><span class="tag open">Built</span></td>
@@ -631,10 +700,10 @@
             <td>What pairs a colour file with its shot - built to the obvious default: the shot code in the filename, with two files claiming one shot refusing to run rather than choosing. The same one real export still confirms it</td>
             <td class="st"><span class="tag open">Built</span></td>
           </tr>
-          <tr>
+          <tr class="resolved">
             <td class="id">OQ-39</td>
-            <td>Which log format the shooters deliver in. It decides whether the tool does any input conversion at all, and it no longer holds the work up: the format is one name in one setting</td>
-            <td class="st"><span class="tag open">Unblocked</span></td>
+            <td>Which log format the house standard is, if one is ever used - answered 12 September as Blackmagic's own wide format, and demoted in the same breath: the shooters deliver their camera's own format instead, so this now describes a mode the tool can be switched into rather than what arrives. It is not the format the earlier plan assumed, so the tool performs a real conversion in both modes now</td>
+            <td class="st"><span class="tag ok">Answered</span></td>
           </tr>
           <tr>
             <td class="id">OQ-42</td>
@@ -811,6 +880,32 @@
 
   <section>
     <h2>Corrections made to the spec</h2>
+      <div class="note">
+        <h3>The most valuable line in the specification was withdrawn a day after it was written</h3>
+        <p>
+          On 11 September the studio settled that every shooter would deliver in one house log
+          format, whatever camera they shot on. The progress record called it <b>the single most
+          valuable line in the whole specification</b>, and said that any future session which
+          found itself building a table of per-camera formats had taken a wrong turn. It bought
+          one conversion, forever, and it retired a class of problems that are invisible when they
+          go wrong.
+        </p>
+        <p>
+          <b>On 12 September the studio withdrew it.</b> Each camera's own format will be used and
+          the shooters will record it per clip. That is a legitimate call, and it is less work for
+          three shooters and more for one tool - but it is worth being clear that the table is now
+          expected rather than a wrong turn, and that the bill the earlier line avoided has
+          arrived in full. The line is kept in the record rather than deleted, because the
+          reasoning behind it was sound and only its premise moved.
+        </p>
+        <p>
+          <b>There is still a way to avoid the table without giving up the workflow</b>, and it is
+          one question to the colourist rather than any code: if the grading session exports its
+          colour files starting from the camera's own format, the tool never converts and never
+          needs to tell one camera's name from another's. That question is now the cheapest thing
+          on the list and it should be asked before the table is built.
+        </p>
+      </div>
       <div class="note">
         <h3>The test machine and the shipping machine disagreed, and the runner won</h3>
         <p>
@@ -993,6 +1088,13 @@
           information actually is. The correction cost an hour of writing because nothing had been
           built; it would have been a fortnight later.
         </p>
+        <p>
+          <b>Reversed again on 12 September, and the first reading turns out to have been the right
+          one.</b> The shooters will use their camera's own format after all and record it per
+          clip. Everything described above as deleted is now expected, and it is M4.6. The episode
+          is left here in full because it is a fair record of how much a one-line change to what
+          arrives can move, and because nothing was built in either direction before it settled.
+        </p>
       </div>
       <div class="note">
         <h3>The code now runs on the machine it is for</h3>
@@ -1085,6 +1187,14 @@
           camera-specific step happens at their end, where the camera information actually
           exists. <b>Three problems disappear rather than being solved</b>, and the tool has one
           input format forever, whatever anyone buys next year.
+        </p>
+        <p>
+          <b>The question came back on 12 September.</b> There will most likely be no template
+          project: each shooter uses their camera's own format and writes which one into the clip.
+          The three problems are back, and the tool has to answer them rather than avoid them.
+          What is not back is the worst of them - a camera whose sensitivity changes the format is
+          now something the tool <b>refuses</b> rather than guesses at, which trades a silent wrong
+          picture for a stopped shot and somebody making a decision.
         </p>
       </div>
       <div class="note">
@@ -1350,7 +1460,7 @@
   <footer>
     <b>Source of truth</b> &middot; PROGRESS.md, docs/OPEN_QUESTIONS.md, PRD.md section 9<br>
     <b>Verify</b> &middot; pytest &middot; ruff check . &amp;&amp; mypy proingest &middot; python -m proingest scan &lt;folder&gt;<br>
-    <b>Last updated</b> &middot; 12 September 2026, 11:16 PDT. <b>The colour pipeline is complete.</b> Plates are now written with the approved look in them and a header recording exactly which version of the grade that was, reference videos are encoded through it in one pass, and the reference stills are deliberately left ungraded because a graded colour chart is worse than useless. The oldest known defect, reference videos built with no colour transform at all, is closed. 873 tests green on both machines, including one the Apple Silicon runner caught and the development machine could not: the new picture step changed how far the sound was allowed to run ahead of it, which is now stated outright rather than left to the video tool. <b>Next: the interface</b>, which is also where pointing at a grading session stops being a command line flag
+    <b>Last updated</b> &middot; 12 September 2026, 16:20 PDT. <b>The source format changed underneath the finished colour work.</b> There will most likely be no single house log format: each shooter uses their camera's own and writes it into the clip, with the house format kept as a mode the tool can be switched into. That is <b>M4.6</b>, and most of it is already built, because the colour work has carried the format per shot since its first chunk. What it adds is a name to resolve once per shot, which is the whole risk: all four formats in play exist in the shipped colour engine, but a name typed by a person can match four entries or none, and both cases now stop the shot rather than rendering a picture that looks entirely normal and is wrong. <b>One question to the colourist may delete a third of it</b>, and it should be asked before any of it is written. 873 tests green on both machines; no code changed today. <b>Next: the interface</b>, which is not blocked by any of this and carries the new mode control from the start
   </footer>
 
 </div>
