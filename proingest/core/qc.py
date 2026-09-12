@@ -28,7 +28,7 @@ from typing import Any
 
 import xxhash
 
-from proingest.core import exr, ffmpeg, media, naming
+from proingest.core import camdata, exr, ffmpeg, media, naming
 from proingest.core.models import (
     Batch,
     Deliverable,
@@ -659,7 +659,9 @@ def apply_batch_rules(batch: Batch, settings: RuleSettings = DEFAULT_SETTINGS) -
 
 # --- pre-flight: the rules that have to look at the disk ---------------------------
 
-OWNED_PREFLIGHT_RULES = frozenset({"QC-022", "QC-052", "QC-054", "QC-057", "QC-062", "QC-063"})
+OWNED_PREFLIGHT_RULES = frozenset(
+    {"QC-022", "QC-052", "QC-053", "QC-054", "QC-057", "QC-062", "QC-063"}
+)
 """Rule IDs `preflight` produces, cleared before a re-run.
 
 QC-022 is here rather than with the model rules only because the decoder set comes
@@ -681,6 +683,30 @@ def check_hdri_header(row: ShotRow) -> list[QCResult]:
     except (exr.ExrError, OSError) as error:
         return [QCResult("QC-052", "warning", "row", f"{path.name} failed to open as an EXR: {error}")]
     return []
+
+
+def check_camdata(row: ShotRow) -> list[QCResult]:
+    """QC-053: the camData file was read, and how many pairs came out of it.
+
+    An info result rather than a check: OQ-11 has never said what a camData file must
+    contain, so there is nothing to fail against. The count is the useful part, because
+    a file that yields zero pairs is a file whose format has changed, and that shows up
+    here rather than as an empty sheet nobody notices.
+
+    A file that will not open is a warning under the same ID. Nothing here raises: a
+    side file is not worth stopping a batch for.
+    """
+    path = row.side_files.camdata
+    if path is None:
+        return []
+    shot = row.shot_code or row.clip_name
+    try:
+        pairs = camdata.parse(path)
+    except (OSError, UnicodeDecodeError) as exc:
+        return [QCResult("QC-053", "warning", "row", f"{shot}: camData unreadable ({exc})")]
+    return [
+        QCResult("QC-053", "info", "row", f"{shot}: camData parsed, {len(pairs)} key/value pairs")
+    ]
 
 
 def find_lens_grid_folder(folder: Path) -> Path | None:
@@ -831,6 +857,7 @@ def preflight(batch: Batch, decoders: frozenset[str] | None = None) -> None:
         row.qc = [result for result in row.qc if result.rule_id not in OWNED_PREFLIGHT_RULES]
         row.qc.extend(check_source_codec(row, decoders))
         row.qc.extend(check_hdri_header(row))
+        row.qc.extend(check_camdata(row))
 
 
 
@@ -1258,6 +1285,70 @@ def _verify_copy(job: DeliverableJob, deliverable: Deliverable) -> list[QCResult
 
 
 # --- QC-150 and QC-151: the row and the batch -------------------------------------
+
+DELIVERABLE_RULES: tuple[str, ...] = (
+    "QC-100",
+    "QC-101",
+    "QC-102",
+    "QC-103",
+    "QC-104",
+    "QC-105",
+    "QC-106",
+    "QC-107",
+    "QC-110",
+    "QC-111",
+    "QC-112",
+    "QC-113",
+    "QC-114",
+    "QC-115",
+    "QC-120",
+    "QC-121",
+    "QC-130",
+)
+"""Every deliverable-scoped phase B rule, in the order the QC log columns them.
+
+The QC log's Deliverables sheet is one column per rule, so the list has to exist
+somewhere whole rather than being inferred from whichever rules happened to fire: a
+rule that fired nowhere still owes a column of PASS. It lives here because rule IDs
+are this module's to know, and `tests/test_qc.py` checks it against the IDs the module
+actually raises so a new rule cannot be added without a column appearing.
+
+QC-140 and QC-141 are retired and QC-150 and QC-151 are row and batch scoped, so none
+of them belongs here.
+"""
+
+DELIVERABLE_RULES_BY_KIND: dict[str, tuple[str, ...]] = {
+    "raw_dir": ("QC-101", "QC-102", "QC-103", "QC-104", "QC-105", "QC-106", "QC-107"),
+    "aux_still": ("QC-103", "QC-104", "QC-105", "QC-106"),
+    "ref_mp4": ("QC-110", "QC-111", "QC-112", "QC-113", "QC-114", "QC-115"),
+    "audio": ("QC-120", "QC-121"),
+    "hdri": ("QC-130",),
+    "camdata": ("QC-130",),
+    "bts": ("QC-130",),
+}
+"""Which rules each kind of deliverable owes, from the scope column of QC_RULES.md.
+
+This is what makes NA mean something in the log: an mp4 has no opinion about EXR
+compression, so QC-105 against a reference reads NA rather than a PASS it never
+earned. QC-100 is not here because every kind owes it.
+"""
+
+
+def deliverable_rule_state(deliverable: Deliverable, rule_id: str) -> str:
+    """PASS, FAIL or NA for one rule against one deliverable, for the QC log.
+
+    A deliverable that never rendered fails QC-100 and is NA for everything else,
+    because there is no file any other rule could have looked at.
+    """
+    failed = {result.rule_id for result in deliverable.qc}
+    if rule_id in failed:
+        return "FAIL"
+    if deliverable.status == "failed":
+        return "FAIL" if rule_id == RENDER_FAILED else "NA"
+    if rule_id == RENDER_FAILED:
+        return "PASS"
+    return "PASS" if rule_id in DELIVERABLE_RULES_BY_KIND.get(deliverable.kind, ()) else "NA"
+
 
 OWNED_PHASE_B_ROW_RULES = frozenset({"QC-150"})
 OWNED_PHASE_B_BATCH_RULES = frozenset({"QC-151"})

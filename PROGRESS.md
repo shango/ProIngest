@@ -8,10 +8,15 @@ commit.
 
 ## 1. Resume here
 
-**State at 2026-09-11, late. M1, M2, M3 complete; M4.1 and M4.2 done; M4.5.1 done. The colour
-workflow was replaced twice today, once this morning and again this afternoon, and the first
-chunk of the new one is now built.**
-736 tests passing, `ruff` and `mypy --strict` clean. **Nothing is blocked.**
+**State at 2026-09-11, late. M1, M2, M3 and M4 complete; M4.5.1 done.** The colour workflow was
+replaced twice today, the first chunk of the new one is built, the studio's real shot tracker
+arrived, and M4.3 was built against it the same evening.
+785 tests passing, `ruff` and `mypy --strict` clean. **Nothing is blocked.**
+
+**M4 is done.** `core/exports.py` writes both spreadsheets, `proingest qc <batch>` writes them
+headless, and QC-053 parses camData through the new `core/camdata.py`. Proved end to end on a two
+shot turnover: 14 deliverables, five sheets, and a tracker of two rows filling nine columns and
+touching none of the other thirty.
 
 M4.5.1 put OpenColorIO in and rebuilt `core/color.py` as the two ends of the chain: the input
 transform from the studio standard log to ACEScct, the plate transform from ACEScct to linear
@@ -111,7 +116,7 @@ so and says it is not a precedent.
   what dropping M6 gives up, and it is recorded in PRD FR-9 so it reads as a decision rather
   than an oversight.
 
-### The studio tracker arrived, and it reshapes M4.3
+### The studio tracker arrived, and M4.3 was built against it
 
 **On 2026-09-11 the user supplied the real shot tracker**, `docs/Pre Pro Shot Tracker - W1.csv`:
 790 rows across 55 turnovers of a live production. **OQ-2 is answered** and the full column
@@ -136,7 +141,23 @@ parse under the existing output grammar**, to the right kind, and the misses are
 predate the convention rather than disagreements with it. The shot code is four letters and four
 digits, which is what `naming.py` already reads, whatever the column header's `ABCD123` says.
 
-### Next task after that: M4.5.2, and it is the one that wants a real export
+**M4.3 was then built against it the same evening**, which is the whole of what M4 had left.
+Three things in it are worth not re-deriving:
+
+- **`core/exports.py` reads no template file.** The tracker's columns were to be loaded from a
+  studio template configured in Settings, which was the right shape while OQ-2 was open and
+  nobody knew them. They are known now, and a template loader would be a configuration point
+  standing where a fact belongs. PRD section 7's Exports settings group loses its only entry.
+- **`qc.DELIVERABLE_RULES` and `DELIVERABLE_RULES_BY_KIND` exist so NA means something.** The
+  Deliverables sheet is one column per QC-1xx rule, so the list has to exist whole rather than
+  being inferred from whichever rules fired, and the per kind map is what stops an mp4 reading
+  PASS on a rule about EXR compression it was never asked. Two tests read `qc.py`'s own source
+  back, so a new rule cannot be added without a column appearing.
+- **QC-053 went into `preflight`, not into the model rules**, and the existing tests are what
+  caught it: it opens a file, exactly like QC-052 next to it. The first placement made the
+  fixture row, the one documented as passing every default rule, emit a warning.
+
+### Next task: M4.5.2, and it is the one that wants a real export
 
 M4.5.1 is done. M4.5.2 is `core/clf.py`: the colour session's final EDL read for the conform,
 the approved In/Out and the CDL, and a CLF matched per row, loaded and hashed.
@@ -149,9 +170,11 @@ export from Ben's session answers both. Building against the recorded defaults i
 the defaults are good ones; what is not possible is checking them, so build the matching so the
 field it trusts is one named constant and QC-009 is what fires when nothing matches.
 
-M4.3 is the alternative and neither blocks the other. **M4.5 still goes first**, for the reason
-it was chosen this morning: the QC log and the tracker want the colour columns, so doing colour
-first means the exports get written once instead of twice.
+**M4.3 is done, and the reason it was to be deferred turned out not to apply.** The plan had been
+colour first, so the QC log and the tracker would get the colour columns written once instead of
+twice. The real tracker settled that: it has **no colour column at all**, so nothing in the
+tracker export is waiting on M4.5. The QC log will want a CLF column per row when there is a CLF
+to name, which is one column appended to one sheet.
 
 One thing M4.5.1 settled that M4.5.2 must not undo: **the CLF ends in linear ACEScg itself**, so
 the plate branch adds nothing after it. `color.plate_transform()` exists for a chain with no CLF
@@ -159,7 +182,13 @@ in it. Applying both converts twice, and that is a plausible looking wrong image
 error. COLOR_AND_FORMAT section 1 now says so under the chain diagram, which used to read as
 though the tool always performed that step.
 
-**Two questions are open and the user has both of them:**
+**Three questions are open and the user has all of them:**
+
+- **OQ-19, whether QC-026 should still be an error.** Reopened by the tracker's FPS column and
+  the only one that touches shipped behaviour: 29 of 262 rows on current turnovers are not 24,
+  so as it stands the rule blocks about one row in nine. **What settles it is one sentence from
+  the editor**: is that column the timeline rate, or the rate the camera shot at? Only the first
+  makes QC-026 fire.
 
 - **OQ-30 and OQ-33, how an EDL event and a CLF each find their row.** The EDL is now the
   conform, so getting its event matching wrong misplaces the approved In/Out; pairing the wrong
@@ -298,11 +327,13 @@ PDF viewer.
 | `core/scan.py` | turnover folder -> Turnover + ShotRows | 388 |
 | `core/planner.py` | type table, deliverable jobs, version resolution | 440 |
 | `core/batchfile.py` | `.pibatch` save/load, backup, filesystem reconciliation | 86 |
+| `core/camdata.py` | key/value pairs out of a camData `.txt` or `.rtf`, RTF stripped pragmatically | 62 |
+| `core/exports.py` | the QC log's five sheets and the studio tracker's rows to paste | 371 |
 | `core/render.py` | executing a job and a batch of them: atomic writes, pool, progress, cancel | 565 |
 | `core/qc.py` | rule registry: phase A, `RuleSettings`, `preflight`, phase B | 1325 |
-| `__main__.py` | `proingest scan` and `proingest run` CLI, `--rules` overrides | 322 |
+| `__main__.py` | `proingest scan`, `run` and `qc` CLI, `--rules` overrides | 382 |
 
-Not built yet: `core/clf.py`, `core/exports.py`, `core/settings.py`, and
+Not built yet: `core/clf.py`, `core/settings.py`, and
 everything under `proingest/ui/`. **`core/stringout.py` will not be built**: M6 is dropped
 (PRD FR-9). `naming.stringout_mp4` and `naming.normalize_shooter` are therefore reachable
 from tests only; they are kept deliberately, because the stringout name is now something a
@@ -341,7 +372,7 @@ Entry points worth knowing:
 | M1 | Core: parse, resolve, probe, model, batch file, scan CLI | complete, 348 tests |
 | M2 | Naming and planning: type table, versioning, layout | complete, 66 tests |
 | M3 | Render | complete, 172 tests |
-| M4 | QC: all rules both phases, xlsx exports, `qc` CLI | M4.1 and M4.2 done, M4.3 pending |
+| M4 | QC: all rules both phases, xlsx exports, `qc` CLI | complete, 175 tests |
 | M4.5 | Colour pipeline, core only. Studio log in, CLF applied, ACEScg out, the viewing LUT | respecified 2026-09-11, M4.5.1 done |
 | M5 | UI: the list, the FR-14 metadata pane, settings, log. **No viewers** | not started |
 | M6 | ~~Stringout with burn-ins~~ | **dropped 2026-09-11**, the colour session exports it |
@@ -354,7 +385,7 @@ M4 detail. The milestone had no chunk table until M4.1; this is it:
 |---|---|---|
 | M4.1 | phase A registry, `RuleSettings`, `preflight`, `--rules` | done, 91 tests |
 | M4.2 | phase B verification, QC-1xx, wired into `render_job` | done, 47 tests |
-| M4.3 | `core/exports.py`, the xlsx sheets, `proingest qc <batch>`, QC-053 | pending, and **respecified 2026-09-11** by the real tracker: OQ-2 answered, the tracker sheet is additive rows in the studio's own 39 column order |
+| M4.3 | `core/exports.py`, the xlsx sheets, `proingest qc <batch>`, QC-053 | done, 37 tests |
 
 M4.5 detail, respecified 2026-09-11, M4.5.1 built the same evening. It is **smaller than that
 morning's version**: the AD notes model is gone entirely, the viewers and their frame fetch went
@@ -384,9 +415,9 @@ M3 detail:
 The stringout moved off this table: it is M6 and always was. The M3.5 row said "ref
 mp4 and stringout" and that was a mistake in the row, not a change of plan.
 
-Tests by file: qc 156, naming 115, render 66, planner 55, frames 55, media 46,
-ffmpeg 40, models 37, timeline 33, exr 29, scan 25, color 24, cli 21, batchfile 18,
-resize 16.
+Tests by file: qc 164, naming 115, render 66, planner 55, frames 55, media 46,
+ffmpeg 40, models 37, timeline 33, exr 29, cli 26, scan 25, color 24, exports 24,
+batchfile 18, resize 16, camdata 12.
 
 ---
 

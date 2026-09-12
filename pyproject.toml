@@ -46,7 +46,7 @@ strict = true
 warn_unreachable = true
 
 [[tool.mypy.overrides]]
-module = ["opentimelineio.*", "OpenEXR.*", "xxhash.*", "PyOpenColorIO.*"]
+module = ["opentimelineio.*", "OpenEXR.*", "xxhash.*", "PyOpenColorIO.*", "openpyxl.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

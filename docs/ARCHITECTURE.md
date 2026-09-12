@@ -21,6 +21,7 @@ proingest/
     render.py            # job execution, process pool, atomic writes, cancellation
     qc.py                # rule registry, phase A and B checks
     exports.py           # openpyxl writers for tracker and QC log
+    camdata.py           # key/value pairs out of a camData .txt or .rtf (QC-053)
     settings.py          # defaults, load/save, validation, platform paths (PACKAGING.md)
     batchfile.py         # .pibatch load/save, backup, migration
   ui/
@@ -34,7 +35,7 @@ proingest/
     theme.qss
     workers.py           # QThread bridge to core.render, signal plumbing
     platform_mac.py      # the only macOS-specific UI code: Dock tile progress via PyObjC
-  resources/             # icons, font, default tracker template
+  resources/             # icons, font
 tests/
   fixtures/media.py      # generates synthetic exr/mov/wav with ffmpeg
   test_naming.py test_frames.py test_timeline.py test_planner.py test_qc.py test_render.py

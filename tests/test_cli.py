@@ -199,6 +199,71 @@ class TestRunCommand:
         assert "delivery root" in capsys.readouterr().err
 
 
+class TestQcCommand:
+    """`proingest qc` is M4.3 headless: reopen a batch, re-run the rules, write both sheets."""
+
+    def rendered(self, tmp_path: Path) -> tuple[Path, Path]:
+        """A batch that has actually been through a run, so there is something to report."""
+        folder = tmp_path / FOLDER
+        fixtures.make_turnover(folder, shots=1, frames=4, side_files=True)
+        rules = fixtures.write_rules_file(tmp_path / "rules.json")
+        batch_path = tmp_path / "batch.pibatch"
+        delivery = tmp_path / "delivery"
+        main(["scan", str(folder), "--rules", str(rules), "--save", str(batch_path)])
+        main(["run", str(batch_path), "--delivery-root", str(delivery), "--jobs", "2"])
+        return batch_path, delivery
+
+    def test_both_sheets_land_in_the_show_s_reports_folder(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        batch_path, delivery = self.rendered(tmp_path)
+        capsys.readouterr()
+
+        main(["qc", str(batch_path)])
+        reports = delivery / "MELT" / "_reports"
+
+        assert len(list(reports.glob("qc_ingest_log_*.xlsx"))) == 1
+        assert len(list(reports.glob("shot_tracker_*.xlsx"))) == 1
+
+    def test_it_prints_where_they_went_and_what_they_say(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        batch_path, _ = self.rendered(tmp_path)
+        capsys.readouterr()
+
+        main(["qc", str(batch_path)])
+        out = capsys.readouterr().out
+        assert "qc_ingest_log_" in out
+        assert "shot_tracker_" in out
+        assert "1 rows" in out
+
+    def test_out_overrides_the_reports_folder(self, tmp_path: Path) -> None:
+        batch_path, _ = self.rendered(tmp_path)
+        elsewhere = tmp_path / "somewhere"
+
+        main(["qc", str(batch_path), "--out", str(elsewhere)])
+
+        assert len(list(elsewhere.glob("*.xlsx"))) == 2
+
+    def test_a_missing_batch_exits_two(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        assert main(["qc", str(tmp_path / "nope.pibatch")]) == 2
+        assert "error:" in capsys.readouterr().err
+
+    def test_a_batch_with_no_delivery_root_says_what_to_pass(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        folder = tmp_path / FOLDER
+        fixtures.make_turnover(folder, shots=1, frames=4)
+        batch_path = tmp_path / "batch.pibatch"
+        main(["scan", str(folder), "--save", str(batch_path)])
+        capsys.readouterr()
+
+        assert main(["qc", str(batch_path)]) == 2
+        assert "--delivery-root" in capsys.readouterr().err
+
+
 class TestProgressPrinter:
     """Several workers interleave, so per-frame lines have to stay off a log."""
 

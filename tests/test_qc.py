@@ -8,6 +8,7 @@ rule is a pure function of the model, so it re-runs after every edit.
 
 from __future__ import annotations
 
+import re
 import shutil
 from dataclasses import replace
 from pathlib import Path
@@ -563,6 +564,55 @@ class TestHdriHeader:
 
     def test_a_row_with_no_hdri_is_qc_050s_business(self) -> None:
         assert qc.check_hdri_header(row(side_files=SideFiles())) == []
+
+
+class TestCamdata:
+    def test_a_readable_file_reports_its_pair_count(self, tmp_path: Path) -> None:
+        path = tmp_path / "MELT0001_pl01_camData.txt"
+        path.write_text("Camera: ARRI Alexa 35\nLens: 32mm\n")
+        results = qc.check_camdata(row(side_files=SideFiles(camdata=path)))
+        assert ids(results) == ["QC-053"]
+        assert results[0].severity == "info"
+        assert "2 key/value pairs" in results[0].message
+
+    def test_a_file_whose_format_changed_reports_zero_rather_than_nothing(
+        self, tmp_path: Path
+    ) -> None:
+        """The whole point of the count: an empty sheet is otherwise invisible."""
+        path = tmp_path / "MELT0001_pl01_camData.txt"
+        path.write_text("free prose with no pairs in it\n")
+        assert "0 key/value pairs" in qc.check_camdata(row(side_files=SideFiles(camdata=path)))[0].message
+
+    def test_an_unreadable_file_is_a_warning_under_the_same_id(self, tmp_path: Path) -> None:
+        missing = tmp_path / "gone.txt"
+        results = qc.check_camdata(row(side_files=SideFiles(camdata=missing)))
+        assert ids(results) == ["QC-053"]
+        assert results[0].severity == "warning"
+
+    def test_a_row_with_no_camdata_is_qc_051s_business(self) -> None:
+        assert qc.check_camdata(row(side_files=SideFiles())) == []
+
+
+class TestDeliverableRuleTable:
+    """The QC log columns one sheet per rule, so the list has to be complete."""
+
+    def test_every_deliverable_rule_the_module_raises_has_a_column(self) -> None:
+        source = Path(qc.__file__).read_text()
+        raised = set(re.findall(r'"(QC-1\d\d)"', source))
+        not_deliverable = {"QC-150", "QC-151"}
+        assert raised - not_deliverable <= set(qc.DELIVERABLE_RULES)
+
+    def test_the_table_names_no_rule_that_does_not_exist(self) -> None:
+        source = Path(qc.__file__).read_text()
+        for rule_id in qc.DELIVERABLE_RULES:
+            assert f'"{rule_id}"' in source, f"{rule_id} has a column but is never raised"
+
+    def test_every_kind_the_renderer_writes_owes_some_rule(self) -> None:
+        assert set(qc.DELIVERABLE_RULES_BY_KIND) >= qc.COPY_KINDS | {"raw_dir", "ref_mp4", "audio"}
+
+    def test_no_kind_claims_a_rule_that_is_not_in_the_table(self) -> None:
+        for owed in qc.DELIVERABLE_RULES_BY_KIND.values():
+            assert set(owed) <= set(qc.DELIVERABLE_RULES)
 
 
 class TestDestinationWritable:

@@ -57,7 +57,7 @@ Per shot, into a delivery root the user chooses (default proposed layout in `doc
 - 4k and HD H.264 reference mp4s, sRGB display, the same CLF plus the ACES output transform
 - Audio wav for plate clips (as delivered, 16 bit PCM)
 - Copied and renamed HDRI, BTS, reference stills where present. **Not the lens grid**: it arrives as a folder in the turnover and the editor moves and renames it by hand in v01 (OQ-20)
-- `shot_tracker.xlsx` for paste into the studio tracker (columns supplied by studio, OQ-2)
+- `shot_tracker.xlsx` for paste into the studio tracker (the studio's own 39 columns, OQ-2)
 - `qc_ingest_log.xlsx` with one row per deliverable, rule results, and turnover-vs-final In/Out diff
 
 ## 6. User flow
@@ -121,14 +121,14 @@ FR-9 Stringout: **dropped from v01, 2026-09-11.**
 - **What this gives up, recorded so it is a decision and not an oversight**: the tool's stringout would have been the only one cut to the **edited** In/Out. The session's QT and the shooters' offline are both cut to the turnover as delivered. If it turns out the vendor needs a stringout that reflects the review session, this comes back, and it comes back as a milestone rather than a patch.
 
 FR-10 Exports
-- `shot_tracker.xlsx` via openpyxl. Column layout loaded from a template file in Settings so the studio can change it without a code change.
+- `shot_tracker.xlsx` via openpyxl, **rows to paste into the studio's own tracker**: its 39 columns in its own order, nine of them written and the other thirty left empty because the vendor's team owns them (OQ-2, answered 2026-09-11 from the real sheet). The column layout was to be loaded from a template file in Settings, which was right while nobody knew the columns and is a configuration point standing where a fact belongs now that they are known.
 - `qc_ingest_log.xlsx` with sheets: Summary, Shots (**three In/Out columns: as the shooters delivered it, as Ben approved it, as it rendered**, plus duration, shot code changes, skip reasons), Deliverables (one row each with path, version, size, checksum, every QC rule result), Side Files, Camera Data (parsed key/values from camData files).
 
 FR-11 Batch file
 - `.pibatch` JSON, schema versioned. Contains everything needed to reopen: turnovers, rows, snapshots, edits, probe cache, delivery root, render status, settings overrides. Autosave on every edit (debounced 500 ms). Backup copy kept on open.
 
 FR-12 Settings page
-Sections: General (delivery root default, path map, concurrency, GPU), Rules (min/max duration frames, expected handle frames, allowed fps, expected resolutions), **Colour (colour session package location, studio standard source encoding, ACES config version, output transform)**, Naming (show prefix regex, type table overrides), Output (mp4 quality, EXR compression level), Exports (tracker template path), Advanced (ffmpeg path override, OCIO config override, log level).
+Sections: General (delivery root default, path map, concurrency, GPU), Rules (min/max duration frames, expected handle frames, allowed fps, expected resolutions), **Colour (colour session package location, studio standard source encoding, ACES config version, output transform)**, Naming (show prefix regex, type table overrides), Output (mp4 quality, EXR compression level), Advanced (ffmpeg path override, OCIO config override, log level).
 
 FR-13 Logging
 - Rotating log file in the app data folder. Every ffmpeg command line logged. In-app log panel with filter by row.

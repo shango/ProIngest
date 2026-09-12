@@ -103,7 +103,7 @@ the sheet does not go looking for the rule behind one of them.
       turnover001_02_23_2026_danielluckett_v01.mp4
       <camera>_<lens>_lensgrid_40mm_v01.png   (v01: put here by hand, OQ-20)
     _reports/
-      shot_tracker_<batchname>_<date>.xlsx
+      shot_tracker_<batchname>_<date>.xlsx      (<date> is YYYYMMDD, so name order is date order)
       qc_ingest_log_<batchname>_<date>.xlsx
 ```
 

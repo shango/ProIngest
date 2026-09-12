@@ -66,7 +66,7 @@ a spreadsheet column from an older run still resolves to what it meant when it w
 | QC-050 | warning | row | Plate (pl) has no HDRI side file |
 | QC-051 | warning | row | Plate (pl) has no camData side file |
 | QC-052 | warning | row | HDRI file fails OpenEXR header read |
-| QC-053 | info | row | camData parsed; N key/value pairs found |
+| QC-053 | info | row | camData parsed; N key/value pairs found. **Raised by `preflight`, not by the model rules**, because it opens the file: the same reason QC-052 lives there. A file that will not open is a warning under this same ID. The count is the check: a file yielding zero pairs is a file whose format has changed, and that is otherwise invisible as an empty sheet. OQ-11 |
 | QC-054 | warning | turnover | No lens grid folder in turnover. The studio's sheet marks it Required, so this chases the shooter. It is a folder in the package, never a clip on the timeline (OQ-20) |
 | QC-057 | info | turnover | Lens grid folder present. In v01 the tool does not deliver it: the editor moves it to `_turnovers/` and renames it per NAMING_SPEC section 3. Raised so a manual step is not a forgotten one (OQ-20) |
 | QC-055 | warning | row | Aux still (colorChart, mirrorBall, greyBall, sizeRef) has more than one frame; first frame will be used |
@@ -137,7 +137,7 @@ with every column it does not own left empty so a paste cannot overwrite anythin
 | 7 | `PLATES` | `4K ✓` and `HD ✓` on two lines, one mark per raw sequence delivered, `—` for one that was not |
 | 8 | `FPS` | the row's rate. **Not always 24** - see the note below |
 | 9 | `Shot Audio?` | `✓` when the row delivered audio, blank otherwise |
-| 34 | `Turnover Stringout (Edit)` | the turnover's stringout filename, the same value on every row of the turnover |
+| 34 | `Turnover Stringout (Edit)` | **left empty, on purpose.** The tool no longer writes that file (PRD FR-9) and the grammar it would rebuild the name from matches none of the 55 real ones (OQ-41). A blank cell is the honest answer, and it is one line to fill in once OQ-41 is settled |
 
 Column 0 is a checkbox the sheet owns (`FALSE`), and column 1 `Shot#` is a production number with
 duplicates in it, so neither is derivable. `Effect Category`, `Audio` (a spoken/effects annotation),

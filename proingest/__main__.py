@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from proingest import __version__
-from proingest.core import batchfile, planner, qc, render, scan
+from proingest.core import batchfile, exports, planner, qc, render, scan
 from proingest.core.models import Batch, Deliverable, ShotRow, Turnover
 
 COLUMNS = ("STATUS", "SHOT", "ELEM", "SOURCE", "RES", "FPS", "IN", "OUT", "DUR", "MAX", "AUDIO")
@@ -51,6 +51,13 @@ def main(argv: list[str] | None = None) -> int:
         "--dry-run", action="store_true", help="print the plan and write nothing"
     )
 
+    qc_parser = subparsers.add_parser("qc", help="write the QC log and shot tracker for a batch")
+    qc_parser.add_argument("batch", type=Path, help="a .pibatch file")
+    qc_parser.add_argument("--delivery-root", type=Path, help="overrides the batch's own root")
+    qc_parser.add_argument(
+        "--out", type=Path, help="write both files here instead of the show's _reports folder"
+    )
+
     args = parser.parse_args(argv)
     logging.basicConfig(
         level=logging.INFO if args.verbose else logging.WARNING,
@@ -62,6 +69,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "run":
         return _run(args.batch, args.delivery_root, args.jobs, args.dry_run)
+
+    if args.command == "qc":
+        return _qc(args.batch, args.delivery_root, args.out)
 
     parser.print_help()
     return 0
@@ -169,6 +179,54 @@ def _run(batch_path: Path, delivery_root: Path | None, jobs: int, dry_run: bool)
     batchfile.save(batch, batch_path)
 
     return _report_run(written, batch_path)
+
+
+def _qc(batch_path: Path, delivery_root: Path | None, out: Path | None) -> int:
+    """Re-run the rules over a saved batch and write both spreadsheets.
+
+    The rules are re-run rather than read back off the batch file, because a batch can
+    be reopened after an edit and the log has to describe the batch as it is now. Phase
+    B is re-applied from what the render recorded; it does not re-read the deliverables.
+    """
+    try:
+        batch = batchfile.load(batch_path)
+    except batchfile.BatchFileError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+
+    batch.delivery_root = delivery_root or batch.delivery_root
+    qc.apply_batch_rules(batch, qc.settings_for(batch))
+    qc.preflight(batch)
+    qc.apply_phase_b(batch)
+
+    try:
+        log_path, tracker_path = _report_destinations(batch, out)
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+
+    exports.write_qc_log(batch, log_path)
+    exports.write_shot_tracker(batch, tracker_path)
+
+    counts = exports.severity_counts(batch)
+    rows = sum(1 for row in batch.rows if not row.skipped)
+    print(f"{log_path}")
+    print(f"{tracker_path}")
+    print(
+        f"\n{rows} rows, {sum(len(r.deliverables) for r in batch.rows)} deliverables, "
+        f"{counts['error']} errors, {counts['warning']} warnings"
+    )
+    return 1 if counts["error"] else 0
+
+
+def _report_destinations(batch: Batch, out: Path | None) -> tuple[Path, Path]:
+    """Where the two files go: `--out`, or the show's `_reports` folder."""
+    if out is None:
+        if batch.delivery_root is None:
+            raise ValueError("the batch has no delivery root; pass --delivery-root or --out")
+        return exports.report_paths(batch, batch.delivery_root)
+    log_name, tracker_name = exports.report_names(batch)
+    return out / log_name, out / tracker_name
 
 
 class _ProgressPrinter:

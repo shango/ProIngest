@@ -138,7 +138,6 @@ also per-user and need no elevated permissions, which matches the single-user de
 - Detect `h264_videotoolbox` and show a one-time notice of whether hardware encoding is
   available. Presence in the build is not proof it opens on the hardware, so the check is an
   actual trial encode of a few frames, not a string match on `-encoders`. OQ-23.
-- Create the default tracker template in the settings folder if missing.
 
 ## Windows (later)
 
