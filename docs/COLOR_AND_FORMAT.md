@@ -40,7 +40,7 @@ correct if they hold.
 |---|---|
 | colour science | DaVinci YRGB Color Managed, **ACES 1.3** |
 | timeline space | **ACEScct** |
-| input transform | the studio standard log encoding the shooters deliver (OQ-39) |
+| input transform | the clip's own camera log in camera mode, one studio standard in studio mode (OQ-39, OQ-44) |
 | grade | **primary only.** No windows, no qualifiers, no tracked secondaries |
 
 **Primary only is a hard requirement rather than a stylistic preference.** A CLF is a static
@@ -90,26 +90,97 @@ described as a one-off rather than a re-edit facility.
 | | |
 |---|---|
 | picture | **ProRes 4444**, one file per shot, with handles beyond the cut |
-| encoding | **one studio standard log encoding**, the same for every shooter and every camera (OQ-39) |
+| encoding | **camera native log, named in the clip's metadata**, or one studio standard on every file when Settings says so (OQ-39, OQ-44) |
 | grade | one `.clf` per shot, applied; the CDL travels in the final EDL as the readable record |
 | conform | the colour session's final EDL: timecode, shot identity and the approved In/Out |
 
-**The source encoding is a studio standard and is the same on every file, whatever anybody
-shot on.** The camera specific input transform happens in the shooter's Resolve project,
-where the camera metadata actually lives, and the tool never sees a camera original. This is
-the single most valuable property in the whole pipeline and it is worth being explicit about
-what it buys: the tool has **one input transform forever**, and "which log", "which exposure
-index" (LogC3 is EI dependent where LogC4 is not) and "mixed cameras inside one turnover"
-stop being questions it has to answer. It also means no per shot IDT lookup, and no mapping
-of Resolve's transform names onto OpenColorIO's, which do not agree and whose near misses
-produce plausible looking wrong images.
+### Two source modes, and the tool is told which one it is in
 
-**Which log is OQ-39**, and the answer changes how much work there is rather than whether it
-works. If the studio standard is **ACEScct**, the tool applies no input transform at all:
-the colour session's timeline is ACEScct and its CLF starts there, so decode leads straight
-into the CLF with nothing in between that could be silently wrong. If it is a camera vendor log
-adopted as the house format, the tool applies **one fixed transform** from that encoding to
-ACEScct ahead of the CLF. Either way it is a constant, not a per shot decision.
+**Decided 2026-09-12, and it reverses the 2026-09-11 decision that there is one studio standard
+log encoding on every file.** The expectation now is **camera native log**: each shooter
+delivers in whatever their camera shoots, and **writes that encoding into the clip's metadata**.
+The studio standard survives as the other half of a switch rather than being deleted, because
+the choice is not finally made and the whole difference between the two is where one string
+comes from.
+
+Settings carries **Source encoding mode**, with two values:
+
+| mode | what names the encoding | input transform |
+|---|---|---|
+| **Camera log** (the current expectation) | the clip's own metadata, written by the shooter (OQ-44) | one per shot, that camera's log to ACEScct |
+| **Studio standard** | one Settings value for the whole batch | one constant, the same on every row |
+
+**The studio standard, if it is ever used, is DaVinci Wide Gamut / DaVinci Intermediate**,
+which is `DaVinci Intermediate WideGamut` in the pinned config. It is **not** ACEScct, which is
+what OQ-39 spent a day pushing for, so the input transform is now a real transform in **both**
+modes and the "identity, therefore nothing between the decode and the grade can be silently
+wrong" argument is gone. What survives of it is smaller and still worth having: in studio mode
+it is **one** transform, verified once, rather than one per camera.
+
+**Everything downstream of the input transform is identical in both modes.** The CLF, the two
+branches, the LUT bake, the EXR header and every QC rule take the source encoding as a string
+and none of them care where the string came from. That is why this is a switch and not a fork:
+`clf.ShotColor` has carried `source_encoding` per shot since M4.5.1, so studio mode is simply
+the case where every row's string is the same one.
+
+**What camera mode costs**, stated plainly, because it is precisely the bill the 2026-09-11
+spec was written to avoid:
+
+- **A per shot input transform, and a name to resolve for each one.** The metadata says
+  something a human typed in Resolve; OCIO wants one of its own colour space names. That
+  mapping is **OQ-34, reopened**, and it is exactly the kind of table that looks correct and
+  is not.
+- **The log is not the whole answer; the gamut is the other half.** The pinned config has no
+  colour space called "S-Log3". It has `S-Log3 S-Gamut3`, `S-Log3 S-Gamut3.Cine`,
+  `S-Log3 Venice S-Gamut3` and `S-Log3 Venice S-Gamut3.Cine`. A shooter who writes "S-Log3" has
+  named four things. **Whatever the shooters are asked to write must name the curve and the
+  gamut together**, and the cheapest way to guarantee that is to ask them to write the Resolve
+  input transform name verbatim rather than to describe their camera.
+- **Some encodings the pinned config cannot express at all.** It carries `ARRI LogC3 (EI800)`
+  and no other exposure index, and LogC3 is exposure index dependent where LogC4 is not. A
+  LogC3 shoot at EI 400 has no colour space here, so the tool **refuses** it (QC-047) rather
+  than applying the EI800 curve, which would be wrong by an amount nobody sees on a monitor.
+  The same shape of gap catches a Blackmagic Gen 4 and a Canon shot in BT.2020 gamut; the
+  table below says which.
+- **The tool and Resolve now have to agree, per camera, about what a camera log is.** The
+  colour session reaches its ACEScct timeline through Resolve's own IDT and the CLF is authored
+  on top of that. If the tool's input transform differs from Resolve's even slightly, the CLF
+  is handed pixels it was not built for. In studio mode that is one agreement to check once. In
+  camera mode it is one per camera, and a near miss is invisible.
+
+### The three encodings expected today
+
+The shooters named on 2026-09-12 are **S-Log3, C-Log3 and BM Film**, and **more may be added**.
+All three exist in the pinned config, which is the first piece of good news camera mode has
+produced:
+
+| written as | the colour space in the pinned config | the catch |
+|---|---|---|
+| S-Log3 | `S-Log3 S-Gamut3.Cine`, `S-Log3 S-Gamut3`, or either Venice variant | **four candidates.** The curve name alone does not choose one, so the gamut has to be written too |
+| C-Log3 | `CanonLog3 CinemaGamut D55` | the only C-Log3 the config carries. A Canon shot in BT.2020 gamut rather than Cinema Gamut has no colour space here |
+| BM Film | `BMDFilm WideGamut Gen5` | **Gen 5 only.** Gen 4 and the older "Blackmagic Design Film" are absent |
+
+Each of the three was built through `color.input_transform` against the pin on 2026-09-12 and
+each produced a processor, so this is checked rather than assumed. **What is not checked is
+that the string a shooter types lands on the right row of that table**, and that is the whole
+of OQ-34.
+
+"more may be added" is why the mapping is a table rather than three branches, and why an
+unrecognised name is QC-047 rather than a fallback: a fourth camera turning up should stop a
+row, not render it through whatever the last one used.
+
+**The escape from all of this is OQ-37, reopened: ask the colourist to export the CLF
+starting at camera log rather than at ACEScct.** Then the tool applies no input transform at
+all in camera mode, the mapping table is never built, and the tool and Resolve cannot disagree
+about what an IDT is because only one of them performs one. The cost is that the CLF stops
+being portable across sources, which nobody was going to do anyway. **This is the thing to ask
+for before the mapping table is built**, and it is worth asking before OQ-44 is answered too,
+because a CLF that starts at camera log makes the metadata question much less load bearing.
+
+**Which encoding was applied is recorded on every deliverable**, because a plate rendered
+through the wrong input transform looks entirely normal. `proingest/source_encoding` already
+names it. What the header does not yet say is where that name came from, which is what
+`proingest/source_encoding_origin` is specified for below.
 
 ### The chain
 
@@ -117,11 +188,11 @@ One decode, one transform stack, then a branch at the point where the two delive
 wanting the same thing:
 
 ```
-studio standard log ProRes 4444 (one per shot)
+camera log ProRes 4444, or studio standard log (one per shot)
         |
         |  decode to float RGB, colour tags overridden, range confirmed
         |
-  input:  studio log -> ACEScct         (one constant, identity if the standard is ACEScct)
+  input:  source log -> ACEScct         (per shot in camera mode, one constant in studio mode)
         |
      CLF:  the approved grade                     (per shot, from the colour session)
         |
@@ -165,7 +236,7 @@ swscale never sees it. swscale clamps float to 0..1, and that is what would othe
 reference its single pass.
 
 **The whole view branch collapses into one 3D LUT per shot**, generated in core by
-`color.view_lut`: studio log in, sRGB display out, with the input transform, the CLF and the
+`color.view_lut`: source log in, sRGB display out, with the input transform, the CLF and the
 ACES output transform inside it. **This is how an OCIO
 transform gets into ffmpeg**, which has no OCIO filter and does have `lut3d`, and it is what
 keeps the reference a single fast pass with no frames pulled through Python.
@@ -229,7 +300,11 @@ was done to it.
 - `proingest/colorspace` states `ACEScg`. It is a constant rather than a setting: the tool
   transforms every plate into it, so the value is a fact about the deliverable.
 - `proingest/source_encoding` names the log encoding the source was read as, and therefore
-  the input transform that was applied.
+  the input transform that was applied. **Not yet written:**
+  `proingest/source_encoding_origin`, which says whether that name came from the clip's
+  metadata or from the Settings studio standard. The encoding is the fact that matters and the
+  origin is how a wrong one gets traced back to whoever wrote it, which is a different person
+  in each mode.
 - `proingest/clf` names the CLF and `proingest/clf_hash` is its sha256. **The hash is what
   identifies the grade**: a CLF that is re-exported and redelivered gets a different one, so the
   deliverables rendered from the old version stay findable afterwards. Both are **absent** from
@@ -279,12 +354,13 @@ and is recorded as OQ-36 rather than built.
 ## 2. Source formats accepted
 
 The studio sets the delivery spec and the shooters work to it, so this is a specification
-rather than a survey of what might turn up. **One encoding, every file, every shooter**
-(section 1).
+rather than a survey of what might turn up. **The container is fixed; the encoding depends on
+the mode** (section 1). In camera mode a turnover may carry several encodings and each clip's
+metadata says which; in studio mode it is one encoding on every file.
 
 **Expected**, and what every QC rule is written around:
 
-- **ProRes 4444 or DNxHR 444, the studio standard log encoding, 12 bit, 4:4:4, full range**,
+- **ProRes 4444 or DNxHR 444, in the log encoding the mode calls for, 12 bit, 4:4:4, full range**,
   one file per shot, with handles beyond the cut.
 
 4:4:4 matters more on a log source than it would on a display referred one. Subsampled chroma
@@ -305,9 +381,12 @@ in a log signal is stretched when the signal is linearised, and it shows on satu
 
 **The tool does not read the colour space off the container, it overrides it.** No standard
 transfer tag names ACEScct or any camera log, and a container that does carry tags is as
-likely to carry the wrong ones. The studio standard from Settings is the authority and the
-decode is forced to match it. QC-018 fires when the file's own tags contradict it, which is
-information rather than a veto. **Range is confirmed rather than assumed**: a log signal
+likely to carry the wrong ones. **The authority is the clip's metadata in camera mode and the
+Settings studio standard in studio mode**, and the decode is forced to match whichever it is.
+The distinction worth keeping is between a *colour tag*, which a container writes because it
+must write something, and a *named metadata field a shooter filled in deliberately*: the tool
+overrides the first and trusts the second. QC-018 fires when the file's own tags contradict the
+encoding in use, which is information rather than a veto. **Range is confirmed rather than assumed**: a log signal
 carried as YCbCr and decoded at the wrong range gives crushed blacks and clipped whites that
 look very nearly right.
 

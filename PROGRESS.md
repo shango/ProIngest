@@ -11,8 +11,10 @@ commit.
 **State at 2026-09-12. M1, M2, M3 and M4 complete; M4.5 is done, all four chunks.** The colour
 chain now reaches the files: a plate is delivered graded in linear ACEScg with AP1 primaries and
 a header that says what was applied to it, and a reference mp4 is encoded through the shot's
-grade and the ACES output transform baked into one cube. **M5, the UI, is next.**
-873 tests passing, `ruff` and `mypy --strict` clean. **Nothing is blocked.**
+grade and the ACES output transform baked into one cube. **M5, the UI, is next**, and a new
+**M4.6** sits beside it: the source encoding went back to camera native log on 2026-09-12 and
+the tool has to read it per shot. 873 tests passing, `ruff` and `mypy --strict` clean.
+**M5 is not blocked. M4.6 is, on two questions nobody has asked yet (OQ-37, OQ-44).**
 
 **M4 is done.** `core/exports.py` writes both spreadsheets, `proingest qc <batch>` writes them
 headless, and QC-053 parses camData through the new `core/camdata.py`. Proved end to end on a two
@@ -46,11 +48,15 @@ trusting it: two of the three versions below share that date.
 |---|---|---|
 | 2026-09-10 | sources display referred, sRGB baked in, references apply no transfer | wrong |
 | 2026-09-11 am | sources ACEScct, plate **ungraded**, CDL read from the shooters' EDL, four colour controls in the tool | superseded |
-| 2026-09-11 pm | colour finished before ingest, **CLF per shot applied**, plate **graded**, no controls, no viewers, no stringout | current |
+| 2026-09-11 pm | colour finished before ingest, **CLF per shot applied**, plate **graded**, no controls, no viewers, no stringout | current, except the source |
+| 2026-09-12 | the source goes back to **camera native log**, named in the clip's metadata, with the studio standard demoted to a Settings mode | current |
 
-The mechanics survived both rewrites almost intact: ACEScg working space, OCIO for every
-transform, the plate branch unbounded in numpy, the view branch bounded in ACEScct and
-collapsed into one 3D LUT. What kept changing is **where colour is authored and by whom**.
+The mechanics survived all three rewrites almost intact: ACEScg working space, OCIO for every
+transform, the plate branch unbounded in numpy, the view branch bounded and collapsed into one
+3D LUT. What kept changing is **where colour is authored and by whom**, and on 2026-09-12,
+**what the source is encoded in**. That last one has now been answered three different ways in
+two days - camera original, one studio standard, camera native again - so take nothing about
+the source encoding from memory either.
 
 ### What the tool is for
 
@@ -62,8 +68,9 @@ a report about one.
 ### What the workflow is now
 
 The user described it on 2026-09-11 and it is written up in `docs/COLOR_AND_FORMAT.md`
-section 1. In one paragraph: the shooters deliver **ProRes 4444 in one studio standard log
-encoding**, the same on every file whatever anybody shot on. Their CDL and their string-out
+section 1. In one paragraph: the shooters deliver **ProRes 4444 in their camera's native log**,
+each clip's metadata naming which (2026-09-12; S-Log3, C-Log3 and BM Film today, more later),
+with a **studio standard mode** in Settings as the alternative. Their CDL and their string-out
 are offline reference and **the tool reads neither**. After the AD meeting, a **colour session
 in Resolve**, where Ben works with the AD (ACES 1.3, ACEScct timeline, primary grades only),
 exports an **updated final EDL** (conform, the approved trims, and the CDL as `*ASC_SOP` /
@@ -105,16 +112,57 @@ so and says it is not a precedent.
   and claims to be linear. That is QC-039, it is an error, and the tool probes for it rather
   than trusting a filename, because the failure is invisible on a monitor and expensive in a
   comp.
-- **"Studio standard log" is the single most valuable line in the spec.** The user's first
-  description said log encoded ProRes per shot, which was read as camera original, and a full
-  per shot IDT apparatus was specified and then deleted within the hour when they corrected
-  it. One encoding on every file means **one input transform forever**, no per shot IDT, and
-  no mapping Resolve's transform names onto OpenColorIO's, which do not agree. If a future
-  session finds itself building an IDT table, it has taken a wrong turn.
+- **"Studio standard log" was called the single most valuable line in the spec on 2026-09-11,
+  and on 2026-09-12 the user took it back.** It is left here rather than deleted because the
+  reasoning was correct and only the premise moved, and because the same instinct will be
+  tempting again. What it said: one encoding on every file means **one input transform
+  forever**, no per shot IDT, and no mapping of Resolve's transform names onto OpenColorIO's,
+  which do not agree; a session that finds itself building an IDT table has taken a wrong turn.
+  **The tool is now expected to build exactly that table** (OQ-34, reopened), because the
+  shooters deliver camera native log and name it in the clip metadata. That is not a wrong
+  turn any more, it is the price of the workflow the user wants - but the bill is still real,
+  and **OQ-37 is how it is avoided without giving the workflow up**: a CLF exported starting at
+  camera log means the tool applies no input transform at all and the table is never built.
+  Ask that before writing a line of the table.
 - **The tool's stringout would have been the only one cut to the edited In/Out.** The colour
   session's QT and the shooters' offline are both cut to the turnover as delivered. That is
   what dropping M6 gives up, and it is recorded in PRD FR-9 so it reads as a decision rather
   than an oversight.
+
+### What changed on 2026-09-12: the source encoding, and only the source encoding
+
+The user's words: there will likely **not** be one studio standard log for the sources; each
+camera's native LOG is used and **the shooters write the correct LOG for their camera into the
+clip's metadata**. Keep it flexible to go either way: Settings gets a **mode**, Camera log or
+Studio standard, and if the studio standard is ever used it is **DaVinci Wide Gamut / DaVinci
+Intermediate**. The cameras today are **S-Log3, C-Log3 and BM Film**, and more may be added.
+
+| decision | where it lives |
+|---|---|
+| Source encoding is **camera native log**, from the clip's metadata | COLOR_AND_FORMAT section 1, PRD section 4 and FR-15 |
+| A Settings **mode** switches to one studio standard for the batch | PRD FR-12 and FR-15, COLOR_AND_FORMAT section 1 |
+| The studio standard is **`DaVinci Intermediate WideGamut`**, not ACEScct | OQ-39, answered and demoted |
+| The input transform is a **real transform in both modes** now | COLOR_AND_FORMAT section 1 |
+| Resolve's IDT names still do not match OCIO's, and the table is needed again | OQ-34, **reopened** |
+| A CLF starting at camera log would delete the table entirely | OQ-37, **reopened**, and the cheapest question here |
+| What field the metadata is in, and what string goes in it | OQ-44, **new** |
+| An unnamed or unresolvable encoding blocks the row | QC-046, QC-047, **new** |
+
+**Three things checked rather than assumed on 2026-09-12.** All three of today's cameras exist
+in the pinned config, as `S-Log3 S-Gamut3.Cine` and three siblings, `CanonLog3 CinemaGamut D55`
+and `BMDFilm WideGamut Gen5`, and each built a processor through `color.input_transform`. So
+did `DaVinci Intermediate WideGamut`. **The transforms are not the problem; the names are.**
+
+**Two traps, both silent, both written up in COLOR_AND_FORMAT section 1.** A curve name does
+not choose a gamut - "S-Log3" names four colour spaces - so the shooters must be asked to write
+the curve *and* the gamut, ideally the Resolve input transform name verbatim. And the config
+carries one variant where the camera offers several: LogC3 at EI800 only, BMD Film Gen 5 only,
+Canon at Cinema Gamut only. Neither failure looks wrong on a monitor.
+
+**What did not change**: everything downstream of the input transform. The CLF, both branches,
+the LUT bake, the EXR header and every QC rule take the source encoding as a string, and
+`clf.ShotColor` has carried it **per shot since M4.5.1**. That is why this is a switch and not a
+fork, and why M4.6 is a small milestone rather than a rewrite of M4.5.
 
 ### The studio tracker arrived, and M4.3 was built against it
 
@@ -298,20 +346,31 @@ it (PRD section 7). Without it the run produces every deliverable in ACEScg, ung
 is the only difference. The EDL's rate comes from the first row that has media, and a batch
 carrying more than one rate prints which was used rather than choosing silently (OQ-19).
 
-### Next task: M5, the UI
+### Next task: M5, the UI, with M4.6 waiting on two questions
 
-M4.5 is finished and the remaining colour work is not code. `docs/UI_SPEC.md` is the spec and it
-was already cut down when the four colour controls and the three viewers were dropped. The
-things M5 owes the colour chain are small and known:
+M4.5 is finished. `docs/UI_SPEC.md` is the spec and it was already cut down when the four colour
+controls and the three viewers were dropped. The things M5 owes the colour chain are small and
+known:
 
 - **The Colour settings group**, which is where `--color-session` and `--source-encoding` stop
-  being flags: the session's EDL path and the studio standard log encoding, both remembered
-  (PRD section 7).
+  being flags: the session's EDL path, the **source encoding mode** (Camera log or Studio
+  standard, new 2026-09-12) and the studio standard encoding the second mode uses, all
+  remembered (PRD section 7 FR-12). Build the mode control even though only studio mode works
+  until M4.6: it is one combo box, and retrofitting a mode into a settled settings model is
+  worse than leaving one option inert.
 - **Wiring QC-008, QC-009, QC-019, QC-039 and QC-045**, which all read `core/clf.py` and none of
   which can fire until a batch knows where its colour session is. QC-008 is the one that refuses
   a run: a batch cannot produce final deliverables until its session exists.
 - **The QC log's CLF column is already written** and so is `ShotRow.clf_path`, so the UI has
-  something to show per row without any new plumbing.
+  something to show per row without any new plumbing. A source encoding column beside it is
+  M4.6.4 and wants `ShotRow.source_encoding` first.
+
+**Before M4.6 is built, two questions are worth asking and neither is a build task.** Ask the
+colourist whether the colour session can export a CLF that starts at **camera log** rather than
+at ACEScct (OQ-37): if it can, the tool applies no input transform at all in camera mode and
+OQ-34's mapping table is never built. Ask whoever briefs the shooters **which metadata field**
+carries the log name and **exactly what string** goes in it (OQ-44), remembering that "S-Log3"
+names four colour spaces in the pinned config.
 
 ### Two M3 decisions to revisit rather than rediscover
 
@@ -486,7 +545,8 @@ Entry points worth knowing:
 | M2 | Naming and planning: type table, versioning, layout | complete, 66 tests |
 | M3 | Render | complete, 172 tests |
 | M4 | QC: all rules both phases, xlsx exports, `qc` CLI | complete, 175 tests |
-| M4.5 | Colour pipeline, core only. Studio log in, CLF applied, ACEScg out, the viewing LUT | complete, 111 tests |
+| M4.5 | Colour pipeline, core only. Source log in, CLF applied, ACEScg out, the viewing LUT | complete, 111 tests |
+| M4.6 | Camera log mode: the source encoding read per shot from the clip metadata, the name mapping, QC-046 and QC-047 | **not started, and waiting on answers** (OQ-37, OQ-44) |
 | M5 | UI: the list, the FR-14 metadata pane, settings, log. **No viewers** | not started |
 | M6 | ~~Stringout with burn-ins~~ | **dropped 2026-09-11**, the colour session exports it |
 | M7 | Packaging: PyInstaller `.app`, dmg, Gatekeeper | not started, and needs a Mac (OQ-22) |
@@ -517,6 +577,27 @@ AP1, and `COLORSPACE_ATTRIBUTE`'s value from `scene_linear_sRGB` to `ACEScg`, wh
 constant rather than a parameter. A test asserts red sits at 0.713, 0.293 rather than reading
 the constant back, because a regression to Rec.709's 0.64 is exactly what a test that reads the
 constant cannot see.
+
+M4.6 detail, specified 2026-09-12 and **not started**. It is small because M4.5 already
+threads the source encoding per shot; what is missing is where the string comes from and what
+happens when it cannot be resolved.
+
+| chunk | scope | state |
+|---|---|---|
+| M4.6.1 | `ShotRow.source_encoding` (additive, like `clf_path`), and a Settings `SourceEncodingMode` the planner reads | not started |
+| M4.6.2 | The name mapping in `core/color.py`: a table from what a shooter writes to an OCIO colour space, refusing the unrecognised and the ambiguous | **blocked on OQ-34, which is blocked on OQ-37** |
+| M4.6.3 | Read the encoding at scan time from the carrier OQ-44 names, and QC-046 and QC-047 | **blocked on OQ-44** |
+| M4.6.4 | `proingest/source_encoding_origin` in the EXR header, and the QC log column beside the CLF one | not started |
+
+**Two answers unblock nearly all of it, and one of them may delete M4.6.2 outright.** Ask the
+colourist whether Resolve can export a CLF starting at camera log (OQ-37); if yes, the tool
+applies no input transform in camera mode and the mapping table is never built. Ask whoever
+briefs the shooters which metadata field they will write and exactly what string (OQ-44).
+
+**M5 is not blocked by any of this.** Its Settings page should carry the mode control from the
+start, because the control is one combo box and retrofitting a mode into a settled settings
+model is worse than leaving one option inert. Until M4.6 lands, camera mode is a control that
+refuses to run rather than one that renders wrong pixels.
 
 M3 detail:
 
@@ -1134,6 +1215,21 @@ is useful rather than not, but a test asserting "one stream" will fail on it.
 ## 9. Open items
 
 Nothing blocks the next task. These are live, in rough priority order:
+
+- **Camera log mode is specified and not built (M4.6).** The source encoding went back to
+  camera native log on 2026-09-12 and the tool still reads one value from Settings for every
+  row. Nothing renders wrong today, because studio mode is what the code does and it is a real
+  mode; what is missing is camera mode entirely. Two questions come before the code and one of
+  them may delete a third of it: **OQ-37** (can the CLF start at camera log, deleting the
+  mapping table) and **OQ-44** (which metadata field, and what string). **OQ-34 is reopened**
+  and is the table itself. COLOR_AND_FORMAT section 1 has the whole of it.
+
+- **The studio standard is no longer ACEScct, so the input transform is never identity.**
+  OQ-39 was answered on 2026-09-12 as **`DaVinci Intermediate WideGamut`** and demoted to the
+  fallback mode in the same breath. `color.DEFAULT_SOURCE_ENCODING` is still `ACEScct` in the
+  code, which is now the wrong default in both modes and is a one line change with M4.6.1. It
+  is harmless until a batch runs without an explicit encoding, and it is exactly the kind of
+  stale constant that renders a plausible looking wrong image, so it should not wait long.
 
 - **No colour session has ever exported for this tool (OQ-31).** Every claim in
   COLOR_AND_FORMAT section 1 about what arrives is a specification, not an observation, until
