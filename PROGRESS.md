@@ -8,11 +8,18 @@ commit.
 
 ## 1. Resume here
 
-**State at 2026-09-11, evening. M1, M2, M3 complete; M4.1 and M4.2 done. The colour workflow
-was replaced twice today, once this morning and again this afternoon, and nothing of it is
-built.**
-718 tests passing, `ruff` and `mypy --strict` clean. **No code has changed since 2026-09-10**:
-a whole day of spec. **Nothing is blocked.**
+**State at 2026-09-11, late. M1, M2, M3 complete; M4.1 and M4.2 done; M4.5.1 done. The colour
+workflow was replaced twice today, once this morning and again this afternoon, and the first
+chunk of the new one is now built.**
+736 tests passing, `ruff` and `mypy --strict` clean. **Nothing is blocked.**
+
+M4.5.1 put OpenColorIO in and rebuilt `core/color.py` as the two ends of the chain: the input
+transform from the studio standard log to ACEScct, the plate transform from ACEScct to linear
+ACEScg, and the machinery to compose them into one `GroupTransform` and apply it to a decoded
+frame in place. It did **not** need OQ-39: the source encoding is one OCIO colour space name in
+a constant, so the answer costs one string. The module still carries M3's display referred
+block at the bottom, fenced off and labelled, because `render.py` and `exr.py` read it until
+M4.5.4 moves them.
 
 ### First five minutes
 
@@ -104,30 +111,41 @@ so and says it is not a precedent.
   what dropping M6 gives up, and it is recorded in PRD FR-9 so it reads as a decision rather
   than an oversight.
 
-### Next task: still M4.5, and its shape changed
+### Next task: M4.5.2, and it is the one that wants a real export
 
-M4.5 and M4.3 are both unblocked and neither blocks the other. **M4.5 first** still, for the
-reason it was chosen this morning: the QC log and the tracker want the colour columns, so doing
-colour first means the exports get written once instead of twice.
+M4.5.1 is done. M4.5.2 is `core/clf.py`: the colour session's final EDL read for the conform,
+the approved In/Out and the CDL, and a CLF matched per row, loaded and hashed.
+`core/timeline.py` already walks EDL events, so half of that exists, and `core/color.py` now
+supplies the transform the CLF slots into.
 
-What changed in M4.5 is what it reads and what it no longer has to build. The AD notes model
-is gone, which was all of M4.5.3, and the viewers took `core/preview.py` and all of M4.5.5 with
-them. M4.5.2 now reads the colour session's package: the final EDL for the conform, the
-approved In/Out and the CDL, and a CLF per shot to load and hash. `core/timeline.py` already
-walks EDL events, so half of that exists. **Net M4.5 is meaningfully smaller than this
-morning's version**, which is the one thing about it that did not wobble all day.
+**M4.5.2 is where OQ-30 and OQ-33 stop being theoretical.** Both are about which field
+identifies a row, both fail by silently applying a neighbouring shot's grade, and one real
+export from Ben's session answers both. Building against the recorded defaults is possible and
+the defaults are good ones; what is not possible is checking them, so build the matching so the
+field it trusts is one named constant and QC-009 is what fires when nothing matches.
 
-**Three questions are open and the user has all of them:**
+M4.3 is the alternative and neither blocks the other. **M4.5 still goes first**, for the reason
+it was chosen this morning: the QC log and the tracker want the colour columns, so doing colour
+first means the exports get written once instead of twice.
 
-- **OQ-39, which log encoding is the studio standard.** ACEScct makes the input transform
-  identity, which is the whole of M4.5.1. Anything else costs one fixed transform. Either way
-  M4.5.1 can be written against a constant. **This is the only one that gates starting.**
+One thing M4.5.1 settled that M4.5.2 must not undo: **the CLF ends in linear ACEScg itself**, so
+the plate branch adds nothing after it. `color.plate_transform()` exists for a chain with no CLF
+in it. Applying both converts twice, and that is a plausible looking wrong image rather than an
+error. COLOR_AND_FORMAT section 1 now says so under the chain diagram, which used to read as
+though the tool always performed that step.
+
+**Two questions are open and the user has both of them:**
+
 - **OQ-30 and OQ-33, how an EDL event and a CLF each find their row.** The EDL is now the
   conform, so getting its event matching wrong misplaces the approved In/Out; pairing the wrong
   CLF applies a neighbouring shot's grade. Both look entirely plausible when wrong. An EDL event
   identifies itself by reel name, by `FROM CLIP NAME` and by source timecode, and Resolve
   populates those differently depending on export settings; a CLF is matched by whatever names
   it. **One real export from Ben's session answers both**, along with OQ-29 and OQ-39.
+- **OQ-39, which log encoding is the studio standard.** No longer a gate: M4.5.1 is built and
+  the encoding is one OCIO colour space name in `color.DEFAULT_SOURCE_ENCODING`, defaulted to
+  ACEScct and validated against the config. ACEScct keeps the input transform identity;
+  anything else costs one fixed transform and no code.
 
 **OQ-35 is open and does not block anything**: frame numbers at 1001, as the studio spec sheet
 and QC-102 say, or derived from source timecode as the user's proposal said. The default is
@@ -199,7 +217,11 @@ PDF viewer.
 
 - venv at `.venv` (Python 3.12, created with `uv venv`); `uv pip install -e ".[dev]"`.
   There is no `pip` inside the venv: use `uv pip install --python .venv/bin/python`.
-- otio 0.18.1, OpenEXR 3.4.15 (numpy File API present), numpy 2.5.3.
+- otio 0.18.1, OpenEXR 3.4.15 (numpy File API present), numpy 2.5.3, OpenColorIO 2.5.2.
+- **OpenColorIO ships no config files.** `opencolorio>=2.4` is a runtime dependency and the ACES
+  transforms travel inside the wheel: `Config.CreateFromBuiltinConfig` reads them from there.
+  2.4 is the floor because the pinned config (`core/color.BUILTIN_CONFIG`) is a v2.4 built-in.
+  There is nothing for an installer to place and nothing for a user to point at.
 - Dev machine is Linux/WSL; the target is **macOS on Apple Silicon**, and there is no Mac
   available (OQ-22). Everything in core is verifiable headless on Linux, which is why the
   platform switch was cheap.
@@ -243,7 +265,7 @@ PDF viewer.
 | `core/media.py` | DirectoryIndex, sequence detection, path remap, probe cache | 465 |
 | `core/exr.py` | EXR header and pixel reading, delivery frame writing | 235 |
 | `core/resize.py` | antialiased Lanczos downscale for the EXR path | 96 |
-| `core/color.py` | source colour space setting; what each deliverable does about it. **Describes a workflow that no longer exists**; M4.5.1 rebuilds it | 61 |
+| `core/color.py` | the pinned OCIO config, the input and plate transforms, composing and applying them. Still carries M3's display referred block at the bottom, fenced, until M4.5.4 | 173 |
 | `core/timeline.py` | OTIO and EDL loading, audio association | 233 |
 | `core/scan.py` | turnover folder -> Turnover + ShotRows | 388 |
 | `core/planner.py` | type table, deliverable jobs, version resolution | 440 |
@@ -292,7 +314,7 @@ Entry points worth knowing:
 | M2 | Naming and planning: type table, versioning, layout | complete, 66 tests |
 | M3 | Render | complete, 172 tests |
 | M4 | QC: all rules both phases, xlsx exports, `qc` CLI | M4.1 and M4.2 done, M4.3 pending |
-| M4.5 | Colour pipeline, core only. Studio log in, CLF applied, ACEScg out, the viewing LUT | **respecified 2026-09-11, not started** |
+| M4.5 | Colour pipeline, core only. Studio log in, CLF applied, ACEScg out, the viewing LUT | respecified 2026-09-11, M4.5.1 done |
 | M5 | UI: the list, the FR-14 metadata pane, settings, log. **No viewers** | not started |
 | M6 | ~~Stringout with burn-ins~~ | **dropped 2026-09-11**, the colour session exports it |
 | M7 | Packaging: PyInstaller `.app`, dmg, Gatekeeper | not started, and needs a Mac (OQ-22) |
@@ -306,13 +328,13 @@ M4 detail. The milestone had no chunk table until M4.1; this is it:
 | M4.2 | phase B verification, QC-1xx, wired into `render_job` | done, 47 tests |
 | M4.3 | `core/exports.py`, the xlsx sheets, `proingest qc <batch>`, QC-053 | pending |
 
-M4.5 detail, respecified 2026-09-11, nothing built. It is **smaller than this morning's
-version**: the AD notes model is gone entirely, the viewers and their frame fetch went with it,
-and what M4.5.2 reads is the colour session's package rather than the shooters'.
+M4.5 detail, respecified 2026-09-11, M4.5.1 built the same evening. It is **smaller than that
+morning's version**: the AD notes model is gone entirely, the viewers and their frame fetch went
+with it, and what M4.5.2 reads is the colour session's package rather than the shooters'.
 
 | chunk | scope | state |
 |---|---|---|
-| M4.5.1 | OCIO in, `core/color.py` rebuilt as a pipeline, studio log to ACEScct to ACEScg. **Wants OQ-39** | not started |
+| M4.5.1 | OCIO in, `core/color.py` rebuilt as a pipeline, studio log to ACEScct to ACEScg | done, 24 tests |
 | M4.5.2 | `core/clf.py`: the final EDL read for conform, In/Out and CDL; the CLF matched per row, loaded and hashed. **Wants OQ-30 and OQ-33** | not started |
 | M4.5.3 | The viewing LUT: CLF plus ACES output transform baked to one `.cube` per shot | not started |
 | M4.5.4 | `render` plate/view split, `lut3d` encode, `exr.py` AP1 constants and the new header attributes | not started |
@@ -335,8 +357,8 @@ The stringout moved off this table: it is M6 and always was. The M3.5 row said "
 mp4 and stringout" and that was a mistake in the row, not a change of plan.
 
 Tests by file: qc 156, naming 115, render 66, planner 55, frames 55, media 46,
-ffmpeg 40, models 37, timeline 33, exr 29, scan 25, cli 21, batchfile 18, resize 16,
-color 6.
+ffmpeg 40, models 37, timeline 33, exr 29, scan 25, color 24, cli 21, batchfile 18,
+resize 16.
 
 ---
 
@@ -659,7 +681,11 @@ from:
   the hardened runtime (`CS_RUNTIME`, read out of their code directory), so they are fine;
   ProIngest's own bundle is the problem. Decide before handover, not at handover.
 
-**Colour (OQ-17, answered by the studio 2026-09-10).**
+**Colour (OQ-17, answered by the studio 2026-09-10). SUPERSEDED 2026-09-11, twice.**
+Kept as the record of what M3 was built against and why the reference encode looks the way it
+does. The live policy is COLOR_AND_FORMAT section 1: a studio standard log source, a CLF per
+shot applied, a graded ACEScg plate. Everything in this block is the display referred premise
+that `core/color.py` now carries under a fence and M4.5.4 deletes.
 
 - Everything the shooters deliver today, **EXRs included, has the sRGB curve baked in**.
   The source is display referred, not scene referred. The EXRs are expected to become
@@ -932,11 +958,12 @@ Nothing blocks the next task. These are live, in rough priority order:
   three specs since: a log source encoded with no output transform gives a flat, milky mp4.
   Nothing is broken in a way tests can catch, because the tests assert the encode does what it
   was told to do. M4.5.4 fixes it. Until then, do not trust the appearance of a reference mp4.
-- **`core/color.py` describes two states and neither of them is real.** `srgb_display` and
-  `scene_linear_srgb` were the 2026-09-10 premise. The real source is a studio standard log,
-  the real plate output is ACEScg with the shot's CLF applied, and a two value enum is the
-  wrong shape for any of it. The module is 61 lines and gets rebuilt rather than edited, in
-  M4.5.1. Its six tests go with it.
+- **`core/color.py` still carries the superseded display referred block.** `srgb_display` and
+  `scene_linear_srgb` were the 2026-09-10 premise and neither is real. M4.5.1 rebuilt the module
+  around them rather than deleting them, because `render.py` and `exr.py` read them and moving
+  those is M4.5.4's whole job. The block sits under a fence at the bottom of the file that says
+  as much, and its six tests sit in one class at the bottom of `tests/test_color.py`. **Delete
+  both in M4.5.4, together**, and nothing above the fence is related to them.
 - **No colour session has ever exported for this tool (OQ-31).** Every claim in
   COLOR_AND_FORMAT section 1 about what arrives is a specification, not an observation, until
   one session has run end to end on one shot. That single exercise answers OQ-29, OQ-30, OQ-33

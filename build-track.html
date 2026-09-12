@@ -277,7 +277,7 @@
   <header class="mast">
     <div class="eyebrow">
       <span>VFX turnover ingest &middot; macOS v01</span>
-      <span class="stamp">Updated <b>11 Sep 2026, 15:52 PDT</b></span>
+      <span class="stamp">Updated <b>11 Sep 2026, 20:59 PDT</b></span>
     </div>
     <h1>ProIngest Build Track</h1>
     <p class="standfirst">
@@ -293,7 +293,7 @@
       <div class="stat-l">Milestones done</div>
     </div>
     <div class="stat">
-      <div class="stat-n good">718</div>
+      <div class="stat-n good">736</div>
       <div class="stat-l">Tests, Linux + macOS</div>
     </div>
     <div class="stat">
@@ -419,7 +419,7 @@
         <div class="ms-body">
           <div class="ms-head">
             <span class="ms-name">Colour pipeline</span>
-            <span class="pill now">Next &middot; Specified, not built</span>
+            <span class="pill now">In progress &middot; 1 of 4 parts</span>
           </div>
           <p class="ms-goal">
             The approved grade from the colour session, applied to everything the tool writes.
@@ -439,11 +439,18 @@
             records exactly which version of the grade is in its pixels, so a frame can be
             traced back months later without the grading session. A shot whose colour has not
             arrived is not delivered ungraded; it is not delivered.
-            <b>One answer from the studio would let this start clean:</b> which log format the
-            shooters deliver in. Two smaller ones want a single real export from the grading
-            session rather than an opinion: how an entry in the edit list, and how a colour
-            file, each find their shot. Picking the wrong one applies a neighbouring shot's
-            colour, and looks entirely plausible while doing it.
+            <b>The first part is built.</b> The colour engine is in, pinned to the same
+            industry standard version the grading session runs, and it carries the two ends of
+            the chain: reading the shooters' format, and producing the wide scene-referred form
+            the plates are delivered in. It ships no configuration files of its own, so there is
+            nothing for an installer to place or a user to point at. <b>The question about which
+            log format the shooters deliver in no longer holds anything up</b>: the format is one
+            name in one setting, checked when a run starts, so whichever answer comes back costs
+            a single word and no rebuilding.
+            <b>Next is matching the grade to the shot</b>, and that is the part that wants a
+            single real export from the grading session rather than an opinion: how an entry in
+            the edit list, and how a colour file, each find their shot. Picking the wrong one
+            applies a neighbouring shot's colour, and looks entirely plausible while doing it.
           </div>
         </div>
       </div>
@@ -488,7 +495,7 @@
         <div class="ms-body">
           <div class="ms-head">
             <span class="ms-name">Stringout</span>
-            <span class="pill">Removed 12 Sep</span>
+            <span class="pill">Removed 11 Sep</span>
           </div>
           <p class="ms-goal">
             One review movie per turnover with information burned into the picture. The colour
@@ -576,8 +583,8 @@
           </tr>
           <tr>
             <td class="id">OQ-39</td>
-            <td>Which log format the shooters deliver in. One answer, and it decides whether the tool does any input conversion at all</td>
-            <td class="st"><span class="tag hot">New</span></td>
+            <td>Which log format the shooters deliver in. It decides whether the tool does any input conversion at all, and it no longer holds the work up: the format is one name in one setting</td>
+            <td class="st"><span class="tag open">Unblocked</span></td>
           </tr>
           <tr>
             <td class="id">OQ-35</td>
@@ -596,7 +603,7 @@
           </tr>
           <tr>
             <td class="id">OQ-29</td>
-            <td>Which version of the industry colour standard the viewing copies use. Mostly answered: the session is ACES 1.3, so the tool matches it</td>
+            <td>Which version of the industry colour standard the viewing copies use. Mostly answered: the session is ACES 1.3, and the tool now pins that exact version in code. What is left is which viewing transform within it</td>
             <td class="st"><span class="tag open">Narrowed</span></td>
           </tr>
           <tr class="resolved">
@@ -703,7 +710,7 @@
           </tr>
           <tr>
             <td class="id">OQ-17</td>
-            <td><b style="color:var(--text)">Was resolved, and was wrong, twice.</b> Sources are log encoded, not display referred. Superseded 11 Sep, then again 12 Sep when the plate became graded. The colour document was rewritten both times</td>
+            <td><b style="color:var(--text)">Was resolved, and was wrong, twice.</b> Sources are log encoded, not display referred. Superseded twice on 11 Sep, the second time when the plate became graded. The colour document was rewritten both times</td>
             <td class="st"><span class="tag hot">Reversed</span></td>
           </tr>
           <tr class="resolved">
@@ -733,6 +740,23 @@
 
   <section>
     <h2>Corrections made to the spec</h2>
+      <div class="note">
+        <h3>One diagram would have had the tool apply the same conversion twice</h3>
+        <p>
+          The colour document's chain diagram shows the delivered plate arriving in the wide
+          scene-referred form after the grade is applied. Read as a list of steps, that says the
+          tool performs the conversion itself. It must not: <b>the grading session's colour file
+          already ends there</b>, so doing it again would convert twice.
+        </p>
+        <p>
+          Nothing would have failed. Every frame would have been written, every check would have
+          passed, and every plate would have been wrong in a way that looks like a grade
+          decision rather than a defect. The diagram now says it is a statement of where the
+          pixels are rather than a step, the conversion lives in the code as its own named piece
+          for the case that genuinely needs it, and the check that inspects each colour file for
+          where it lands is what tells the tool which case it is in - rather than a filename.
+        </p>
+      </div>
       <div class="note">
         <h3>The colour workflow was described properly, and it replaced the plan</h3>
         <p>
@@ -1130,7 +1154,7 @@
   <footer>
     <b>Source of truth</b> &middot; PROGRESS.md, docs/OPEN_QUESTIONS.md, PRD.md section 9<br>
     <b>Verify</b> &middot; pytest &middot; ruff check . &amp;&amp; mypy proingest &middot; python -m proingest scan &lt;folder&gt;<br>
-    <b>Last updated</b> &middot; 11 September 2026, 15:52 PDT. Colour workflow settled end to end: the grade arrives as a CLF from the colour session, the plate is graded, and the colour controls, the viewers and the stringout are all out of the tool. Next: M4.5, the colour pipeline, core first and headless
+    <b>Last updated</b> &middot; 11 September 2026, 20:59 PDT. The colour pipeline stopped being a specification and started being code: the colour engine is in, pinned to the grading session's own standard version, with 736 tests green on both machines. Next: matching each shot to its approved grade, which wants one real export from the session
   </footer>
 
 </div>

@@ -11,7 +11,9 @@ for why it cannot start on the current dev machine.
   because an app bundle is already a directory and `onefile` would unpack ~200 MB to a temp
   path on every launch.
 - Spec file in `build/proingest.spec` with `BUNDLE(...)` for the `.app`, hidden imports for
-  PySide6 plugins, OpenEXR and numpy.
+  PySide6 plugins, OpenEXR, numpy and PyOpenColorIO. **OpenColorIO needs no data files**: the
+  ACES config is compiled into the wheel and read with `Config.CreateFromBuiltinConfig`, so
+  there is nothing to `collect_data_files` and nothing to place beside the app.
 - `Info.plist` needs: `CFBundleIdentifier` (`com.<studio>.proingest`), `CFBundleShortVersionString`
   from `pyproject.toml`, `LSMinimumSystemVersion` (macOS 12 is a safe floor for PySide6 6.7),
   and `NSHighResolutionCapable`. No document types and no URL schemes: the app opens
@@ -35,7 +37,7 @@ for why it cannot start on the current dev machine.
 
 **PyInstaller cannot cross-build.** A macOS `.app` must be produced on a Mac: PyInstaller
 bundles the interpreter that is running it plus the compiled extension modules for the host, and
-PySide6, numpy, OpenEXR and xxhash all ship platform-specific binaries. There is no
+PySide6, numpy, OpenEXR, PyOpenColorIO and xxhash all ship platform-specific binaries. There is no
 `GOOS=darwin` equivalent, and the same is true of py2app, Briefcase and Nuitka.
 
 **Resolved for correctness, still open for packaging.** `.github/workflows/ci.yml` runs lint,

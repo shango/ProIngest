@@ -172,6 +172,14 @@ authored, and its output is display referred and therefore bounded. **The plate 
 use one**, because scene linear output is unbounded; that path applies the GroupTransform to
 float pixels directly.
 
+**Read the plate branch's `-> linear ACEScg` as a statement of where the pixels are, not as a
+step the tool always performs.** The CLF is specified to end in linear ACEScg itself, so for a
+graded shot that arrow is the CLF's own tail and the tool adds nothing after it; applying the
+ACEScct to ACEScg conversion as well would convert twice, which is a plausible looking wrong
+image rather than an error. The conversion exists as its own transform in `core/color.py`
+because a chain without a CLF still needs it, and because QC-039 is what tells the tool which
+case it is in: it probes the CLF for where it lands rather than trusting a filename.
+
 ### The plate is graded, and what that costs
 
 The morning's policy delivered an ungraded plate and carried the CDL in the header. The
@@ -224,6 +232,13 @@ budget in PRD section 8, and a Windows wheel exists for v02. `FileTransform` loa
 The session is ACES 1.3, so the config is pinned to an ACES 1.3 built-in config rather than
 tracking `studio-config-latest`. Matching the colour session matters more than being current,
 and a dependency bump must not change what the references look like. OQ-29.
+
+The pin is **`studio-config-v2.2.0_aces-v1.3_ocio-v2.4`**, and it lives in
+`core/color.BUILTIN_CONFIG` where nothing else restates it. The studio config rather than the
+cg one for two reasons: it carries the camera vendor log encodings, which is what OQ-39 may
+yet name, and it carries the full set of view transforms the viewing LUT is baked from. What
+is still open inside OQ-29 is which sRGB output transform within 1.3, and that is M4.5.3's
+question rather than this module's.
 
 ### The EXR writer stays as it is
 
