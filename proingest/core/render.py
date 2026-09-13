@@ -255,9 +255,7 @@ def _render_sequence(
         stream.close()
 
     if written != job.frame_count:
-        raise RenderError(
-            f"{job.name} wanted {job.frame_count} frames and the source gave {written}"
-        )
+        raise RenderError(f"{job.name} wanted {job.frame_count} frames and the source gave {written}")
     deliverable.frame_count = written
 
 
@@ -315,9 +313,7 @@ def _source_pixels(job: DeliverableJob) -> Generator[npt.NDArray[np.float32], No
 
     if job.source_size is None:
         raise RenderError(f"{job.name} has no source resolution, so the decode cannot be sized")
-    source = (
-        media.printf_pattern_for(job.source) if job.source_is_sequence else str(job.source)
-    )
+    source = media.printf_pattern_for(job.source) if job.source_is_sequence else str(job.source)
     # Only ask ffmpeg to scale when the size actually changes: a 4k pass from a 4k
     # source should not run the source through a resampler at all.
     scale = job.target_size if job.target_size != job.source_size else None
@@ -331,9 +327,7 @@ def _source_pixels(job: DeliverableJob) -> Generator[npt.NDArray[np.float32], No
     )
 
 
-def _fit(
-    pixels: npt.NDArray[np.float32], target: tuple[int, int] | None
-) -> npt.NDArray[np.float32]:
+def _fit(pixels: npt.NDArray[np.float32], target: tuple[int, int] | None) -> npt.NDArray[np.float32]:
     """Resample to the target, or pass the frame through when it is already there."""
     if target is None or pixels.shape[:2] == (target[1], target[0]):
         return pixels
@@ -395,9 +389,7 @@ def _render_reference(job: DeliverableJob, deliverable: Deliverable) -> None:
     # exactly the delivery this module exists to prevent.
     written = ffmpeg.container_frame_count(job.temp)
     if written != job.frame_count:
-        raise RenderError(
-            f"{job.name} wanted {job.frame_count} frames and the encode wrote {written}"
-        )
+        raise RenderError(f"{job.name} wanted {job.frame_count} frames and the encode wrote {written}")
     _record_file(deliverable, job.temp)
     deliverable.frame_count = written
 
@@ -576,9 +568,7 @@ def _worker(job: DeliverableJob) -> Deliverable:
     return deliverable
 
 
-def _drain(
-    queue: MPQueue[Progress | None], on_progress: Callable[[Progress], None] | None
-) -> None:
+def _drain(queue: MPQueue[Progress | None], on_progress: Callable[[Progress], None] | None) -> None:
     """Forward progress to the caller until the None sentinel arrives.
 
     The queue carries `Progress | None` rather than a sentinel Progress value because
@@ -644,9 +634,7 @@ def execute(
             initializer=_worker_init,
             initargs=(queue, cancel, log_queue, log_level, ffmpeg_override),
         ) as pool:
-            futures = {
-                pool.submit(_worker, job): index for index, job in enumerate(jobs)
-            }
+            futures = {pool.submit(_worker, job): index for index, job in enumerate(jobs)}
             for future in as_completed(futures):
                 results[futures[future]] = future.result()
     finally:

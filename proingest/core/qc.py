@@ -101,18 +101,12 @@ class RuleSettings:
         return cls(
             min_duration_frames=int(data.get("min_duration_frames", cls.min_duration_frames)),
             max_duration_frames=int(data.get("max_duration_frames", cls.max_duration_frames)),
-            expected_handle_frames=int(
-                data.get("expected_handle_frames", cls.expected_handle_frames)
-            ),
+            expected_handle_frames=int(data.get("expected_handle_frames", cls.expected_handle_frames)),
             target_resolution=(
-                (int(resolution[0]), int(resolution[1]))
-                if resolution is not None
-                else cls.target_resolution
+                (int(resolution[0]), int(resolution[1])) if resolution is not None else cls.target_resolution
             ),
             allow_non_4k=bool(data.get("allow_non_4k", cls.allow_non_4k)),
-            sync_tolerance_frames=int(
-                data.get("sync_tolerance_frames", cls.sync_tolerance_frames)
-            ),
+            sync_tolerance_frames=int(data.get("sync_tolerance_frames", cls.sync_tolerance_frames)),
         )
 
 
@@ -924,22 +918,17 @@ def check_color_chain(row: ShotRow) -> list[QCResult]:
         )
         return [QCResult("QC-048", "info", "row", f"aux still rendered through {chain}")]
     if row.clf_path is not None:
-        return [
-            QCResult("QC-048", "info", "row", f"rendered through {row.clf_path.name} alone")
-        ]
+        return [QCResult("QC-048", "info", "row", f"rendered through {row.clf_path.name} alone")]
     if encoding is not None:
         return [
             QCResult(
                 "QC-048",
                 "info",
                 "row",
-                f"no CLF: rendered through the input transform alone, "
-                f"{encoding} to {color.PLATE_SPACE}",
+                f"no CLF: rendered through the input transform alone, {encoding} to {color.PLATE_SPACE}",
             )
         ]
-    return [
-        QCResult("QC-048", "info", "row", "no CLF and no source encoding: nothing to render through")
-    ]
+    return [QCResult("QC-048", "info", "row", "no CLF and no source encoding: nothing to render through")]
 
 
 def check_hdri_header(row: ShotRow) -> list[QCResult]:
@@ -977,9 +966,7 @@ def check_camdata(row: ShotRow) -> list[QCResult]:
         pairs = camdata.parse(path)
     except (OSError, UnicodeDecodeError) as exc:
         return [QCResult("QC-053", "warning", "row", f"{shot}: camData unreadable ({exc})")]
-    return [
-        QCResult("QC-053", "info", "row", f"{shot}: camData parsed, {len(pairs)} key/value pairs")
-    ]
+    return [QCResult("QC-053", "info", "row", f"{shot}: camData parsed, {len(pairs)} key/value pairs")]
 
 
 def find_lens_grid_folder(folder: Path) -> Path | None:
@@ -1032,9 +1019,7 @@ def check_destination_writable(delivery_root: Path | None) -> list[QCResult]:
         return [QCResult("QC-062", "error", "batch", "no delivery root is set")]
     existing = _nearest_existing(delivery_root)
     if existing is None:
-        return [
-            QCResult("QC-062", "error", "batch", f"nothing on the path to {delivery_root} exists")
-        ]
+        return [QCResult("QC-062", "error", "batch", f"nothing on the path to {delivery_root} exists")]
     if not existing.is_dir():
         return [QCResult("QC-062", "error", "batch", f"{existing} is not a directory")]
     probe = existing / ".proingest-write-probe"
@@ -1154,13 +1139,9 @@ def preflight(batch: Batch, decoders: frozenset[str] | None = None) -> None:
     batch.qc.extend(check_free_space(batch))
     graded: set[str] = set()
     for turnover in batch.turnovers:
-        turnover.qc = [
-            result for result in turnover.qc if result.rule_id not in OWNED_PREFLIGHT_RULES
-        ]
+        turnover.qc = [result for result in turnover.qc if result.rule_id not in OWNED_PREFLIGHT_RULES]
         turnover.qc.extend(check_lens_grid(turnover))
-        turnover.qc.extend(
-            check_color_session(turnover, batch.rows_for(turnover.turnover_id))
-        )
+        turnover.qc.extend(check_color_session(turnover, batch.rows_for(turnover.turnover_id)))
         if turnover.color_session_edl is not None:
             graded.add(turnover.turnover_id)
     clf_cache: dict[Path, list[QCResult]] = {}
@@ -1172,8 +1153,6 @@ def preflight(batch: Batch, decoders: frozenset[str] | None = None) -> None:
         row.qc.extend(check_color_chain(row))
         row.qc.extend(check_hdri_header(row))
         row.qc.extend(check_camdata(row))
-
-
 
 
 # --- phase B: verifying what was written ------------------------------------------
@@ -1263,9 +1242,7 @@ def _verify_sequence(job: DeliverableJob, deliverable: Deliverable) -> list[QCRe
     paths = sorted(job.destination.glob(f"*{EXR_SUFFIX}"))
 
     if len(paths) != job.frame_count:
-        results.append(
-            _failure("QC-101", f"{job.name} holds {len(paths)} frames, not {job.frame_count}")
-        )
+        results.append(_failure("QC-101", f"{job.name} holds {len(paths)} frames, not {job.frame_count}"))
     results.extend(_check_numbering(job, paths))
     results.extend(_check_frame_headers(job, paths))
     results.extend(_check_frame_digests(deliverable, paths))
@@ -1287,9 +1264,7 @@ def _check_numbering(job: DeliverableJob, paths: list[Path]) -> list[QCResult]:
     if not expected:
         return [_failure("QC-102", f"{job.name} planned no frames but {len(paths)} were delivered")]
     if unparsed:
-        return [
-            _failure("QC-102", f"{job.name} holds files that are not delivery frames: {unparsed[0]}")
-        ]
+        return [_failure("QC-102", f"{job.name} holds files that are not delivery frames: {unparsed[0]}")]
     if numbers == expected:
         return []
     missing = sorted(set(expected) - set(numbers))
@@ -1322,8 +1297,7 @@ def _check_frame_headers(job: DeliverableJob, paths: list[Path]) -> list[QCResul
             unreadable = unreadable or (path, str(error))
             continue
         if bad_window is None and (
-            not header.windows_match
-            or (job.target_size is not None and header.resolution != job.target_size)
+            not header.windows_match or (job.target_size is not None and header.resolution != job.target_size)
         ):
             bad_window = path
         if bad_format is None:
@@ -1388,11 +1362,7 @@ def _check_frame_sizes(paths: list[Path]) -> list[QCResult]:
         return []
     sizes = [path.stat().st_size for path in paths]
     middle = sorted(sizes)[len(sizes) // 2]
-    small = [
-        path.name
-        for path, size in zip(paths, sizes, strict=True)
-        if size < middle * SMALL_FRAME_RATIO
-    ]
+    small = [path.name for path, size in zip(paths, sizes, strict=True) if size < middle * SMALL_FRAME_RATIO]
     if not small:
         return []
     shown = ", ".join(small[:3])
@@ -1464,9 +1434,7 @@ def _check_reference_video(job: DeliverableJob, stream: dict[str, Any]) -> list[
     results: list[QCResult] = []
     size = (int(stream.get("width", 0)), int(stream.get("height", 0)))
     if job.target_size is not None and size != job.target_size:
-        results.append(
-            _failure("QC-112", f"{job.name} is {size[0]}x{size[1]}, not {job.target_size}")
-        )
+        results.append(_failure("QC-112", f"{job.name} is {size[0]}x{size[1]}, not {job.target_size}"))
     if job.rate is not None:
         stated = str(stream.get("r_frame_rate", ""))
         expected = f"{job.rate.numerator}/{job.rate.denominator}"
@@ -1675,19 +1643,13 @@ def check_row_complete(row: ShotRow) -> list[QCResult]:
     if not row.deliverables:
         return []
     unfinished = [item.name for item in row.deliverables if item.status != "done"]
-    failed = [
-        item.name
-        for item in row.deliverables
-        if any(result.severity == "error" for result in item.qc)
-    ]
+    failed = [item.name for item in row.deliverables if any(result.severity == "error" for result in item.qc)]
     broken = sorted(set(unfinished) | set(failed))
     if not broken:
         return []
     shown = ", ".join(broken[:3])
     more = f" and {len(broken) - 3} more" if len(broken) > 3 else ""
-    return [
-        QCResult("QC-150", "error", "row", f"{len(broken)} deliverables are not done: {shown}{more}")
-    ]
+    return [QCResult("QC-150", "error", "row", f"{len(broken)} deliverables are not done: {shown}{more}")]
 
 
 def check_names_reparse(batch: Batch, show_pattern: str = naming.DEFAULT_SHOW_PATTERN) -> list[QCResult]:

@@ -109,8 +109,15 @@ def make_mov(
     """A ProRes 4444 mov, one of the source formats COLOR_AND_FORMAT section 2 accepts."""
     path.parent.mkdir(parents=True, exist_ok=True)
     command = [
-        "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
-        "-f", "lavfi", "-i", f"testsrc2=size={size[0]}x{size[1]}:rate={fps}:duration={count / fps}",
+        "ffmpeg",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-y",
+        "-f",
+        "lavfi",
+        "-i",
+        f"testsrc2=size={size[0]}x{size[1]}:rate={fps}:duration={count / fps}",
     ]
     if with_audio:
         command += ["-f", "lavfi", "-i", f"sine=frequency=440:duration={count / fps}:sample_rate=48000"]
@@ -125,11 +132,26 @@ def make_mov(
 def make_mp4(path: Path, count: int = 8, size: tuple[int, int] = SMALL, fps: int = FPS) -> Path:
     """An 8 bit 4:2:0 source, which QC-020 must reject as a linear plate."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    _run([
-        "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
-        "-f", "lavfi", "-i", f"testsrc2=size={size[0]}x{size[1]}:rate={fps}:duration={count / fps}",
-        "-c:v", "libx264", "-pix_fmt", "yuv420p", "-frames:v", str(count), str(path),
-    ])
+    _run(
+        [
+            "ffmpeg",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-y",
+            "-f",
+            "lavfi",
+            "-i",
+            f"testsrc2=size={size[0]}x{size[1]}:rate={fps}:duration={count / fps}",
+            "-c:v",
+            "libx264",
+            "-pix_fmt",
+            "yuv420p",
+            "-frames:v",
+            str(count),
+            str(path),
+        ]
+    )
     return path
 
 
@@ -143,26 +165,57 @@ def make_wav(
     """48k 16 bit PCM by default, matching what the spec PDF calls for."""
     path.parent.mkdir(parents=True, exist_ok=True)
     codec = {16: "pcm_s16le", 24: "pcm_s24le", 32: "pcm_s32le"}[bit_depth]
-    _run([
-        "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
-        "-f", "lavfi", "-i", f"sine=frequency=440:duration={seconds}:sample_rate={sample_rate}",
-        "-ac", str(channels), "-c:a", codec, str(path),
-    ])
+    _run(
+        [
+            "ffmpeg",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-y",
+            "-f",
+            "lavfi",
+            "-i",
+            f"sine=frequency=440:duration={seconds}:sample_rate={sample_rate}",
+            "-ac",
+            str(channels),
+            "-c:a",
+            codec,
+            str(path),
+        ]
+    )
     return path
 
 
 def make_dpx_sequence(
-    directory: Path, base: str = "MELT0002_pl01", count: int = 4, first: int = 1001,
-    size: tuple[int, int] = SMALL, fps: int = FPS,
+    directory: Path,
+    base: str = "MELT0002_pl01",
+    count: int = 4,
+    first: int = 1001,
+    size: tuple[int, int] = SMALL,
+    fps: int = FPS,
 ) -> Path:
     """A DPX sequence, which is QC-021: integer container carrying linear data."""
     directory.mkdir(parents=True, exist_ok=True)
-    _run([
-        "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
-        "-f", "lavfi", "-i", f"testsrc2=size={size[0]}x{size[1]}:rate={fps}:duration={count / fps}",
-        "-pix_fmt", "gbrp10le", "-frames:v", str(count),
-        "-start_number", str(first), str(directory / f"{base}.%04d.dpx"),
-    ])
+    _run(
+        [
+            "ffmpeg",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-y",
+            "-f",
+            "lavfi",
+            "-i",
+            f"testsrc2=size={size[0]}x{size[1]}:rate={fps}:duration={count / fps}",
+            "-pix_fmt",
+            "gbrp10le",
+            "-frames:v",
+            str(count),
+            "-start_number",
+            str(first),
+            str(directory / f"{base}.%04d.dpx"),
+        ]
+    )
     return directory
 
 
@@ -174,29 +227,57 @@ def make_solid_dpx(path: Path, colour: str = "0x804020", size: tuple[int, int] =
     each other rather than against an exact number.
     """
     path.parent.mkdir(parents=True, exist_ok=True)
-    _run([
-        "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
-        "-f", "lavfi", "-i", f"color=c={colour}:size={size[0]}x{size[1]}",
-        "-pix_fmt", "gbrp10le", "-frames:v", "1", str(path),
-    ])
+    _run(
+        [
+            "ffmpeg",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-y",
+            "-f",
+            "lavfi",
+            "-i",
+            f"color=c={colour}:size={size[0]}x{size[1]}",
+            "-pix_fmt",
+            "gbrp10le",
+            "-frames:v",
+            "1",
+            str(path),
+        ]
+    )
     return path
 
 
 def make_still(path: Path, size: tuple[int, int] = SMALL) -> Path:
     """A single image, used for BTS copies and for lone-numbered-file cases."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    _run([
-        "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
-        "-f", "lavfi", "-i", f"testsrc2=size={size[0]}x{size[1]}",
-        "-frames:v", "1", str(path),
-    ])
+    _run(
+        [
+            "ffmpeg",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-y",
+            "-f",
+            "lavfi",
+            "-i",
+            f"testsrc2=size={size[0]}x{size[1]}",
+            "-frames:v",
+            "1",
+            str(path),
+        ]
+    )
     return path
 
 
 def clip_record(name: str, metadata: dict[str, str] | None = None) -> timeline.ClipRecord:
     """One clip record, for the scan helpers that read a clip rather than a timeline."""
     return timeline.ClipRecord(
-        name=name, track="V1", record_start=0, duration=4, source_start=0,
+        name=name,
+        track="V1",
+        record_start=0,
+        duration=4,
+        source_start=0,
         metadata=metadata or {},
     )
 
@@ -205,8 +286,13 @@ def media_info_with_tags(tags: dict[str, str]) -> MediaInfo:
     """A probe result carrying container tags, which is the second carrier for OQ-44."""
     return MediaInfo(
         path=Path(f"/turnover/{next(iter(tags), 'clip')}.mov"),
-        codec="prores", pixel_format="yuv444p12le", width=64, height=36,
-        rate=FrameRate(FPS), frame_count=4, tags=tags,
+        codec="prores",
+        pixel_format="yuv444p12le",
+        width=64,
+        height=36,
+        rate=FrameRate(FPS),
+        frame_count=4,
+        tags=tags,
     )
 
 
@@ -253,9 +339,7 @@ def make_otio(
         clip = otio.schema.Clip(
             name=name,
             media_reference=reference,
-            source_range=ot.TimeRange(
-                ot.RationalTime(source_start, fps), ot.RationalTime(duration, fps)
-            ),
+            source_range=ot.TimeRange(ot.RationalTime(source_start, fps), ot.RationalTime(duration, fps)),
         )
         if source_encoding is not None:
             # Nested the way Resolve nests what it exports, so the scan's walk by field
@@ -271,9 +355,7 @@ def make_otio(
                 otio.schema.Clip(
                     name=name,
                     media_reference=otio.schema.ExternalReference(target_url=url),
-                    source_range=ot.TimeRange(
-                        ot.RationalTime(0, fps), ot.RationalTime(duration, fps)
-                    ),
+                    source_range=ot.TimeRange(ot.RationalTime(0, fps), ot.RationalTime(duration, fps)),
                 )
             )
 

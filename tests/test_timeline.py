@@ -15,9 +15,7 @@ URL = "file:///G:/t/MELT0001_pl01.exr"
 
 
 def clip(record_start: int, duration: int, name: str = "c", track: str = "V1") -> ClipRecord:
-    return ClipRecord(
-        name=name, track=track, record_start=record_start, duration=duration, source_start=0
-    )
+    return ClipRecord(name=name, track=track, record_start=record_start, duration=duration, source_start=0)
 
 
 class TestClipRecord:
@@ -35,9 +33,7 @@ class TestClipRecord:
             (100, 10, 0, 100, False),  # abutting the other way
         ],
     )
-    def test_overlap(
-        self, a_start: int, a_len: int, b_start: int, b_len: int, expected: bool
-    ) -> None:
+    def test_overlap(self, a_start: int, a_len: int, b_start: int, b_len: int, expected: bool) -> None:
         assert clip(a_start, a_len).overlaps(clip(b_start, b_len)) is expected
 
     def test_overlap_is_symmetric(self) -> None:
@@ -194,9 +190,7 @@ class TestMultipleVideoTracks:
         from opentimelineio import opentime as ot
 
         tl = otio.schema.Timeline(name="two_tracks")
-        for track_name, clip_name in (
-            [("V1", "MELT0001_pl01"), ("V2", "MELT0002_el01")]
-        ):
+        for track_name, clip_name in [("V1", "MELT0001_pl01"), ("V2", "MELT0002_el01")]:
             track = otio.schema.Track(name=track_name, kind=otio.schema.TrackKind.Video)
             tl.tracks.append(track)
             track.append(
@@ -313,9 +307,7 @@ FCM: NON-DROP FRAME
         with pytest.raises(timeline.DropFrameError, match="QC-027"):
             timeline.load(path)
 
-    def test_timecode_that_does_not_add_up_at_the_rate_is_the_specific_error(
-        self, tmp_path: Path
-    ) -> None:
+    def test_timecode_that_does_not_add_up_at_the_rate_is_the_specific_error(self, tmp_path: Path) -> None:
         path = tmp_path / "t25.edl"
         path.write_text(self.EDL.replace("10:00:10:00", "10:00:10:24"))
         with pytest.raises(timeline.EdlTimecodeError, match="different rate"):

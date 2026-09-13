@@ -214,7 +214,6 @@ class TestTheLineOfWords:
         assert progress.activity == ""
 
 
-
 class TestWhereItRuns:
     def test_the_pool_is_driven_from_another_thread(
         self, runner: Runner, monkeypatch: pytest.MonkeyPatch
@@ -230,9 +229,7 @@ class TestWhereItRuns:
         assert pump_until(lambda: collected.finished)
         assert threads and threads[0] is not QThread.currentThread()
 
-    def test_progress_arrives_on_the_ui_thread(
-        self, runner: Runner, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_progress_arrives_on_the_ui_thread(self, runner: Runner, monkeypatch: pytest.MonkeyPatch) -> None:
         """`execute` calls back on its own drain thread; the queued signal is the last leg."""
         ui_thread = QThread.currentThread()
         seen: list[QThread] = []
@@ -249,9 +246,7 @@ class TestWhereItRuns:
         assert seen == [ui_thread]
         assert collected.messages[0].frames_done == 1
 
-    def test_the_records_come_back(
-        self, runner: Runner, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_the_records_come_back(self, runner: Runner, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(render, "execute", fake_execute())
         collected = Collected(runner)
         runner.start([job("one_v01"), job("two_v01")])
@@ -336,9 +331,7 @@ class TestStartingAndStopping:
         assert collected.written == []
         assert collected.failures == ["no processes left"]
 
-    def test_shutdown_waits_for_the_thread(
-        self, runner: Runner, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_shutdown_waits_for_the_thread(self, runner: Runner, monkeypatch: pytest.MonkeyPatch) -> None:
         """A `QThread` still running when its owner is collected is a crash on the way out."""
         monkeypatch.setattr(render, "execute", fake_execute())
         runner.start([job()])

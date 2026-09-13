@@ -67,9 +67,7 @@ def report_paths(batch: Batch, delivery_root: Path, when: date | None = None) ->
 
 def severity_counts(batch: Batch) -> Counter[str]:
     """Every QC result in the batch, counted by severity. The Summary's own tally."""
-    return Counter(
-        result.severity for results in _every_result(batch) for result in results
-    )
+    return Counter(result.severity for results in _every_result(batch) for result in results)
 
 
 def _sheet(book: Workbook, title: str, headers: tuple[str, ...]) -> Worksheet:
@@ -180,30 +178,32 @@ def _write_shots(book: Workbook, batch: Batch) -> None:
     for row in batch.rows:
         media = row.media
         snapshot, current = row.snapshot, row.current
-        sheet.append([
-            row.turnover_id,
-            row.clip_name,
-            row.shot_code or "",
-            row.identity.elem if row.identity else "",
-            str(media.path) if media else "",
-            media.rate.as_float() if media else "",
-            f"{media.width}x{media.height}" if media else "",
-            snapshot.in_frame if snapshot else "",
-            snapshot.out_frame if snapshot else "",
-            _timecode(row, snapshot.in_frame if snapshot else None),
-            _timecode(row, snapshot.out_frame if snapshot else None),
-            current.in_frame if current else "",
-            current.out_frame if current else "",
-            row.duration or "",
-            row.max_available_out or "",
-            str(row.audio_path) if row.audio_path else "",
-            "yes" if row.was_edited else "",
-            row.source_encoding or "",
-            row.clf_path.name if row.clf_path else "",
-            row.skip_reason or "",
-            _rule_ids(row.qc, "warning"),
-            _rule_ids(row.qc, "error"),
-        ])
+        sheet.append(
+            [
+                row.turnover_id,
+                row.clip_name,
+                row.shot_code or "",
+                row.identity.elem if row.identity else "",
+                str(media.path) if media else "",
+                media.rate.as_float() if media else "",
+                f"{media.width}x{media.height}" if media else "",
+                snapshot.in_frame if snapshot else "",
+                snapshot.out_frame if snapshot else "",
+                _timecode(row, snapshot.in_frame if snapshot else None),
+                _timecode(row, snapshot.out_frame if snapshot else None),
+                current.in_frame if current else "",
+                current.out_frame if current else "",
+                row.duration or "",
+                row.max_available_out or "",
+                str(row.audio_path) if row.audio_path else "",
+                "yes" if row.was_edited else "",
+                row.source_encoding or "",
+                row.clf_path.name if row.clf_path else "",
+                row.skip_reason or "",
+                _rule_ids(row.qc, "warning"),
+                _rule_ids(row.qc, "error"),
+            ]
+        )
 
 
 def _write_deliverables(book: Workbook, batch: Batch) -> None:
@@ -211,18 +211,20 @@ def _write_deliverables(book: Workbook, batch: Batch) -> None:
     sheet = _sheet(book, "Deliverables", DELIVERABLE_HEADERS + qc.DELIVERABLE_RULES)
     for row in batch.rows:
         for item in row.deliverables:
-            sheet.append([
-                row.shot_code or "",
-                row.identity.elem if row.identity else "",
-                item.kind,
-                item.res or "",
-                item.version,
-                str(item.path),
-                item.frame_count,
-                item.size,
-                _checksum(item),
-                *(qc.deliverable_rule_state(item, rule) for rule in qc.DELIVERABLE_RULES),
-            ])
+            sheet.append(
+                [
+                    row.shot_code or "",
+                    row.identity.elem if row.identity else "",
+                    item.kind,
+                    item.res or "",
+                    item.version,
+                    str(item.path),
+                    item.frame_count,
+                    item.size,
+                    _checksum(item),
+                    *(qc.deliverable_rule_state(item, rule) for rule in qc.DELIVERABLE_RULES),
+                ]
+            )
 
 
 def _checksum(item: Deliverable) -> str:
@@ -247,13 +249,15 @@ def _write_side_files(book: Workbook, batch: Batch) -> None:
             if item.kind not in _SIDE_FILE_KINDS:
                 continue
             source = sources.get(item.kind)
-            sheet.append([
-                row.shot_code or "",
-                item.kind,
-                str(source) if source else "",
-                str(item.path),
-                item.checksum or "",
-            ])
+            sheet.append(
+                [
+                    row.shot_code or "",
+                    item.kind,
+                    str(source) if source else "",
+                    str(item.path),
+                    item.checksum or "",
+                ]
+            )
 
 
 def _write_camera_data(book: Workbook, batch: Batch) -> None:
@@ -326,9 +330,7 @@ def _tracker_fps(row: ShotRow) -> str:
 
 def _plate_marks(row: ShotRow) -> str:
     """`4K ✓` and `HD ✓` on two lines, the way the tracker's own cells are written."""
-    delivered = {
-        item.res for item in row.deliverables if item.kind == "raw_dir" and item.status != "failed"
-    }
+    delivered = {item.res for item in row.deliverables if item.kind == "raw_dir" and item.status != "failed"}
     return "\n".join(
         f"{label} {'✓' if res in delivered else '—'}" for label, res in (("4K", "4k"), ("HD", "HD"))
     )

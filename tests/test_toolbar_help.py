@@ -40,10 +40,7 @@ def native(action: QAction) -> str:
 def every_state() -> list[ToolbarState]:
     """All 2^7 combinations. Nonsensical ones included: a tooltip has to say something
     whatever the window is doing, and the point of the width test is that none is long."""
-    return [
-        ToolbarState(*flags)
-        for flags in product((False, True), repeat=7)
-    ]
+    return [ToolbarState(*flags) for flags in product((False, True), repeat=7)]
 
 
 class TestTheWording:
@@ -178,9 +175,7 @@ def window(qt_app: QApplication, tmp_path: Path) -> DrivenWindow:
 
 
 class TestTheWindowSaysTheRightOne:
-    def test_every_toolbar_action_carries_a_tooltip_from_the_first_launch(
-        self, window: DrivenWindow
-    ) -> None:
+    def test_every_toolbar_action_carries_a_tooltip_from_the_first_launch(self, window: DrivenWindow) -> None:
         """Section 10's first-run state is where a greyed toolbar most needs to explain."""
         for key, action in window._toolbar_help:
             assert action.toolTip(), key
@@ -195,26 +190,20 @@ class TestTheWindowSaysTheRightOne:
         assert window.action_run.toolTip().endswith(help_.NO_ROWS_TO_RUN)
         assert not window.action_save.toolTip().endswith(help_.NO_BATCH)
 
-    def test_a_batch_with_shots_and_no_session_warns_on_run(
-        self, window: DrivenWindow
-    ) -> None:
+    def test_a_batch_with_shots_and_no_session_warns_on_run(self, window: DrivenWindow) -> None:
         """The answer to "why does Run write nothing", said before Run is pressed."""
         window.set_batch(batch(row()))
         assert window.action_run.isEnabled()
         assert window.action_run.toolTip().endswith(help_.NO_SESSION)
 
-    def test_an_ingested_session_takes_the_warning_off(
-        self, window: DrivenWindow, tmp_path: Path
-    ) -> None:
+    def test_an_ingested_session_takes_the_warning_off(self, window: DrivenWindow, tmp_path: Path) -> None:
         window.set_batch(batch(row()))
         window.batch.turnovers[0].color_session_edl = tmp_path / "final.edl"
         window._update_state()
         expected = f"{help_.WHAT_IT_DOES[help_.RUN]}  {native(window.action_run)}"
         assert window.action_run.toolTip() == expected
 
-    def test_scan_explains_itself_once_every_turnover_has_shots(
-        self, window: DrivenWindow
-    ) -> None:
+    def test_scan_explains_itself_once_every_turnover_has_shots(self, window: DrivenWindow) -> None:
         window.set_batch(batch(row()))
         assert not window.action_scan.isEnabled()
         assert window.action_scan.toolTip().endswith(help_.NOTHING_UNSCANNED)
@@ -226,9 +215,7 @@ class TestTheWindowSaysTheRightOne:
             for line in action.toolTip().split("\n"):
                 assert len(line) <= help_.MAX_LINE, f"{key}: {line!r} is {len(line)}"
 
-    def test_the_shortcut_in_the_tooltip_is_the_action_s_own(
-        self, window: DrivenWindow
-    ) -> None:
+    def test_the_shortcut_in_the_tooltip_is_the_action_s_own(self, window: DrivenWindow) -> None:
         """Native text, so it reads as Cmd on the Mac without a platform branch here."""
         assert native(window.action_run) in window.action_run.toolTip()
         assert not window.action_add_turnover.toolTip().split("\n")[0].endswith(" ")

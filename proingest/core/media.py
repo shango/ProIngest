@@ -154,11 +154,7 @@ class DirectoryIndex:
 
     def audio_matching(self, stem: str) -> list[FileEntry]:
         """Used by the EDL fallback, which cannot associate audio from the timeline."""
-        return [
-            entry
-            for entry in self.singles
-            if entry.stem == stem and entry.suffix in AUDIO_EXTENSIONS
-        ]
+        return [entry for entry in self.singles if entry.stem == stem and entry.suffix in AUDIO_EXTENSIONS]
 
     def containing(self, fragment: str) -> list[FileEntry]:
         """Single files whose name contains `fragment`. Used for HDRI and camData."""

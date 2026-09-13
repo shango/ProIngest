@@ -207,9 +207,7 @@ class TestTheProgressCell:
         done = DOT_COLORS[RowState.DONE].rgb()
         return sum(1 for x in range(image.width()) if image.pixel(x, line) in (accent, done))
 
-    def test_a_row_half_rendered_draws_a_bar_about_half_way(
-        self, qt_app: QApplication
-    ) -> None:
+    def test_a_row_half_rendered_draws_a_bar_about_half_way(self, qt_app: QApplication) -> None:
         model = ShotListModel()
         planned = delivered(row(), status="planned")
         planned.deliverables[0].status = "done"
@@ -251,9 +249,7 @@ class TestTheCellEditor:
     def test_a_cell_edits_as_a_line_edit(self, view: ShotListView) -> None:
         assert self.editor(view, SHOT).text() == ""
 
-    def test_an_unrecognized_in_goes_red_while_it_is_still_being_typed(
-        self, view: ShotListView
-    ) -> None:
+    def test_an_unrecognized_in_goes_red_while_it_is_still_being_typed(self, view: ShotListView) -> None:
         editor = self.editor(view, IN)
         editor.setText("sometime tuesday")
         assert ERROR_COLOR.name() in editor.styleSheet()
@@ -310,9 +306,7 @@ class TestTabbingBetweenCells:
         view.setCurrentIndex(self.cell(view, 0, OUT))
         assert self.tab(view) == self.cell(view, 0, NOTES)
 
-    def test_the_end_of_a_row_wraps_to_the_next_row_s_first_cell(
-        self, view: ShotListView
-    ) -> None:
+    def test_the_end_of_a_row_wraps_to_the_next_row_s_first_cell(self, view: ShotListView) -> None:
         view.setCurrentIndex(self.cell(view, 0, NOTES))
         assert self.tab(view) == self.cell(view, 1, SHOT)
 
@@ -334,9 +328,7 @@ class TestTabbingBetweenCells:
         view.setCurrentIndex(self.cell(view, 0, NOTES))
         assert self.tab(view) == self.cell(view, 0, SHOT)
 
-    def test_from_a_turnover_header_it_starts_at_the_first_editable_cell(
-        self, view: ShotListView
-    ) -> None:
+    def test_from_a_turnover_header_it_starts_at_the_first_editable_cell(self, view: ShotListView) -> None:
         view.setCurrentIndex(view.proxy.index(0, 0))
         assert self.tab(view) == self.cell(view, 0, SHOT)
 
@@ -394,9 +386,7 @@ def tall(qt_app: QApplication) -> Iterator[ShotListView]:
     been shown and had its events delivered, and the frozen overlay is about all three.
     """
     model = ShotListModel()
-    model.set_batch(
-        batch(*[row(f"MELT{shot:04d}_pl01") for shot in range(1, 30)], turnovers=[turnover()])
-    )
+    model.set_batch(batch(*[row(f"MELT{shot:04d}_pl01") for shot in range(1, 30)], turnovers=[turnover()]))
     view = ShotListView(model)
     view.resize(500, 200)
     view.show()
@@ -447,9 +437,7 @@ class TestTheFrozenColumns:
     def test_widening_a_column_widens_the_overlay_with_it(self, tall: ShotListView) -> None:
         tall.header().resizeSection(SHOT, 300)
         assert tall.frozen.columnWidth(SHOT) == 300
-        assert tall.frozen.width() == sum(
-            tall.columnWidth(column) for column in range(FROZEN_COLUMNS)
-        )
+        assert tall.frozen.width() == sum(tall.columnWidth(column) for column in range(FROZEN_COLUMNS))
 
     def test_widening_it_on_the_overlay_widens_the_list(self, tall: ShotListView) -> None:
         """Either header can be the one the mouse is on, so both are wired."""
@@ -515,9 +503,7 @@ class TestEditingAcrossTheSeam:
         assert len(self.editors(view.frozen)) == 1
         assert self.editors(view) == []
 
-    def test_a_scrolling_cell_asked_of_the_overlay_opens_in_the_list(
-        self, view: ShotListView
-    ) -> None:
+    def test_a_scrolling_cell_asked_of_the_overlay_opens_in_the_list(self, view: ShotListView) -> None:
         """Tab out of a Shot editor asks the overlay to edit In, which it hides."""
         self.open_editor(view.frozen, self.cell(view, IN))
         assert len(self.editors(view)) == 1
@@ -531,9 +517,7 @@ class TestEditingAcrossTheSeam:
         )
         assert stepped == self.cell(view, IN)
 
-    def test_tab_out_of_a_shot_editor_opens_the_next_one_in_the_list(
-        self, tall: ShotListView
-    ) -> None:
+    def test_tab_out_of_a_shot_editor_opens_the_next_one_in_the_list(self, tall: ShotListView) -> None:
         """The whole seam in one move: the edit is committed by the overlay and the
         next editor opens in the view on the other side of it."""
         shot = tall.proxy.index(0, SHOT, tall.proxy.index(0, 0))
@@ -615,9 +599,7 @@ class TestTheTurnoverLine:
         tall.horizontalScrollBar().setValue(180)
         assert self.painted(tall, scrolled=180) == still
 
-    def test_the_overlay_draws_the_same_sentence_and_does_not_elide_it(
-        self, tall: ShotListView
-    ) -> None:
+    def test_the_overlay_draws_the_same_sentence_and_does_not_elide_it(self, tall: ShotListView) -> None:
         """An ellipsis at the overlay's edge would land in the middle of a line the
         list is still drawing the rest of, and read as two sentences."""
         seam = QRect(0, 0, sum(tall.columnWidth(c) for c in range(FROZEN_COLUMNS)), 40)

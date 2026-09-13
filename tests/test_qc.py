@@ -667,9 +667,7 @@ class TestCamdata:
         assert results[0].severity == "info"
         assert "2 key/value pairs" in results[0].message
 
-    def test_a_file_whose_format_changed_reports_zero_rather_than_nothing(
-        self, tmp_path: Path
-    ) -> None:
+    def test_a_file_whose_format_changed_reports_zero_rather_than_nothing(self, tmp_path: Path) -> None:
         """The whole point of the count: an empty sheet is otherwise invisible."""
         path = tmp_path / "MELT0001_pl01_camData.txt"
         path.write_text("free prose with no pairs in it\n")
@@ -1287,9 +1285,7 @@ class TestPhaseBCopy:
 
 
 def delivered(name: str, kind: str, version: int = 1, res: str | None = None) -> Deliverable:
-    return Deliverable(
-        kind=kind, name=name, path=Path("/d") / name, version=version, res=res, status="done"
-    )
+    return Deliverable(kind=kind, name=name, path=Path("/d") / name, version=version, res=res, status="done")
 
 
 class TestRowComplete:

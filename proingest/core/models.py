@@ -224,9 +224,7 @@ class MediaInfo:
             audio_bit_depth=int(data["audio_bit_depth"]),
             size=int(data["size"]),
             mtime=float(data["mtime"]),
-            stated_rate=(
-                FrameRate.from_dict(data["stated_rate"]) if data.get("stated_rate") else None
-            ),
+            stated_rate=(FrameRate.from_dict(data["stated_rate"]) if data.get("stated_rate") else None),
         )
 
 
@@ -627,8 +625,7 @@ def _identity_from_dict(data: dict[str, Any] | None) -> ShotIdentity | None:
     if data is None:
         return None
     values: dict[str, Any] = {
-        f.name: str(data[f.name]) if f.default is MISSING else data.get(f.name)
-        for f in fields(ShotIdentity)
+        f.name: str(data[f.name]) if f.default is MISSING else data.get(f.name) for f in fields(ShotIdentity)
     }
     return ShotIdentity(**values)
 

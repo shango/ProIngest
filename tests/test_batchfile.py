@@ -157,9 +157,7 @@ class TestTurnoverPersistence:
     def test_turnover_fields_survive(self, tmp_path: Path) -> None:
         batch = Batch(
             turnovers=[
-                Turnover(
-                    "t1", tmp_path, number=1, month=2, day=23, year=2026, shooter="Daniel Luckett"
-                )
+                Turnover("t1", tmp_path, number=1, month=2, day=23, year=2026, shooter="Daniel Luckett")
             ]
         )
         saved = batchfile.save(batch, tmp_path / "b")

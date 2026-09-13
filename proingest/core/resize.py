@@ -58,9 +58,7 @@ def _plan(source: int, target: int) -> tuple[npt.NDArray[np.intp], npt.NDArray[n
     return indices, normalized
 
 
-def _resample_axis(
-    image: npt.NDArray[np.float32], target: int, axis: int
-) -> npt.NDArray[np.float32]:
+def _resample_axis(image: npt.NDArray[np.float32], target: int, axis: int) -> npt.NDArray[np.float32]:
     """Resample one axis.
 
     Accumulating one tap at a time keeps peak memory at a couple of frames. Gathering

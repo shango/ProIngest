@@ -407,9 +407,7 @@ def shot_color(row: ShotRow) -> ShotColor:
     )
 
 
-def index_clfs(
-    folder: Path, show_pattern: str = naming.DEFAULT_SHOW_PATTERN
-) -> dict[str, list[Path]]:
+def index_clfs(folder: Path, show_pattern: str = naming.DEFAULT_SHOW_PATTERN) -> dict[str, list[Path]]:
     """Every CLF under `folder`, by the shot code in its filename (OQ-33).
 
     A CLF names its shot and that is the whole convention. Anything else in the
@@ -543,9 +541,7 @@ class _Event:
         head = self.head
         found = _TIMECODE.findall(head["rest"])
         if len(found) < 4:
-            raise ColorSessionError(
-                f"{path}: event {head['event']} states {len(found)} timecodes, not four"
-            )
+            raise ColorSessionError(f"{path}: event {head['event']} states {len(found)} timecodes, not four")
         try:
             times = [frames.timecode_to_frames(value, rate.as_float()) for value in found[-4:]]
         except ValueError as exc:

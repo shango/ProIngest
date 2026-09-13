@@ -160,9 +160,7 @@ class TestWhatOneRowSays:
 
     def test_audio_longer_than_the_picture_says_by_how_much(self) -> None:
         sounded = with_sides(row())
-        sounded.audio = AudioInfo(
-            path=Path("/a.wav"), duration_samples=48000 * 236 // 24, sample_rate=48000
-        )
+        sounded.audio = AudioInfo(path=Path("/a.wav"), duration_samples=48000 * 236 // 24, sample_rate=48000)
         assert "12 frames longer" in value(describe([sounded], batch(sounded)), "Audio", "Sync")
 
     def test_a_row_with_no_audio_has_no_audio_section(self) -> None:
@@ -358,9 +356,7 @@ class TestTheWidget:
         for widget in pane.findChildren(type(pane.placeholder)) + list(pane._boxes):
             assert not (widget.focusPolicy() & Qt.FocusPolicy.TabFocus)
 
-    def test_a_path_gets_a_copy_button_and_a_plain_value_does_not(
-        self, pane: MetadataPane
-    ) -> None:
+    def test_a_path_gets_a_copy_button_and_a_plain_value_does_not(self, pane: MetadataPane) -> None:
         box = _box(pane, describe([row()], batch(row())), "Source media")
         buttons = [b for b in box.findChildren(type(pane.copy_all)) if b.text() == COPY]
         paths = [f for f in box.findChildren(ElidedLabel) if f.full_text.startswith("/")]

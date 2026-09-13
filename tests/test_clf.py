@@ -128,9 +128,7 @@ def display_clf(path: Path, size: int = 9) -> Path:
     transform uses ops CLF cannot express, so a session that exported one would have
     had to bake it, exactly as here.
     """
-    view = ocio.DisplayViewTransform(
-        src=CLF_SOURCE, display="sRGB - Display", view="ACES 1.0 - SDR Video"
-    )
+    view = ocio.DisplayViewTransform(src=CLF_SOURCE, display="sRGB - Display", view="ACES 1.0 - SDR Video")
     cpu = color.config().getProcessor(view).getDefaultCPUProcessor()
     lut = ocio.Lut3DTransform(gridSize=size, interpolation=color.INTERPOLATION)
     for red in range(size):
@@ -183,9 +181,7 @@ class TestReadFinalEdl:
         text = FINAL_EDL.replace("001  MELT0001 V ", "001  MELT0001 B ")
         assert clf.read_final_edl(edl(tmp_path, text), RATE_24)[0].event_id == "001"
 
-    def test_a_comment_under_an_audio_event_does_not_reach_the_one_before(
-        self, tmp_path: Path
-    ) -> None:
+    def test_a_comment_under_an_audio_event_does_not_reach_the_one_before(self, tmp_path: Path) -> None:
         text = FINAL_EDL + (
             "\n003  MELT0009 A     C        02:00:00:00 02:00:04:00 01:00:09:00 01:00:13:00\n"
             "* FROM CLIP NAME: MELT0009_pl01.wav\n"
@@ -225,22 +221,17 @@ class TestCdl:
         cdl = clf.read_final_edl(edl(tmp_path), RATE_24)[0].cdl
         assert cdl is not None
         assert cdl.sop_text == (
-            "*ASC_SOP (1.020000 0.990000 1.010000)"
-            "(0.001000 -0.002000 0.000000)(0.980000 1.000000 1.020000)"
+            "*ASC_SOP (1.020000 0.990000 1.010000)(0.001000 -0.002000 0.000000)(0.980000 1.000000 1.020000)"
         )
         assert cdl.sat_text == "*ASC_SAT 1.050000"
 
     def test_an_event_with_no_cdl_carries_none(self, tmp_path: Path) -> None:
-        text = "\n".join(
-            line for line in FINAL_EDL.splitlines() if not line.startswith("*ASC")
-        )
+        text = "\n".join(line for line in FINAL_EDL.splitlines() if not line.startswith("*ASC"))
         assert clf.read_final_edl(edl(tmp_path, text), RATE_24)[0].cdl is None
 
     def test_half_a_cdl_is_none_rather_than_a_neutral_grade(self, tmp_path: Path) -> None:
         """Slope 1 offset 0 power 1 is a real grade that says do nothing, not a default."""
-        text = "\n".join(
-            line for line in FINAL_EDL.splitlines() if not line.startswith("*ASC_SAT")
-        )
+        text = "\n".join(line for line in FINAL_EDL.splitlines() if not line.startswith("*ASC_SAT"))
         assert clf.read_final_edl(edl(tmp_path, text), RATE_24)[0].cdl is None
 
     def test_an_unparseable_sop_line_is_none(self, tmp_path: Path) -> None:
@@ -464,9 +455,7 @@ class TestShotColor:
         assert len(transforms) == 1
         assert transforms[0].getDst() == color.PLATE_SPACE
 
-    def test_a_graded_row_renders_even_though_its_clip_named_no_encoding(
-        self, tmp_path: Path
-    ) -> None:
+    def test_a_graded_row_renders_even_though_its_clip_named_no_encoding(self, tmp_path: Path) -> None:
         """The CLF is the whole chain, so the string is provenance there and nothing more.
 
         This is why QC-046 is not an error on a graded plate: the row renders correctly
@@ -601,9 +590,7 @@ class TestIngest:
         ingested(tmp_path, scanned)
         assert scanned.clf_path == path
 
-    def test_a_row_the_session_never_heard_of_is_left_alone_and_reported(
-        self, tmp_path: Path
-    ) -> None:
+    def test_a_row_the_session_never_heard_of_is_left_alone_and_reported(self, tmp_path: Path) -> None:
         """Nothing here conforms a row to its neighbour's event."""
         scanned = row("MELT0009_pl01")
         scanned.current = InOut(5, 100)
@@ -613,9 +600,7 @@ class TestIngest:
         assert scanned.approved is None
         assert scanned.current == InOut(5, 100)
 
-    def test_two_clfs_naming_one_shot_leave_the_row_ungraded_and_report_it(
-        self, tmp_path: Path
-    ) -> None:
+    def test_two_clfs_naming_one_shot_leave_the_row_ungraded_and_report_it(self, tmp_path: Path) -> None:
         """Picking either is picking a grade, and one bad shot does not stop the ingest."""
         plate_clf(tmp_path / "MELT0001_v01.clf")
         plate_clf(tmp_path / "MELT0001_v02.clf")
@@ -679,9 +664,7 @@ class TestShotColorFromRow:
         scanned = row(source_encoding="BM Film", source_encoding_origin="container tag")
         assert clf.shot_color(scanned).source_encoding_origin == "container tag"
 
-    def test_a_name_that_resolved_to_nothing_still_says_where_it_came_from(
-        self, tmp_path: Path
-    ) -> None:
+    def test_a_name_that_resolved_to_nothing_still_says_where_it_came_from(self, tmp_path: Path) -> None:
         """Which is the case the origin exists for: QC-047 names a string to correct."""
         scanned = row(source_encoding="S-Log3", source_encoding_origin="clip metadata")
         shot_color = clf.shot_color(scanned)

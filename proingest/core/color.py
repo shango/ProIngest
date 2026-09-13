@@ -148,14 +148,10 @@ def _unresolved_reason(key: str) -> str:
     four colour spaces here. The search is for the sentence only - resolving to any of
     them would be the nearest miss this module refuses to make.
     """
-    contains = [
-        name for name in config().getColorSpaceNames() if key in " ".join(name.split()).casefold()
-    ]
+    contains = [name for name in config().getColorSpaceNames() if key in " ".join(name.split()).casefold()]
     if len(contains) > 1:
         return f"names {len(contains)} colour spaces in {BUILTIN_CONFIG}: {', '.join(contains)}"
-    return (
-        f"is not a colour space in {BUILTIN_CONFIG} and is not in the input transform table"
-    )
+    return f"is not a colour space in {BUILTIN_CONFIG} and is not in the input transform table"
 
 
 def input_transform(source_encoding: str) -> ocio.ColorSpaceTransform:
@@ -274,4 +270,3 @@ def _identity_grid(size: int) -> npt.NDArray[np.float32]:
     grid[0, :, 1] = np.tile(np.repeat(axis, size), size)
     grid[0, :, 2] = np.repeat(axis, size * size)
     return grid
-

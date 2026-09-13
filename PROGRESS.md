@@ -62,7 +62,7 @@ is gone**, deleted with its tests in M4.5.4 as planned.
 
 ```
 .venv/bin/python -m pytest tests/ -q
-.venv/bin/python -m ruff check proingest tests && .venv/bin/python -m mypy proingest tests
+.venv/bin/python -m ruff check . && .venv/bin/python -m ruff format --check . && .venv/bin/python -m mypy proingest tests
 ```
 
 Then read `docs/COLOR_AND_FORMAT.md` section 1 before anything else. It was rewritten twice on

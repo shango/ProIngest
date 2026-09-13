@@ -69,9 +69,7 @@ class TestTimecode:
     def test_to_frames(self, text: str, expected: int) -> None:
         assert frames.timecode_to_frames(text, FPS) == expected
 
-    @pytest.mark.parametrize(
-        "total", [0, 1, 23, 24, 1439, 1440, 86400, 86400 + 240, 2073599]
-    )
+    @pytest.mark.parametrize("total", [0, 1, 23, 24, 1439, 1440, 86400, 86400 + 240, 2073599])
     def test_round_trip(self, total: int) -> None:
         rendered = frames.frames_to_timecode(total, FPS)
         assert frames.timecode_to_frames(rendered, FPS) == total
@@ -127,9 +125,9 @@ class TestParseInOut:
 
     def test_same_timecode_means_different_frames_per_mode(self) -> None:
         text = "10:00:00:00"
-        assert frames.parse_in_out(text, 0, CONTEXT).frame != frames.parse_in_out(
-            text, 0, RECORD_CONTEXT
-        ).frame
+        assert (
+            frames.parse_in_out(text, 0, CONTEXT).frame != frames.parse_in_out(text, 0, RECORD_CONTEXT).frame
+        )
 
     def test_whitespace_is_tolerated(self) -> None:
         assert frames.parse_in_out("  150  ", current=0, context=CONTEXT).frame == 150

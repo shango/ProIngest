@@ -338,9 +338,7 @@ def decode_command(
     ]
 
 
-def _frame_from_planes(
-    block: bytes, width: int, height: int
-) -> npt.NDArray[np.float32]:
+def _frame_from_planes(block: bytes, width: int, height: int) -> npt.NDArray[np.float32]:
     """One `gbrpf32le` frame as `(h, w, 3)` RGB.
 
     The pixel format stores whole planes in G, B, R order, so RGB is planes 2, 0, 1.
@@ -413,9 +411,7 @@ def decode_frames(
 # --- Extracting audio out of a container. COLOR_AND_FORMAT section 3. ---
 
 
-def extract_audio_command(
-    source: Path, destination: Path, ffmpeg: Path | None = None
-) -> list[str]:
+def extract_audio_command(source: Path, destination: Path, ffmpeg: Path | None = None) -> list[str]:
     """Pull the first audio stream out as PCM 16 bit.
 
     Neither `-ar` nor `-ac` is passed, which is what "no resampling" means: the sample
@@ -469,9 +465,12 @@ REFERENCE_PIXEL_FORMAT = "yuv420p"
 REFERENCE_AUDIO_BITRATE = "192k"
 
 REFERENCE_TAGS = [
-    "-color_primaries", "bt709",
-    "-colorspace", "bt709",
-    "-color_trc", "iec61966-2-1",
+    "-color_primaries",
+    "bt709",
+    "-colorspace",
+    "bt709",
+    "-color_trc",
+    "iec61966-2-1",
 ]
 """How the output is labelled, whatever the source was.
 
@@ -578,14 +577,22 @@ def encode_command(
     command += ["-map", "0:v:0"]
     command += ["-map", "1:a:0"] if audio is not None else ["-an"]
     command += [
-        "-frames:v", str(count),
-        "-fps_mode", "passthrough",
-        "-c:v", "libx264",
-        "-profile:v", "high",
-        "-preset", REFERENCE_PRESET,
-        "-crf", REFERENCE_CRF,
-        "-g", REFERENCE_KEYINT,
-        "-pix_fmt", REFERENCE_PIXEL_FORMAT,
+        "-frames:v",
+        str(count),
+        "-fps_mode",
+        "passthrough",
+        "-c:v",
+        "libx264",
+        "-profile:v",
+        "high",
+        "-preset",
+        REFERENCE_PRESET,
+        "-crf",
+        REFERENCE_CRF,
+        "-g",
+        REFERENCE_KEYINT,
+        "-pix_fmt",
+        REFERENCE_PIXEL_FORMAT,
         *REFERENCE_TAGS,
     ]
     if audio is not None:
@@ -603,9 +610,12 @@ def encode_command(
         # second of picture; ffmpeg 6.1.1 on the dev machine did not, so only CI saw it.
         # A duration computed from integer frames does not depend on either.
         command += [
-            "-c:a", "aac",
-            "-b:a", REFERENCE_AUDIO_BITRATE,
-            "-af", f"apad,atrim=duration={_seconds(count, rate):.6f}",
+            "-c:a",
+            "aac",
+            "-b:a",
+            REFERENCE_AUDIO_BITRATE,
+            "-af",
+            f"apad,atrim=duration={_seconds(count, rate):.6f}",
         ]
     return [*command, "-movflags", "+faststart", "-f", "mp4", str(destination)]
 

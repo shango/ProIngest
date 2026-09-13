@@ -96,10 +96,7 @@ INGEST_TITLE = "Colour session ingested"
 INGEST_READ = "Read from {name}, which holds {events} events."
 INGEST_MIXED_RATES = "This turnover carries more than one rate; the EDL was read at {rate}."
 NO_RATE_TITLE = "Nothing to read the EDL at"
-NO_RATE = (
-    "No row in {name} has media, so there is no rate to read the EDL's timecode at. "
-    "Scan it first."
-)
+NO_RATE = "No row in {name} has media, so there is no rate to read the EDL's timecode at. Scan it first."
 CANNOT_READ_SESSION = "Could not read the colour session"
 WHICH_TURNOVER = "Ingest a colour session into which turnover?"
 
@@ -152,9 +149,7 @@ def unsaved_question(path: Path | None) -> str:
     return f"The last save to {path.name} failed and the edits are still unsaved. Save it before closing?"
 
 
-def banner_text(
-    written: Sequence[Deliverable], reports: Path | None, cancelled: bool
-) -> str:
+def banner_text(written: Sequence[Deliverable], reports: Path | None, cancelled: bool) -> str:
     """UI_SPEC section 7's banner, with the path as the thing that can be clicked.
 
     The wording is the spec's, except that a stopped run says so: the counts alone would
@@ -164,19 +159,14 @@ def banner_text(
     """
     counts = Counter(item.status for item in written)
     head = "Run stopped" if cancelled else "Batch complete"
-    text = (
-        f"{head}: {counts['done']} done, {counts['failed']} failed, "
-        f"{counts['skipped']} skipped."
-    )
+    text = f"{head}: {counts['done']} done, {counts['failed']} failed, {counts['skipped']} skipped."
     if reports is None:
         return f"{text} No exports were written."
     link = f'<a href="#reports" style="color:{LINK_COLOR}">{reports}</a>'
     return f"{text} Exports written to {link}"
 
 
-def ingest_text(
-    report: clf.IngestReport, turnover_name: str, rates: Sequence[FrameRate]
-) -> str:
+def ingest_text(report: clf.IngestReport, turnover_name: str, rates: Sequence[FrameRate]) -> str:
     """What one ingest did, in the words `proingest run --color-session` prints.
 
     The counts and the three labelled lists come off the report itself
@@ -194,7 +184,6 @@ def ingest_text(
     for label, names in report.notices():
         lines += ["", f"{label}: {', '.join(names)}"]
     return "\n".join(lines)
-
 
 
 class MainWindow(QMainWindow):
@@ -781,9 +770,7 @@ class MainWindow(QMainWindow):
         if edl is None:
             return
         try:
-            session = clf.load_session(
-                edl, rates[0], settings_form.show_pattern_of(self._settings)
-            )
+            session = clf.load_session(edl, rates[0], settings_form.show_pattern_of(self._settings))
         except clf.ColorSessionError as exc:
             self.report_problem(CANNOT_READ_SESSION, str(exc))
             return
@@ -898,9 +885,7 @@ class MainWindow(QMainWindow):
         if len(held_back) > 1:
             return HELD_BACK.format(count=len(held_back))
         one = next(iter(held_back))
-        name = next(
-            (t.folder.name for t in self.batch.turnovers if t.turnover_id == one), one
-        )
+        name = next((t.folder.name for t in self.batch.turnovers if t.turnover_id == one), one)
         return HELD_BACK_ONE.format(name=name)
 
     def stop_run(self) -> None:
@@ -1050,17 +1035,14 @@ class MainWindow(QMainWindow):
             batch_open=open_batch,
             has_rows=open_batch and bool(self.batch.rows),
             has_unscanned=open_batch and bool(self._unscanned()),
-            has_session=open_batch
-            and any(t.color_session_edl is not None for t in self.batch.turnovers),
+            has_session=open_batch and any(t.color_session_edl is not None for t in self.batch.turnovers),
             scanning=scanning,
             rendering=running,
             stopping=running and self.runner.cancelled,
         )
         for key, action in self._toolbar_help:
             shortcut = action.shortcut().toString(QKeySequence.SequenceFormat.NativeText)
-            action.setToolTip(
-                toolbar_help.tooltip(key, state, action.isEnabled(), shortcut)
-            )
+            action.setToolTip(toolbar_help.tooltip(key, state, action.isEnabled(), shortcut))
 
     def set_display_mode(self, mode: DisplayMode) -> None:
         """The one place the display mode changes, whichever surface asked for it."""
@@ -1133,9 +1115,7 @@ class MainWindow(QMainWindow):
     def ask_save_path(self, suggested_name: str) -> Path | None:
         """Where to save a batch that has never been saved."""
         start = Path(self._start_folder(None)) / f"{suggested_name}{batchfile.SUFFIX}"
-        chosen, _filter = QFileDialog.getSaveFileName(
-            self, "Save Batch", str(start), BATCH_FILTER
-        )
+        chosen, _filter = QFileDialog.getSaveFileName(self, "Save Batch", str(start), BATCH_FILTER)
         return self._remember(Path(chosen)) if chosen else None
 
     def ask_folder(self, title: str, start: Path | None) -> Path | None:
@@ -1151,9 +1131,7 @@ class MainWindow(QMainWindow):
         the mount, which is why that setting exists (FR-12).
         """
         start = self._settings.color_session_folder or self._settings.last_folder
-        chosen, _filter = QFileDialog.getOpenFileName(
-            self, "Ingest Colour Session", start, EDL_FILTER
-        )
+        chosen, _filter = QFileDialog.getOpenFileName(self, "Ingest Colour Session", start, EDL_FILTER)
         return Path(chosen) if chosen else None
 
     def ask_turnover(self, turnovers: Sequence[Turnover]) -> Turnover | None:
@@ -1333,9 +1311,7 @@ class MainWindow(QMainWindow):
         # The same two signals the metadata pane follows, minus the one about QC: what
         # the Log tab needs from the list is a shot code, and only a selection and an
         # edit can change it.
-        self.shot_list.selectionModel().selectionChanged.connect(
-            lambda *_: self._refresh_log_filter()
-        )
+        self.shot_list.selectionModel().selectionChanged.connect(lambda *_: self._refresh_log_filter())
         self.shot_model.row_edited.connect(lambda _row: self._refresh_log_filter())
 
     def _refresh_log_filter(self) -> None:

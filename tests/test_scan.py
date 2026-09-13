@@ -111,9 +111,7 @@ class TestScanTurnover:
     def test_missing_media_is_qc_012(self, tmp_path: Path) -> None:
         folder = tmp_path / GOOD_FOLDER
         folder.mkdir(parents=True)
-        fixtures.make_otio(
-            folder / "t.otio", [("MELT0001_pl01", "file:///nowhere/x.exr")], duration=4
-        )
+        fixtures.make_otio(folder / "t.otio", [("MELT0001_pl01", "file:///nowhere/x.exr")], duration=4)
         _, rows = scan.scan_turnover(folder, "t1")
         assert "QC-012" in rules(rows[0])
         assert rows[0].media is None
@@ -123,9 +121,7 @@ class TestScanTurnover:
         only record of what the timeline asked for (UI_SPEC section 12.3)."""
         folder = tmp_path / GOOD_FOLDER
         folder.mkdir(parents=True)
-        fixtures.make_otio(
-            folder / "t.otio", [("MELT0001_pl01", "file:///nowhere/x.exr")], duration=4
-        )
+        fixtures.make_otio(folder / "t.otio", [("MELT0001_pl01", "file:///nowhere/x.exr")], duration=4)
         _, rows = scan.scan_turnover(folder, "t1")
         message = next(r.message for r in rows[0].qc if r.rule_id == "QC-012")
         assert "/nowhere/x.exr is missing" in message
@@ -142,9 +138,7 @@ class TestScanTurnover:
         folder = tmp_path / GOOD_FOLDER
         fixtures.make_exr_sequence(folder / "a", base="MELT0001_pl01", count=4)
         fixtures.make_exr_sequence(folder / "b", base="MELT0001_pl01", count=4)
-        fixtures.make_otio(
-            folder / "t.otio", [("MELT0001_pl01", "file:///nowhere/x.exr")], duration=4
-        )
+        fixtures.make_otio(folder / "t.otio", [("MELT0001_pl01", "file:///nowhere/x.exr")], duration=4)
         _, rows = scan.scan_turnover(folder, "t1")
         assert "QC-013" in rules(rows[0])
 
@@ -271,9 +265,7 @@ class TestSourceEncoding:
         )
 
     def test_the_clip_wins_over_the_container(self, tmp_path: Path) -> None:
-        clip = fixtures.clip_record(
-            "MELT0001_pl01", metadata={scan.SOURCE_ENCODING_KEY: "C-Log3"}
-        )
+        clip = fixtures.clip_record("MELT0001_pl01", metadata={scan.SOURCE_ENCODING_KEY: "C-Log3"})
         row = ShotRow(turnover_id="t1", clip_name="MELT0001_pl01")
         row.media = fixtures.media_info_with_tags({scan.SOURCE_ENCODING_KEY: "BM Film"})
         assert scan._source_encoding(clip, row, scan.SOURCE_ENCODING_KEY) == (

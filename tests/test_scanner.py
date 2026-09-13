@@ -201,9 +201,7 @@ class TestStartingAndStopping:
     def test_cancelling_stops_after_the_folder_in_flight(
         self, scanner: Scanner, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
-        monkeypatch.setattr(
-            scan, "scan_turnover", fake_scan(lambda _f: scanner.cancel())
-        )
+        monkeypatch.setattr(scan, "scan_turnover", fake_scan(lambda _f: scanner.cancel()))
         collected = Collected(scanner)
         scanner.start([(tmp_path / "a", "t1"), (tmp_path / "b", "t2")], scan.ScanSettings())
 

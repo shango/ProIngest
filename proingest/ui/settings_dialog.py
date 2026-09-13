@@ -66,9 +66,7 @@ class SettingsDialog(QDialog):
     caller then writes to is the caller's business (`MainWindow.open_settings`).
     """
 
-    def __init__(
-        self, app: AppSettings, rules: qc.RuleSettings, parent: QWidget | None = None
-    ) -> None:
+    def __init__(self, app: AppSettings, rules: qc.RuleSettings, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setWindowTitle("Settings")
         self.setObjectName("settings_dialog")

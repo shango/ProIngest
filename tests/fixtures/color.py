@@ -57,9 +57,7 @@ def plate_clf(path: Path) -> Path:
     """
     return write_clf(
         path,
-        ocio.CDLTransform(
-            slope=[1.4, 1.0, 0.7], offset=[0.0] * 3, power=[1.0] * 3, sat=1.1
-        ),
+        ocio.CDLTransform(slope=[1.4, 1.0, 0.7], offset=[0.0] * 3, power=[1.0] * 3, sat=1.1),
         ocio.ColorSpaceTransform(src=CLF_SOURCE, dst=color.PLATE_SPACE),
     )
 
@@ -96,11 +94,9 @@ def make_session(folder: Path, shots: int = 1, frames: int = 4) -> Path:
         shot = f"MELT{index:04d}"
         out_timecode = f"01:00:00:{frames:02d}"
         events += [
-            f"{index:03d}  {shot} V     C        01:00:00:00 {out_timecode} "
-            f"01:00:00:00 {out_timecode}",
+            f"{index:03d}  {shot} V     C        01:00:00:00 {out_timecode} 01:00:00:00 {out_timecode}",
             f"* FROM CLIP NAME: {shot}_pl01.exr",
-            "*ASC_SOP (1.020000 0.990000 1.010000)"
-            "(0.001000 -0.002000 0.000000)(0.980000 1.000000 1.020000)",
+            "*ASC_SOP (1.020000 0.990000 1.010000)(0.001000 -0.002000 0.000000)(0.980000 1.000000 1.020000)",
             "*ASC_SAT 1.050000",
         ]
         plate_clf(folder / f"{shot}_grade_v01.clf")

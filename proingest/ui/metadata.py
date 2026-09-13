@@ -425,9 +425,7 @@ def _row_results(row: ShotRow) -> list[QCResult]:
     return [*row.qc, *(result for item in row.deliverables for result in item.qc)]
 
 
-def describe_row(
-    row: ShotRow, batch: Batch, camdata_for: CamDataLookup = _no_camdata
-) -> list[Section]:
+def describe_row(row: ShotRow, batch: Batch, camdata_for: CamDataLookup = _no_camdata) -> list[Section]:
     """Every section for one row, empty ones included so a merge can line them up."""
     turnover = turnover_for(batch, row.turnover_id)
     return [
@@ -499,8 +497,7 @@ def describe(
     sections = described[0] if len(described) == 1 else _merge(described)
     if len(rows) > 1:
         sections = [
-            Section(QC, tuple(_qc_fields(rows))) if section.title == QC else section
-            for section in sections
+            Section(QC, tuple(_qc_fields(rows))) if section.title == QC else section for section in sections
         ]
     return [section for section in sections if section.fields]
 

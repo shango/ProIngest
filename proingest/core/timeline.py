@@ -189,9 +189,7 @@ def _extract_clips(
     return video, audio
 
 
-def _clip_record(
-    clip: otio.schema.Clip, track: str, is_audio: bool, rate: FrameRate
-) -> ClipRecord | None:
+def _clip_record(clip: otio.schema.Clip, track: str, is_audio: bool, rate: FrameRate) -> ClipRecord | None:
     """Convert one otio Clip. Returns None when it carries no usable range.
 
     Every time is rescaled to the timeline's rate before it becomes an integer. A

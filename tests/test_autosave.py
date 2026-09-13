@@ -76,9 +76,7 @@ def test_a_batch_with_no_file_yet_keeps_its_edits_pending(saver: AutoSaver) -> N
     assert saver.pending
 
 
-def test_and_writes_them_as_soon_as_there_is_somewhere_to_write(
-    saver: AutoSaver, tmp_path: Path
-) -> None:
+def test_and_writes_them_as_soon_as_there_is_somewhere_to_write(saver: AutoSaver, tmp_path: Path) -> None:
     held = batch(row())
     saver.watch(held, None)
     saver.schedule()
@@ -88,9 +86,7 @@ def test_and_writes_them_as_soon_as_there_is_somewhere_to_write(
     assert (tmp_path / "melt.pibatch").exists()
 
 
-def test_changing_batch_writes_what_the_last_one_still_owed(
-    saver: AutoSaver, tmp_path: Path
-) -> None:
+def test_changing_batch_writes_what_the_last_one_still_owed(saver: AutoSaver, tmp_path: Path) -> None:
     """Closing one batch to open another is not a way to lose the last edit made to it."""
     first = tmp_path / "first.pibatch"
     saver.watch(batch(row(), name="first"), first)
@@ -100,9 +96,7 @@ def test_changing_batch_writes_what_the_last_one_still_owed(
     assert not saver.pending
 
 
-def test_a_write_that_fails_keeps_the_edits_rather_than_raising(
-    saver: AutoSaver, tmp_path: Path
-) -> None:
+def test_a_write_that_fails_keeps_the_edits_rather_than_raising(saver: AutoSaver, tmp_path: Path) -> None:
     """A batch on a network mount that blinked is not a reason to lose the window."""
     blocked = tmp_path / "file.txt"
     blocked.write_text("not a folder")

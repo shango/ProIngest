@@ -141,9 +141,7 @@ class TestTheDialog:
         dialog.list.setCurrentRow(2)
         assert dialog.pages.currentIndex() == 2
 
-    def test_the_pages_with_nothing_behind_them_are_disabled(
-        self, dialog: SettingsDialog
-    ) -> None:
+    def test_the_pages_with_nothing_behind_them_are_disabled(self, dialog: SettingsDialog) -> None:
         for index, section in enumerate(settings_form.sections()):
             page = dialog.pages.widget(index)
             assert page is not None and page.isEnabled() == section.enabled, section.title
@@ -185,9 +183,7 @@ class TestTheDialog:
         app, _ = dialog.result_settings()
         assert app.path_map == {"G:/media": "/Volumes/drive", "H:/": "/Volumes/h"}
 
-    def test_the_folder_chooser_writes_into_the_field(
-        self, dialog: SettingsDialog, tmp_path: Path
-    ) -> None:
+    def test_the_folder_chooser_writes_into_the_field(self, dialog: SettingsDialog, tmp_path: Path) -> None:
         dialog.ask_folder = lambda start: str(tmp_path)  # type: ignore[method-assign]
         row_widget = editor(dialog, "app.color_session_folder")
         assert isinstance(row_widget, QWidget) and not isinstance(row_widget, QLineEdit)
@@ -214,18 +210,14 @@ class TestApplyingFromTheWindow:
         window.action_settings.trigger()
         assert not (tmp_path / "settings.json").exists()
 
-    def test_applying_saves_the_settings_file(
-        self, window: DrivenWindow, tmp_path: Path
-    ) -> None:
+    def test_applying_saves_the_settings_file(self, window: DrivenWindow, tmp_path: Path) -> None:
         def edit(dialog: SettingsDialog) -> None:
             dialog._editors["app.workers"].setValue(9)  # type: ignore[attr-defined]
 
         self.apply(window, edit)
         assert core_settings.load(tmp_path / "settings.json").workers == 9
 
-    def test_applying_writes_the_thresholds_onto_the_open_batch(
-        self, window: DrivenWindow
-    ) -> None:
+    def test_applying_writes_the_thresholds_onto_the_open_batch(self, window: DrivenWindow) -> None:
         """A batch keeps its own copy, so changing these later cannot re-judge it."""
 
         def edit(dialog: SettingsDialog) -> None:
@@ -247,9 +239,7 @@ class TestApplyingFromTheWindow:
         assert "QC-033" in [result.rule_id for result in window.batch.rows[0].qc]
         assert window.statusBar().currentMessage() == SETTINGS_APPLIED
 
-    def test_an_edit_after_applying_is_judged_by_the_new_thresholds(
-        self, window: DrivenWindow
-    ) -> None:
+    def test_an_edit_after_applying_is_judged_by_the_new_thresholds(self, window: DrivenWindow) -> None:
         """A commit re-runs the row's rules; they must be the ones Apply just wrote."""
 
         def edit(dialog: SettingsDialog) -> None:
@@ -279,9 +269,7 @@ class TestApplyingFromTheWindow:
         window.action_new.trigger()
         assert qc.settings_for(window.batch).expected_handle_frames == 24
 
-    def test_unusable_defaults_in_the_file_do_not_stop_the_page_opening(
-        self, window: DrivenWindow
-    ) -> None:
+    def test_unusable_defaults_in_the_file_do_not_stop_the_page_opening(self, window: DrivenWindow) -> None:
         """Refusing over a hand edited file would leave no way to fix the hand edit."""
         window._settings.rules = {"nonsense": 1}
         assert window._app_rules() == qc.RuleSettings()
@@ -303,11 +291,7 @@ def test_every_rule_id_a_help_line_names_is_live_rather_than_retired() -> None:
     Asserting that would mean writing the mapping out a second time here.
     """
     table = Path("docs/QC_RULES.md").read_text()
-    rows = {
-        line.split("|")[1].strip(): line
-        for line in table.splitlines()
-        if line.startswith("| QC-")
-    }
+    rows = {line.split("|")[1].strip(): line for line in table.splitlines() if line.startswith("| QC-")}
     for section in settings_form.sections():
         for field in section.fields:
             for rule_id in re.findall(r"QC-\d{3}", field.help):
@@ -322,9 +306,7 @@ class TestTheAdvancedSection:
         waiting = [s.title for s in settings_form.sections() if not s.enabled]
         assert waiting == ["Output"]
 
-    def test_the_level_is_a_choice_rather_than_something_to_type(
-        self, dialog: SettingsDialog
-    ) -> None:
+    def test_the_level_is_a_choice_rather_than_something_to_type(self, dialog: SettingsDialog) -> None:
         """A misspelt level in a settings file is a tool logging the wrong amount."""
         box = editor(dialog, "app.log_level")
         assert isinstance(box, QComboBox)
@@ -360,16 +342,12 @@ class TestPuttingThemInForce:
         settings_form.apply_to_process(AppSettings(log_level="Error"))
         assert logging.getLogger().getEffectiveLevel() == logging.ERROR
 
-    def test_a_level_the_file_does_not_explain_falls_back_to_the_default(
-        self, restore_process: None
-    ) -> None:
+    def test_a_level_the_file_does_not_explain_falls_back_to_the_default(self, restore_process: None) -> None:
         """A settings file is disposable; an unreadable value is not an error."""
         settings_form.apply_to_process(AppSettings(log_level="Verbose"))
         assert logging.getLogger().getEffectiveLevel() == logsetup.DEFAULT_LEVEL
 
-    def test_the_ffmpeg_override_reaches_resolve_tool(
-        self, restore_process: None, tmp_path: Path
-    ) -> None:
+    def test_the_ffmpeg_override_reaches_resolve_tool(self, restore_process: None, tmp_path: Path) -> None:
         binary = tmp_path / "ffmpeg"
         binary.write_text("#!/bin/sh\n")
         settings_form.apply_to_process(AppSettings(ffmpeg_path=str(tmp_path)))
@@ -383,9 +361,7 @@ class TestPuttingThemInForce:
         with pytest.raises(ffmpeg.FFmpegNotFound):
             ffmpeg.resolve_tool("ffmpeg")
 
-    def test_an_empty_override_restores_the_normal_order(
-        self, restore_process: None, tmp_path: Path
-    ) -> None:
+    def test_an_empty_override_restores_the_normal_order(self, restore_process: None, tmp_path: Path) -> None:
         settings_form.apply_to_process(AppSettings(ffmpeg_path=str(tmp_path)))
         settings_form.apply_to_process(AppSettings())
         assert ffmpeg.current_override() is None

@@ -115,9 +115,7 @@ class IssuesDock(QTreeWidget):
         self.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         for column, width in enumerate(WIDTHS):
             self.setColumnWidth(column, width)
-        self.header().setSectionResizeMode(
-            COLUMNS.index("Message"), QHeaderView.ResizeMode.Stretch
-        )
+        self.header().setSectionResizeMode(COLUMNS.index("Message"), QHeaderView.ResizeMode.Stretch)
         self.itemActivated.connect(self._activated)
         self.itemDoubleClicked.connect(self._activated)
         self._rows: list[ShotRow | None] = []

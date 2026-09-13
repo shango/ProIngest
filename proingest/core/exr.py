@@ -211,9 +211,7 @@ def read_pixels(path: Path) -> npt.NDArray[np.float32]:
                 if grouped in channels:
                     return np.array(channels[grouped].pixels, dtype=np.float32)
             names = _colour_channel_names(channels, path)
-            return np.stack(
-                [np.asarray(channels[name].pixels, dtype=np.float32) for name in names], axis=-1
-            )
+            return np.stack([np.asarray(channels[name].pixels, dtype=np.float32) for name in names], axis=-1)
     except ExrError:
         raise
     except Exception as exc:  # the bindings raise several unrelated types
@@ -230,9 +228,7 @@ def _colour_channel_names(channels: Any, path: Path) -> tuple[str, ...]:
 # --- Writing the raw deliverable. COLOR_AND_FORMAT section 3. ---
 
 
-def provenance(
-    shot_color: clf.ShotColor, loaded_clf: clf.LoadedClf | None = None
-) -> dict[str, Any]:
+def provenance(shot_color: clf.ShotColor, loaded_clf: clf.LoadedClf | None = None) -> dict[str, Any]:
     """The header's account of how these pixels got here. COLOR_AND_FORMAT section 1.
 
     A graded plate is only auditable if the file says what was done to it, and the two

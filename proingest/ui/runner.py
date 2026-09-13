@@ -77,9 +77,7 @@ class RunProgress:
     copies has no frames at all, and falls back to counting jobs.
     """
 
-    def __init__(
-        self, jobs: Sequence[DeliverableJob], clock: Callable[[], float] = time.monotonic
-    ) -> None:
+    def __init__(self, jobs: Sequence[DeliverableJob], clock: Callable[[], float] = time.monotonic) -> None:
         self._clock = clock
         self._started_at = clock()
         self._totals = {job.name: job.frame_count for job in jobs}

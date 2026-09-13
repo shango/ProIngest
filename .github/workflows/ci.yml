@@ -49,9 +49,10 @@ jobs:
         # ahead of it, which is the reminder to run `uv lock` and commit the result.
         run: uv sync --frozen --extra dev --python ${{ env.PYTHON_VERSION }}
 
-      - name: Lint and type check
+      - name: Lint, format check and type check
         run: |
           .venv/bin/python -m ruff check .
+          .venv/bin/python -m ruff format --check .
           .venv/bin/python -m mypy proingest tests
 
       - name: Tests
@@ -100,9 +101,10 @@ jobs:
         # ahead of it, which is the reminder to run `uv lock` and commit the result.
         run: uv sync --frozen --extra dev --python ${{ env.PYTHON_VERSION }}
 
-      - name: Lint and type check
+      - name: Lint, format check and type check
         run: |
           .venv/bin/python -m ruff check .
+          .venv/bin/python -m ruff format --check .
           .venv/bin/python -m mypy proingest tests
 
       - name: Tests

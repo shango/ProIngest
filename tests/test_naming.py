@@ -18,9 +18,7 @@ CLEAN = ShotIdentity(show="MELT", shot="0001", elem_type="cp", elem_index="01")
 CHART = ShotIdentity(
     show="MELT", shot="0001", elem_type="pl", elem_index="01", aux="colorChart", aux_index="01"
 )
-BTS_STILL = ShotIdentity(
-    show="MELT", shot="0001", elem_type="pl", elem_index="01", aux="BTS", aux_index="01"
-)
+BTS_STILL = ShotIdentity(show="MELT", shot="0001", elem_type="pl", elem_index="01", aux="BTS", aux_index="01")
 LENS_GRID = LensGridIdentity(camera="SonyA7V", lens="Tamron20-40", mm="40")
 
 

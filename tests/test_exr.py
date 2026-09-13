@@ -18,10 +18,7 @@ from proingest.core import clf, color, exr, frames
 from proingest.core.models import CDL
 from tests.fixtures import media as fixtures
 
-SOP_TEXT = (
-    "*ASC_SOP (1.020000 0.990000 1.010000)"
-    "(0.001000 -0.002000 0.000000)(0.980000 1.000000 1.020000)"
-)
+SOP_TEXT = "*ASC_SOP (1.020000 0.990000 1.010000)(0.001000 -0.002000 0.000000)(0.980000 1.000000 1.020000)"
 
 FPS = 24.0
 ONE_HOUR = frames.timecode_to_frames("01:00:00:00", FPS)
@@ -316,8 +313,10 @@ class TestDeliveryFrame:
 
         delivered = tmp_path / "MELT0001_pl01_raw_HD_v01.1001.exr"
         exr.write_frame(
-            delivered, lanczos_resize(exr.read_pixels(source_path), 192, 108),
-            timecode_frames=ONE_HOUR, fps=FPS,
+            delivered,
+            lanczos_resize(exr.read_pixels(source_path), 192, 108),
+            timecode_frames=ONE_HOUR,
+            fps=FPS,
         )
 
         header = exr.read_header(delivered)

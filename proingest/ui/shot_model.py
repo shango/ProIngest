@@ -584,9 +584,7 @@ class ShotListModel(QAbstractItemModel):
         return str(frame)
 
     def _context(self, row: ShotRow, mode: DisplayMode | None = None) -> frames.EditContext:
-        turnover = next(
-            (t for t in self._batch.turnovers if t.turnover_id == row.turnover_id), None
-        )
+        turnover = next((t for t in self._batch.turnovers if t.turnover_id == row.turnover_id), None)
         return row.edit_context(
             self._batch.project_rate,
             turnover.timeline_start if turnover else 0,
@@ -750,9 +748,7 @@ class ShotListModel(QAbstractItemModel):
         """
         # Read from the batch each time rather than cached: Settings Apply writes new
         # thresholds onto the batch, and the next edit must be judged by those.
-        qc.apply_row_rules(
-            row, self._batch.project_rate, qc.settings_for(self._batch), self._name_counts
-        )
+        qc.apply_row_rules(row, self._batch.project_rate, qc.settings_for(self._batch), self._name_counts)
         parent = index.parent()
         self.dataChanged.emit(
             self.index(index.row(), 0, parent), self.index(index.row(), len(COLUMNS) - 1, parent)

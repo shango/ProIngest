@@ -266,9 +266,7 @@ def sections() -> tuple[Section, ...]:
 
 def readonly_values() -> dict[str, str]:
     """The Colour section's three read-only lines, read from core rather than copied."""
-    table = "\n".join(
-        f"{written} = {space}" for written, space in sorted(color.INPUT_TRANSFORMS.items())
-    )
+    table = "\n".join(f"{written} = {space}" for written, space in sorted(color.INPUT_TRANSFORMS.items()))
     return {
         "readonly.config": color.BUILTIN_CONFIG,
         "readonly.output_transform": f"{color.VIEW} on {color.DISPLAY}",
@@ -320,30 +318,18 @@ def apply_values(
     app.workers = int(values.get("app.workers", app.workers))
     app.path_map = dict(values.get("app.path_map", app.path_map))
     app.show_pattern = str(values.get("app.show_pattern", app.show_pattern))
-    app.color_session_folder = str(
-        values.get("app.color_session_folder", app.color_session_folder)
-    )
-    app.log_level = logsetup.name_of(
-        logsetup.level_of(str(values.get("app.log_level", app.log_level)))
-    )
+    app.color_session_folder = str(values.get("app.color_session_folder", app.color_session_folder))
+    app.log_level = logsetup.name_of(logsetup.level_of(str(values.get("app.log_level", app.log_level))))
     app.ffmpeg_path = str(values.get("app.ffmpeg_path", app.ffmpeg_path))
     applied = qc.RuleSettings(
-        min_duration_frames=int(
-            values.get("rules.min_duration_frames", current.min_duration_frames)
-        ),
-        max_duration_frames=int(
-            values.get("rules.max_duration_frames", current.max_duration_frames)
-        ),
+        min_duration_frames=int(values.get("rules.min_duration_frames", current.min_duration_frames)),
+        max_duration_frames=int(values.get("rules.max_duration_frames", current.max_duration_frames)),
         expected_handle_frames=int(
             values.get("rules.expected_handle_frames", current.expected_handle_frames)
         ),
-        target_resolution=_pair(
-            values.get("rules.target_resolution", current.target_resolution)
-        ),
+        target_resolution=_pair(values.get("rules.target_resolution", current.target_resolution)),
         allow_non_4k=bool(values.get("rules.allow_non_4k", current.allow_non_4k)),
-        sync_tolerance_frames=int(
-            values.get("rules.sync_tolerance_frames", current.sync_tolerance_frames)
-        ),
+        sync_tolerance_frames=int(values.get("rules.sync_tolerance_frames", current.sync_tolerance_frames)),
     )
     app.rules = applied.to_dict()
     return applied

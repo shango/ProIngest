@@ -47,17 +47,13 @@ class TestRoundTrip:
         assert settings.load(path).ffmpeg_path == "/opt/ffmpeg"
         assert json.loads(path.read_text())["log_level"] == "Debug"
 
-    def test_a_level_the_file_names_wrongly_reads_back_as_the_default(
-        self, tmp_path: Path
-    ) -> None:
+    def test_a_level_the_file_names_wrongly_reads_back_as_the_default(self, tmp_path: Path) -> None:
         """A hand edit, or a later version's level this one does not know. Not an error."""
         path = tmp_path / "settings.json"
         path.write_text(json.dumps({"schema_version": 1, "log_level": "Chatty"}))
         assert settings.load(path).log_level == logsetup.name_of(logsetup.DEFAULT_LEVEL)
 
-    def test_a_file_written_before_the_advanced_section_existed_logs_normally(
-        self, tmp_path: Path
-    ) -> None:
+    def test_a_file_written_before_the_advanced_section_existed_logs_normally(self, tmp_path: Path) -> None:
         path = tmp_path / "settings.json"
         path.write_text(json.dumps({"schema_version": 1}))
         loaded = settings.load(path)
@@ -71,9 +67,7 @@ class TestRoundTrip:
         settings.save(settings.AppSettings(metadata_collapsed=["Range", "Turnover"]), path)
         assert settings.load(path).metadata_collapsed == ["Range", "Turnover"]
 
-    def test_a_file_written_before_the_pane_existed_collapses_nothing(
-        self, tmp_path: Path
-    ) -> None:
+    def test_a_file_written_before_the_pane_existed_collapses_nothing(self, tmp_path: Path) -> None:
         path = tmp_path / "settings.json"
         path.write_text(json.dumps({"schema_version": settings.SCHEMA_VERSION}))
         assert settings.load(path).metadata_collapsed == []
@@ -98,9 +92,7 @@ class TestRoundTrip:
         assert loaded.rules == {"min_duration_frames": 11}
         assert loaded.color_session_folder == "/Volumes/drive/colour"
 
-    def test_a_file_written_before_the_settings_page_existed_reads_back_bare(
-        self, tmp_path: Path
-    ) -> None:
+    def test_a_file_written_before_the_settings_page_existed_reads_back_bare(self, tmp_path: Path) -> None:
         """`workers` has to read back as what the tool would have done anyway."""
         path = tmp_path / "settings.json"
         path.write_text(json.dumps({"schema_version": settings.SCHEMA_VERSION}))

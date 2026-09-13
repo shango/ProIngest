@@ -52,9 +52,7 @@ def main(argv: list[str] | None = None) -> int:
         default=DEFAULT_WORKERS,
         help=f"worker processes (default {DEFAULT_WORKERS})",
     )
-    run_parser.add_argument(
-        "--dry-run", action="store_true", help="print the plan and write nothing"
-    )
+    run_parser.add_argument("--dry-run", action="store_true", help="print the plan and write nothing")
     run_parser.add_argument(
         "--color-session",
         type=Path,
