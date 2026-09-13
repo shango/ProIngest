@@ -25,7 +25,12 @@ COLUMNS = ("STATUS", "SHOT", "ELEM", "SOURCE", "RES", "FPS", "IN", "OUT", "DUR",
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="proingest", description=__doc__)
     parser.add_argument("--version", action="version", version=f"proingest {__version__}")
-    parser.add_argument("-v", "--verbose", action="store_true", help="log every ffmpeg command")
+    parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="log every ffmpeg command (subcommands only; the app takes its level from Settings)",
+    )
     subparsers = parser.add_subparsers(dest="command")
 
     scan_parser = subparsers.add_parser("scan", help="scan turnover folders and print the row table")
@@ -108,7 +113,7 @@ def _scan(folders: list[Path], save: Path | None, name: str, rules_path: Path | 
 
     try:
         overrides = _load_rule_overrides(rules_path)
-    except (OSError, ValueError) as exc:
+    except (OSError, TypeError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
 
@@ -221,8 +226,12 @@ def _run(
     reporter = _ProgressPrinter()
     written = render.execute(planned, workers=jobs, on_progress=reporter)
     render.apply_results(batch, written)
-    batchfile.backup(batch_path)
-    batchfile.save(batch, batch_path)
+    try:
+        batchfile.backup(batch_path)
+        batchfile.save(batch, batch_path)
+    except OSError as exc:
+        print(f"error: the run finished but the batch could not be saved: {exc}", file=sys.stderr)
+        return 2
 
     return _report_run(written, batch_path)
 

@@ -40,6 +40,17 @@ class TestScanCommand:
         assert "QC-023" in out
         assert "QC-033" in out
 
+    def test_a_rules_value_of_the_wrong_type_exits_two(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        folder = tmp_path / FOLDER
+        fixtures.make_turnover(folder, shots=1, frames=4)
+        rules = tmp_path / "rules.json"
+        rules.write_text('{"target_resolution": 3840}', encoding="utf-8")
+
+        assert main(["scan", str(folder), "--rules", str(rules)]) == 2
+        assert capsys.readouterr().err.startswith("error:")
+
     def test_a_bad_rules_file_exits_two(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
         folder = tmp_path / FOLDER
         fixtures.make_turnover(folder, shots=1, frames=4)
