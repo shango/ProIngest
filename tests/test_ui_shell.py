@@ -404,6 +404,18 @@ class TestWhatTheWindowRemembers:
         )
         assert MainWindow(path).size().toTuple() != (0, 0)
 
+    def test_window_state_that_is_not_base64_is_ignored_rather_than_fatal(
+        self, qt_app: QApplication, tmp_path: Path
+    ) -> None:
+        """Qt refuses a bad blob, but the decode before it raises on a hand edit."""
+        path = tmp_path / "settings.json"
+        from proingest.ui.main_window import DEFAULT_SIZE
+
+        core_settings.save(
+            core_settings.AppSettings(window_geometry="not base64!", window_state="abc"), path
+        )
+        assert MainWindow(path).size().toTuple() == DEFAULT_SIZE
+
 
 class TestEditingFromTheWindow:
     """M5.3: the two pieces of editing the window owns, the skip action and autosave."""

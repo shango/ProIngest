@@ -1312,12 +1312,21 @@ class MainWindow(QMainWindow):
 
         Qt's own blobs, base64 encoded to survive JSON. A blob written by a different
         Qt version is refused by Qt itself rather than raising, so a stale one leaves
-        the default size rather than failing a launch.
+        the default size rather than failing a launch. The decode is the one step that
+        can raise, on a hand edited file, and it is skipped for the same reason.
         """
-        if self._settings.window_geometry:
-            self.restoreGeometry(QByteArray(b64decode(self._settings.window_geometry)))
-        if self._settings.window_state:
-            self.restoreState(QByteArray(b64decode(self._settings.window_state)))
+        for text, restore in (
+            (self._settings.window_geometry, self.restoreGeometry),
+            (self._settings.window_state, self.restoreState),
+        ):
+            if not text:
+                continue
+            try:
+                blob = b64decode(text, validate=True)
+            except ValueError:
+                log.warning("window state in the settings file is not base64; ignoring it")
+                continue
+            restore(QByteArray(blob))
 
     def save_window_state(self) -> None:
         """Write what the window looks like now. Called on close."""
