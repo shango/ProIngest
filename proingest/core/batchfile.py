@@ -47,11 +47,16 @@ def load(path: Path, reconcile: bool = True) -> Batch:
         raise BatchFileError(f"batch file {path} does not exist")
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as exc:
+    except OSError as exc:
+        raise BatchFileError(f"batch file {path} could not be opened: {exc}") from exc
+    except ValueError as exc:
+        # JSONDecodeError and UnicodeDecodeError are both ValueErrors.
         raise BatchFileError(f"batch file {path} is not valid JSON: {exc}") from exc
+    if not isinstance(data, dict):
+        raise BatchFileError(f"batch file {path} is not a JSON object")
     try:
         batch = Batch.from_dict(data)
-    except (KeyError, ValueError) as exc:
+    except (KeyError, TypeError, ValueError) as exc:
         raise BatchFileError(f"batch file {path} could not be read: {exc}") from exc
     if reconcile:
         reconcile_with_filesystem(batch)

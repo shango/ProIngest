@@ -74,6 +74,24 @@ class TestLoadFailures:
         with pytest.raises(BatchFileError, match="not valid JSON"):
             batchfile.load(path)
 
+    def test_json_that_is_not_an_object(self, tmp_path: Path) -> None:
+        path = tmp_path / "x.pibatch"
+        path.write_text("[1, 2, 3]")
+        with pytest.raises(BatchFileError, match="not a JSON object"):
+            batchfile.load(path)
+
+    def test_a_field_of_the_wrong_type(self, tmp_path: Path) -> None:
+        path = tmp_path / "x.pibatch"
+        path.write_text(json.dumps({"schema_version": 1, "rows": 5}))
+        with pytest.raises(BatchFileError, match="could not be read"):
+            batchfile.load(path)
+
+    def test_a_file_that_cannot_be_opened(self, tmp_path: Path) -> None:
+        path = tmp_path / "x.pibatch"
+        path.mkdir()
+        with pytest.raises(BatchFileError):
+            batchfile.load(path)
+
     def test_unknown_schema_version(self, tmp_path: Path) -> None:
         path = tmp_path / "b.pibatch"
         data = Batch().to_dict()
@@ -139,9 +157,7 @@ class TestTurnoverPersistence:
     def test_turnover_fields_survive(self, tmp_path: Path) -> None:
         batch = Batch(
             turnovers=[
-                Turnover(
-                    "t1", tmp_path, number=1, month=2, day=23, year=2026, shooter="Daniel Luckett"
-                )
+                Turnover("t1", tmp_path, number=1, month=2, day=23, year=2026, shooter="Daniel Luckett")
             ]
         )
         saved = batchfile.save(batch, tmp_path / "b")

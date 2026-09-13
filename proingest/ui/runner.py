@@ -30,7 +30,7 @@ from typing import cast
 from PySide6.QtCore import QObject, QThread, Signal
 
 from proingest.core import render
-from proingest.core.models import Deliverable
+from proingest.core.models import DEFAULT_WORKERS, Deliverable
 from proingest.core.planner import DeliverableJob
 
 log = logging.getLogger(__name__)
@@ -77,9 +77,7 @@ class RunProgress:
     copies has no frames at all, and falls back to counting jobs.
     """
 
-    def __init__(
-        self, jobs: Sequence[DeliverableJob], clock: Callable[[], float] = time.monotonic
-    ) -> None:
+    def __init__(self, jobs: Sequence[DeliverableJob], clock: Callable[[], float] = time.monotonic) -> None:
         self._clock = clock
         self._started_at = clock()
         self._totals = {job.name: job.frame_count for job in jobs}
@@ -302,7 +300,7 @@ class Runner(QObject):
         """Whether the run now finishing was stopped. Read by the banner."""
         return self._cancelled
 
-    def start(self, jobs: list[DeliverableJob], workers: int = render.DEFAULT_WORKERS) -> None:
+    def start(self, jobs: list[DeliverableJob], workers: int = DEFAULT_WORKERS) -> None:
         """Render these jobs. They are planned by the caller and owned by the worker."""
         if self.busy:
             raise RuntimeError("a run is already going")

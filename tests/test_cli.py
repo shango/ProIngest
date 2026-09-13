@@ -9,7 +9,7 @@ import pytest
 
 from proingest.__main__ import _ProgressPrinter, main
 from proingest.core import batchfile, clf, color, exr, qc, render
-from proingest.core.models import FrameRate
+from proingest.core.models import Batch, FrameRate, QCResult
 from tests.fixtures import color as color_fixtures
 from tests.fixtures import media as fixtures
 
@@ -39,6 +39,17 @@ class TestScanCommand:
         out = capsys.readouterr().out
         assert "QC-023" in out
         assert "QC-033" in out
+
+    def test_a_rules_value_of_the_wrong_type_exits_two(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        folder = tmp_path / FOLDER
+        fixtures.make_turnover(folder, shots=1, frames=4)
+        rules = tmp_path / "rules.json"
+        rules.write_text('{"target_resolution": 3840}', encoding="utf-8")
+
+        assert main(["scan", str(folder), "--rules", str(rules)]) == 2
+        assert capsys.readouterr().err.startswith("error:")
 
     def test_a_bad_rules_file_exits_two(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
         folder = tmp_path / FOLDER
@@ -70,9 +81,7 @@ class TestScanCommand:
         """A row-level error is a non-zero exit so a script can react."""
         folder = tmp_path / FOLDER
         folder.mkdir(parents=True)
-        fixtures.make_otio(
-            folder / "t.otio", [("MELT0001_pl01", "file:///nowhere/x.exr")], duration=4
-        )
+        fixtures.make_otio(folder / "t.otio", [("MELT0001_pl01", "file:///nowhere/x.exr")], duration=4)
         assert main(["scan", str(folder)]) == 1
         assert "QC-012" in capsys.readouterr().out
 
@@ -173,9 +182,8 @@ class TestRunCommand:
         batch_path = self.scanned(tmp_path)
         delivery = tmp_path / "delivery"
 
-        # Reference encodes are M3.5, so those jobs fail and the exit code is 1.
         argv = ["run", str(batch_path), "--delivery-root", str(delivery), "--jobs", "2"]
-        main(argv + self.graded(tmp_path))
+        assert main(argv + self.graded(tmp_path)) == 0
         out = capsys.readouterr().out
 
         shot = delivery / "MELT" / "MELT0001"
@@ -206,6 +214,21 @@ class TestRunCommand:
         main(["run", str(batch_path), "--delivery-root", str(tmp_path / "delivery"), "--dry-run"])
         assert "QC-054" in capsys.readouterr().out
 
+    def test_a_row_error_from_the_preflight_is_printed_too(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A row with an error is dropped from the plan, so the shot count is short and
+        this line is the only thing that says why."""
+        batch_path = self.scanned(tmp_path)
+
+        def flag_a_row(batch: Batch) -> None:
+            batch.rows[0].qc.append(QCResult("QC-019", "error", "row", "the HDRI will not open"))
+
+        monkeypatch.setattr(qc, "preflight", flag_a_row)
+        main(["run", str(batch_path), "--delivery-root", str(tmp_path / "delivery"), "--dry-run"])
+        out = capsys.readouterr().out
+        assert "QC-019" in out and "MELT0001" in out
+
     def test_an_unwritable_delivery_root_stops_the_run(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
@@ -218,9 +241,7 @@ class TestRunCommand:
             locked.chmod(0o700)
         assert "QC-062" in capsys.readouterr().err
 
-    def test_a_missing_batch_file_exits_two(
-        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_a_missing_batch_file_exits_two(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
         assert main(["run", str(tmp_path / "nope.pibatch")]) == 2
         assert "does not exist" in capsys.readouterr().err
 
@@ -268,10 +289,16 @@ class TestColorSession:
     ) -> None:
         batch_path = self.scanned(tmp_path)
         delivery = tmp_path / "delivery"
-        main([
-            "run", str(batch_path), "--delivery-root", str(delivery),
-            "--color-session", str(self.session(tmp_path)),
-        ])
+        main(
+            [
+                "run",
+                str(batch_path),
+                "--delivery-root",
+                str(delivery),
+                "--color-session",
+                str(self.session(tmp_path)),
+            ]
+        )
         assert "colour session: 1 events, 1 shots with a CLF" in capsys.readouterr().out
 
         frame = next((delivery / "MELT" / "MELT0001" / "MELT0001_pl01_raw_4k_v01").iterdir())
@@ -282,10 +309,16 @@ class TestColorSession:
 
     def test_the_qc_log_names_the_clf_it_rendered_through(self, tmp_path: Path) -> None:
         batch_path = self.scanned(tmp_path)
-        main([
-            "run", str(batch_path), "--delivery-root", str(tmp_path / "delivery"),
-            "--color-session", str(self.session(tmp_path)),
-        ])
+        main(
+            [
+                "run",
+                str(batch_path),
+                "--delivery-root",
+                str(tmp_path / "delivery"),
+                "--color-session",
+                str(self.session(tmp_path)),
+            ]
+        )
         reopened = batchfile.load(batch_path)
         assert reopened.rows[0].clf_path is not None
         assert reopened.rows[0].clf_path.name == "MELT0001_grade_v01.clf"
@@ -295,10 +328,16 @@ class TestColorSession:
     ) -> None:
         batch_path = self.scanned(tmp_path)
         delivery = tmp_path / "delivery"
-        code = main([
-            "run", str(batch_path), "--delivery-root", str(delivery),
-            "--color-session", str(tmp_path / "nothing.edl"),
-        ])
+        code = main(
+            [
+                "run",
+                str(batch_path),
+                "--delivery-root",
+                str(delivery),
+                "--color-session",
+                str(tmp_path / "nothing.edl"),
+            ]
+        )
         assert code == 2
         assert "could not read" in capsys.readouterr().err
         assert not delivery.exists()
@@ -330,9 +369,7 @@ class TestColorSession:
         fixtures.make_turnover(waiting, shots=1, frames=4, side_files=True)
         rules = fixtures.write_rules_file(tmp_path / "rules.json")
         batch_path = tmp_path / "batch.pibatch"
-        main([
-            "scan", str(folder), str(waiting), "--rules", str(rules), "--save", str(batch_path)
-        ])
+        main(["scan", str(folder), str(waiting), "--rules", str(rules), "--save", str(batch_path)])
 
         batch = batchfile.load(batch_path)
         session = clf.load_session(self.session(tmp_path), FrameRate(24))
@@ -358,10 +395,18 @@ class TestQcCommand:
         delivery = tmp_path / "delivery"
         session = color_fixtures.make_session(tmp_path / "session")
         main(["scan", str(folder), "--rules", str(rules), "--save", str(batch_path)])
-        main([
-            "run", str(batch_path), "--delivery-root", str(delivery), "--jobs", "2",
-            "--color-session", str(session),
-        ])
+        main(
+            [
+                "run",
+                str(batch_path),
+                "--delivery-root",
+                str(delivery),
+                "--jobs",
+                "2",
+                "--color-session",
+                str(session),
+            ]
+        )
         return batch_path, delivery
 
     def test_both_sheets_land_in_the_show_s_reports_folder(
@@ -396,9 +441,7 @@ class TestQcCommand:
 
         assert len(list(elsewhere.glob("*.xlsx"))) == 2
 
-    def test_a_missing_batch_exits_two(
-        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_a_missing_batch_exits_two(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
         assert main(["qc", str(tmp_path / "nope.pibatch")]) == 2
         assert "error:" in capsys.readouterr().err
 
@@ -423,9 +466,7 @@ class TestProgressPrinter:
         reporter._live = live
         return reporter
 
-    def test_redirected_output_gets_result_lines_only(
-        self, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_redirected_output_gets_result_lines_only(self, capsys: pytest.CaptureFixture[str]) -> None:
         reporter = self.printer(live=False)
         reporter(render.Progress("shot_raw_4k_v01", "started", 0, 3))
         for frame in (1, 2, 3):
@@ -435,9 +476,7 @@ class TestProgressPrinter:
         lines = [line for line in capsys.readouterr().out.splitlines() if line.strip()]
         assert lines == ["  shot_raw_4k_v01                                      done"]
 
-    def test_a_tty_gets_one_aggregate_line_not_one_per_job(
-        self, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_a_tty_gets_one_aggregate_line_not_one_per_job(self, capsys: pytest.CaptureFixture[str]) -> None:
         reporter = self.printer(live=True)
         reporter(render.Progress("a", "started", 0, 4))
         reporter(render.Progress("b", "started", 0, 4))

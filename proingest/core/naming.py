@@ -76,9 +76,7 @@ def _clip_pattern(show_pattern: str) -> re.Pattern[str]:
     )
 
 
-LENS_GRID_PATTERN = re.compile(
-    r"^(?P<camera>[A-Za-z0-9]+)_(?P<lens>[A-Za-z0-9\-]+)_lensgrid_(?P<mm>\d+)mm$"
-)
+LENS_GRID_PATTERN = re.compile(r"^(?P<camera>[A-Za-z0-9]+)_(?P<lens>[A-Za-z0-9\-]+)_lensgrid_(?P<mm>\d+)mm$")
 
 
 def parse_clip_name(name: str, show_pattern: str = DEFAULT_SHOW_PATTERN) -> ShotIdentity | None:
@@ -196,10 +194,7 @@ def stringout_mp4(turnover_number: int, month: int, day: int, year: int, shooter
     normalized = normalize_shooter(shooter)
     if not normalized:
         raise ValueError(f"shooter name {shooter!r} normalizes to an empty string")
-    return (
-        f"turnover{turnover_number:03d}_{month:02d}_{day:02d}_{year:04d}"
-        f"_{normalized}_{_ver(version)}.mp4"
-    )
+    return f"turnover{turnover_number:03d}_{month:02d}_{day:02d}_{year:04d}_{normalized}_{_ver(version)}.mp4"
 
 
 # --- Delivery folder layout, NAMING_SPEC.md section 5. ---

@@ -120,6 +120,15 @@ class TestReportPaths:
             exports.report_paths(batch_of(ShotRow(turnover_id="t", clip_name="junk")), Path("/d"))
 
 
+class TestTheWrite:
+    def test_both_files_land_atomically(self, tmp_path: Path) -> None:
+        """Written to a temp name and renamed, like every deliverable: a crash mid-save
+        must not leave a file that looks finished, and no temp name survives."""
+        exports.write_qc_log(batch_of(row()), tmp_path / "r" / "log.xlsx")
+        exports.write_shot_tracker(batch_of(row()), tmp_path / "r" / "tracker.xlsx")
+        assert sorted(p.name for p in (tmp_path / "r").iterdir()) == ["log.xlsx", "tracker.xlsx"]
+
+
 class TestQcLogSheets:
     @pytest.fixture
     def log(self, tmp_path: Path) -> Path:
@@ -154,9 +163,7 @@ class TestQcLogSheets:
         assert row_of["Delivered In"] == 8
         assert row_of["Delivered In TC"] == "01:00:00:08"
 
-    def test_the_shots_sheet_names_the_clf_the_row_was_graded_with(
-        self, tmp_path: Path
-    ) -> None:
+    def test_the_shots_sheet_names_the_clf_the_row_was_graded_with(self, tmp_path: Path) -> None:
         """The filename, because that is what a delivered EXR header carries (M4.5.4)."""
         graded = row()
         graded.clf_path = Path("/session/clf/MELT0001_grade_v02.clf")
@@ -165,9 +172,7 @@ class TestQcLogSheets:
         header, values = sheet_rows(path, "Shots")
         assert dict(zip(header, values, strict=True))["CLF"] == "MELT0001_grade_v02.clf"
 
-    def test_the_shots_sheet_names_the_encoding_the_clip_asked_for(
-        self, tmp_path: Path
-    ) -> None:
+    def test_the_shots_sheet_names_the_encoding_the_clip_asked_for(self, tmp_path: Path) -> None:
         """Verbatim, because what QC-047 needs corrected is the string somebody typed."""
         named = row()
         named.source_encoding = "C-Log3"
@@ -209,8 +214,7 @@ class TestDeliverableRuleColumns:
         log = exports.write_qc_log(batch_of(row()), tmp_path / "log.xlsx")
         header, *rows = sheet_rows(log, "Deliverables")
         by_name = {
-            str(values[5]).rsplit("/", 1)[-1]: dict(zip(header, values, strict=True))
-            for values in rows
+            str(values[5]).rsplit("/", 1)[-1]: dict(zip(header, values, strict=True)) for values in rows
         }
         assert by_name["MELT0001_pl01_ref_HD_v01.mp4"]["QC-105"] == "NA"
         assert by_name["MELT0001_pl01_raw_4k_v01"]["QC-105"] == "PASS"
@@ -247,9 +251,7 @@ class TestCameraDataSheet:
             ["MELT0001", "Lens", "32mm"],
         ]
 
-    def test_an_unreadable_file_leaves_the_sheet_empty_rather_than_failing(
-        self, tmp_path: Path
-    ) -> None:
+    def test_an_unreadable_file_leaves_the_sheet_empty_rather_than_failing(self, tmp_path: Path) -> None:
         """QC-053 already reported it on the row; a pair sheet is no place for an error."""
         log = exports.write_qc_log(batch_of(row()), tmp_path / "log.xlsx")
         assert sheet_rows(log, "Camera Data") == [["Shot code", "Key", "Value"]]

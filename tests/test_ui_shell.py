@@ -9,7 +9,7 @@ theme, and the theme is the one part of this a person has to judge (docs/MAC_SES
 from __future__ import annotations
 
 import sys
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from pathlib import Path
 
 import pytest
@@ -43,6 +43,8 @@ from proingest.ui.main_window import (
     WRITING_REPORTS,
     MainWindow,
     ingest_text,
+    turnover_labels,
+    unsaved_question,
 )
 from proingest.ui.metadata import MIXED, NO_SELECTION, as_text
 from proingest.ui.run_strip import LINK_COLOR, RunStrip
@@ -60,6 +62,7 @@ from tests.fixtures.batches import (
     turnover,
     warn,
 )
+from tests.test_runner import pump_until
 
 
 class DrivenWindow(MainWindow):
@@ -128,9 +131,15 @@ class DrivenWindow(MainWindow):
 
 
 @pytest.fixture
-def window(qt_app: QApplication, tmp_path: Path) -> DrivenWindow:
-    """A window whose settings file is a temporary one, never the user's own."""
-    return DrivenWindow(tmp_path / "settings.json")
+def window(qt_app: QApplication, tmp_path: Path) -> Iterator[DrivenWindow]:
+    """A window whose settings file is a temporary one, never the user's own.
+
+    Detached from the root logger afterwards: every window installs a handler there,
+    and one left behind per test means every later log line is formatted into all of them.
+    """
+    built = DrivenWindow(tmp_path / "settings.json")
+    yield built
+    built.log_view.detach()
 
 
 REMEMBERED_SIZE = (640, 480)
@@ -143,9 +152,7 @@ def actions(window: DrivenWindow) -> dict[str, QAction]:
 
 
 class TestTheApplication:
-    def test_its_name_is_set_because_the_data_folder_is_built_from_it(
-        self, qt_app: QApplication
-    ) -> None:
+    def test_its_name_is_set_because_the_data_folder_is_built_from_it(self, qt_app: QApplication) -> None:
         assert qt_app.applicationName() == paths.APPLICATION_NAME
 
     def test_the_organisation_name_is_left_unset(self, qt_app: QApplication) -> None:
@@ -166,9 +173,7 @@ class TestTheApplication:
         assert paths.settings_path().parent == paths.app_data_dir()
         assert paths.settings_path().name == core_settings.SETTINGS_FILENAME
 
-    def test_the_log_folder_is_named_after_the_app_on_every_platform(
-        self, qt_app: QApplication
-    ) -> None:
+    def test_the_log_folder_is_named_after_the_app_on_every_platform(self, qt_app: QApplication) -> None:
         """macOS puts it under `~/Library/Logs`; nowhere else has such a place."""
         assert paths.log_dir().name in (paths.APPLICATION_NAME, "logs")
         assert "~" not in str(paths.log_dir())
@@ -246,9 +251,7 @@ class TestTheKeyboardModel:
         ("name", "keys"),
         [("Run", "Ctrl+R"), ("Stop", "Ctrl+.")],
     )
-    def test_the_shortcuts_the_spec_names_outright(
-        self, window: DrivenWindow, name: str, keys: str
-    ) -> None:
+    def test_the_shortcuts_the_spec_names_outright(self, window: DrivenWindow, name: str, keys: str) -> None:
         assert actions(window)[name].shortcut() == QKeySequence(keys)
 
     @pytest.mark.parametrize(
@@ -308,15 +311,13 @@ class TestTheLayout:
         names = [window.bottom_tabs.tabText(i) for i in range(window.bottom_tabs.count())]
         assert names == list(BOTTOM_TABS)
 
-    def test_the_log_tab_is_the_log_panel_rather_than_a_placeholder(
-        self, window: DrivenWindow
-    ) -> None:
+    def test_the_log_tab_is_the_log_panel_rather_than_a_placeholder(self, window: DrivenWindow) -> None:
         """M5.8.2. Deliverables is still the placeholder and is the tab left to build."""
         assert window.bottom_tabs.widget(BOTTOM_TABS.index("Log")) is window.log_view
         assert isinstance(window.bottom_tabs.widget(BOTTOM_TABS.index("Deliverables")), QLabel)
 
     def test_the_status_bar_progress_is_hidden_until_a_run(self, window: DrivenWindow) -> None:
-        assert not window.progress.isVisible()
+        assert window.progress.isHidden()
 
 
 class TestOpeningABatch:
@@ -387,9 +388,7 @@ class TestWhatTheWindowRemembers:
         window.close()
         assert core_settings.load(path).window_geometry != ""
 
-    def test_a_first_launch_opens_at_the_default_size(
-        self, qt_app: QApplication, tmp_path: Path
-    ) -> None:
+    def test_a_first_launch_opens_at_the_default_size(self, qt_app: QApplication, tmp_path: Path) -> None:
         from proingest.ui.main_window import DEFAULT_SIZE
 
         assert MainWindow(tmp_path / "none.json").size().toTuple() == DEFAULT_SIZE
@@ -403,6 +402,16 @@ class TestWhatTheWindowRemembers:
             core_settings.AppSettings(window_geometry="bm90IHF0", window_state="bm90IHF0"), path
         )
         assert MainWindow(path).size().toTuple() != (0, 0)
+
+    def test_window_state_that_is_not_base64_is_ignored_rather_than_fatal(
+        self, qt_app: QApplication, tmp_path: Path
+    ) -> None:
+        """Qt refuses a bad blob, but the decode before it raises on a hand edit."""
+        path = tmp_path / "settings.json"
+        from proingest.ui.main_window import DEFAULT_SIZE
+
+        core_settings.save(core_settings.AppSettings(window_geometry="not base64!", window_state="abc"), path)
+        assert MainWindow(path).size().toTuple() == DEFAULT_SIZE
 
 
 class TestEditingFromTheWindow:
@@ -436,9 +445,7 @@ class TestEditingFromTheWindow:
         window.close()
         assert batchfile.load(path, reconcile=False).rows[0].notes == "checked against the EDL"
 
-    def test_a_batch_with_no_file_is_asked_about_rather_than_dropped(
-        self, window: DrivenWindow
-    ) -> None:
+    def test_a_batch_with_no_file_is_asked_about_rather_than_dropped(self, window: DrivenWindow) -> None:
         """A batch made by New has no file until it is saved, so closing has to ask."""
         window.set_batch(batch(row()))
         edit(window, "checked")
@@ -503,9 +510,7 @@ class TestTheBatchLifecycle:
         window.action_open.trigger()
         assert window.pages.currentIndex() == 0
 
-    def test_save_asks_where_once_and_then_stops_asking(
-        self, window: DrivenWindow, tmp_path: Path
-    ) -> None:
+    def test_save_asks_where_once_and_then_stops_asking(self, window: DrivenWindow, tmp_path: Path) -> None:
         window.set_batch(batch(row()))
         window.save_answer = tmp_path / "melt.pibatch"
         window.action_save.trigger()
@@ -538,9 +543,7 @@ class TestTheBatchLifecycle:
         window.action_save.trigger()
         assert window.problems
 
-    def test_the_file_it_is_saved_as_is_what_names_it(
-        self, window: DrivenWindow, tmp_path: Path
-    ) -> None:
+    def test_the_file_it_is_saved_as_is_what_names_it(self, window: DrivenWindow, tmp_path: Path) -> None:
         """The QC log and the tracker are named from the batch name, so an unnamed
         batch that reaches the exports exports as `untitled`."""
         window.set_batch(Batch())
@@ -550,9 +553,7 @@ class TestTheBatchLifecycle:
         assert window.batch.name == "melt_day1"
         assert window.batch_bar.name_label.text() == "melt_day1"
 
-    def test_a_batch_that_already_has_a_name_keeps_it(
-        self, window: DrivenWindow, tmp_path: Path
-    ) -> None:
+    def test_a_batch_that_already_has_a_name_keeps_it(self, window: DrivenWindow, tmp_path: Path) -> None:
         window.set_batch(batch(row(), name="melt"))
         window.save_answer = tmp_path / "something_else.pibatch"
         window.action_save.trigger()
@@ -594,9 +595,7 @@ class TestTheTwoRoots:
         assert any("Source root" in title for title, _text in window.problems)
         assert window.batch.source_root == tmp_path / "here"
 
-    def test_a_root_that_is_still_there_is_left_alone(
-        self, window: DrivenWindow, tmp_path: Path
-    ) -> None:
+    def test_a_root_that_is_still_there_is_left_alone(self, window: DrivenWindow, tmp_path: Path) -> None:
         present = batch(row())
         present.source_root = tmp_path
         present.delivery_root = tmp_path
@@ -609,9 +608,7 @@ class TestTheTwoRoots:
 class TestAddingAndScanningTurnovers:
     """M5.4's other half: what reaches the scanner, and what comes back from it."""
 
-    def test_adding_a_turnover_scans_it_straight_away(
-        self, window: DrivenWindow, tmp_path: Path
-    ) -> None:
+    def test_adding_a_turnover_scans_it_straight_away(self, window: DrivenWindow, tmp_path: Path) -> None:
         window.set_batch(Batch())
         started = stub_scanner(window)
         window.folder_answer = tmp_path / "source" / "turnover001"
@@ -630,9 +627,7 @@ class TestAddingAndScanningTurnovers:
         window.action_add_turnover.trigger()
         assert opened.source_root == tmp_path / "elsewhere"
 
-    def test_the_same_folder_twice_is_refused_rather_than_doubled(
-        self, window: DrivenWindow
-    ) -> None:
+    def test_the_same_folder_twice_is_refused_rather_than_doubled(self, window: DrivenWindow) -> None:
         window.set_batch(batch(row()))
         started = stub_scanner(window)
         window.folder_answer = window.batch.turnovers[0].folder
@@ -655,9 +650,7 @@ class TestAddingAndScanningTurnovers:
         window._take_scanned(Turnover("t1", Path("/s")), [], {"theirs|3|4": media()})
         assert set(opened.probe_cache) == {"ours|1|2", "theirs|3|4"}
 
-    def test_a_turnover_arriving_re_runs_the_rules_across_the_whole_batch(
-        self, window: DrivenWindow
-    ) -> None:
+    def test_a_turnover_arriving_re_runs_the_rules_across_the_whole_batch(self, window: DrivenWindow) -> None:
         """QC-011 is a fact about every row, and a new turnover can create one."""
         window.set_batch(batch(row(turnover_id="t1"), turnovers=[Turnover("t1", Path("/s/t1"))]))
         window._take_scanned(Turnover("t2", Path("/s/t2")), [row(turnover_id="t2")], {})
@@ -826,9 +819,7 @@ class TestIngestingAColourSession:
 
         assert window._settings.color_session_folder == str(tmp_path / "session")
 
-    def test_a_batch_of_one_turnover_is_never_asked_about(
-        self, window: DrivenWindow, tmp_path: Path
-    ) -> None:
+    def test_a_batch_of_one_turnover_is_never_asked_about(self, window: DrivenWindow, tmp_path: Path) -> None:
         window.set_batch(batch(row()))
         window.edl_answer = color_fixtures.make_session(tmp_path / "session")
         window.action_ingest.trigger()
@@ -839,9 +830,7 @@ class TestIngestingAColourSession:
         self, window: DrivenWindow, tmp_path: Path
     ) -> None:
         second = row("MELT0002_pl01", turnover_id="t2")
-        window.set_batch(
-            batch(row(turnover_id="t1"), second, turnovers=[turnover("t1"), turnover("t2")])
-        )
+        window.set_batch(batch(row(turnover_id="t1"), second, turnovers=[turnover("t1"), turnover("t2")]))
         window.shot_list.select_row(second)
         window.edl_answer = color_fixtures.make_session(tmp_path / "session")
         window.action_ingest.trigger()
@@ -867,9 +856,7 @@ class TestIngestingAColourSession:
         assert window.turnovers_asked == [["t1", "t2"]]
         assert window.batch.turnovers[0].color_session_edl == window.edl_answer
 
-    def test_a_turnover_nobody_picked_ingests_nothing(
-        self, window: DrivenWindow, tmp_path: Path
-    ) -> None:
+    def test_a_turnover_nobody_picked_ingests_nothing(self, window: DrivenWindow, tmp_path: Path) -> None:
         window.set_batch(
             batch(
                 row(turnover_id="t1"),
@@ -899,9 +886,7 @@ class TestWhatAnIngestSays:
         return clf.IngestReport(edl_path=tmp_path / "MELT_FINAL_v01.edl", events=3, **lists)
 
     def test_it_opens_with_the_turnover_and_what_the_ingest_did(self, tmp_path: Path) -> None:
-        text = ingest_text(
-            self.report(tmp_path, matched=["a", "b"], graded=["a"]), "turnover001", [RATE_24]
-        )
+        text = ingest_text(self.report(tmp_path, matched=["a", "b"], graded=["a"]), "turnover001", [RATE_24])
         assert text.splitlines()[0] == "turnover001: 2 rows matched, 1 with a CLF"
         assert "MELT_FINAL_v01.edl, which holds 3 events" in text
 
@@ -909,9 +894,7 @@ class TestWhatAnIngestSays:
         text = ingest_text(self.report(tmp_path), "turnover001", [RATE_24])
         assert "no event" not in text
 
-    def test_a_turnover_of_two_rates_says_which_one_the_edl_was_read_at(
-        self, tmp_path: Path
-    ) -> None:
+    def test_a_turnover_of_two_rates_says_which_one_the_edl_was_read_at(self, tmp_path: Path) -> None:
         """OQ-19: the first row with media decides, and the choice is said out loud."""
         text = ingest_text(self.report(tmp_path), "turnover001", [RATE_24, FrameRate(25)])
         assert INGEST_MIXED_RATES.format(rate=RATE_24) in text
@@ -953,9 +936,7 @@ class TestTheIssuesDock:
         window._take_scanned(Turnover("t1", Path("/s/t1")), [row(turnover_id="t1")], {})
         assert window.issues.count > 0
 
-    def test_double_clicking_an_issue_selects_its_shot_in_the_list(
-        self, window: DrivenWindow
-    ) -> None:
+    def test_double_clicking_an_issue_selects_its_shot_in_the_list(self, window: DrivenWindow) -> None:
         wanted = warn(row("MELT0002_pl01"))
         window.set_batch(batch(row(), wanted))
         window.issues.itemDoubleClicked.emit(window.issues.topLevelItem(0), 0)
@@ -971,6 +952,7 @@ class TestTheIssuesDock:
         window.issues.itemDoubleClicked.emit(window.issues.topLevelItem(0), 0)
 
         assert window.shot_list.current_shot_row() is wanted
+        assert window.batch_bar.search.text() == "", "the box says what the list shows"
 
     def test_the_empty_state_link_brings_the_dock_up(self, window: DrivenWindow) -> None:
         """Section 10: no clips found, plus a link to the Issues dock."""
@@ -980,6 +962,27 @@ class TestTheIssuesDock:
         window.list_empty_text.linkActivated.emit("#issues")
 
         assert window.bottom_tabs.currentWidget() is window.issues
+
+
+class TestTurnoverLabels:
+    def test_folder_names_alone_when_they_differ(self) -> None:
+        held = [turnover(folder=Path("/a/t1")), turnover(folder=Path("/a/t2"))]
+        assert turnover_labels(held) == ["t1", "t2"]
+
+    def test_the_parent_tells_two_of_the_same_name_apart(self) -> None:
+        """`names.index(chosen)` would otherwise hand back the first of the two."""
+        held = [turnover(folder=Path("/day1/t1")), turnover(folder=Path("/day2/t1"))]
+        assert turnover_labels(held) == ["day1/t1", "day2/t1"]
+
+
+class TestTheUnsavedQuestion:
+    def test_a_batch_with_no_file_is_never_saved(self) -> None:
+        assert "never been saved" in unsaved_question(None)
+
+    def test_a_batch_whose_write_failed_says_so_instead(self) -> None:
+        """`pending` is also true after a failed write to a file that exists, and
+        "never been saved" would send the editor looking for the wrong problem."""
+        assert "melt.pibatch" in unsaved_question(Path("/x/melt.pibatch"))
 
 
 class TestClosingWithWorkInHand:
@@ -1006,6 +1009,60 @@ class TestClosingWithWorkInHand:
         window.close()
         assert not window.autosave.pending
 
+    def test_a_close_during_a_run_waits_for_its_results(self, window: DrivenWindow, tmp_path: Path) -> None:
+        """The results come back by a queued signal and are applied on this thread, so
+        a close that blocked on the worker would drop every deliverable it finished."""
+        window.set_batch(ingested(batch(row(), delivery_root=tmp_path), tmp_path))
+        started = stub_runner(window, busy=True)
+        cancels: list[bool] = []
+        window.runner.cancel = lambda: cancels.append(True)  # type: ignore[method-assign]
+        window.action_run.trigger()
+
+        def status() -> str:
+            return str(window.batch.rows[0].deliverables[0].status)
+
+        assert not window.close(), "refused for now"
+        assert cancels == [True], "but the run was told to stop"
+        assert status() == "planned"
+
+        window.runner._thread = None
+        window.runner.finished.emit(done(started[0]), True)
+
+        assert status() == "done", "the results were applied"
+        assert core_settings.load(window._settings_path).window_geometry != "", "and then it closed"
+
+    def test_a_close_stops_waiting_for_a_run_that_will_not_stop(
+        self, window: DrivenWindow, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A wedged worker must not be a window that cannot be closed."""
+        from proingest.ui import main_window as module
+
+        monkeypatch.setattr(module, "SHUTDOWN_WAIT_MS", 1)
+        window.set_batch(ingested(batch(row(), delivery_root=tmp_path), tmp_path))
+        stub_runner(window, busy=True)
+        window.runner.cancel = lambda: None  # type: ignore[method-assign]
+        window.runner.shutdown = lambda: None  # type: ignore[method-assign]
+        window.action_run.trigger()
+
+        assert not window.close()
+        assert pump_until(lambda: core_settings.load(window._settings_path).window_geometry != "")
+
+    def test_a_backup_that_fails_stops_the_open_and_says_so(
+        self, window: DrivenWindow, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Without the copy, the next autosave overwrites the only one there is."""
+        saved = batchfile.save(batch(row(), name="on disk"), tmp_path / "m.pibatch")
+
+        def refuse(path: Path) -> Path | None:
+            raise PermissionError("read only")
+
+        monkeypatch.setattr(batchfile, "backup", refuse)
+        window.open_answer = saved
+        window.action_open.trigger()
+
+        assert window.problems and "Could not back up" in window.problems[0][0]
+        assert not window._batch_open
+
     def test_opening_another_batch_asks_about_this_one_first(self, window: DrivenWindow) -> None:
         window.set_batch(batch(row(), name="first"))
         edit(window, "not finished yet")
@@ -1022,9 +1079,7 @@ class TestRunningABatch:
     instead, because what these are about is the planning, the blocking and the banner.
     """
 
-    def test_run_is_off_until_there_is_something_to_render(
-        self, window: DrivenWindow
-    ) -> None:
+    def test_run_is_off_until_there_is_something_to_render(self, window: DrivenWindow) -> None:
         assert not window.action_run.isEnabled()
         window.set_batch(Batch())
         assert not window.action_run.isEnabled()
@@ -1039,13 +1094,9 @@ class TestRunningABatch:
         window.action_run.trigger()
 
         assert started and [job.shot_code for job in started[0]] == ["MELT0001"] * 4
-        assert [item.name for item in window.batch.rows[0].deliverables] == [
-            job.name for job in started[0]
-        ]
+        assert [item.name for item in window.batch.rows[0].deliverables] == [job.name for job in started[0]]
 
-    def test_a_batch_with_no_delivery_root_is_asked_once(
-        self, window: DrivenWindow, tmp_path: Path
-    ) -> None:
+    def test_a_batch_with_no_delivery_root_is_asked_once(self, window: DrivenWindow, tmp_path: Path) -> None:
         """Section 7: Run opens no dialog if the root is set, and prompts once if not."""
         window.set_batch(ingested(batch(row(), delivery_root=None), tmp_path))
         started = stub_runner(window)
@@ -1055,9 +1106,7 @@ class TestRunningABatch:
         assert window.batch.delivery_root == tmp_path
         assert len(started) == 1
 
-    def test_refusing_to_name_a_delivery_root_renders_nothing(
-        self, window: DrivenWindow
-    ) -> None:
+    def test_refusing_to_name_a_delivery_root_renders_nothing(self, window: DrivenWindow) -> None:
         window.set_batch(batch(row(), delivery_root=None))
         started = stub_runner(window)
         window.action_run.trigger()
@@ -1095,9 +1144,7 @@ class TestRunningABatch:
         assert started == []
         assert "QC-008" in [result.rule_id for result in window.batch.turnovers[0].qc]
 
-    def test_the_turnovers_that_are_ready_still_render(
-        self, window: DrivenWindow, tmp_path: Path
-    ) -> None:
+    def test_the_turnovers_that_are_ready_still_render(self, window: DrivenWindow, tmp_path: Path) -> None:
         """What turnover scope buys: one waits on colour while the other delivers."""
         ready, waiting = turnover("turnover001"), turnover("turnover002")
         built = batch(
@@ -1140,9 +1187,7 @@ class TestRunningABatch:
         assert not window.action_add_turnover.isEnabled()
         assert window.action_stop.isEnabled()
 
-    def test_progress_reaches_the_status_bar_and_the_rows(
-        self, window: DrivenWindow, tmp_path: Path
-    ) -> None:
+    def test_progress_reaches_the_status_bar_and_the_rows(self, window: DrivenWindow, tmp_path: Path) -> None:
         window.set_batch(ingested(batch(row(), delivery_root=tmp_path), tmp_path))
         started = stub_runner(window, busy=True)
         window.action_run.trigger()
@@ -1153,9 +1198,7 @@ class TestRunningABatch:
         assert window.progress.isVisible() or window.progress.value() > 0
         assert window.shot_model.state_for(window.batch.rows[0]) is RowState.RENDERING
 
-    def test_all_four_surfaces_report_the_same_run(
-        self, window: DrivenWindow, tmp_path: Path
-    ) -> None:
+    def test_all_four_surfaces_report_the_same_run(self, window: DrivenWindow, tmp_path: Path) -> None:
         """Section 7.1: the strip's bar for the batch, its line for the step, the
         status bar for the numbers, the Progress column for the shot. One `RunProgress`
         behind all four, so they cannot disagree about how far along the run is."""
@@ -1199,9 +1242,7 @@ class TestRunningABatch:
 
         assert window.run_strip.state == "empty"
 
-    def test_a_blocked_batch_takes_the_strip_away_too(
-        self, window: DrivenWindow, tmp_path: Path
-    ) -> None:
+    def test_a_blocked_batch_takes_the_strip_away_too(self, window: DrivenWindow, tmp_path: Path) -> None:
         blocked = tmp_path / "not-a-folder"
         blocked.write_text("")
         window.set_batch(batch(fail(row()), delivery_root=blocked))
@@ -1222,9 +1263,7 @@ class TestRunningABatch:
 
         assert cancelled == [True]
 
-    def test_what_comes_back_is_written_onto_the_rows(
-        self, window: DrivenWindow, tmp_path: Path
-    ) -> None:
+    def test_what_comes_back_is_written_onto_the_rows(self, window: DrivenWindow, tmp_path: Path) -> None:
         window.set_batch(ingested(batch(row(), delivery_root=tmp_path), tmp_path), tmp_batch_path(window))
         started = stub_runner(window)
         window.action_run.trigger()
@@ -1270,9 +1309,7 @@ class TestRunningABatch:
 
         assert f'style="color:{LINK_COLOR}"' in window.run_strip.banner.text()
 
-    def test_the_banner_link_opens_the_reports_folder(
-        self, window: DrivenWindow, tmp_path: Path
-    ) -> None:
+    def test_the_banner_link_opens_the_reports_folder(self, window: DrivenWindow, tmp_path: Path) -> None:
         window.set_batch(ingested(batch(row(), delivery_root=tmp_path), tmp_path))
         started = stub_runner(window)
         window.action_run.trigger()
@@ -1333,9 +1370,7 @@ class TestTheMetadataPane:
         assert f"Clip name: {MIXED}" in text
         assert "Show: MELT" in text
 
-    def test_selecting_a_turnover_header_shows_the_turnover_alone(
-        self, window: DrivenWindow
-    ) -> None:
+    def test_selecting_a_turnover_header_shows_the_turnover_alone(self, window: DrivenWindow) -> None:
         window.set_batch(batch(row()))
         header = window.shot_list.proxy.index(0, 0)
         window.shot_list.setCurrentIndex(header)
@@ -1361,6 +1396,20 @@ class TestTheMetadataPane:
 
         assert "Results: none" not in pane_text(window)
 
+    def test_a_finished_run_reparses_names_under_the_settings_show_pattern(
+        self, window: DrivenWindow, tmp_path: Path
+    ) -> None:
+        """The plan named the deliverables with the settings pattern; the reparse after
+        the run must use the same one, or every name fails QC-151 as unparseable."""
+        window._settings.show_pattern = "[a-z]{2}"
+        lower = row("mx0001_pl01", identity=naming.parse_clip_name("mx0001_pl01", "[a-z]{2}"))
+        window.set_batch(ingested(batch(lower, delivery_root=tmp_path), tmp_path))
+        started = stub_runner(window)
+        window.action_run.trigger()
+        window._run_finished(done(started[0]), False)
+
+        assert "QC-151" not in rules_shown(window)
+
     def test_a_new_batch_empties_the_pane(self, window: DrivenWindow) -> None:
         window.set_batch(batch(row()))
         window.shot_list.select_row(window.batch.rows[0])
@@ -1370,11 +1419,11 @@ class TestTheMetadataPane:
     def test_a_rule_id_brings_the_issues_dock_forward(self, window: DrivenWindow) -> None:
         window.set_batch(batch(fail(row())))
         window.shot_list.select_row(window.batch.rows[0])
-        window.metadata.issue_clicked.emit("QC-011")
+        window.metadata.issue_clicked.emit("QC-012")
 
         assert window.bottom_tabs.currentIndex() == BOTTOM_TABS.index("Issues")
         current = window.issues.currentItem()
-        assert current is not None and current.text(1) == "QC-011"
+        assert current is not None and current.text(1) == "QC-012"
 
     def test_ctrl_i_is_what_toggles_it(self, window: DrivenWindow) -> None:
         assert window.action_metadata.shortcut() == QKeySequence("Ctrl+I")
@@ -1402,9 +1451,7 @@ class TestTheMetadataPane:
         assert not features & QDockWidget.DockWidgetFeature.DockWidgetFloatable
         assert not features & QDockWidget.DockWidgetFeature.DockWidgetMovable
 
-    def test_what_the_editor_collapsed_is_remembered(
-        self, window: DrivenWindow, tmp_path: Path
-    ) -> None:
+    def test_what_the_editor_collapsed_is_remembered(self, window: DrivenWindow, tmp_path: Path) -> None:
         window.set_batch(batch(row()))
         window.shot_list.select_row(window.batch.rows[0])
         next(box for box in window.metadata._boxes if box.title == "Range").set_open(False)
@@ -1462,9 +1509,7 @@ class TestTheRunStrip:
         assert strip.bar.value() == 40
         assert strip.line.text() == "Rendering MELT0001_pl01_raw_4k_v01"
 
-    def test_the_banner_replaces_the_bar_rather_than_joining_it(
-        self, qt_app: QApplication
-    ) -> None:
+    def test_the_banner_replaces_the_bar_rather_than_joining_it(self, qt_app: QApplication) -> None:
         """A banner from the last run above the bar of this one is two answers to the
         same question."""
         strip = RunStrip()
@@ -1492,9 +1537,7 @@ class TestTheRunStrip:
         assert strip.bar.value() == 0
         assert strip.line.text() == ""
 
-    def test_a_percentage_outside_the_bar_is_clamped_rather_than_refused(
-        self, qt_app: QApplication
-    ) -> None:
+    def test_a_percentage_outside_the_bar_is_clamped_rather_than_refused(self, qt_app: QApplication) -> None:
         strip = RunStrip()
         strip.start()
         strip.set_percent(140)

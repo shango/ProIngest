@@ -27,6 +27,7 @@ from PySide6.QtCore import (
     QSize,
     QSortFilterProxyModel,
     Qt,
+    Signal,
 )
 from PySide6.QtGui import QColor, QPainter, QResizeEvent
 from PySide6.QtWidgets import (
@@ -45,7 +46,6 @@ from PySide6.QtWidgets import (
 
 from proingest.core.frames import ParsedInput
 from proingest.core.models import ShotRow, Turnover
-from proingest.ui import shot_model
 from proingest.ui.shot_model import (
     COLUMNS,
     DOT_COLORS,
@@ -121,9 +121,7 @@ class TwoLineDelegate(QStyledItemDelegate):
     would leave the rest vertically centred against a different height.
     """
 
-    def createEditor(
-        self, parent: QWidget, option: QStyleOptionViewItem, index: ModelIndex
-    ) -> QWidget:
+    def createEditor(self, parent: QWidget, option: QStyleOptionViewItem, index: ModelIndex) -> QWidget:
         """A line edit, and for In and Out one that says while typing whether it parses.
 
         Qt's own `setEditorData` and `setModelData` do the rest: they read the edit role
@@ -133,9 +131,7 @@ class TwoLineDelegate(QStyledItemDelegate):
         editor = QLineEdit(parent)
         if index.column() in (IN, OUT):
             model, source_index = source_of(index)
-            editor.textChanged.connect(
-                lambda text: show_parse(editor, model.parse_frame(source_index, text))
-            )
+            editor.textChanged.connect(lambda text: show_parse(editor, model.parse_frame(source_index, text)))
         return editor
 
     def sizeHint(self, option: QStyleOptionViewItem, index: ModelIndex) -> QSize:
@@ -178,9 +174,7 @@ class TwoLineDelegate(QStyledItemDelegate):
         painter.drawText(rect, int(align | Qt.AlignmentFlag.AlignBottom), str(secondary))
         painter.restore()
 
-    def _paint_group_header(
-        self, painter: QPainter, option: QStyleOptionViewItem, index: ModelIndex
-    ) -> None:
+    def _paint_group_header(self, painter: QPainter, option: QStyleOptionViewItem, index: ModelIndex) -> None:
         """A turnover's sentence, held at the left edge while its row scrolls (M5.9).
 
         The row is spanned, so Qt hands it a rectangle that starts wherever the first
@@ -199,9 +193,7 @@ class TwoLineDelegate(QStyledItemDelegate):
         pinned.textElideMode = Qt.TextElideMode.ElideNone
         super().paint(painter, pinned, index)
 
-    def _paint_progress(
-        self, painter: QPainter, option: QStyleOptionViewItem, index: ModelIndex
-    ) -> None:
+    def _paint_progress(self, painter: QPainter, option: QStyleOptionViewItem, index: ModelIndex) -> None:
         """The job count, and under it the slim bar (UI_SPEC section 7).
 
         Under rather than beside: the row is already two lines high for the In and Out
@@ -251,9 +243,7 @@ class ShotFilterProxy(QSortFilterProxyModel):
         model = self.sourceModel()
         index = model.index(source_row, SHOT, source_parent)
         if not source_parent.isValid():
-            return any(
-                self.filterAcceptsRow(child, index) for child in range(model.rowCount(index))
-            )
+            return any(self.filterAcceptsRow(child, index) for child in range(model.rowCount(index)))
         return text.lower() in str(index.data(Qt.ItemDataRole.DisplayRole) or "").lower()
 
 
@@ -332,6 +322,9 @@ class FrozenColumns(QTreeView):
 
 
 class ShotListView(QTreeView):
+    filter_cleared = Signal()
+    """`select_row` emptied the filter to reach a hidden row; the search box should follow."""
+
     """The list. Two levels, always expanded, fixed order, one row per shot."""
 
     def __init__(self, model: ShotListModel, parent: QWidget | None = None) -> None:
@@ -401,9 +394,7 @@ class ShotListView(QTreeView):
         """
         width = sum(self.columnWidth(column) for column in range(FROZEN_COLUMNS))
         frame = self.frameWidth()
-        self.frozen.setGeometry(
-            frame, frame, width, self.viewport().height() + self.header().height()
-        )
+        self.frozen.setGeometry(frame, frame, width, self.viewport().height() + self.header().height())
 
     def _resize_frozen_column(self, column: int, _old: int, new: int) -> None:
         """A frozen column dragged on either header moves the other and the overlay."""
@@ -496,6 +487,7 @@ class ShotListView(QTreeView):
         index = self.proxy.mapFromSource(source)
         if not index.isValid():
             self.filter_by("")
+            self.filter_cleared.emit()
             index = self.proxy.mapFromSource(source)
         self.setCurrentIndex(index)
         self.scrollTo(index)
@@ -540,9 +532,7 @@ class ShotListView(QTreeView):
         an offscreen modal is a hung suite, not a failed assertion.
         """
         shot = row.shot_code or row.clip_name
-        reason, accepted = QInputDialog.getText(
-            self, SKIP_PROMPT_TITLE, f"{SKIP_PROMPT_LABEL}\n{shot}"
-        )
+        reason, accepted = QInputDialog.getText(self, SKIP_PROMPT_TITLE, f"{SKIP_PROMPT_LABEL}\n{shot}")
         return reason if accepted else None
 
     def moveCursor(
@@ -596,8 +586,3 @@ class ShotListView(QTreeView):
     def current_shot_row(self) -> ShotRow | None:
         """The row under the cursor, or None when a group header is."""
         return self.shot_model.row_at(self.proxy.mapToSource(self.currentIndex()))
-
-
-def display_mode_of(view: ShotListView) -> shot_model.DisplayMode:
-    """Convenience for the batch bar, which owns the control rather than the state."""
-    return view.shot_model.display_mode

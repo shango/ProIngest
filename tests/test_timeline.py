@@ -15,9 +15,7 @@ URL = "file:///G:/t/MELT0001_pl01.exr"
 
 
 def clip(record_start: int, duration: int, name: str = "c", track: str = "V1") -> ClipRecord:
-    return ClipRecord(
-        name=name, track=track, record_start=record_start, duration=duration, source_start=0
-    )
+    return ClipRecord(name=name, track=track, record_start=record_start, duration=duration, source_start=0)
 
 
 class TestClipRecord:
@@ -35,9 +33,7 @@ class TestClipRecord:
             (100, 10, 0, 100, False),  # abutting the other way
         ],
     )
-    def test_overlap(
-        self, a_start: int, a_len: int, b_start: int, b_len: int, expected: bool
-    ) -> None:
+    def test_overlap(self, a_start: int, a_len: int, b_start: int, b_len: int, expected: bool) -> None:
         assert clip(a_start, a_len).overlaps(clip(b_start, b_len)) is expected
 
     def test_overlap_is_symmetric(self) -> None:
@@ -131,6 +127,57 @@ class TestLoad:
         with pytest.raises(TimelineError):
             timeline.load(bad)
 
+    def test_a_clip_at_another_rate_is_read_in_timeline_frames(self, tmp_path: Path) -> None:
+        """A RationalTime carries its own rate. A 48 fps clip on a 24 fps timeline is
+        still positioned and measured in the timeline's frames, and the timeline's
+        rate is the one its global start states, not the first clip's."""
+        import opentimelineio as otio
+        from opentimelineio import opentime as ot
+
+        built = otio.schema.Timeline(name="mixed")
+        built.global_start_time = ot.RationalTime(864000, 24)
+        track = otio.schema.Track(name="V1", kind=otio.schema.TrackKind.Video)
+        built.tracks.append(track)
+        for name, fps, start, length in (("fast", 48, 0, 20), ("slow", 24, 100, 10)):
+            track.append(
+                otio.schema.Clip(
+                    name=name,
+                    media_reference=otio.schema.ExternalReference(target_url=URL),
+                    source_range=ot.TimeRange(ot.RationalTime(start, fps), ot.RationalTime(length, fps)),
+                )
+            )
+        path = tmp_path / "mixed.otio"
+        otio.adapters.write_to_file(built, str(path))
+
+        loaded = timeline.load(path)
+        assert loaded.rate == FrameRate(24)
+        assert loaded.global_start == 864000
+        assert [(c.name, c.record_start, c.duration) for c in loaded.video] == [
+            ("fast", 0, 10),
+            ("slow", 10, 10),
+        ]
+
+    def test_a_rate_the_tool_does_not_support_is_a_timeline_error(self, tmp_path: Path) -> None:
+        """QC-002 catches TimelineError; a bare ValueError from the rate would escape it."""
+        import opentimelineio as otio
+        from opentimelineio import opentime as ot
+
+        built = otio.schema.Timeline(name="odd")
+        built.global_start_time = ot.RationalTime(0, 47.952)
+        track = otio.schema.Track(name="V1", kind=otio.schema.TrackKind.Video)
+        built.tracks.append(track)
+        track.append(
+            otio.schema.Clip(
+                name="a",
+                media_reference=otio.schema.ExternalReference(target_url=URL),
+                source_range=ot.TimeRange(ot.RationalTime(0, 47.952), ot.RationalTime(10, 47.952)),
+            )
+        )
+        path = tmp_path / "odd.otio"
+        otio.adapters.write_to_file(built, str(path))
+        with pytest.raises(TimelineError, match="rate"):
+            timeline.load(path)
+
     def test_drop_frame_defaults_to_false(self, tmp_path: Path) -> None:
         path = fixtures.make_otio(tmp_path / "t.otio", [("a", URL)])
         assert not timeline.load(path).is_drop_frame
@@ -143,9 +190,7 @@ class TestMultipleVideoTracks:
         from opentimelineio import opentime as ot
 
         tl = otio.schema.Timeline(name="two_tracks")
-        for index, (track_name, clip_name) in enumerate(
-            [("V1", "MELT0001_pl01"), ("V2", "MELT0002_el01")]
-        ):
+        for track_name, clip_name in [("V1", "MELT0001_pl01"), ("V2", "MELT0002_el01")]:
             track = otio.schema.Track(name=track_name, kind=otio.schema.TrackKind.Video)
             tl.tracks.append(track)
             track.append(
@@ -154,7 +199,6 @@ class TestMultipleVideoTracks:
                     source_range=ot.TimeRange(ot.RationalTime(0, 24), ot.RationalTime(100, 24)),
                 )
             )
-            assert index >= 0
         path = tmp_path / "t.otio"
         otio.adapters.write_to_file(tl, str(path))
 
@@ -255,6 +299,27 @@ FCM: NON-DROP FRAME
         path.write_text(self.EDL.replace("10:00:00:00 10:00:10:00", "10:00:00;00 10:00:10;00"))
         with pytest.raises(timeline.DropFrameError, match="QC-027"):
             timeline.load(path)
+
+    def test_a_drop_frame_declaration_counts_even_over_colon_timecodes(self, tmp_path: Path) -> None:
+        """The adapter ignores FCM lines, so this is the only place the line is read."""
+        path = tmp_path / "df.edl"
+        path.write_text(self.EDL.replace("FCM: NON-DROP FRAME", "FCM: DROP FRAME"))
+        with pytest.raises(timeline.DropFrameError, match="QC-027"):
+            timeline.load(path)
+
+    def test_timecode_that_does_not_add_up_at_the_rate_is_the_specific_error(self, tmp_path: Path) -> None:
+        path = tmp_path / "t25.edl"
+        path.write_text(self.EDL.replace("10:00:10:00", "10:00:10:24"))
+        with pytest.raises(timeline.EdlTimecodeError, match="different rate"):
+            timeline.load(path)
+
+    def test_malformed_syntax_is_not_blamed_on_the_rate(self, tmp_path: Path) -> None:
+        """Every adapter failure used to read as a rate mismatch, by class name."""
+        path = tmp_path / "bad.edl"
+        path.write_text(self.EDL.replace("V     C", "V     Q"))
+        with pytest.raises(TimelineError) as caught:
+            timeline.load(path)
+        assert not isinstance(caught.value, timeline.EdlTimecodeError)
 
     def test_drop_frame_error_is_a_timeline_error(self, tmp_path: Path) -> None:
         """Callers that only care that loading failed still catch it."""

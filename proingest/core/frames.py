@@ -174,6 +174,14 @@ def parse_in_out(text: str, current: int, context: EditContext) -> ParsedInput:
 
 
 def source_frame_to_timecode(source_frame: int, context: EditContext) -> str:
-    """Render a source frame in whichever timecode the display toggle is showing."""
+    """Render a source frame in whichever timecode the display toggle is showing.
+
+    A frame before the media's own start has no timecode of its own. The list stores
+    such a value rather than refusing it, so QC-031 can report it, and this shows it
+    as the negative it is rather than raising inside a cell.
+    """
     origin_timecode, origin_frame = context.timecode_origin()
-    return frames_to_timecode(origin_timecode + (source_frame - origin_frame), context.fps)
+    total = origin_timecode + (source_frame - origin_frame)
+    if total < 0:
+        return f"-{frames_to_timecode(-total, context.fps)}"
+    return frames_to_timecode(total, context.fps)

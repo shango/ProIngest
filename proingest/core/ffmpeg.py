@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import shlex
 import shutil
 import subprocess
 import sys
@@ -126,7 +127,7 @@ def resolve_tool(tool: str, override: Path | None = None) -> Path:
 
 def run(command: list[str], timeout: int = DEFAULT_TIMEOUT) -> subprocess.CompletedProcess[str]:
     """Run a command, logging it verbatim first. Does not raise on a non-zero exit."""
-    log.info("running: %s", " ".join(command))
+    log.info("running: %s", shlex.join(command))
     return subprocess.run(
         command,
         capture_output=True,
@@ -184,7 +185,10 @@ def count_frames(path: Path, ffprobe: Path | None = None) -> int:
     result = run(command, timeout=600)
     if result.returncode != 0:
         raise FFprobeError(f"frame count failed on {path}: {result.stderr.strip()}")
-    streams = json.loads(result.stdout).get("streams", [])
+    try:
+        streams = json.loads(result.stdout).get("streams", [])
+    except json.JSONDecodeError as exc:
+        raise FFprobeError(f"ffprobe returned unreadable JSON for {path}: {exc}") from exc
     if not streams:
         raise FFprobeError(f"no video stream in {path}")
     return int(streams[0]["nb_read_frames"])
@@ -334,9 +338,7 @@ def decode_command(
     ]
 
 
-def _frame_from_planes(
-    block: bytes, width: int, height: int
-) -> npt.NDArray[np.float32]:
+def _frame_from_planes(block: bytes, width: int, height: int) -> npt.NDArray[np.float32]:
     """One `gbrpf32le` frame as `(h, w, 3)` RGB.
 
     The pixel format stores whole planes in G, B, R order, so RGB is planes 2, 0, 1.
@@ -379,7 +381,7 @@ def decode_frames(
     frame_bytes = width * height * _PLANES * _RAW_DTYPE.itemsize
     expected = frames.duration(in_frame, out_frame)
     command = decode_command(source, in_frame, out_frame, is_sequence, target_size, ffmpeg)
-    log.info("running: %s", " ".join(command))
+    log.info("running: %s", shlex.join(command))
 
     with tempfile.TemporaryFile() as errors:
         # stderr goes to a file rather than a pipe nobody drains: a decode that fails
@@ -409,9 +411,7 @@ def decode_frames(
 # --- Extracting audio out of a container. COLOR_AND_FORMAT section 3. ---
 
 
-def extract_audio_command(
-    source: Path, destination: Path, ffmpeg: Path | None = None
-) -> list[str]:
+def extract_audio_command(source: Path, destination: Path, ffmpeg: Path | None = None) -> list[str]:
     """Pull the first audio stream out as PCM 16 bit.
 
     Neither `-ar` nor `-ac` is passed, which is what "no resampling" means: the sample
@@ -465,9 +465,12 @@ REFERENCE_PIXEL_FORMAT = "yuv420p"
 REFERENCE_AUDIO_BITRATE = "192k"
 
 REFERENCE_TAGS = [
-    "-color_primaries", "bt709",
-    "-colorspace", "bt709",
-    "-color_trc", "iec61966-2-1",
+    "-color_primaries",
+    "bt709",
+    "-colorspace",
+    "bt709",
+    "-color_trc",
+    "iec61966-2-1",
 ]
 """How the output is labelled, whatever the source was.
 
@@ -574,14 +577,22 @@ def encode_command(
     command += ["-map", "0:v:0"]
     command += ["-map", "1:a:0"] if audio is not None else ["-an"]
     command += [
-        "-frames:v", str(count),
-        "-fps_mode", "passthrough",
-        "-c:v", "libx264",
-        "-profile:v", "high",
-        "-preset", REFERENCE_PRESET,
-        "-crf", REFERENCE_CRF,
-        "-g", REFERENCE_KEYINT,
-        "-pix_fmt", REFERENCE_PIXEL_FORMAT,
+        "-frames:v",
+        str(count),
+        "-fps_mode",
+        "passthrough",
+        "-c:v",
+        "libx264",
+        "-profile:v",
+        "high",
+        "-preset",
+        REFERENCE_PRESET,
+        "-crf",
+        REFERENCE_CRF,
+        "-g",
+        REFERENCE_KEYINT,
+        "-pix_fmt",
+        REFERENCE_PIXEL_FORMAT,
         *REFERENCE_TAGS,
     ]
     if audio is not None:
@@ -599,15 +610,21 @@ def encode_command(
         # second of picture; ffmpeg 6.1.1 on the dev machine did not, so only CI saw it.
         # A duration computed from integer frames does not depend on either.
         command += [
-            "-c:a", "aac",
-            "-b:a", REFERENCE_AUDIO_BITRATE,
-            "-af", f"apad,atrim=duration={_seconds(count, rate):.6f}",
+            "-c:a",
+            "aac",
+            "-b:a",
+            REFERENCE_AUDIO_BITRATE,
+            "-af",
+            f"apad,atrim=duration={_seconds(count, rate):.6f}",
         ]
     return [*command, "-movflags", "+faststart", "-f", "mp4", str(destination)]
 
 
 def _seconds(count: int, rate: str) -> float:
-    """`count` frames at `rate`, as seconds. The only place that division happens.
+    """`count` frames at `rate`, as seconds, at the ffmpeg boundary.
+
+    `render._audio_skip` is the other place frames become seconds; both divide by the
+    exact fraction rather than a float rate.
 
     `rate` arrives as the exact fraction `encode_command` passes to ffmpeg, so 23.976
     stays 24000/1001 until here and the audio cannot drift against the picture over a

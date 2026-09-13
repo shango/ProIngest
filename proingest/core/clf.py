@@ -286,7 +286,8 @@ class ColorSession:
         matched = [
             event
             for event in self.events
-            if event.reel == shot_code and first <= event.source_in <= event.source_out <= last
+            if event.reel.casefold() == shot_code.casefold()
+            and first <= event.source_in <= event.source_out <= last
         ]
         return matched[0] if len(matched) == 1 else None
 
@@ -406,9 +407,7 @@ def shot_color(row: ShotRow) -> ShotColor:
     )
 
 
-def index_clfs(
-    folder: Path, show_pattern: str = naming.DEFAULT_SHOW_PATTERN
-) -> dict[str, list[Path]]:
+def index_clfs(folder: Path, show_pattern: str = naming.DEFAULT_SHOW_PATTERN) -> dict[str, list[Path]]:
     """Every CLF under `folder`, by the shot code in its filename (OQ-33).
 
     A CLF names its shot and that is the whole convention. Anything else in the
@@ -482,7 +481,7 @@ def read_final_edl(path: Path, rate: FrameRate) -> list[ConformEvent]:
     both has the picture event for the same cut anyway.
     """
     try:
-        text = path.read_text(errors="ignore")
+        text = path.read_text(encoding="utf-8", errors="ignore")
     except OSError as exc:
         raise ColorSessionError(f"could not read {path}: {exc}") from exc
 
@@ -542,9 +541,7 @@ class _Event:
         head = self.head
         found = _TIMECODE.findall(head["rest"])
         if len(found) < 4:
-            raise ColorSessionError(
-                f"{path}: event {head['event']} states {len(found)} timecodes, not four"
-            )
+            raise ColorSessionError(f"{path}: event {head['event']} states {len(found)} timecodes, not four")
         try:
             times = [frames.timecode_to_frames(value, rate.as_float()) for value in found[-4:]]
         except ValueError as exc:

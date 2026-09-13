@@ -32,7 +32,7 @@ from proingest.ui.metadata import (
     selection_summary,
 )
 from proingest.ui.metadata_pane import COPY, ElidedLabel, MetadataPane, SectionBox
-from tests.fixtures.batches import batch, fail, row, turnover, warn, with_sides
+from tests.fixtures.batches import RATE_24, batch, fail, row, turnover, warn, with_sides
 
 
 def section(sections: list[Section], title: str) -> Section:
@@ -160,9 +160,7 @@ class TestWhatOneRowSays:
 
     def test_audio_longer_than_the_picture_says_by_how_much(self) -> None:
         sounded = with_sides(row())
-        sounded.audio = AudioInfo(
-            path=Path("/a.wav"), duration_samples=48000 * 236 // 24, sample_rate=48000
-        )
+        sounded.audio = AudioInfo(path=Path("/a.wav"), duration_samples=48000 * 236 // 24, sample_rate=48000)
         assert "12 frames longer" in value(describe([sounded], batch(sounded)), "Audio", "Sync")
 
     def test_a_row_with_no_audio_has_no_audio_section(self) -> None:
@@ -196,7 +194,7 @@ class TestWhatOneRowSays:
         sections = describe([flagged], batch(flagged))
         assert value(sections, "QC", "Results") == "1 error, 1 warning"
         rules = [f.rule_id for f in section(sections, "QC").fields if f.rule_id]
-        assert rules == ["QC-011", "QC-030"]
+        assert rules == ["QC-012", "QC-030"]
 
     def test_a_clean_row_says_none_rather_than_hiding_the_section(self) -> None:
         assert value(describe([row()], batch(row())), "QC", "Results") == "none"
@@ -215,6 +213,13 @@ class TestTheEdgeStates:
         assert "not resolved" in value(sections, "Source media", "Media")
         assert "media not found" in value(sections, "Source media", "Media")
 
+    def test_ambiguous_media_says_why_too(self) -> None:
+        """QC-013 is the other rule that leaves a row without media."""
+        ambiguous = fail(row(), "QC-013")
+        ambiguous.media = None
+        sections = describe([ambiguous], batch(ambiguous))
+        assert "media not found" in value(sections, "Source media", "Media")
+
     def test_unresolved_media_keeps_identity_and_range(self) -> None:
         missing = row()
         missing.media = None
@@ -224,17 +229,23 @@ class TestTheEdgeStates:
 
     def test_a_turnover_header_shows_the_turnover_alone(self) -> None:
         held = turnover(number=1, month=2, day=23, year=2026, shooter="danielluckett")
-        sections = describe_turnover(held)
+        sections = describe_turnover(held, RATE_24)
         assert titles(sections) == ["Turnover"]
         assert value(sections, "Turnover", "Date") == "02_23_2026"
         assert value(sections, "Turnover", "Shooter") == "danielluckett"
+
+    def test_the_timeline_start_is_read_at_the_project_rate(self) -> None:
+        """90000 frames is an hour at 25 and an hour two and a half minutes at 24."""
+        held = turnover(timeline_start=90000)
+        sections = describe_turnover(held, FrameRate(25))
+        assert "(01:00:00:00)" in value(sections, "Turnover", "Timeline start")
 
     def test_a_turnover_s_own_results_go_in_that_one_section(self) -> None:
         """Alone means alone: a QC section beside it would be a second section, and the
         rows' results are already counted on the group header and listed in the dock."""
         held = turnover()
         held.qc.append(QCResult("QC-054", "warning", "turnover", "no lens grid folder"))
-        sections = describe_turnover(held)
+        sections = describe_turnover(held, RATE_24)
         assert titles(sections) == ["Turnover"]
         assert value(sections, "Turnover", "QC-054") == "no lens grid folder"
 
@@ -248,6 +259,11 @@ class TestMoreThanOneRow:
         rows = [row(), row("MELT0002_pl01")]
         sections = describe(rows, batch(*rows))
         assert value(sections, "Source media", "Resolution") == "3840x2160"
+
+    def test_a_field_they_agree_is_empty_is_not_mixed(self) -> None:
+        """`mixed` is for disagreement; two rows with no track name agree."""
+        rows = [row(track=""), row("MELT0002_pl01", track="")]
+        assert value(describe(rows, batch(*rows)), "Identity", "Track") == ""
 
     def test_a_field_they_differ_on_reads_mixed(self) -> None:
         rows = [row(), row("MELT0002_pl01")]
@@ -271,7 +287,7 @@ class TestMoreThanOneRow:
         sections = describe(rows, batch(*rows))
         assert value(sections, "QC", "Results") == "1 error, 1 warning"
         assert {f.rule_id for f in section(sections, "QC").fields if f.rule_id} == {
-            "QC-011",
+            "QC-012",
             "QC-030",
         }
 
@@ -340,9 +356,7 @@ class TestTheWidget:
         for widget in pane.findChildren(type(pane.placeholder)) + list(pane._boxes):
             assert not (widget.focusPolicy() & Qt.FocusPolicy.TabFocus)
 
-    def test_a_path_gets_a_copy_button_and_a_plain_value_does_not(
-        self, pane: MetadataPane
-    ) -> None:
+    def test_a_path_gets_a_copy_button_and_a_plain_value_does_not(self, pane: MetadataPane) -> None:
         box = _box(pane, describe([row()], batch(row())), "Source media")
         buttons = [b for b in box.findChildren(type(pane.copy_all)) if b.text() == COPY]
         paths = [f for f in box.findChildren(ElidedLabel) if f.full_text.startswith("/")]
@@ -370,8 +384,8 @@ class TestTheWidget:
         flagged = fail(row())
         pane.show_sections(describe([flagged], batch(flagged)))
         box = next(b for b in pane._boxes if b.title == "QC")
-        box.link_clicked.emit("QC-011")
-        assert asked == ["QC-011"]
+        box.link_clicked.emit("QC-012")
+        assert asked == ["QC-012"]
 
     def test_a_shut_section_is_remembered_by_title(self, pane: MetadataPane) -> None:
         """Titles rather than indexes, so a section a later chunk adds does not

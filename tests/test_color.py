@@ -252,9 +252,7 @@ class TestViewLut:
         color.apply(baked, color.processor(read_back))
         assert baked == pytest.approx(ramp, abs=0.005)
 
-    def test_trilinear_is_the_worse_answer_the_constant_exists_to_avoid(
-        self, tmp_path: Path
-    ) -> None:
+    def test_trilinear_is_the_worse_answer_the_constant_exists_to_avoid(self, tmp_path: Path) -> None:
         """Read the same cube the default way and mid grey moves twice as far."""
         cube = color.view_lut(tmp_path / "MELT0001_view.cube", *self.chain())
         exact, trilinear = grey_frame(ACESCCT_MID_GREY), grey_frame(ACESCCT_MID_GREY)
@@ -279,12 +277,27 @@ class TestViewLut:
         source, result = tmp_path / "ramp.raw", tmp_path / "graded.raw"
         source.write_bytes((np.clip(ramp, 0.0, 1.0) * 65535).round().astype("<u2").tobytes())
         width = ramp.shape[1]
-        completed = ffmpeg.run([
-            str(ffmpeg.resolve_tool("ffmpeg")), "-y",
-            "-f", "rawvideo", "-pix_fmt", "rgb48le", "-s", f"{width}x1", "-i", str(source),
-            "-vf", f"lut3d=file={cube}:interp=tetrahedral",
-            "-f", "rawvideo", "-pix_fmt", "rgb48le", str(result),
-        ])
+        completed = ffmpeg.run(
+            [
+                str(ffmpeg.resolve_tool("ffmpeg")),
+                "-y",
+                "-f",
+                "rawvideo",
+                "-pix_fmt",
+                "rgb48le",
+                "-s",
+                f"{width}x1",
+                "-i",
+                str(source),
+                "-vf",
+                f"lut3d=file={cube}:interp=tetrahedral",
+                "-f",
+                "rawvideo",
+                "-pix_fmt",
+                "rgb48le",
+                str(result),
+            ]
+        )
         assert completed.returncode == 0, completed.stderr
         got = np.frombuffer(result.read_bytes(), dtype="<u2").astype(np.float32) / 65535.0
         assert got.reshape(1, width, 3) == pytest.approx(np.clip(expected, 0.0, 1.0), abs=0.005)

@@ -18,12 +18,12 @@ from __future__ import annotations
 
 import json
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 from pathlib import Path
 from typing import Any
 
 from proingest.core import logsetup
-from proingest.core.render import DEFAULT_WORKERS
+from proingest.core.models import DEFAULT_WORKERS
 
 log = logging.getLogger(__name__)
 
@@ -61,7 +61,7 @@ class AppSettings:
     """How many render processes a run uses (PRD FR-12, General).
 
     Per user rather than per batch: it is a fact about this machine's cores and this
-    person's patience, not about the work. `render.DEFAULT_WORKERS` is the default
+    person's patience, not about the work. `models.DEFAULT_WORKERS` is the default
     rather than a number repeated here, because a settings file written before this
     field existed has to read back as whatever the tool would have done anyway.
     """
@@ -149,20 +149,7 @@ class AppSettings:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> AppSettings:
-        known = {
-            "schema_version",
-            "window_geometry",
-            "window_state",
-            "last_folder",
-            "workers",
-            "show_pattern",
-            "path_map",
-            "rules",
-            "color_session_folder",
-            "log_level",
-            "ffmpeg_path",
-            "metadata_collapsed",
-        }
+        known = {f.name for f in fields(cls)} - {"unknown"} | {"schema_version"}
         return cls(
             window_geometry=str(data.get("window_geometry", "")),
             window_state=str(data.get("window_state", "")),
@@ -187,7 +174,7 @@ def load(path: Path) -> AppSettings:
     preferences file would be a worse failure than losing a window position.
     """
     try:
-        data = json.loads(path.read_text())
+        data = json.loads(path.read_text(encoding="utf-8"))
     except FileNotFoundError:
         return AppSettings()
     except (OSError, ValueError) as exc:
@@ -196,7 +183,11 @@ def load(path: Path) -> AppSettings:
     if not isinstance(data, dict):
         log.warning("settings at %s are not an object; using defaults", path)
         return AppSettings()
-    return AppSettings.from_dict(data)
+    try:
+        return AppSettings.from_dict(data)
+    except (TypeError, ValueError) as exc:
+        log.warning("settings at %s hold a value of the wrong type (%s); using defaults", path, exc)
+        return AppSettings()
 
 
 def save(settings: AppSettings, path: Path) -> None:
@@ -208,5 +199,5 @@ def save(settings: AppSettings, path: Path) -> None:
     """
     path.parent.mkdir(parents=True, exist_ok=True)
     temp = path.with_suffix(path.suffix + ".part")
-    temp.write_text(json.dumps(settings.to_dict(), indent=2) + "\n")
+    temp.write_text(json.dumps(settings.to_dict(), indent=2) + "\n", encoding="utf-8")
     temp.replace(path)

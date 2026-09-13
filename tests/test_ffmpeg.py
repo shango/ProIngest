@@ -12,6 +12,7 @@ to prevent.
 
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 
 import numpy as np
@@ -34,9 +35,7 @@ def decode(
 ) -> list[np.ndarray]:
     """Every frame of a range, as a list. Only ever used on tiny test media."""
     return list(
-        ffmpeg.decode_frames(
-            source, SIZE, first, last, is_sequence=is_sequence, target_size=target_size
-        )
+        ffmpeg.decode_frames(source, SIZE, first, last, is_sequence=is_sequence, target_size=target_size)
     )
 
 
@@ -79,9 +78,7 @@ class TestExtractAudio:
         Without this ffmpeg refuses the output with "Unable to choose an output
         format", which every deliverable written through ffmpeg would hit.
         """
-        command = ffmpeg.extract_audio_command(
-            Path("plate.mov"), Path("MELT0001_pl01_audio_v01.wav.part")
-        )
+        command = ffmpeg.extract_audio_command(Path("plate.mov"), Path("MELT0001_pl01_audio_v01.wav.part"))
         assert command[command.index("-f") + 1] == "wav"
 
     def test_nothing_resamples_or_remixes(self) -> None:
@@ -255,8 +252,12 @@ class TestEncodeCommand:
 
     def test_the_format_is_stated_because_the_output_is_a_part_path(self) -> None:
         command = ffmpeg.encode_command(
-            "plate.mov", Path("MELT0001_pl01_ref_4k_v01.mp4.part"), 0, 3,
-            is_sequence=False, rate="24/1",
+            "plate.mov",
+            Path("MELT0001_pl01_ref_4k_v01.mp4.part"),
+            0,
+            3,
+            is_sequence=False,
+            rate="24/1",
         )
         assert command[-3:] == ["-f", "mp4", "MELT0001_pl01_ref_4k_v01.mp4.part"]
 
@@ -288,8 +289,14 @@ class TestEncodeCommand:
         single pass: everything unbounded is inside the cube.
         """
         command = ffmpeg.encode_command(
-            "plate.mov", Path("out.mp4.part"), 0, 3, is_sequence=False, rate="24/1",
-            target_size=(1920, 1080), lut=Path("/tmp/lut/MELT0001_ref_HD_v01.cube"),
+            "plate.mov",
+            Path("out.mp4.part"),
+            0,
+            3,
+            is_sequence=False,
+            rate="24/1",
+            target_size=(1920, 1080),
+            lut=Path("/tmp/lut/MELT0001_ref_HD_v01.cube"),
         )
         filters = command[command.index("-vf") + 1].split(",")
         assert filters[-3:] == [
@@ -325,7 +332,12 @@ class TestEncodeCommand:
 
     def test_audio_is_a_second_input_mapped_and_encoded_at_192k(self) -> None:
         command = ffmpeg.encode_command(
-            "plate.mov", Path("out.mp4.part"), 0, 3, is_sequence=False, rate="24/1",
+            "plate.mov",
+            Path("out.mp4.part"),
+            0,
+            3,
+            is_sequence=False,
+            rate="24/1",
             audio=Path("MELT0001_pl01.wav"),
         )
         assert command.count("-i") == 2
@@ -345,7 +357,12 @@ class TestEncodeCommand:
         varies with the ffmpeg version.
         """
         command = ffmpeg.encode_command(
-            "plate.mov", Path("out.mp4.part"), 0, 3, is_sequence=False, rate="24/1",
+            "plate.mov",
+            Path("out.mp4.part"),
+            0,
+            3,
+            is_sequence=False,
+            rate="24/1",
             audio=Path("a.wav"),
         )
         assert command[command.index("-af") + 1] == "apad,atrim=duration=0.166667"
@@ -354,7 +371,12 @@ class TestEncodeCommand:
     def test_the_audio_length_is_exact_at_a_fractional_rate(self) -> None:
         """24 frames at 23.976 is 1.001 seconds, not 1.0: the rate stays a fraction."""
         command = ffmpeg.encode_command(
-            "plate.mov", Path("out.mp4.part"), 0, 23, is_sequence=False, rate="24000/1001",
+            "plate.mov",
+            Path("out.mp4.part"),
+            0,
+            23,
+            is_sequence=False,
+            rate="24000/1001",
             audio=Path("a.wav"),
         )
         assert command[command.index("-af") + 1].endswith("atrim=duration=1.001000")
@@ -362,8 +384,14 @@ class TestEncodeCommand:
     def test_an_audio_skip_seeks_the_audio_input_and_not_the_picture(self) -> None:
         """-ss binds to the input that follows it, so its position is the whole point."""
         command = ffmpeg.encode_command(
-            "plate.mov", Path("out.mp4.part"), 0, 3, is_sequence=False, rate="24/1",
-            audio=Path("a.wav"), audio_skip=0.5,
+            "plate.mov",
+            Path("out.mp4.part"),
+            0,
+            3,
+            is_sequence=False,
+            rate="24/1",
+            audio=Path("a.wav"),
+            audio_skip=0.5,
         )
         assert command[command.index("-ss") + 1] == "0.500000"
         assert command[command.index("-ss") + 2] == "-i"
@@ -372,10 +400,27 @@ class TestEncodeCommand:
 
     def test_an_untrimmed_shot_seeks_the_audio_not_at_all(self) -> None:
         command = ffmpeg.encode_command(
-            "plate.mov", Path("out.mp4.part"), 0, 3, is_sequence=False, rate="24/1",
+            "plate.mov",
+            Path("out.mp4.part"),
+            0,
+            3,
+            is_sequence=False,
+            rate="24/1",
             audio=Path("a.wav"),
         )
         assert "-ss" not in command
+
+
+class TestCountFrames:
+    def test_unreadable_json_is_an_ffprobe_error(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        def garbage(command: list[str], timeout: int = 0) -> subprocess.CompletedProcess[str]:
+            return subprocess.CompletedProcess(command, 0, stdout="not json", stderr="")
+
+        monkeypatch.setattr(ffmpeg, "run", garbage)
+        with pytest.raises(ffmpeg.FFprobeError, match="unreadable JSON"):
+            ffmpeg.count_frames(tmp_path / "x.mov", ffprobe=Path("ffprobe"))
 
 
 class TestAvailableDecoders:

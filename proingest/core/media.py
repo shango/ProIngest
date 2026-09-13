@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import unquote, urlparse
 
-from proingest.core import ffmpeg
+from proingest.core import exr, ffmpeg
 from proingest.core.models import AudioInfo, FrameRate, MediaInfo
 
 SEQUENCE_PATTERN = re.compile(r"^(?P<base>.+)\.(?P<frame>\d{4,})$")
@@ -154,11 +154,7 @@ class DirectoryIndex:
 
     def audio_matching(self, stem: str) -> list[FileEntry]:
         """Used by the EDL fallback, which cannot associate audio from the timeline."""
-        return [
-            entry
-            for entry in self.singles
-            if entry.stem == stem and entry.suffix in AUDIO_EXTENSIONS
-        ]
+        return [entry for entry in self.singles if entry.stem == stem and entry.suffix in AUDIO_EXTENSIONS]
 
     def containing(self, fragment: str) -> list[FileEntry]:
         """Single files whose name contains `fragment`. Used for HDRI and camData."""
@@ -340,9 +336,10 @@ def probe(
     tags = _tags_from(raw, stream)
     has_audio, channels, sample_rate, depth = _audio_fields(raw)
 
+    header = _exr_header(target) if isinstance(item, Sequence) else None
     if isinstance(item, Sequence):
         # ffprobe invents 25/1 for a single frame, so it is never a source here.
-        stated = _exr_stated_rate(target)
+        stated = _exr_stated_rate(header)
         frame_count, start_frame = item.count, item.first
     else:
         stated = _rate_from_string(stream.get("r_frame_rate", "24/1"))
@@ -360,7 +357,7 @@ def probe(
         rate=rate,
         frame_count=frame_count,
         start_frame=start_frame,
-        start_timecode=_timecode_from(raw, rate) or _exr_timecode(target, rate),
+        start_timecode=_timecode_from(raw, rate) or _exr_timecode(header, rate),
         is_sequence=isinstance(item, Sequence),
         has_audio=has_audio,
         audio_channels=channels,
@@ -388,31 +385,36 @@ def _tags_from(probe: dict[str, Any], stream: dict[str, Any]) -> dict[str, str]:
     return merged
 
 
-def _exr_stated_rate(first_frame: Path) -> FrameRate | None:
-    """The rate an EXR sequence claims in its header, if it claims one at all."""
+def _exr_header(first_frame: Path) -> exr.ExrHeader | None:
+    """The first frame's header, read once for everything the probe wants from it.
+
+    Reading an EXR header decodes the frame with it in the pinned binding, and the
+    sequence lives on a network mount, so it is read here and handed to the two
+    readers below. A header that will not parse is not fatal: the row simply has no
+    stated rate and no timecode, which QC-028 reports. QC-014 covers media that is
+    unreadable outright.
+    """
     if first_frame.suffix.lower() != ".exr":
         return None
-    from proingest.core import exr
-
     try:
-        stated = exr.read_header(first_frame).frames_per_second
+        return exr.read_header(first_frame)
     except exr.ExrError:
         return None
-    return FrameRate(stated[0], stated[1]) if stated is not None else None
 
 
-def _exr_timecode(path: Path, rate: FrameRate) -> int | None:
-    """EXR carries its timecode in a header attribute that ffprobe does not report.
-
-    A header that will not parse is not fatal here; the row simply has no timecode,
-    which QC-028 reports. QC-014 covers media that is unreadable outright.
-    """
-    if path.suffix.lower() != ".exr":
+def _exr_stated_rate(header: exr.ExrHeader | None) -> FrameRate | None:
+    """The rate an EXR sequence claims in its header, if it claims one at all."""
+    if header is None or header.frames_per_second is None:
         return None
-    from proingest.core import exr
+    return FrameRate(header.frames_per_second[0], header.frames_per_second[1])
 
+
+def _exr_timecode(header: exr.ExrHeader | None, rate: FrameRate) -> int | None:
+    """EXR carries its timecode in a header attribute that ffprobe does not report."""
+    if header is None:
+        return None
     try:
-        return exr.start_timecode_frames(path, rate.as_float())
+        return exr.header_timecode_frames(header, rate.as_float())
     except (exr.ExrError, ValueError):
         return None
 

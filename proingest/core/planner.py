@@ -192,9 +192,7 @@ class _Shot:
     color: clf.ShotColor
 
 
-def effective_identity(
-    row: ShotRow, show_pattern: str = naming.DEFAULT_SHOW_PATTERN
-) -> ShotIdentity | None:
+def effective_identity(row: ShotRow, show_pattern: str = naming.DEFAULT_SHOW_PATTERN) -> ShotIdentity | None:
     """The identity every name for this row is built from.
 
     A shot code the editor corrected replaces the show and number (NAMING_SPEC section
@@ -213,9 +211,7 @@ def effective_identity(
     return replace(row.identity, show=show, shot=shot)
 
 
-def plannable_identity(
-    row: ShotRow, show_pattern: str = naming.DEFAULT_SHOW_PATTERN
-) -> ShotIdentity | None:
+def plannable_identity(row: ShotRow, show_pattern: str = naming.DEFAULT_SHOW_PATTERN) -> ShotIdentity | None:
     """The identity to plan this row under, or None when the row owes nothing.
 
     A row is not planned when the editor skipped it, when it carries an error, which
@@ -326,8 +322,7 @@ def plan_batch(
                     "QC-060",
                     "warning",
                     "row",
-                    f"{code} already has deliverables at v{version - 1:02d}; "
-                    f"this run writes v{version:02d}",
+                    f"{code} already has deliverables at v{version - 1:02d}; this run writes v{version:02d}",
                 )
             )
         _record(row, plan)

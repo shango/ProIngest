@@ -261,6 +261,13 @@ class TestSourceFormat:
             ("yuv422p10le", 10),
             ("gbrp12le", 12),
             ("gbrpf32le", 32),
+            # The number in a packed or semi-planar name is a layout, not a depth.
+            ("nv12", 8),
+            ("nv21", 8),
+            ("uyvy422", 8),
+            ("yuyv422", 8),
+            ("rgb0", 8),
+            ("bgr0", 8),
         ],
     )
     def test_bit_depth_reads_ffmpeg_names(self, pixel_format: str, depth: int) -> None:
@@ -660,9 +667,7 @@ class TestCamdata:
         assert results[0].severity == "info"
         assert "2 key/value pairs" in results[0].message
 
-    def test_a_file_whose_format_changed_reports_zero_rather_than_nothing(
-        self, tmp_path: Path
-    ) -> None:
+    def test_a_file_whose_format_changed_reports_zero_rather_than_nothing(self, tmp_path: Path) -> None:
         """The whole point of the count: an empty sheet is otherwise invisible."""
         path = tmp_path / "MELT0001_pl01_camData.txt"
         path.write_text("free prose with no pairs in it\n")
@@ -715,6 +720,15 @@ class TestDestinationWritable:
 
     def test_an_unreachable_root_is_qc_062(self) -> None:
         assert ids(qc.check_destination_writable(Path("/nonexistent-volume/x"))) == ["QC-062"]
+
+    def test_a_mount_that_refuses_to_answer_is_qc_062_rather_than_a_crash(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        def refuse(self: Path) -> bool:
+            raise PermissionError(f"{self}: not permitted")
+
+        monkeypatch.setattr(Path, "exists", refuse)
+        assert ids(qc.check_destination_writable(Path("/mnt/g/x"))) == ["QC-062"]
 
     def test_a_read_only_root_is_qc_062(self, tmp_path: Path) -> None:
         """Existence is not permission, which is the whole point on a network mount."""
@@ -1028,6 +1042,12 @@ class TestPhaseBSequence:
         results = qc.run_phase_b(job, empty_deliverable(job))
         assert "QC-102" in ids(results)
 
+    def test_frames_delivered_for_a_job_that_planned_none_are_qc_102(self, tmp_path: Path) -> None:
+        """An In that was cleared after planning leaves a job with no range and a folder
+        with files; that is a fault to report, not an IndexError."""
+        job = replace(fabricated_sequence(tmp_path, {1001: 10}), in_frame=None, out_frame=None)
+        assert "QC-102" in ids(qc.run_phase_b(job, empty_deliverable(job)))
+
     def test_a_stray_file_in_the_folder_is_qc_102(self, tmp_path: Path) -> None:
         job, deliverable = rendered_sequence(tmp_path)
         (job.destination / "notes.exr").write_bytes(b"")
@@ -1265,9 +1285,7 @@ class TestPhaseBCopy:
 
 
 def delivered(name: str, kind: str, version: int = 1, res: str | None = None) -> Deliverable:
-    return Deliverable(
-        kind=kind, name=name, path=Path("/d") / name, version=version, res=res, status="done"
-    )
+    return Deliverable(kind=kind, name=name, path=Path("/d") / name, version=version, res=res, status="done")
 
 
 class TestRowComplete:

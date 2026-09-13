@@ -169,9 +169,7 @@ def scan_turnover(
         return turnover, []
 
     index = media_module.index_directory(folder)
-    rows = [
-        _build_row(clip, loaded, index, turnover_id, settings, cache) for clip in loaded.video
-    ]
+    rows = [_build_row(clip, loaded, index, turnover_id, settings, cache) for clip in loaded.video]
     return turnover, rows
 
 
@@ -179,9 +177,7 @@ def _choose_timeline(folder: Path, turnover: Turnover) -> Path | None:
     """Pick the timeline, recording QC-001 when there is none."""
     candidates = timeline.find_timeline_files(folder)
     if not candidates:
-        turnover.qc.append(
-            QCResult("QC-001", "error", "turnover", f"no .otio or .edl found in {folder}")
-        )
+        turnover.qc.append(QCResult("QC-001", "error", "turnover", f"no .otio or .edl found in {folder}"))
         return None
     return candidates[0]
 
@@ -222,7 +218,7 @@ def _build_row(
         clip, row, settings.source_encoding_key
     )
     _derive_ranges(row, clip)
-    _attach_audio(row, clip, loaded, index)
+    _attach_audio(row, clip, loaded, index, settings)
     _attach_side_files(row, index)
     qc.apply_row_rules(row, settings.project_rate, settings.rules)
     return row
@@ -247,9 +243,7 @@ def _source_encoding(
     wrote it, and the two carriers are written by different people at different times
     (`models.SourceEncodingOrigin`). It rides to the delivered EXR header from here.
     """
-    sources: list[tuple[SourceEncodingOrigin, Mapping[str, str]]] = [
-        ("clip metadata", clip.metadata)
-    ]
+    sources: list[tuple[SourceEncodingOrigin, Mapping[str, str]]] = [("clip metadata", clip.metadata)]
     if row.media is not None:
         sources.append(("container tag", row.media.tags))
     for origin, fields in sources:
@@ -280,9 +274,7 @@ def _resolve_media(
         referenced = media_module.url_to_path(clip.media_url)
         claimed = media_module.remap(referenced, settings.path_map)
         if claimed != referenced:
-            row.qc.append(
-                QCResult("QC-016", "warning", "row", f"media path remapped to {claimed}")
-            )
+            row.qc.append(QCResult("QC-016", "warning", "row", f"media path remapped to {claimed}"))
         located = _index_entry_for(index, claimed)
         if located is not None:
             return located
@@ -298,16 +290,13 @@ def _resolve_media(
                 "QC-012",
                 "error",
                 "row",
-                f"media not found for {clip.name!r}: {wanted} and no file in the "
-                f"turnover matches the name",
+                f"media not found for {clip.name!r}: {wanted} and no file in the turnover matches the name",
             )
         )
         return None
     if len(matches) > 1:
         described = ", ".join(sorted(_describe(match) for match in matches))
-        row.qc.append(
-            QCResult("QC-013", "error", "row", f"media ambiguous for {clip.name!r}: {described}")
-        )
+        row.qc.append(QCResult("QC-013", "error", "row", f"media ambiguous for {clip.name!r}: {described}"))
         return None
     return matches[0]
 
@@ -357,9 +346,7 @@ def _probe_into(
         missing = item.missing_frames
         shown = ", ".join(str(n) for n in missing[:5])
         more = f" and {len(missing) - 5} more" if len(missing) > 5 else ""
-        row.qc.append(
-            QCResult("QC-015", "warning", "row", f"sequence has missing frames: {shown}{more}")
-        )
+        row.qc.append(QCResult("QC-015", "warning", "row", f"sequence has missing frames: {shown}{more}"))
 
 
 def _derive_ranges(row: ShotRow, clip: timeline.ClipRecord) -> None:
@@ -392,6 +379,7 @@ def _attach_audio(
     clip: timeline.ClipRecord,
     loaded: timeline.Timeline,
     index: media_module.DirectoryIndex,
+    settings: ScanSettings,
 ) -> None:
     """Associate audio from the timeline, or by name when the source was an EDL.
 
@@ -401,7 +389,10 @@ def _attach_audio(
     associated = loaded.audio_for(clip)
     row.audio_clip_count = len(associated)
     if associated and associated[0].media_url:
-        row.audio_path = media_module.url_to_path(associated[0].media_url)
+        # Through the same path map as the picture: the audio URL came from the same
+        # machine, so it needs the same rewrite onto the local mount.
+        referenced = media_module.url_to_path(associated[0].media_url)
+        row.audio_path = media_module.remap(referenced, settings.path_map)
     elif loaded.is_edl:
         # FR-1: an EDL cannot associate audio, so fall back to a same-name search.
         by_name = index.audio_matching(clip.name)
@@ -454,9 +445,7 @@ def scan_batch(
     settings = settings or ScanSettings()
     batch = Batch(name=name, project_rate=settings.project_rate)
     for position, folder in enumerate(folders, start=1):
-        turnover, rows = scan_turnover(
-            folder, f"t{position}", settings, probe_cache=batch.probe_cache
-        )
+        turnover, rows = scan_turnover(folder, f"t{position}", settings, probe_cache=batch.probe_cache)
         batch.turnovers.append(turnover)
         batch.rows.extend(rows)
     # QC-011 is the one row rule that needs every row, so it can only run once they exist.

@@ -94,7 +94,7 @@ class TestTheTree:
             for i in range(len(COLUMNS))
         ]
         assert titles[SHOT : ELEM + 1] == ["Shot", "Elem"]
-        assert titles[IN], titles[OUT]
+        assert (titles[IN], titles[OUT]) == ("In", "Out")
 
     def test_rows_belong_to_their_own_turnover(self, qt_app: QApplication) -> None:
         """Two turnovers, and neither shows the other's shots."""
@@ -248,9 +248,7 @@ class TestTheProgressColumnDuringARun:
 
         assert built.state_for(planned) is RowState.SKIPPED
 
-    def test_a_deliverable_this_run_never_planned_keeps_its_own_status(
-        self, qt_app: QApplication
-    ) -> None:
+    def test_a_deliverable_this_run_never_planned_keeps_its_own_status(self, qt_app: QApplication) -> None:
         """A row left out of a run still shows what a previous run wrote."""
         built = ShotListModel()
         old = delivered(row(), status="done")
@@ -272,14 +270,10 @@ class TestTheProgressColumnDuringARun:
 
         assert text(built, 0, PROGRESS) == "0/2"
 
-    def test_a_repaint_touches_every_column_but_leaves_the_rows_alone(
-        self, model: ShotListModel
-    ) -> None:
+    def test_a_repaint_touches_every_column_but_leaves_the_rows_alone(self, model: ShotListModel) -> None:
         """A reset would lose the selection, the scroll and which turnovers are open."""
         changed: list[tuple[int, int]] = []
-        model.dataChanged.connect(
-            lambda top, bottom, roles: changed.append((top.column(), bottom.column()))
-        )
+        model.dataChanged.connect(lambda top, bottom, roles: changed.append((top.column(), bottom.column())))
         resets: list[int] = []
         model.modelReset.connect(lambda: resets.append(1))
         model.refresh_rows()
@@ -340,9 +334,7 @@ class TestTheInOutDisplay:
     def test_changing_it_repaints_in_and_out_and_nothing_else(self, model: ShotListModel) -> None:
         """Fifteen columns of a hundred shot list is a redraw worth not asking for."""
         changed: list[tuple[int, int]] = []
-        model.dataChanged.connect(
-            lambda top, bottom, roles: changed.append((top.column(), bottom.column()))
-        )
+        model.dataChanged.connect(lambda top, bottom, roles: changed.append((top.column(), bottom.column())))
         model.set_display_mode(DisplayMode.SOURCE_TC)
         assert changed == [(IN, OUT)]
 
@@ -403,9 +395,8 @@ class TestTheGroupHeader:
     def test_one_shot_is_not_one_shots(self, qt_app: QApplication) -> None:
         built = ShotListModel()
         built.set_batch(batch(row()))
-        assert "1 shot," in str(
-            built.index(0, 0, QModelIndex()).data(Qt.ItemDataRole.DisplayRole)
-        ) or "1 shot" in str(built.index(0, 0, QModelIndex()).data(Qt.ItemDataRole.DisplayRole))
+        header = str(built.index(0, 0, QModelIndex()).data(Qt.ItemDataRole.DisplayRole))
+        assert "1 shot" in header and "1 shots" not in header
 
     def test_its_state_is_the_worst_thing_under_it(self) -> None:
         assert turnover_state(turnover(), [warn(row()), fail(row())]) is RowState.ERROR
@@ -427,9 +418,7 @@ class TestHowARowIsPainted:
         dot = cell(model, 0, STATUS, Qt.ItemDataRole.DecorationRole)
         assert dot is not None and not dot.isNull()
 
-    def test_the_dot_is_cached_per_state_rather_than_drawn_per_cell(
-        self, model: ShotListModel
-    ) -> None:
+    def test_the_dot_is_cached_per_state_rather_than_drawn_per_cell(self, model: ShotListModel) -> None:
         first = cell(model, 0, STATUS, Qt.ItemDataRole.DecorationRole)
         second = cell(model, 1, STATUS, Qt.ItemDataRole.DecorationRole)
         # Qt hands back a new Python wrapper each time; the cache key is what says
@@ -455,12 +444,17 @@ class TestHowARowIsPainted:
 
 
 class TestTooltips:
+    def test_a_row_stop_skipped_is_not_done(self) -> None:
+        """`skipped` is what Stop writes on a job it reached; the Progress cell reads
+        0/2 beside it and the dot must not say otherwise."""
+        assert row_state(delivered(row(), status="skipped")) is not RowState.DONE
+
     def test_the_dot_lists_the_rules_that_fired(self, qt_app: QApplication) -> None:
         """Section 3: hovering the dot names the rule IDs and their messages."""
         built = ShotListModel()
         built.set_batch(batch(fail(warn(row()))))
         tip = str(cell(built, 0, STATUS, Qt.ItemDataRole.ToolTipRole))
-        assert "QC-030" in tip and "QC-011" in tip
+        assert "QC-030" in tip and "QC-012" in tip
 
     def test_a_row_with_nothing_wrong_has_no_dot_tooltip(self, model: ShotListModel) -> None:
         assert cell(model, 0, STATUS, Qt.ItemDataRole.ToolTipRole) is None
@@ -544,24 +538,21 @@ class TestWhichCellsCanBeEdited:
         header = model.index(0, SHOT, QModelIndex())
         assert not header.flags() & Qt.ItemFlag.ItemIsEditable
 
-    def test_a_row_with_no_range_cannot_have_one_typed_into_it(
-        self, qt_app: QApplication
-    ) -> None:
+    def test_a_row_with_no_range_cannot_have_one_typed_into_it(self, qt_app: QApplication) -> None:
         """QC-020 rows appear in the list; a relative offset has nothing to be relative to."""
         built = ShotListModel()
         built.set_batch(batch(row(media=None, snapshot=None, current=None)))
         assert not self.index_of(built, IN).flags() & Qt.ItemFlag.ItemIsEditable
         assert built.index(0, NOTES, built.index(0, 0, QModelIndex())).flags() & Qt.ItemFlag.ItemIsEditable
 
-    def test_an_editor_opens_on_the_shot_code_and_not_on_the_clip_name(
-        self, qt_app: QApplication
-    ) -> None:
+    def test_an_editor_opens_on_the_shot_code_and_not_on_the_clip_name(self, qt_app: QApplication) -> None:
         """Prefilled with the clip name, Enter commits the clip name as an override."""
         built = ShotListModel()
         built.set_batch(batch(row("not a shot name")))
-        assert built.index(0, SHOT, built.index(0, 0, QModelIndex())).data(
-            Qt.ItemDataRole.DisplayRole
-        ) == "not a shot name"
+        assert (
+            built.index(0, SHOT, built.index(0, 0, QModelIndex())).data(Qt.ItemDataRole.DisplayRole)
+            == "not a shot name"
+        )
         assert self.index_of(built, SHOT).data(Qt.ItemDataRole.EditRole) == ""
 
     def test_an_editor_opens_on_what_the_cell_is_showing(self, model: ShotListModel) -> None:
@@ -631,13 +622,18 @@ class TestCommittingAnEdit:
         assert not self.commit(model, IN, "8")
         assert not self.commit(model, NOTES, "")
 
-    def test_a_range_the_media_cannot_satisfy_is_stored_and_then_reported(
-        self, model: ShotListModel
-    ) -> None:
+    def test_a_range_the_media_cannot_satisfy_is_stored_and_then_reported(self, model: ShotListModel) -> None:
         """QC-031 says it about the row. Refusing the keystroke would stop an editor who
         is typing Out before In on the way to a range that is fine."""
         assert self.commit(model, OUT, "900")
         assert [result.rule_id for result in model.batch.rows[0].errors()] == ["QC-031"]
+
+    def test_a_range_before_the_media_s_timecode_still_renders(self, model: ShotListModel) -> None:
+        """The stored value can sit before the media's own timecode; the cell that shows
+        it must not raise, because Qt would swallow that and paint nothing."""
+        model.set_display_mode(DisplayMode.SOURCE_TC)
+        assert self.commit(model, IN, "-90000")
+        assert str(cell(model, 0, IN, Qt.ItemDataRole.DisplayRole)).startswith("-")
 
     def test_the_row_s_rules_re_run_on_commit(self, model: ShotListModel) -> None:
         assert not model.batch.rows[0].qc
@@ -650,9 +646,7 @@ class TestCommittingAnEdit:
         self.commit(model, OUT, "231")
         assert not model.batch.rows[0].errors()
 
-    def test_the_whole_row_repaints_because_more_than_one_cell_moved(
-        self, model: ShotListModel
-    ) -> None:
+    def test_the_whole_row_repaints_because_more_than_one_cell_moved(self, model: ShotListModel) -> None:
         """An In moves Duration, Max Avail, the dot and the tint."""
         seen: list[tuple[int, int]] = []
         model.dataChanged.connect(

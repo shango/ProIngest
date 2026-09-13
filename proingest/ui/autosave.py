@@ -52,13 +52,19 @@ class AutoSaver(QObject):
         """True when there are edits this has not managed to write yet."""
         return self._pending
 
+    @property
+    def path(self) -> Path | None:
+        """Where the next write goes, or None for a batch that has no file yet."""
+        return self._path
+
     def watch(self, batch: Batch, path: Path | None) -> None:
         """Follow a different batch, writing anything still pending for the last one.
 
         The order matters: the old batch is flushed to the old path before either is
         replaced, or closing one batch to open another loses the last edit made to it.
         """
-        self.flush()
+        if not self.flush():
+            log.warning("edits to the previous batch were not written and are discarded")
         self._batch = batch
         self._path = path
         self._pending = False
@@ -78,8 +84,11 @@ class AutoSaver(QObject):
         self._pending = True
         self._timer.start()
 
-    def flush(self) -> None:
+    def flush(self) -> bool:
         """Write now, if there is anything to write and anywhere to write it.
+
+        Returns True when nothing is left pending, so a caller about to drop the batch
+        can tell a clean hand-over from one that loses edits.
 
         A write that fails is logged and stays pending rather than raising: the delivery
         root and the batch beside it can be on a network mount, and an editor who has
@@ -87,11 +96,12 @@ class AutoSaver(QObject):
         """
         self._timer.stop()
         if not self._pending or self._batch is None or self._path is None:
-            return
+            return not self._pending
         try:
             written = batchfile.save(self._batch, self._path)
         except OSError as exc:
             log.warning("autosave to %s failed (%s); the edits are still pending", self._path, exc)
-            return
+            return False
         self._pending = False
         self.saved.emit(written)
+        return True

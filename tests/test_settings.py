@@ -14,7 +14,7 @@ from pathlib import Path
 import pytest
 
 from proingest.core import logsetup, settings
-from proingest.core.render import DEFAULT_WORKERS
+from proingest.core.models import DEFAULT_WORKERS
 
 
 class TestRoundTrip:
@@ -30,8 +30,8 @@ class TestRoundTrip:
         settings.save(settings.AppSettings(), path)
         assert path.is_file()
 
-    def test_the_write_is_atomic(self, tmp_path: Path) -> None:
-        """Same rule as a deliverable: a crash mid-write leaves the previous file."""
+    def test_a_rewrite_leaves_no_temp_file_behind(self, tmp_path: Path) -> None:
+        """Written to a temp name and renamed, the same rule as a deliverable."""
         path = tmp_path / "settings.json"
         settings.save(settings.AppSettings(window_geometry="first"), path)
         settings.save(settings.AppSettings(window_geometry="second"), path)
@@ -47,17 +47,13 @@ class TestRoundTrip:
         assert settings.load(path).ffmpeg_path == "/opt/ffmpeg"
         assert json.loads(path.read_text())["log_level"] == "Debug"
 
-    def test_a_level_the_file_names_wrongly_reads_back_as_the_default(
-        self, tmp_path: Path
-    ) -> None:
+    def test_a_level_the_file_names_wrongly_reads_back_as_the_default(self, tmp_path: Path) -> None:
         """A hand edit, or a later version's level this one does not know. Not an error."""
         path = tmp_path / "settings.json"
         path.write_text(json.dumps({"schema_version": 1, "log_level": "Chatty"}))
         assert settings.load(path).log_level == logsetup.name_of(logsetup.DEFAULT_LEVEL)
 
-    def test_a_file_written_before_the_advanced_section_existed_logs_normally(
-        self, tmp_path: Path
-    ) -> None:
+    def test_a_file_written_before_the_advanced_section_existed_logs_normally(self, tmp_path: Path) -> None:
         path = tmp_path / "settings.json"
         path.write_text(json.dumps({"schema_version": 1}))
         loaded = settings.load(path)
@@ -71,9 +67,7 @@ class TestRoundTrip:
         settings.save(settings.AppSettings(metadata_collapsed=["Range", "Turnover"]), path)
         assert settings.load(path).metadata_collapsed == ["Range", "Turnover"]
 
-    def test_a_file_written_before_the_pane_existed_collapses_nothing(
-        self, tmp_path: Path
-    ) -> None:
+    def test_a_file_written_before_the_pane_existed_collapses_nothing(self, tmp_path: Path) -> None:
         path = tmp_path / "settings.json"
         path.write_text(json.dumps({"schema_version": settings.SCHEMA_VERSION}))
         assert settings.load(path).metadata_collapsed == []
@@ -98,9 +92,7 @@ class TestRoundTrip:
         assert loaded.rules == {"min_duration_frames": 11}
         assert loaded.color_session_folder == "/Volumes/drive/colour"
 
-    def test_a_file_written_before_the_settings_page_existed_reads_back_bare(
-        self, tmp_path: Path
-    ) -> None:
+    def test_a_file_written_before_the_settings_page_existed_reads_back_bare(self, tmp_path: Path) -> None:
         """`workers` has to read back as what the tool would have done anyway."""
         path = tmp_path / "settings.json"
         path.write_text(json.dumps({"schema_version": settings.SCHEMA_VERSION}))
@@ -133,6 +125,15 @@ class TestAFileThatCannotBeUsed:
     def test_json_that_is_not_an_object_falls_back(self, tmp_path: Path) -> None:
         path = tmp_path / "settings.json"
         path.write_text("[1, 2, 3]")
+        assert settings.load(path) == settings.AppSettings()
+
+    @pytest.mark.parametrize(
+        "content",
+        ['{"workers": "lots"}', '{"workers": null}', '{"path_map": [1, 2]}', '{"metadata_collapsed": 5}'],
+    )
+    def test_a_value_of_the_wrong_type_falls_back(self, tmp_path: Path, content: str) -> None:
+        path = tmp_path / "settings.json"
+        path.write_text(content)
         assert settings.load(path) == settings.AppSettings()
 
     def test_a_missing_key_takes_its_default(self, tmp_path: Path) -> None:

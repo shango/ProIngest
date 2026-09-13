@@ -54,8 +54,6 @@ CI runner - a `logs` folder beside `settings.json` is the honest answer.
 def log_dir() -> Path:
     """Where the rotating log file goes. `core/logsetup.py` creates it, not this."""
     if sys.platform == MACOS_LOGS:
-        generic = Path(
-            QStandardPaths.writableLocation(QStandardPaths.StandardLocation.GenericDataLocation)
-        )
+        generic = Path(QStandardPaths.writableLocation(QStandardPaths.StandardLocation.GenericDataLocation))
         return generic.parent / "Logs" / APPLICATION_NAME
     return app_data_dir() / "logs"

@@ -61,7 +61,7 @@ from proingest.ui.issues import IssuesDock
 from proingest.ui.log_view import LogView
 from proingest.ui.metadata_pane import MetadataPane
 from proingest.ui.run_strip import LINK_COLOR, RunStrip
-from proingest.ui.runner import Runner, RunProgress
+from proingest.ui.runner import SHUTDOWN_WAIT_MS, Runner, RunProgress
 from proingest.ui.scanner import Scanner
 from proingest.ui.settings_dialog import SettingsDialog
 from proingest.ui.shot_list import ShotListView
@@ -90,15 +90,13 @@ BOTTOM_TABS = ("Issues", "Log", "Deliverables")
 
 NOTHING_TO_RENDER = "Nothing to render: no row produced a deliverable"
 SETTINGS_APPLIED = "Settings applied; the batch has been re-checked"
+CLOSING_AFTER_RUN = "Stopping the run, then closing..."
 
 INGEST_TITLE = "Colour session ingested"
 INGEST_READ = "Read from {name}, which holds {events} events."
 INGEST_MIXED_RATES = "This turnover carries more than one rate; the EDL was read at {rate}."
 NO_RATE_TITLE = "Nothing to read the EDL at"
-NO_RATE = (
-    "No row in {name} has media, so there is no rate to read the EDL's timecode at. "
-    "Scan it first."
-)
+NO_RATE = "No row in {name} has media, so there is no rate to read the EDL's timecode at. Scan it first."
 CANNOT_READ_SESSION = "Could not read the colour session"
 WHICH_TURNOVER = "Ingest a colour session into which turnover?"
 
@@ -135,9 +133,23 @@ progress message, is a message per frame per worker: on a fast copy job that is
 thousands a second, all of them saying something the eye cannot see."""
 
 
-def banner_text(
-    written: Sequence[Deliverable], reports: Path | None, cancelled: bool
-) -> str:
+def turnover_labels(turnovers: Sequence[Turnover]) -> list[str]:
+    """Folder names, with the parent folder added where two turnovers share one."""
+    names = [turnover.folder.name for turnover in turnovers]
+    return [
+        f"{turnover.folder.parent.name}/{name}" if names.count(name) > 1 else name
+        for turnover, name in zip(turnovers, names, strict=True)
+    ]
+
+
+def unsaved_question(path: Path | None) -> str:
+    """What to ask about pending edits: no file yet, or a file the last write missed."""
+    if path is None:
+        return "This batch has never been saved. Save it before closing?"
+    return f"The last save to {path.name} failed and the edits are still unsaved. Save it before closing?"
+
+
+def banner_text(written: Sequence[Deliverable], reports: Path | None, cancelled: bool) -> str:
     """UI_SPEC section 7's banner, with the path as the thing that can be clicked.
 
     The wording is the spec's, except that a stopped run says so: the counts alone would
@@ -147,19 +159,14 @@ def banner_text(
     """
     counts = Counter(item.status for item in written)
     head = "Run stopped" if cancelled else "Batch complete"
-    text = (
-        f"{head}: {counts['done']} done, {counts['failed']} failed, "
-        f"{counts['skipped']} skipped."
-    )
+    text = f"{head}: {counts['done']} done, {counts['failed']} failed, {counts['skipped']} skipped."
     if reports is None:
         return f"{text} No exports were written."
     link = f'<a href="#reports" style="color:{LINK_COLOR}">{reports}</a>'
     return f"{text} Exports written to {link}"
 
 
-def ingest_text(
-    report: clf.IngestReport, turnover_name: str, rates: Sequence[FrameRate]
-) -> str:
+def ingest_text(report: clf.IngestReport, turnover_name: str, rates: Sequence[FrameRate]) -> str:
     """What one ingest did, in the words `proingest run --color-session` prints.
 
     The counts and the three labelled lists come off the report itself
@@ -177,7 +184,6 @@ def ingest_text(
     for label, names in report.notices():
         lines += ["", f"{label}: {', '.join(names)}"]
     return "\n".join(lines)
-
 
 
 class MainWindow(QMainWindow):
@@ -364,12 +370,13 @@ class MainWindow(QMainWindow):
         # A commit re-runs that row's rules (M5.3), so what the dock is showing about
         # that row is what just changed. Rebuilt whole: the results are a list short
         # enough that finding the ones that moved costs more than redrawing them.
-        self.shot_model.row_edited.connect(lambda _row: self.issues.show_batch(self.batch))
+        self.shot_model.row_edited.connect(lambda _row: self._show_results())
         self._camdata_cache: dict[Path, dict[str, str]] = {}
         self.autosave.saved.connect(lambda path: self.statusBar().showMessage(f"Saved {path.name}"))
         self.batch_bar = BatchBar(self)
         self.batch_bar.display_mode_picked.connect(self.set_display_mode)
         self.batch_bar.search_changed.connect(self.shot_list.filter_by)
+        self.shot_list.filter_cleared.connect(self.batch_bar.search.clear)
         self.batch_bar.delivery_root_clicked.connect(self.choose_delivery_root)
 
         self.scanner = Scanner(self)
@@ -386,6 +393,13 @@ class MainWindow(QMainWindow):
         self._run_timer = QTimer(self)
         self._run_timer.setInterval(RUN_REFRESH_MS)
         self._run_timer.timeout.connect(self._show_run_progress)
+        # A close during a run: the run is stopped and the close retried when its
+        # results are in, or when this gives up waiting for them.
+        self._close_wait = QTimer(self)
+        self._close_wait.setSingleShot(True)
+        self._close_wait.timeout.connect(self._close_without_results)
+        self._closing_after_run = False
+        self._close_wait_expired = False
         self.run_strip = RunStrip(self)
         self.run_strip.link_activated.connect(self._open_reports)
 
@@ -453,7 +467,7 @@ class MainWindow(QMainWindow):
             return
         batch = Batch()
         if self._settings.rules:
-            batch.settings_overrides[qc.RULES_OVERRIDE_KEY] = dict(self._settings.rules)
+            batch.settings_overrides[qc.RULES_OVERRIDE_KEY] = self._app_rules().to_dict()
         self.set_batch(batch)
 
     def open_batch(self) -> None:
@@ -470,7 +484,12 @@ class MainWindow(QMainWindow):
             return
         # The copy is taken on open rather than on save, so the file being backed up is
         # the last one the editor saw whole rather than the one a bad save just wrote.
-        batchfile.backup(path)
+        # Without it the next autosave overwrites the only copy, so the open waits.
+        try:
+            batchfile.backup(path)
+        except OSError as exc:
+            self.report_problem("Could not back up batch", f"{path.name} was not opened: {exc}")
+            return
         self.set_batch(loaded, path)
         self._check_roots(loaded)
 
@@ -531,6 +550,29 @@ class MainWindow(QMainWindow):
         """Built here so a test can hand back one it has already answered."""
         rules = qc.settings_for(self.batch) if self._batch_open else self._app_rules()
         return SettingsDialog(self._settings, rules, self)
+
+    def _close_after_run(self) -> None:
+        """Stop the run and close once `_run_finished` has applied what it wrote."""
+        if self._closing_after_run:
+            return
+        self._closing_after_run = True
+        self.runner.finished.connect(self._close_now_that_the_run_is_over)
+        self._close_wait.start(SHUTDOWN_WAIT_MS)
+        self.stop_run()
+        self.statusBar().showMessage(CLOSING_AFTER_RUN)
+
+    def _close_now_that_the_run_is_over(self, *_: object) -> None:
+        """Connected after `_run_finished`, so the results are on the rows by now."""
+        self.runner.finished.disconnect(self._close_now_that_the_run_is_over)
+        self._close_wait.stop()
+        self._closing_after_run = False
+        self.close()
+
+    def _close_without_results(self) -> None:
+        """The bounded wait ran out: close the way it used to, dropping the results."""
+        log.warning("the run did not stop within %d ms; closing without its results", SHUTDOWN_WAIT_MS)
+        self._close_wait_expired = True
+        self.close()
 
     def _app_rules(self) -> qc.RuleSettings:
         """The thresholds a new batch would start from, or the defaults.
@@ -728,9 +770,7 @@ class MainWindow(QMainWindow):
         if edl is None:
             return
         try:
-            session = clf.load_session(
-                edl, rates[0], settings_form.show_pattern_of(self._settings)
-            )
+            session = clf.load_session(edl, rates[0], settings_form.show_pattern_of(self._settings))
         except clf.ColorSessionError as exc:
             self.report_problem(CANNOT_READ_SESSION, str(exc))
             return
@@ -845,9 +885,7 @@ class MainWindow(QMainWindow):
         if len(held_back) > 1:
             return HELD_BACK.format(count=len(held_back))
         one = next(iter(held_back))
-        name = next(
-            (t.folder.name for t in self.batch.turnovers if t.turnover_id == one), one
-        )
+        name = next((t.folder.name for t in self.batch.turnovers if t.turnover_id == one), one)
         return HELD_BACK_ONE.format(name=name)
 
     def stop_run(self) -> None:
@@ -903,7 +941,7 @@ class MainWindow(QMainWindow):
 
         batch = self.batch
         self.run_strip.say(CHECKING_RESULTS)
-        render.apply_results(batch, written)
+        render.apply_results(batch, written, settings_form.show_pattern_of(self._settings))
         self.shot_model.refresh_rows()
         self._show_results()
         self.autosave.schedule()
@@ -997,17 +1035,14 @@ class MainWindow(QMainWindow):
             batch_open=open_batch,
             has_rows=open_batch and bool(self.batch.rows),
             has_unscanned=open_batch and bool(self._unscanned()),
-            has_session=open_batch
-            and any(t.color_session_edl is not None for t in self.batch.turnovers),
+            has_session=open_batch and any(t.color_session_edl is not None for t in self.batch.turnovers),
             scanning=scanning,
             rendering=running,
             stopping=running and self.runner.cancelled,
         )
         for key, action in self._toolbar_help:
             shortcut = action.shortcut().toString(QKeySequence.SequenceFormat.NativeText)
-            action.setToolTip(
-                toolbar_help.tooltip(key, state, action.isEnabled(), shortcut)
-            )
+            action.setToolTip(toolbar_help.tooltip(key, state, action.isEnabled(), shortcut))
 
     def set_display_mode(self, mode: DisplayMode) -> None:
         """The one place the display mode changes, whichever surface asked for it."""
@@ -1080,9 +1115,7 @@ class MainWindow(QMainWindow):
     def ask_save_path(self, suggested_name: str) -> Path | None:
         """Where to save a batch that has never been saved."""
         start = Path(self._start_folder(None)) / f"{suggested_name}{batchfile.SUFFIX}"
-        chosen, _filter = QFileDialog.getSaveFileName(
-            self, "Save Batch", str(start), BATCH_FILTER
-        )
+        chosen, _filter = QFileDialog.getSaveFileName(self, "Save Batch", str(start), BATCH_FILTER)
         return self._remember(Path(chosen)) if chosen else None
 
     def ask_folder(self, title: str, start: Path | None) -> Path | None:
@@ -1098,9 +1131,7 @@ class MainWindow(QMainWindow):
         the mount, which is why that setting exists (FR-12).
         """
         start = self._settings.color_session_folder or self._settings.last_folder
-        chosen, _filter = QFileDialog.getOpenFileName(
-            self, "Ingest Colour Session", start, EDL_FILTER
-        )
+        chosen, _filter = QFileDialog.getOpenFileName(self, "Ingest Colour Session", start, EDL_FILTER)
         return Path(chosen) if chosen else None
 
     def ask_turnover(self, turnovers: Sequence[Turnover]) -> Turnover | None:
@@ -1109,7 +1140,7 @@ class MainWindow(QMainWindow):
         The folder is what the editor picked in Add Turnover and what the session was
         exported for; `turnover001` is the tool's own handle for it.
         """
-        names = [turnover.folder.name for turnover in turnovers]
+        names = turnover_labels(turnovers)
         chosen, accepted = QInputDialog.getItem(
             self, "Ingest Colour Session", WHICH_TURNOVER, names, 0, False
         )
@@ -1127,11 +1158,11 @@ class MainWindow(QMainWindow):
         QMessageBox.information(self, INGEST_TITLE, text)
 
     def ask_unsaved(self) -> QMessageBox.StandardButton:
-        """Save, Discard or Cancel, for a batch with edits and no file yet."""
+        """Save, Discard or Cancel, for edits that could not be written."""
         return QMessageBox.warning(
             self,
             "Unsaved batch",
-            "This batch has never been saved. Save it before closing?",
+            unsaved_question(self.autosave.path),
             QMessageBox.StandardButton.Save
             | QMessageBox.StandardButton.Discard
             | QMessageBox.StandardButton.Cancel,
@@ -1199,7 +1230,6 @@ class MainWindow(QMainWindow):
         # stale rather than wrong, which is the harder kind to notice.
         selection = self.shot_list.selectionModel()
         selection.selectionChanged.connect(lambda *_: self.refresh_metadata())
-        self.shot_model.row_edited.connect(lambda _row: self.refresh_metadata())
 
     def refresh_metadata(self) -> None:
         """Redraw the pane from the current selection. Cheap when nothing moved.
@@ -1216,7 +1246,7 @@ class MainWindow(QMainWindow):
             return
         turnover = self.shot_list.selected_turnover()
         if turnover is not None:
-            self.metadata.show_sections(metadata.describe_turnover(turnover))
+            self.metadata.show_sections(metadata.describe_turnover(turnover, self.batch.project_rate))
             return
         self.metadata.clear()
 
@@ -1232,7 +1262,7 @@ class MainWindow(QMainWindow):
         if cached is None:
             try:
                 cached = camdata.parse(path)
-            except (OSError, UnicodeDecodeError):
+            except OSError:
                 cached = {}
             self._camdata_cache[path] = cached
         return cached
@@ -1281,9 +1311,7 @@ class MainWindow(QMainWindow):
         # The same two signals the metadata pane follows, minus the one about QC: what
         # the Log tab needs from the list is a shot code, and only a selection and an
         # edit can change it.
-        self.shot_list.selectionModel().selectionChanged.connect(
-            lambda *_: self._refresh_log_filter()
-        )
+        self.shot_list.selectionModel().selectionChanged.connect(lambda *_: self._refresh_log_filter())
         self.shot_model.row_edited.connect(lambda _row: self._refresh_log_filter())
 
     def _refresh_log_filter(self) -> None:
@@ -1312,12 +1340,21 @@ class MainWindow(QMainWindow):
 
         Qt's own blobs, base64 encoded to survive JSON. A blob written by a different
         Qt version is refused by Qt itself rather than raising, so a stale one leaves
-        the default size rather than failing a launch.
+        the default size rather than failing a launch. The decode is the one step that
+        can raise, on a hand edited file, and it is skipped for the same reason.
         """
-        if self._settings.window_geometry:
-            self.restoreGeometry(QByteArray(b64decode(self._settings.window_geometry)))
-        if self._settings.window_state:
-            self.restoreState(QByteArray(b64decode(self._settings.window_state)))
+        for text, restore in (
+            (self._settings.window_geometry, self.restoreGeometry),
+            (self._settings.window_state, self.restoreState),
+        ):
+            if not text:
+                continue
+            try:
+                blob = b64decode(text, validate=True)
+            except ValueError:
+                log.warning("window state in the settings file is not base64; ignoring it")
+                continue
+            restore(QByteArray(blob))
 
     def save_window_state(self) -> None:
         """Write what the window looks like now. Called on close."""
@@ -1333,10 +1370,20 @@ class MainWindow(QMainWindow):
         one the editor expects to lose, and what is still pending after it is a batch
         that has never been saved: the one case the editor has to answer for.
 
-        The scan and the run are stopped last and both are waited on, because a `QThread`
-        still running when its owner is collected is a crash on the way out. The run's
-        wait is the long one: it is waiting for in-flight jobs to reach a frame boundary.
+        The scan is stopped last and waited on, because a `QThread` still running when
+        its owner is collected is a crash on the way out.
+
+        **A run is stopped and the close retried when its results are in.** They come
+        back by a queued signal and are applied on this thread (`_run_finished`), so a
+        close that blocked here waiting for the thread would drop every deliverable the
+        run had finished. The wait is bounded the way `Runner.shutdown`'s is: a wedged
+        worker must not be a window that cannot be closed, and after that long the close
+        goes ahead without the results, as it always did.
         """
+        if self.runner.busy and not self._close_wait_expired:
+            self._close_after_run()
+            event.ignore()
+            return
         if not self._may_abandon_current():
             event.ignore()
             return

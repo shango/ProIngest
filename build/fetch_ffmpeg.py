@@ -91,9 +91,7 @@ def fetch(entry: dict[str, Any], dest_dir: Path, work: Path) -> None:
     if actual != entry["sha256"]:
         temp.unlink()
         raise SystemExit(
-            f"sha256 mismatch for {dest.name}\n"
-            f"  expected {entry['sha256']}\n"
-            f"  got      {actual}"
+            f"sha256 mismatch for {dest.name}\n  expected {entry['sha256']}\n  got      {actual}"
         )
     if entry["executable"]:
         os.chmod(temp, temp.stat().st_mode | EXEC_BITS)

@@ -72,9 +72,7 @@ class TestConfigure:
         written = (tmp_path / logsetup.LOG_FILENAME).read_text()
         assert written.count("once") == 1
 
-    def test_configuring_leaves_another_owner_s_handler_alone(
-        self, tmp_path: Path, quiet_root: None
-    ) -> None:
+    def test_configuring_leaves_another_owner_s_handler_alone(self, tmp_path: Path, quiet_root: None) -> None:
         mine = Captured()
         logging.getLogger().addHandler(mine)
         try:
@@ -181,9 +179,7 @@ class TestWorkerBridge:
             root.removeHandler(captured)
 
         commands = [
-            record.getMessage()
-            for record in captured.records
-            if record.getMessage().startswith("running: ")
+            record.getMessage() for record in captured.records if record.getMessage().startswith("running: ")
         ]
         assert commands, "a render decodes with ffmpeg, so at least one command was run"
         assert any("ffmpeg" in command for command in commands)
@@ -253,9 +249,7 @@ class TestTheFfmpegOverrideReachingAWorker:
         assert commands, "the run logged no command at all"
         assert all(str(elsewhere) in command for command in commands), commands
 
-    def test_a_worker_with_no_override_uses_the_normal_order(
-        self, tmp_path: Path, quiet_root: None
-    ) -> None:
+    def test_a_worker_with_no_override_uses_the_normal_order(self, tmp_path: Path, quiet_root: None) -> None:
         assert ffmpeg.current_override() is None
         source = fixtures.make_mov(tmp_path / "src.mov", count=3)
         assert render.execute([ref_job(tmp_path, source, 0, 2)], workers=1)[0].status == "done"

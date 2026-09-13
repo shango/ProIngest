@@ -97,7 +97,7 @@ def warn(row_: ShotRow, rule_id: str = "QC-030") -> ShotRow:
     return row_
 
 
-def fail(row_: ShotRow, rule_id: str = "QC-011") -> ShotRow:
+def fail(row_: ShotRow, rule_id: str = "QC-012") -> ShotRow:
     row_.qc.append(QCResult(rule_id, "error", "row", "media not found"))
     return row_
 

@@ -3,9 +3,9 @@
 VFX turnover ingest and conform tool for a small studio pipeline. macOS (Apple Silicon) first, Windows later.
 
 The repo began as a PRD package to be handed to Claude Code. It is now an implementation:
-the core, the naming and planning, and the render pipeline are built and tested, and a
-scanned turnover renders end to end from the command line. There is no user interface yet.
-`PROGRESS.md` section 1 is the current state.
+the core, the naming and planning, the render pipeline, the QC rules, the exports and the
+PySide6 window are built and tested, and a turnover goes end to end from the window or the
+command line. `PROGRESS.md` section 1 is the current state.
 
 ## Reading order
 

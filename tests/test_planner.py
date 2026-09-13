@@ -371,9 +371,7 @@ class TestOutputNamesReadBack:
 
     def test_every_planned_name_round_trips(self) -> None:
         side = SideFiles(hdri=Path("/t/MELT0001_pl01_HDRI.exr"), camdata=Path("/t/x_camData.rtf"))
-        plan = planner.plan_row(
-            row(audio_path=Path("/t/a.wav"), side_files=side), ROOT, 4
-        )
+        plan = planner.plan_row(row(audio_path=Path("/t/a.wav"), side_files=side), ROOT, 4)
         for job in plan.jobs:
             parsed = naming.parse_output_name(job.name)
             assert parsed is not None, job.name
@@ -509,9 +507,7 @@ class TestShotColourOnJobs:
         by_shot = {job.shot_code: job.shot_color.source_encoding for job in jobs}
         assert by_shot == {"MELT0001": "ACEScc", "MELT0002": "S-Log3 S-Gamut3.Cine"}
 
-    def test_a_row_that_plans_nothing_keeps_the_clf_it_was_ingested_with(
-        self, tmp_path: Path
-    ) -> None:
+    def test_a_row_that_plans_nothing_keeps_the_clf_it_was_ingested_with(self, tmp_path: Path) -> None:
         """Planning no longer owns `clf_path`: a skipped row is not un-ingested."""
         skipped = row(skipped=True)
         batch = Batch(name="b", rows=[skipped], delivery_root=ROOT)

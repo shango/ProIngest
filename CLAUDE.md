@@ -32,9 +32,9 @@ The docs are the spec. `PROGRESS.md` is the state. When code and docs disagree, 
 
 ## Commands
 ```
-uv sync                      # or: pip install -e .[dev]
+uv sync --extra dev          # installs exactly what uv.lock pins; or: pip install -e .[dev]
 pytest
-ruff check . && mypy proingest
+ruff check . && ruff format --check . && mypy proingest tests
 python -m proingest          # run the app
 python build/build.py        # PyInstaller .app + dmg, macOS only (see docs/PACKAGING.md)
 ```

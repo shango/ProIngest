@@ -49,8 +49,8 @@ import numpy as np
 import numpy.typing as npt
 import PyOpenColorIO as ocio
 
-from proingest.core import batchfile, clf, color, exr, ffmpeg, logsetup, media, qc, resize
-from proingest.core.models import Batch, Deliverable, QCResult
+from proingest.core import batchfile, clf, color, exr, ffmpeg, logsetup, media, naming, qc, resize
+from proingest.core.models import DEFAULT_WORKERS, Batch, Deliverable, QCResult
 from proingest.core.planner import DeliverableJob
 
 log = logging.getLogger(__name__)
@@ -236,7 +236,10 @@ def _render_sequence(
     graded = _plate_branch(job)
     stream = _source_pixels(job)
     try:
-        for output_frame, pixels in zip(job.output_frames(), stream, strict=False):
+        # The stream is first so that it is asked for one frame past the plan and gets
+        # to finish: a decode that ends on its own checks ffmpeg's exit code, one that
+        # is closed part way through is killed and its exit code is never read.
+        for pixels, output_frame in zip(stream, job.output_frames(), strict=False):
             path = job.frame_path(output_frame, temp=True)
             _write_frame(job, path, graded.apply(pixels), output_frame, graded)
             deliverable.frame_checksums.append(file_digest(path))
@@ -252,9 +255,7 @@ def _render_sequence(
         stream.close()
 
     if written != job.frame_count:
-        raise RenderError(
-            f"{job.name} wanted {job.frame_count} frames and the source gave {written}"
-        )
+        raise RenderError(f"{job.name} wanted {job.frame_count} frames and the source gave {written}")
     deliverable.frame_count = written
 
 
@@ -312,9 +313,7 @@ def _source_pixels(job: DeliverableJob) -> Generator[npt.NDArray[np.float32], No
 
     if job.source_size is None:
         raise RenderError(f"{job.name} has no source resolution, so the decode cannot be sized")
-    source = (
-        media.printf_pattern_for(job.source) if job.source_is_sequence else str(job.source)
-    )
+    source = media.printf_pattern_for(job.source) if job.source_is_sequence else str(job.source)
     # Only ask ffmpeg to scale when the size actually changes: a 4k pass from a 4k
     # source should not run the source through a resampler at all.
     scale = job.target_size if job.target_size != job.source_size else None
@@ -328,9 +327,7 @@ def _source_pixels(job: DeliverableJob) -> Generator[npt.NDArray[np.float32], No
     )
 
 
-def _fit(
-    pixels: npt.NDArray[np.float32], target: tuple[int, int] | None
-) -> npt.NDArray[np.float32]:
+def _fit(pixels: npt.NDArray[np.float32], target: tuple[int, int] | None) -> npt.NDArray[np.float32]:
     """Resample to the target, or pass the frame through when it is already there."""
     if target is None or pixels.shape[:2] == (target[1], target[0]):
         return pixels
@@ -392,9 +389,7 @@ def _render_reference(job: DeliverableJob, deliverable: Deliverable) -> None:
     # exactly the delivery this module exists to prevent.
     written = ffmpeg.container_frame_count(job.temp)
     if written != job.frame_count:
-        raise RenderError(
-            f"{job.name} wanted {job.frame_count} frames and the encode wrote {written}"
-        )
+        raise RenderError(f"{job.name} wanted {job.frame_count} frames and the encode wrote {written}")
     _record_file(deliverable, job.temp)
     deliverable.frame_count = written
 
@@ -429,7 +424,7 @@ def _audio_skip(job: DeliverableJob) -> float:
     if job.audio_source is None or job.in_frame is None or job.rate is None:
         return 0.0
     offset = job.in_frame - job.source_start_frame
-    return max(0, offset) / job.rate.as_float()
+    return max(0, offset) * job.rate.denominator / job.rate.numerator
 
 
 # --- Audio and byte copies. ---
@@ -467,14 +462,6 @@ ProgressState = Literal["started", "frame", "done", "failed", "cancelled"]
 RENDER_FAILED = qc.RENDER_FAILED
 """The render did not complete. Every other QC-1xx is NA when this one fails."""
 
-DEFAULT_WORKERS = 4
-"""Capped rather than one per core on purpose.
-
-Each worker may run its own ffmpeg, and ffmpeg is already multi-threaded, so more
-workers than this mostly buys contention. It is a parameter because the right number
-depends on the machine and on whether the source is on a network mount; measuring it
-against a real turnover is M8.
-"""
 
 _DRAIN_TIMEOUT = 5.0
 
@@ -581,9 +568,7 @@ def _worker(job: DeliverableJob) -> Deliverable:
     return deliverable
 
 
-def _drain(
-    queue: MPQueue[Progress | None], on_progress: Callable[[Progress], None] | None
-) -> None:
+def _drain(queue: MPQueue[Progress | None], on_progress: Callable[[Progress], None] | None) -> None:
     """Forward progress to the caller until the None sentinel arrives.
 
     The queue carries `Progress | None` rather than a sentinel Progress value because
@@ -649,9 +634,7 @@ def execute(
             initializer=_worker_init,
             initargs=(queue, cancel, log_queue, log_level, ffmpeg_override),
         ) as pool:
-            futures = {
-                pool.submit(_worker, job): index for index, job in enumerate(jobs)
-            }
+            futures = {pool.submit(_worker, job): index for index, job in enumerate(jobs)}
             for future in as_completed(futures):
                 results[futures[future]] = future.result()
     finally:
@@ -664,7 +647,11 @@ def execute(
     return [results[index] for index in sorted(results)]
 
 
-def apply_results(batch: Batch, deliverables: Sequence[Deliverable]) -> None:
+def apply_results(
+    batch: Batch,
+    deliverables: Sequence[Deliverable],
+    show_pattern: str = naming.DEFAULT_SHOW_PATTERN,
+) -> None:
     """Write executed records back onto the rows that planned them, then re-run QC-150.
 
     Matched on destination path, which is unique across a run because the planner
@@ -672,9 +659,10 @@ def apply_results(batch: Batch, deliverables: Sequence[Deliverable]) -> None:
 
     QC-150 and QC-151 are the only phase B rules that cannot run in a worker: one asks
     whether a whole row landed and the other reads every name in the batch, and a
-    worker sees one job. They run here, where the results have just been collected.
+    worker sees one job. They run here, where the results have just been collected,
+    under the same show pattern the names were planned with.
     """
     executed = {deliverable.path: deliverable for deliverable in deliverables}
     for row in batch.rows:
         row.deliverables = [executed.get(planned.path, planned) for planned in row.deliverables]
-    qc.apply_phase_b(batch)
+    qc.apply_phase_b(batch, show_pattern)

@@ -27,7 +27,7 @@ def theme() -> str:
     can leave out of a bundle.
     """
     try:
-        return THEME_FILE.read_text()
+        return THEME_FILE.read_text(encoding="utf-8")
     except OSError:
         return ""
 

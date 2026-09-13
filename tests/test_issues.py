@@ -37,9 +37,7 @@ class TestClickingThroughFromThePane:
         current = dock.currentItem()
         assert current is not None and current.text(COLUMNS.index("Rule")) == "QC-030"
 
-    def test_a_rule_that_fired_on_several_shots_prefers_the_selected_one(
-        self, dock: IssuesDock
-    ) -> None:
+    def test_a_rule_that_fired_on_several_shots_prefers_the_selected_one(self, dock: IssuesDock) -> None:
         """QC-023 clicked while MELT0007 is selected should land on MELT0007's line."""
         first, second = warn(row(), "QC-023"), warn(row("MELT0007_pl01"), "QC-023")
         dock.show_batch(batch(first, second))
@@ -86,9 +84,13 @@ class TestWhatIsCollected:
         """Phase B reports against the file; the editor still wants to know which shot."""
         held = row()
         held.deliverables = [
-            Deliverable(kind="raw_dir", name="x", path=Path("/d/x"), version=1, qc=[
-                QCResult("QC-101", "error", "deliverable", "frame count is short")
-            ])
+            Deliverable(
+                kind="raw_dir",
+                name="x",
+                path=Path("/d/x"),
+                version=1,
+                qc=[QCResult("QC-101", "error", "deliverable", "frame count is short")],
+            )
         ]
         found = issues_for(batch(held))
         assert (found[0].label, found[0].row) == ("MELT0001", held)
@@ -156,9 +158,7 @@ class TestClickingThrough:
 
         assert asked == []
 
-    def test_the_right_shot_is_asked_for_when_two_rows_are_alike(
-        self, dock: IssuesDock
-    ) -> None:
+    def test_the_right_shot_is_asked_for_when_two_rows_are_alike(self, dock: IssuesDock) -> None:
         """Identity, not equality: two rows of a turnover can agree in every field."""
         first, second = warn(row()), warn(row())
         held = Batch(turnovers=[turnover()], rows=[first, second])

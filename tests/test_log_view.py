@@ -63,9 +63,7 @@ class TestWhatArrives:
         """
         # `warning` rather than `info`, so the test says something about threads rather
         # than about whatever level the root logger happens to be at while the suite runs.
-        worker = threading.Thread(
-            target=lambda: logging.getLogger("proingest.test").warning("from a worker")
-        )
+        worker = threading.Thread(target=lambda: logging.getLogger("proingest.test").warning("from a worker"))
         worker.start()
         worker.join()
         view.drain()
@@ -99,9 +97,7 @@ class TestBound:
         assert messages(view)[0] == "line 15"
         assert messages(view)[-1] == "line 24"
 
-    def test_a_hidden_line_still_ages_out(
-        self, view: LogView, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_a_hidden_line_still_ages_out(self, view: LogView, monkeypatch: pytest.MonkeyPatch) -> None:
         """The bound is the table, not the filter: otherwise a filter would leak memory."""
         monkeypatch.setattr(log_view, "MAX_LINES", 10)
         view.search.setText("keep")
@@ -175,9 +171,7 @@ class TestFilterByRow:
         view.set_selected_shot("MELT0002")
         assert messages(view) == ["b"]
 
-    def test_losing_the_selection_unticks_it_rather_than_filtering_to_nothing(
-        self, view: LogView
-    ) -> None:
+    def test_losing_the_selection_unticks_it_rather_than_filtering_to_nothing(self, view: LogView) -> None:
         """A ticked box filtering nothing is a control saying something untrue."""
         feed(view, record("a", shot="MELT0001"), record("b"))
         view.set_selected_shot("MELT0001")
@@ -209,9 +203,7 @@ class TestCopy:
         assert "MELT0001" in copied
         assert "INFO" in copied
 
-    def test_copying_nothing_leaves_the_clipboard_alone(
-        self, view: LogView, qt_app: QApplication
-    ) -> None:
+    def test_copying_nothing_leaves_the_clipboard_alone(self, view: LogView, qt_app: QApplication) -> None:
         qt_app.clipboard().setText("something the editor had")
         view.copy_selection()
         assert qt_app.clipboard().text() == "something the editor had"

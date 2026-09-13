@@ -17,7 +17,7 @@ from typing import Any
 
 from proingest import __version__
 from proingest.core import batchfile, clf, color, exports, logsetup, planner, qc, render, scan
-from proingest.core.models import Batch, Deliverable, ShotRow, Turnover
+from proingest.core.models import DEFAULT_WORKERS, Batch, Deliverable, ShotRow, Turnover
 
 COLUMNS = ("STATUS", "SHOT", "ELEM", "SOURCE", "RES", "FPS", "IN", "OUT", "DUR", "MAX", "AUDIO")
 
@@ -25,7 +25,12 @@ COLUMNS = ("STATUS", "SHOT", "ELEM", "SOURCE", "RES", "FPS", "IN", "OUT", "DUR",
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="proingest", description=__doc__)
     parser.add_argument("--version", action="version", version=f"proingest {__version__}")
-    parser.add_argument("-v", "--verbose", action="store_true", help="log every ffmpeg command")
+    parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="log every ffmpeg command (subcommands only; the app takes its level from Settings)",
+    )
     subparsers = parser.add_subparsers(dest="command")
 
     scan_parser = subparsers.add_parser("scan", help="scan turnover folders and print the row table")
@@ -44,12 +49,10 @@ def main(argv: list[str] | None = None) -> int:
     run_parser.add_argument(
         "--jobs",
         type=int,
-        default=render.DEFAULT_WORKERS,
-        help=f"worker processes (default {render.DEFAULT_WORKERS})",
+        default=DEFAULT_WORKERS,
+        help=f"worker processes (default {DEFAULT_WORKERS})",
     )
-    run_parser.add_argument(
-        "--dry-run", action="store_true", help="print the plan and write nothing"
-    )
+    run_parser.add_argument("--dry-run", action="store_true", help="print the plan and write nothing")
     run_parser.add_argument(
         "--color-session",
         type=Path,
@@ -108,7 +111,7 @@ def _scan(folders: list[Path], save: Path | None, name: str, rules_path: Path | 
 
     try:
         overrides = _load_rule_overrides(rules_path)
-    except (OSError, ValueError) as exc:
+    except (OSError, TypeError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
 
@@ -135,6 +138,14 @@ def _print_preflight(batch: Batch) -> bool:
     results = list(batch.qc) + [result for turnover in batch.turnovers for result in turnover.qc]
     for result in results:
         print(f"  {result.severity.upper():7} {result.rule_id}  {result.message}")
+    # A row-scope error drops that row from the plan (`planner.plannable_identity`), so
+    # it is the one kind of row result worth printing here: without it the shot count
+    # below is short and nothing says why.
+    for row in batch.rows:
+        for result in row.qc:
+            if result.severity == "error":
+                code = row.shot_code or row.clip_name
+                print(f"  {result.severity.upper():7} {result.rule_id}  {code}: {result.message}")
     blocking = [result for result in batch.qc if result.severity == "error"]
     for result in blocking:
         print(f"error: {result.rule_id}: {result.message}", file=sys.stderr)
@@ -170,9 +181,8 @@ def _run(
 
     `--color-session` ingests the session package into every turnover, which is the same
     step the window offers (PRD section 6 step 4): it writes the approved In/Out, the CDL
-    and the CLF onto the rows, and the plan reads them from there. Without it the run
-    still produces every deliverable, in ACEScg, ungraded, and QC-008 says so; the CLF is
-    the only difference.
+    and the CLF onto the rows, and the plan reads them from there. Without it QC-008
+    holds every turnover back (`qc.blocked_turnovers`) and nothing is rendered.
     """
     try:
         batch = batchfile.load(batch_path)
@@ -221,8 +231,12 @@ def _run(
     reporter = _ProgressPrinter()
     written = render.execute(planned, workers=jobs, on_progress=reporter)
     render.apply_results(batch, written)
-    batchfile.backup(batch_path)
-    batchfile.save(batch, batch_path)
+    try:
+        batchfile.backup(batch_path)
+        batchfile.save(batch, batch_path)
+    except OSError as exc:
+        print(f"error: the run finished but the batch could not be saved: {exc}", file=sys.stderr)
+        return 2
 
     return _report_run(written, batch_path)
 

@@ -14,6 +14,7 @@ import pytest
 from proingest.core.models import (
     CDL,
     SCHEMA_VERSION,
+    AudioInfo,
     Batch,
     Deliverable,
     FrameRate,
@@ -59,6 +60,14 @@ def make_row(**overrides: object) -> ShotRow:
     return ShotRow(**{**defaults, **overrides})  # type: ignore[arg-type]
 
 
+class TestAudioInfo:
+    def test_duration_in_frames_is_exact_at_an_ntsc_rate(self) -> None:
+        """48048 samples at 48 kHz is 1.001 s, which is exactly 24 frames at 23.976."""
+        info = AudioInfo(path=Path("a.wav"), duration_samples=48048, sample_rate=48000)
+        assert info.duration_in_frames(FrameRate(24000, 1001)) == 24
+        assert info.duration_in_frames(FrameRate(24)) == 24
+
+
 class TestFrameRate:
     def test_whole_number(self) -> None:
         assert FrameRate(24).as_float() == 24.0
@@ -78,6 +87,11 @@ class TestFrameRate:
         """QC-025 and QC-026 compare rates directly, so no float tolerance is involved."""
         assert FrameRate(24) == FrameRate(24)
         assert FrameRate(24) != FrameRate(24000, 1001)
+
+    def test_from_float_recognises_every_ntsc_rate_it_lists(self) -> None:
+        """119.88 is 1.2e-4 off 120000/1001, further than the other three are off theirs."""
+        assert FrameRate.from_float(119.88) == FrameRate(120000, 1001)
+        assert FrameRate.from_float(59.94) == FrameRate(60000, 1001)
 
     def test_from_float_whole(self) -> None:
         assert FrameRate.from_float(24.0) == FrameRate(24)

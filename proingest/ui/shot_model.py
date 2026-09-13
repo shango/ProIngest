@@ -203,7 +203,7 @@ def row_state(row: ShotRow) -> RowState:
         return RowState.ERROR
     if row.warnings():
         return RowState.WARNING
-    if statuses and statuses <= {"done", "exists", "skipped"}:
+    if statuses and statuses <= DELIVERED:
         return RowState.DONE
     return RowState.OK
 
@@ -323,7 +323,6 @@ class ShotListModel(QAbstractItemModel):
         self._rows: dict[str, list[ShotRow]] = {}
         self._mode = DisplayMode.FRAMES
         self._dots: dict[tuple[RowState, bool], QPixmap] = {}
-        self._rules = qc.DEFAULT_SETTINGS
         self._name_counts: dict[str, int] = {}
         self._run: RunProgress | None = None
 
@@ -334,7 +333,6 @@ class ShotListModel(QAbstractItemModel):
         self.beginResetModel()
         self._batch = batch
         self._rows = {t.turnover_id: batch.rows_for(t.turnover_id) for t in batch.turnovers}
-        self._rules = qc.settings_for(batch)
         self._name_counts = qc.clip_name_counts(batch)
         self.endResetModel()
 
@@ -586,9 +584,7 @@ class ShotListModel(QAbstractItemModel):
         return str(frame)
 
     def _context(self, row: ShotRow, mode: DisplayMode | None = None) -> frames.EditContext:
-        turnover = next(
-            (t for t in self._batch.turnovers if t.turnover_id == row.turnover_id), None
-        )
+        turnover = next((t for t in self._batch.turnovers if t.turnover_id == row.turnover_id), None)
         return row.edit_context(
             self._batch.project_rate,
             turnover.timeline_start if turnover else 0,
@@ -750,7 +746,9 @@ class ShotListModel(QAbstractItemModel):
         Max Avail, the dot and the tint; and the turnover header with it, since its
         summary counts the errors and warnings that just changed.
         """
-        qc.apply_row_rules(row, self._batch.project_rate, self._rules, self._name_counts)
+        # Read from the batch each time rather than cached: Settings Apply writes new
+        # thresholds onto the batch, and the next edit must be judged by those.
+        qc.apply_row_rules(row, self._batch.project_rate, qc.settings_for(self._batch), self._name_counts)
         parent = index.parent()
         self.dataChanged.emit(
             self.index(index.row(), 0, parent), self.index(index.row(), len(COLUMNS) - 1, parent)
