@@ -20,6 +20,10 @@ same proxy, the owner's selection model shared outright, every column past `FROZ
 hidden. 1536 tests, `ruff` and `mypy --strict` clean, and the build track is republished at
 version 51.
 
+**Three commits went out at the user's instruction** - the chunk, the build track and this file
+- and **run 34768468796 is green on both runners**, macOS arm64 in 1m31s and Linux in 2m02s. It
+went green first time, which the last two pushes did not.
+
 **What is left needs something this machine has not got.** M7 packaging wants a Mac, M8 polish
 wants a real turnover and a real colour session, and M9 the user guide wants both. M9.2, the
 quickstart, and M9.4's screenshot harness are the only two things that can be drafted here.
