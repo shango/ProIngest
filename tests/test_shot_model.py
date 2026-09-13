@@ -639,6 +639,13 @@ class TestCommittingAnEdit:
         assert self.commit(model, OUT, "900")
         assert [result.rule_id for result in model.batch.rows[0].errors()] == ["QC-031"]
 
+    def test_a_range_before_the_media_s_timecode_still_renders(self, model: ShotListModel) -> None:
+        """The stored value can sit before the media's own timecode; the cell that shows
+        it must not raise, because Qt would swallow that and paint nothing."""
+        model.set_display_mode(DisplayMode.SOURCE_TC)
+        assert self.commit(model, IN, "-90000")
+        assert str(cell(model, 0, IN, Qt.ItemDataRole.DisplayRole)).startswith("-")
+
     def test_the_row_s_rules_re_run_on_commit(self, model: ShotListModel) -> None:
         assert not model.batch.rows[0].qc
         self.commit(model, IN, "40")

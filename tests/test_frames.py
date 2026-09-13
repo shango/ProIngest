@@ -160,6 +160,12 @@ class TestSourceFrameToTimecode:
     def test_record_mode(self) -> None:
         assert frames.source_frame_to_timecode(120, RECORD_CONTEXT) == "10:00:00:00"
 
+    def test_a_frame_before_the_media_s_timecode_is_shown_negative(self) -> None:
+        """Media with no embedded timecode starts at 00:00:00:00, so a below-range In
+        is a negative total; QC-031 reports it and the cell still has to render."""
+        at_zero = EditContext(**{**CONTEXT.__dict__, "source_start_timecode": 0})
+        assert frames.source_frame_to_timecode(-24, at_zero) == "-00:00:01:00"
+
     def test_inverts_parse_in_out(self) -> None:
         for source_frame in (0, 1, 120, 239, 1000):
             text = frames.source_frame_to_timecode(source_frame, CONTEXT)
