@@ -8,51 +8,40 @@ commit.
 
 ## 1. Resume here
 
-**State at 2026-09-13. M1, M2, M3 and M4 complete; M4.5 is done, all four chunks, and
-M4.6 is done, all five.** The colour chain now reaches the files: a plate is delivered graded in linear
-ACEScg with AP1 primaries and a header that says what was applied to it, and a reference mp4 is
-encoded through the shot's grade and the ACES output transform baked into one cube. **The chain
-no longer converts ahead of the CLF**, which was the one thing in the code that would have
-delivered a wrong plate against a real session. The source encoding went back to camera native
-log on 2026-09-12 and the tool now reads it per shot, resolves it through a table, records it
-in the QC log and states it and its origin in the delivered header. **M5, the UI, is ten
-chunks of eleven done**, two of those eleven having been added on 2026-09-12.
-A batch can be made, opened, saved and filled with turnovers; the window
-shows it as a list; the list can be typed into; the turnover scan runs off the UI thread;
-every QC result is readable in the Issues dock and clickable back to its shot; and **the tool
-now renders from the window**: Run plans the batch and drives the pool, the rows fill in as
-they go, Stop reaches a job mid flight, and a finished run writes both spreadsheets and says
-where they went. **M5.10 is done as well, out of order and on purpose**: the run now narrates
-itself above the list, a thin bar for the batch and a line of words for the step. **And M5.6
-is done**: the pane beside the list reads everything known about the selection, nine sections
-of it, and follows three signals so it cannot show a value that is merely late. The rest of
-M5 is specified in section 5. **And all three of M5.7 is done**: the colour session
-reaches the model, so a run from the window is graded or it is held back and the five
-colour rules fire; the Settings page exists with five of its six sections live; and
-**the window can now ingest a session itself**, one turnover at a time, which is what
-closed the gap M5.7.1 opened between a check that refuses to render without a session
-and a window with no way to say there is one. **And M5.8.1 is done**: there is a rotating
-log file, and every ffmpeg command line a *render* runs now actually reaches it, which it
-did not before - a spawned worker's root logger has no handlers, so FR-13's one named
-requirement was quietly false for the commands most worth reproducing. **And M5.8.2 is
-done**: the Log tab reads that log inside the window, filtered by level, by text and by the
-selected row, with the command lines copyable verbatim. **M5.8.3 finished M5.8**: the
-Settings page's Advanced section is live, with the log level and an ffmpeg override that
-reaches a render's worker processes, and **Output is the only disabled section left**.
-**And M5.11 is done**: every toolbar button says what it does and, when it is greyed, why -
-including the one case that is not a greyed button at all, Run on a batch with no colour
-session, which renders nothing and reads as dead. 1509 tests passing, `ruff` and
-`mypy --strict` clean.
-**M5.9, the frozen left columns, is next** and is the last chunk of M5.
+**State at 2026-09-13. Everything is built except one chunk of the UI.** M1 to M4 complete,
+M4.5 all four chunks, M4.6 all five, and **M5 is ten chunks of eleven** - only M5.9, the
+frozen left columns, is left, and it is last on purpose. 1509 tests passing, `ruff` and
+`mypy --strict` clean. After M5 the plan is M7 packaging (needs a Mac), M8 polish (needs a
+real turnover and a real colour session) and M9 the user guide.
+
+**What the tool does today, end to end.** A batch is made, opened, saved and filled with
+turnover folders; the scan runs off the UI thread; the list shows it grouped by turnover and
+can be typed into, with every edit re-checking that row and autosaving. A colour session is
+ingested from the window, one turnover at a time, which writes the approved cut, the CDL and
+each shot's CLF onto the rows. Run plans the batch and drives the worker pool, the rows fill
+in as they go, a strip above the list narrates the step, Stop reaches a job mid flight, and a
+finished run writes both spreadsheets and says where they went. Everything known about a
+selected row reads in the pane beside the list; every QC result reads in the Issues dock and
+clicks back to its shot; everything the tool did reads in the Log tab and in a rotating file.
+Settings carries five of its six sections. Every toolbar button says what it does and, when it
+is greyed, why.
+
+**What the colour chain delivers.** A plate is written graded, in linear ACEScg with AP1
+primaries and a header stating what was applied to it; a reference mp4 is encoded through the
+shot's grade and the ACES output transform baked into one cube. **The chain converts nothing
+ahead of the CLF**, which was the one thing in the code that would have delivered a wrong plate
+against a real session. The source encoding is camera native log as of 2026-09-12, read per
+shot, resolved through a table, recorded in the QC log and stated with its origin in the
+delivered header.
+
+**M5.9 is next, and nothing is blocking it.** Two questions are open and both are about
+correctness rather than scope: OQ-46, and **OQ-47, which was found by building M4.6.2**. Every
+chunk has its own note further down saying what it settled.
 
 **One of the three things added to the plan on 2026-09-12 is still unbuilt**: the user guide
 with screenshots (PRD FR-17, the new M9). The other two are done - the run's strip, built
 first because it finishes what the user had just watched being built, and the toolbar
 tooltips (M5.11). The note below says what the guide is and what decides its shape.
-
-**M5 is not blocked**: OQ-37 came back the same day and
-answered the expensive half of M4.6. Two questions are open and both are about correctness rather
-than scope, OQ-46 and **OQ-47, which is new and was found by building M4.6.2**.
 
 **M4 is done.** `core/exports.py` writes both spreadsheets, `proingest qc <batch>` writes them
 headless, and QC-053 parses camData through the new `core/camdata.py`. Proved end to end on a two
@@ -74,8 +63,9 @@ is gone**, deleted with its tests in M4.5.4 as planned.
 .venv/bin/python -m ruff check proingest tests && .venv/bin/python -m mypy proingest tests
 ```
 
-Then read `docs/COLOR_AND_FORMAT.md` section 1 before anything else, because it was rewritten
-today and it invalidates things you may already believe, including things written this morning.
+Then read `docs/COLOR_AND_FORMAT.md` section 1 before anything else. It was rewritten twice on
+2026-09-11 and again on 2026-09-12, and it invalidates things a commit message or a memory of
+this project may still say. The table below dates each version.
 
 ### Read this before trusting anything about colour
 
