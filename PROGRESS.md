@@ -20,7 +20,9 @@ findings and the stale docs with them, `uv.lock` committed and installed in CI, 
 `ruff format` enforced. The two that changed behaviour a person would notice: closing the
 window mid-run now waits for the run's results instead of dropping them, and OTIO clip times
 are rescaled to the timeline rate (OQ-51). What the review deferred, and why, is in
-`REVIEW.md`'s last section; the largest is the `MainWindow` split.
+`REVIEW.md`'s last section; the largest is the `MainWindow` split. Pushed as PR #1, and run
+34783167555 is green on both runners: Linux in 2m32s, macOS arm64 in 1m52s, the first run
+with the lock install and the format check.
 
 **What the tool does today, end to end.** A batch is made, opened, saved and filled with
 turnover folders; the scan runs off the UI thread; the list shows it grouped by turnover and
