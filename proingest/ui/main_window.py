@@ -54,7 +54,7 @@ from proingest.core.models import (
     ShotRow,
     Turnover,
 )
-from proingest.ui import metadata, settings_form
+from proingest.ui import metadata, settings_form, toolbar_help
 from proingest.ui.autosave import AutoSaver
 from proingest.ui.batch_bar import BatchBar
 from proingest.ui.issues import IssuesDock
@@ -247,6 +247,22 @@ class MainWindow(QMainWindow):
         self.action_settings.triggered.connect(self.open_settings)
         self.action_settings.setEnabled(True)
 
+        # Section 1's tooltips, keyed to `ui/toolbar_help.py` rather than written here.
+        # A tuple rather than a dict because the order is the toolbar's own and reading
+        # it beside `_build_toolbar` is how a button added without a tooltip is noticed.
+        self._toolbar_help = (
+            (toolbar_help.NEW, self.action_new),
+            (toolbar_help.OPEN, self.action_open),
+            (toolbar_help.SAVE, self.action_save),
+            (toolbar_help.ADD_TURNOVER, self.action_add_turnover),
+            (toolbar_help.SCAN, self.action_scan),
+            (toolbar_help.INGEST, self.action_ingest),
+            (toolbar_help.RUN, self.action_run),
+            (toolbar_help.STOP, self.action_stop),
+            (toolbar_help.EXPORT, self.action_export),
+            (toolbar_help.SETTINGS, self.action_settings),
+        )
+
         self.action_about = QAction(f"About {WINDOW_TITLE}", self)
         self.action_about.setMenuRole(QAction.MenuRole.AboutRole)
         self.action_about.setEnabled(False)
@@ -325,6 +341,10 @@ class MainWindow(QMainWindow):
                 toolbar.addAction(action)
         self.addToolBar(toolbar)
         self.toolbar = toolbar
+        # `_update_state` writes these from then on, but it only runs once a batch has
+        # been opened, and the first launch is the one where a greyed toolbar most needs
+        # to say what it is waiting for (UI_SPEC section 10).
+        self._refresh_tooltips(open_batch=False, scanning=False, running=False)
 
     def _build_central(self) -> None:
         """Two pages: the empty state, and the batch. `set_batch` swaps between them.
@@ -951,6 +971,7 @@ class MainWindow(QMainWindow):
         self.action_open.setEnabled(not running)
         self.action_run.setEnabled(open_batch and not busy and bool(self.batch.rows))
         self.action_stop.setEnabled(running and not self.runner.cancelled)
+        self._refresh_tooltips(open_batch=open_batch, scanning=scanning, running=running)
 
         if not open_batch:
             return
@@ -963,6 +984,30 @@ class MainWindow(QMainWindow):
             else f'{NO_ROWS_TEXT}. <a href="#issues">{ISSUES_LINK}</a>'
         )
         self.list_pages.setCurrentIndex(1)
+
+    def _refresh_tooltips(self, *, open_batch: bool, scanning: bool, running: bool) -> None:
+        """Section 1's hover text, rewritten whenever what a button can do changes.
+
+        Here rather than in `_build_actions` because half of what a tooltip says is why
+        the button is unavailable, and that is only true of a moment. It reads the
+        enabled state off each action rather than working it out again: `_update_state`
+        has just set it and is the one authority on it.
+        """
+        state = toolbar_help.ToolbarState(
+            batch_open=open_batch,
+            has_rows=open_batch and bool(self.batch.rows),
+            has_unscanned=open_batch and bool(self._unscanned()),
+            has_session=open_batch
+            and any(t.color_session_edl is not None for t in self.batch.turnovers),
+            scanning=scanning,
+            rendering=running,
+            stopping=running and self.runner.cancelled,
+        )
+        for key, action in self._toolbar_help:
+            shortcut = action.shortcut().toString(QKeySequence.SequenceFormat.NativeText)
+            action.setToolTip(
+                toolbar_help.tooltip(key, state, action.isEnabled(), shortcut)
+            )
 
     def set_display_mode(self, mode: DisplayMode) -> None:
         """The one place the display mode changes, whichever surface asked for it."""

@@ -15,7 +15,7 @@ encoded through the shot's grade and the ACES output transform baked into one cu
 no longer converts ahead of the CLF**, which was the one thing in the code that would have
 delivered a wrong plate against a real session. The source encoding went back to camera native
 log on 2026-09-12 and the tool now reads it per shot, resolves it through a table, records it
-in the QC log and states it and its origin in the delivered header. **M5, the UI, is nine
+in the QC log and states it and its origin in the delivered header. **M5, the UI, is ten
 chunks of eleven done**, two of those eleven having been added on 2026-09-12.
 A batch can be made, opened, saved and filled with turnovers; the window
 shows it as a list; the list can be typed into; the turnover scan runs off the UI thread;
@@ -39,14 +39,16 @@ done**: the Log tab reads that log inside the window, filtered by level, by text
 selected row, with the command lines copyable verbatim. **M5.8.3 finished M5.8**: the
 Settings page's Advanced section is live, with the log level and an ffmpeg override that
 reaches a render's worker processes, and **Output is the only disabled section left**.
-1483 tests passing, `ruff` and `mypy --strict` clean.
-**M5.11, the toolbar tooltips, is next**, and then M5.9, the frozen columns, which is last
-on purpose.
+**And M5.11 is done**: every toolbar button says what it does and, when it is greyed, why -
+including the one case that is not a greyed button at all, Run on a batch with no colour
+session, which renders nothing and reads as dead. 1509 tests passing, `ruff` and
+`mypy --strict` clean.
+**M5.9, the frozen left columns, is next** and is the last chunk of M5.
 
-**Two of the three things added to the plan on 2026-09-12 are still unbuilt**: tooltips on the
-toolbar (M5.11) and a user guide with screenshots (PRD FR-17, the new M9). The third was the
-run's strip, and it was built first because it finishes what the user had just watched being
-built. The note below says what each of the remaining two is and what decides its shape.
+**One of the three things added to the plan on 2026-09-12 is still unbuilt**: the user guide
+with screenshots (PRD FR-17, the new M9). The other two are done - the run's strip, built
+first because it finishes what the user had just watched being built, and the toolbar
+tooltips (M5.11). The note below says what the guide is and what decides its shape.
 
 **M5 is not blocked**: OQ-37 came back the same day and
 answered the expensive half of M4.6. Two questions are open and both are about correctness rather
@@ -478,18 +480,18 @@ should not be re-derived.
   paths that build a `ShotColor`, with a session and without, need the same answer. QC-047 is
   where it is reported, and that is M4.6.4.
 
-### New scope, 2026-09-12 (late): three things the user asked for, none built
+### New scope, 2026-09-12 (late): three things the user asked for, two now built
 
 Asked for immediately after M5.5 landed, as a heads up rather than a change of direction.
-Nothing here was built; all three are in section 5's tables and in the specs that own them.
+All three are in section 5's tables and in the specs that own them.
 
 - **The run should narrate itself above the list.** **Built the same day as M5.10**; the note
   further down says how. `docs/UI_SPEC.md` section 7.1 is the spec.
-- **Every toolbar button should say what it does on hover**, concisely. `docs/UI_SPEC.md`
-  section 1, and this is **M5.11**. The half worth building carefully is the **disabled**
-  button: the toolbar deliberately carries actions that are not available yet, so a tooltip
-  that says *why* one is greyed is the difference between a tool that looks broken and one
-  that says what to do next.
+- **Every toolbar button should say what it does on hover**, concisely. **Built 2026-09-13 as
+  M5.11**; the note further down says how. `docs/UI_SPEC.md` section 1 is the spec. The half
+  worth building carefully was the **disabled** button, and that is what it got - plus one note
+  on a button that is *enabled*, Run over a batch with no colour session, which is the case that
+  actually reads as broken.
 - **A user guide**, and it is a milestone rather than a task: install, quickstart, then a
   section per surface of the window, with screenshots, delivered as a PDF or something that
   pastes into Google Docs. **PRD FR-17** and **M9**, five chunks in section 5. The user said
@@ -497,9 +499,10 @@ Nothing here was built; all three are in section 5's tables and in the specs tha
   **OQ-49** is the one question in it: which of those two forms, and whether anybody but the
   editor edits the result.
 
-**Neither of the two left is blocked and neither blocks anything.** M5.11 is small and can land
-whenever; it is numbered after M5.9 but does not wait on it. M9.1 waits on M7 and M9.4's
-shipped images wait on the Mac session; M9.2 and the harness could be drafted today.
+**The one left is the guide, and it is partly blocked.** M9.1 waits on M7 and M9.4's shipped
+images wait on the Mac session; M9.2 and the screenshot harness could be drafted today. Its
+button reference should **read `ui/toolbar_help.py`** rather than restate it, which is the whole
+reason that module is apart from the window.
 
 ### M5.6 is built: the pane beside the list
 
@@ -1098,17 +1101,49 @@ travel on a `DeliverableJob`.
 - **A level changed mid-run applies from the next run**, by design: the parent's level travels
   to a worker at process creation (M5.8.1). The help text on the page says so.
 
-### Next task: M5.11, the toolbar tooltips
+### M5.11 is built: the toolbar says what it does, and why it cannot
 
-Small, and worth a little more with every chunk: the answer to "why is Run doing nothing" is
-QC-008, and a disabled button that says so is the difference between a tool that looks broken
-and one that says what to do next. UI_SPEC section 1 is the spec, including the rule that the
-wording should match the user guide's button reference (PRD FR-17, the new M9) so the two
-cannot drift. `Ingest Colour Session` wants one both for what it does and because its tooltip
-is what would let the button read `Ingest` (docs/MAC_SESSION.md).
+UI_SPEC section 1, and the section was written up with it. **Five things settled.**
 
-Then **M5.9, the frozen columns**, which must not move earlier: it is last on purpose
-(section 5).
+- **The wording is a value**, `ui/toolbar_help.py`, the same split `ui/metadata.py` and
+  `ui/settings_form.py` use and for two of the same reasons: the wording is the part that gets
+  argued about, and it is assertable without a window. The third reason is this one's own:
+  section 1 says the tooltips must share their wording with the user guide's button reference
+  (FR-17, M9) **so the two cannot drift**, and a sentence inside a widget constructor cannot be
+  shared. M9 reads the module.
+- **Nothing in it decides whether a button is enabled.** `_update_state` is the one authority
+  on that and stays so; `toolbar_help` is handed the answer. Two copies of that rule would
+  disagree the first time one grew a condition, and the wrong copy is on the button nobody
+  presses.
+- **One note lands on a button that is enabled**, and it is the case that made this worth
+  building. A batch with shots and no ingested session runs, is refused by QC-008 and writes
+  nothing: correct, and it reads as a dead button (docs/MAC_SESSION.md). Run now says so
+  *before* it is pressed. What it asks is the plain question - **has anything been ingested** -
+  read off `Turnover.color_session_edl`, rather than a second implementation of QC-008, which
+  needs pre-flight and a look at the disk and so cannot run on every state change.
+- **The reason is a second line and there is only ever one**, ordered most fundamental first:
+  "No batch is open" is a truer answer than "A scan is going".
+- **A tooltip line may not exceed `MAX_LINE`, and a test holds every line in every state under
+  it.** Qt word-wraps a tooltip **only** when the text looks like rich text, so plain text is
+  drawn on one line however long it is. The first draft had a sentence at 104 characters, which
+  renders as a strip most of the way across the screen, and **nothing about that fails**. It was
+  found by printing the real window's tooltips rather than by any test, which is the fifth time
+  that has caught something - so the test now pins the width rather than the sentence.
+
+**`Ingest Colour Session` now has the tooltip that would let it read `Ingest`**, which is the
+argument docs/MAC_SESSION.md asks to settle in front of the real window. The label is
+deliberately **not** changed here: that judgement is about width on a real toolbar.
+
+### Next task: M5.9, the frozen left columns
+
+The last of M5, and last on purpose (section 5): it is a second view overlaid on the first,
+sharing the model, the selection and the vertical scroll, and it has to keep working through
+editing, filtering and selection - which is why it is built after all three rather than twice.
+`QTreeView` has no feature for it.
+
+After that M5 is done, and what is left in the plan is **M7 packaging** (needs a Mac, OQ-22 and
+OQ-9), **M8 polish** (needs a real turnover and a real colour session) and **M9 the user guide**
+(FR-17, whose button reference should read `ui/toolbar_help.py` rather than restate it).
 
 - **M5.11, the toolbar tooltips**, is still small and still loose in the order, and it is
   worth a little more with every chunk: the answer to "why is Run doing nothing" is QC-008,
@@ -1315,7 +1350,7 @@ Entry points worth knowing:
 | M4 | QC: all rules both phases, xlsx exports, `qc` CLI | complete, 175 tests |
 | M4.5 | Colour pipeline, core only. Source log in, CLF applied, ACEScg out, the viewing LUT | complete, 111 tests |
 | M4.6 | Per shot source encoding: read from the clip metadata, the input transform table, the input transform out of the graded chains, QC-046 to QC-048 | complete, all five chunks (OQ-37 answered; OQ-46 wants confirming) |
-| M5 | UI: the list, the FR-14 metadata pane, settings, log. **No viewers** | **M5.1 to M5.8 and M5.10 done**, M5.9 and M5.11 specified |
+| M5 | UI: the list, the FR-14 metadata pane, settings, log. **No viewers** | **everything but M5.9 done**, which is last on purpose |
 | M6 | ~~Stringout with burn-ins~~ | **dropped 2026-09-11**, the colour session exports it |
 | M7 | Packaging: PyInstaller `.app`, dmg, Gatekeeper | not started, and needs a Mac (OQ-22) |
 | M8 | Polish, performance on a real turnover, docs | not started |
@@ -1399,7 +1434,7 @@ batch can do", so each chunk has something a person can look at:
 | M5.8 | The Log tab and the rotating log file, FR-13 | **done, all three chunks** |
 | M5.9 | The frozen left columns: the overlaid second view sharing the model and the selection | not started |
 | M5.10 | The run's strip above the list: the thin batch progress bar and the line of text naming the step being done (UI_SPEC 7.1) | **done, 1266 tests.** `ui/run_strip.py` is three states in one band, and the line names the longest running job rather than the newest message |
-| M5.11 | A hover tooltip on every toolbar button, saying what it does and, when it is disabled, why (UI_SPEC section 1) | **new 2026-09-12**, not started |
+| M5.11 | A hover tooltip on every toolbar button, saying what it does and, when it is disabled, why (UI_SPEC section 1) | **done, 1509 tests.** `ui/toolbar_help.py` is the wording as a value; one note lands on an **enabled** button, which is Run with no session ingested |
 
 M5.8 detail, specified 2026-09-13 against FR-13. It is three chunks because the
 requirement is three things and the first one is not a UI task at all:

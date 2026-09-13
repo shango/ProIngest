@@ -202,9 +202,10 @@ Treat it as a working session with the editor rather than a delivery.
       unmatched rows wants somewhere it can be read twice. OQ-31.
 - [ ] **Look at `Ingest Colour Session` in the toolbar.** Its label is two and a half times the
       width of every other button, so a once-per-turnover action sits wider than Run. Decide in
-      front of the real window whether it should read `Ingest` with the full name in its tooltip
-      (M5.11), remembering that this is a tool called ProIngest and `Ingest` alone can be read
-      as the whole job. Checked offscreen on Linux only.
+      front of the real window whether it should read `Ingest`, remembering that this is a tool
+      called ProIngest and `Ingest` alone can be read as the whole job. **The tooltip it needed
+      for that now exists** (M5.11), so this is only a judgement about width. Checked offscreen
+      on Linux only.
 - [ ] A full run end to end, then read the QC log and tracker with the editor. OQ-2 tracker
       columns, OQ-11 camData format.
 - [ ] OQ-21 container alpha, explicitly deferred until a real turnover existed.
@@ -230,3 +231,9 @@ Treat it as a working session with the editor rather than a delivery.
       Settings page's Advanced section (M5.8.3) reaches a render's worker processes, and the
       only proof so far is a symlinked binary in a temp folder on Linux. Worth doing once
       against a real build, because the bundled pair is what every other test uses.
+- [ ] **Hover every toolbar button on the real window and read the tooltips.** Written and
+      measured offscreen on Linux, where the shortcut renders as `Ctrl+R` and on the Mac it is
+      `⌘R`, so every line is shorter there than the width test assumes. What a test cannot
+      judge: whether two lines is right for a greyed button, whether the shortcut belongs on the
+      first line or looks like part of the sentence, and whether the note on an enabled Run
+      ("no colour session ingested yet") reads as helpful or as nagging. UI_SPEC section 1.

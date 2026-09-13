@@ -36,7 +36,7 @@ viewers were given trim buttons, and is true again.
 
 Nothing opens a modal during review except Settings, file dialogs, and the report an ingest ends with (section 15), which is the answer to a file dialog rather than an interruption of the review.
 
-**Every toolbar button carries a hover tooltip** (asked for 2026-09-12, not yet built): one
+**Every toolbar button carries a hover tooltip** (asked for 2026-09-12, built in M5.11): one
 short sentence saying what the button does, in present tense, naming what changes, plus its
 keyboard shortcut. Not a restatement of the label - "Scan" saying "Scans" is a tooltip nobody
 reads twice.
@@ -48,6 +48,23 @@ so "Run: add a turnover first" is the difference between a tool that looks broke
 is telling you what to do next. The tooltip is the only place the window explains itself in
 words, and the wording should match the user guide's button reference (PRD FR-17) so the two
 cannot drift.
+
+What M5.11 settled, beyond the wording:
+
+- **The reason is a second line, and one reason at a time.** They are ordered from the most
+  fundamental to the most specific, because "no batch is open" is a truer answer than "a scan is
+  going" and only one is shown.
+- **One enabled button carries a note too, and it is the case the feature was asked for.** A
+  batch with shots and no ingested colour session runs, is refused by QC-008 and writes nothing,
+  which is correct and reads as a dead button. Run says so before it is pressed. It is the plain
+  question - has anything been ingested - rather than a second implementation of QC-008, which
+  needs pre-flight and the disk.
+- **A line may not exceed `toolbar_help.MAX_LINE` characters**, and a test holds every line of
+  every tooltip in every state under it. Qt word-wraps a tooltip **only** when the text looks
+  like rich text, so plain text is drawn on one line however long it is: the first draft had a
+  sentence at 104 characters and it read as a strip across the screen. Nothing about that fails.
+- **Nothing about tooltips decides whether a button is enabled.** The window is the one
+  authority on that and hands the answer over, so the two cannot drift into disagreeing.
 
 ## 2. Shot list columns
 
