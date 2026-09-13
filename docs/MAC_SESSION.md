@@ -226,3 +226,7 @@ Treat it as a working session with the editor rather than a delivery.
       command line is two hundred characters: watch whether the Message column wants the dock
       taller, whether the table wants a monospace font for command lines, and whether Ctrl+C
       out of it pastes into a terminal cleanly. UI_SPEC section 6.1.
+- [ ] **Point the ffmpeg override at a Homebrew build and run one turnover through it.** The
+      Settings page's Advanced section (M5.8.3) reaches a render's worker processes, and the
+      only proof so far is a symlinked binary in a temp folder on Linux. Worth doing once
+      against a real build, because the bundled pair is what every other test uses.

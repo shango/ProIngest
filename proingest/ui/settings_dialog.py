@@ -24,6 +24,7 @@ from typing import Any
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QCheckBox,
+    QComboBox,
     QDialog,
     QDialogButtonBox,
     QFileDialog,
@@ -157,6 +158,11 @@ class SettingsDialog(QDialog):
             block.setPlainText(_lines_of(dict(value or {})))
             block.setFixedHeight(LINES_HEIGHT)
             widget = block
+        elif field.kind == "choice":
+            box = QComboBox(self)
+            box.addItems(field.options)
+            box.setCurrentText(str(value or ""))
+            widget = box
         elif field.kind == "folder":
             widget = self._folder_editor(str(value or ""))
         elif field.kind == "readonly":
@@ -230,6 +236,8 @@ def _read(field: settings_form.Field, widget: QWidget) -> Any:
         return widget.value()
     if isinstance(widget, QCheckBox):
         return widget.isChecked()
+    if isinstance(widget, QComboBox):
+        return widget.currentText()
     if isinstance(widget, QPlainTextEdit):
         return _map_of(widget.toPlainText())
     edit = widget if isinstance(widget, QLineEdit) else widget.findChild(QLineEdit)

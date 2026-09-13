@@ -19,7 +19,7 @@ from pathlib import Path
 
 import pytest
 
-from proingest.core import logsetup, render
+from proingest.core import ffmpeg, logsetup, render
 from tests.fixtures import media as fixtures
 from tests.test_render import raw_job, ref_job
 
@@ -219,3 +219,43 @@ class TestWorkerBridge:
             root.removeHandler(captured)
 
         assert not [r for r in captured.records if r.getMessage().startswith("running: ")]
+
+
+class TestTheFfmpegOverrideReachingAWorker:
+    """M5.8.3. It travels on the channel M5.8.1 built, for the reason M5.8.1 built it.
+
+    `ffmpeg.resolve_tool` is called inside a spawned worker, which is a fresh
+    interpreter that knows nothing the Settings page was told. An override that stayed
+    in the parent would be a render done with the wrong build of ffmpeg and nothing said.
+    """
+
+    def test_a_worker_renders_with_the_override_rather_than_with_path(
+        self, tmp_path: Path, quiet_root: None
+    ) -> None:
+        captured = Captured()
+        root = logging.getLogger()
+        root.addHandler(captured)
+        root.setLevel(logging.INFO)
+        real = ffmpeg.resolve_tool("ffmpeg")
+        elsewhere = tmp_path / "elsewhere"
+        elsewhere.mkdir()
+        (elsewhere / "ffmpeg").symlink_to(real)
+        (elsewhere / "ffprobe").symlink_to(ffmpeg.resolve_tool("ffprobe"))
+        ffmpeg.set_override(elsewhere)
+        try:
+            source = fixtures.make_mov(tmp_path / "src.mov", count=3)
+            assert render.execute([ref_job(tmp_path, source, 0, 2)], workers=1)[0].status == "done"
+        finally:
+            ffmpeg.set_override(None)
+            root.removeHandler(captured)
+
+        commands = [r.getMessage() for r in captured.records if r.getMessage().startswith("running")]
+        assert commands, "the run logged no command at all"
+        assert all(str(elsewhere) in command for command in commands), commands
+
+    def test_a_worker_with_no_override_uses_the_normal_order(
+        self, tmp_path: Path, quiet_root: None
+    ) -> None:
+        assert ffmpeg.current_override() is None
+        source = fixtures.make_mov(tmp_path / "src.mov", count=3)
+        assert render.execute([ref_job(tmp_path, source, 0, 2)], workers=1)[0].status == "done"

@@ -22,14 +22,17 @@ the same reason. Each says what it is waiting on rather than sitting there inert
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Literal
 
-from proingest.core import color, naming, qc
+from proingest.core import color, ffmpeg, logsetup, naming, qc
 from proingest.core.settings import AppSettings
+from proingest.ui import paths
 
-Kind = Literal["int", "text", "bool", "resolution", "lines", "folder", "readonly"]
+Kind = Literal["int", "text", "bool", "resolution", "lines", "folder", "readonly", "choice"]
 """What a field is edited with. `lines` is a `key = value` per line block, which is how
-a small mapping is edited without a table widget and two buttons to maintain."""
+a small mapping is edited without a table widget and two buttons to maintain, and
+`choice` is a fixed list where a typo would otherwise mean an unreadable setting."""
 
 
 @dataclass(frozen=True)
@@ -48,6 +51,8 @@ class Field:
     help: str = ""
     minimum: int = 0
     maximum: int = 0
+    options: tuple[str, ...] = ()
+    """The choices, for a `choice` field. Empty for every other kind."""
 
 
 @dataclass(frozen=True)
@@ -223,11 +228,37 @@ def sections() -> tuple[Section, ...]:
         ),
         Section(
             ADVANCED,
-            enabled=False,
+            (
+                Field(
+                    "app.log_level",
+                    "Log level",
+                    "choice",
+                    "How much reaches the Log tab and the log file. Info includes every "
+                    "ffmpeg command the tool runs, which is what makes a render "
+                    "reproducible. A level changed while a run is going applies from the "
+                    "next run: a worker process is told the level when it starts.",
+                    options=logsetup.LEVEL_NAMES,
+                ),
+                Field(
+                    "app.ffmpeg_path",
+                    "ffmpeg override",
+                    "folder",
+                    "The folder holding ffmpeg and ffprobe, or one of the binaries "
+                    "itself. Empty uses the bundled pair, then whatever is on PATH. A "
+                    "path that is not there is an error rather than a silent fallback: "
+                    "an override that was ignored is a render done with the wrong build.",
+                ),
+                Field(
+                    "readonly.log_file",
+                    "Log file",
+                    "readonly",
+                    "The complete record. The Log tab shows its tail.",
+                ),
+            ),
             note=(
-                "An ffmpeg path override and the log level land with the Log tab, which is "
-                "the chunk that gives logging somewhere to be configured from. The bundled "
-                "ffmpeg is used when there is one and the one on PATH otherwise."
+                "Where the log goes and which ffmpeg writes the deliverables. Both take "
+                "effect as soon as they are applied, and both reach a render's worker "
+                "processes when the next run starts them."
             ),
         ),
     )
@@ -242,6 +273,7 @@ def readonly_values() -> dict[str, str]:
         "readonly.config": color.BUILTIN_CONFIG,
         "readonly.output_transform": f"{color.VIEW} on {color.DISPLAY}",
         "readonly.input_transforms": table,
+        "readonly.log_file": str(paths.log_dir() / logsetup.LOG_FILENAME),
     }
 
 
@@ -252,6 +284,8 @@ def to_values(app: AppSettings, rules: qc.RuleSettings) -> dict[str, Any]:
         "app.path_map": dict(app.path_map),
         "app.show_pattern": app.show_pattern,
         "app.color_session_folder": app.color_session_folder,
+        "app.log_level": app.log_level,
+        "app.ffmpeg_path": app.ffmpeg_path,
         "rules.target_resolution": tuple(rules.target_resolution),
         "rules.allow_non_4k": rules.allow_non_4k,
     }
@@ -289,6 +323,10 @@ def apply_values(
     app.color_session_folder = str(
         values.get("app.color_session_folder", app.color_session_folder)
     )
+    app.log_level = logsetup.name_of(
+        logsetup.level_of(str(values.get("app.log_level", app.log_level)))
+    )
+    app.ffmpeg_path = str(values.get("app.ffmpeg_path", app.ffmpeg_path))
     applied = qc.RuleSettings(
         min_duration_frames=int(
             values.get("rules.min_duration_frames", current.min_duration_frames)
@@ -324,3 +362,18 @@ def show_pattern_of(app: AppSettings) -> str:
     today's default would keep it after the default moved.
     """
     return app.show_pattern or naming.DEFAULT_SHOW_PATTERN
+
+
+def apply_to_process(app: AppSettings) -> None:
+    """Put the two Advanced settings into force for this process.
+
+    Apart from `apply_values`, which only writes the objects: these two change what the
+    rest of the tool does, and doing that inside a function whose job is to read a form
+    would mean a test of the form had side effects on the interpreter running it.
+
+    Called at startup and again after every Apply. A render's worker processes are told
+    both when they start (`core/render.execute`), so a change reaches the next run
+    rather than the one in flight.
+    """
+    logsetup.set_level(logsetup.level_of(app.log_level))
+    ffmpeg.set_override(Path(app.ffmpeg_path) if app.ffmpeg_path else None)

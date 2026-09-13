@@ -22,6 +22,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from proingest.core import logsetup
 from proingest.core.render import DEFAULT_WORKERS
 
 log = logging.getLogger(__name__)
@@ -99,6 +100,24 @@ class AppSettings:
     nowhere near each other on the mount.
     """
 
+    log_level: str = logsetup.name_of(logsetup.DEFAULT_LEVEL)
+    """How much the tool writes to its log and its Log tab (FR-12, Advanced).
+
+    A name from `logsetup.LEVEL_NAMES` rather than a number, because a settings file is
+    occasionally read by a person and `20` says nothing. An unknown name reads back as
+    the default rather than raising, which is this module's rule for every field.
+    """
+
+    ffmpeg_path: str = ""
+    """An ffmpeg and ffprobe to use instead of the bundled pair (FR-12, Advanced).
+
+    The folder holding them or one of the binaries itself; `ffmpeg.resolve_tool` takes
+    either, because both are natural things to paste into a field. Empty means the
+    normal order: bundled, then PATH. **A path that does not exist is an error rather
+    than a fallback**, because an override quietly ignored is a render done with the
+    wrong build of ffmpeg and nothing said.
+    """
+
     metadata_collapsed: list[str] = field(default_factory=list)
     """Which sections of the metadata pane the editor has shut (UI_SPEC section 12.1).
 
@@ -123,6 +142,8 @@ class AppSettings:
             "path_map": dict(self.path_map),
             "rules": dict(self.rules),
             "color_session_folder": self.color_session_folder,
+            "log_level": self.log_level,
+            "ffmpeg_path": self.ffmpeg_path,
             "metadata_collapsed": list(self.metadata_collapsed),
         }
 
@@ -138,6 +159,8 @@ class AppSettings:
             "path_map",
             "rules",
             "color_session_folder",
+            "log_level",
+            "ffmpeg_path",
             "metadata_collapsed",
         }
         return cls(
@@ -149,6 +172,8 @@ class AppSettings:
             path_map={str(k): str(v) for k, v in dict(data.get("path_map", {})).items()},
             rules=dict(data.get("rules", {})),
             color_session_folder=str(data.get("color_session_folder", "")),
+            log_level=logsetup.name_of(logsetup.level_of(str(data.get("log_level", "")))),
+            ffmpeg_path=str(data.get("ffmpeg_path", "")),
             metadata_collapsed=[str(item) for item in data.get("metadata_collapsed", [])],
             unknown={key: value for key, value in data.items() if key not in known},
         )

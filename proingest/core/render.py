@@ -532,10 +532,12 @@ def _worker_init(
     cancel: EventType,
     log_queue: MPQueue[logging.LogRecord | None],
     log_level: int,
+    ffmpeg_override: Path | None,
 ) -> None:
     global _QUEUE, _CANCEL
     _QUEUE, _CANCEL = queue, cancel
     logsetup.install_worker_handler(log_queue, log_level).addFilter(_ShotFilter())
+    ffmpeg.set_override(ffmpeg_override)
 
 
 def _publish(message: Progress) -> None:
@@ -634,13 +636,18 @@ def execute(
     listener = logsetup.start_listener(log_queue)
     log_level = logging.getLogger().getEffectiveLevel()
 
+    # Read here rather than taken as an argument, for the reason the log level is: a
+    # worker is a fresh interpreter that knows nothing this process was told, and a
+    # setting a caller has to remember to forward is a setting that half works.
+    ffmpeg_override = ffmpeg.current_override()
+
     results: dict[int, Deliverable] = {}
     try:
         with ProcessPoolExecutor(
             max_workers=max(1, workers),
             mp_context=context,
             initializer=_worker_init,
-            initargs=(queue, cancel, log_queue, log_level),
+            initargs=(queue, cancel, log_queue, log_level, ffmpeg_override),
         ) as pool:
             futures = {
                 pool.submit(_worker, job): index for index, job in enumerate(jobs)

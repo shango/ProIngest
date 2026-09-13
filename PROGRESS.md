@@ -15,9 +15,8 @@ encoded through the shot's grade and the ACES output transform baked into one cu
 no longer converts ahead of the CLF**, which was the one thing in the code that would have
 delivered a wrong plate against a real session. The source encoding went back to camera native
 log on 2026-09-12 and the tool now reads it per shot, resolves it through a table, records it
-in the QC log and states it and its origin in the delivered header. **M5, the UI, is eight
-chunks in of eleven and part way through the ninth**, two of those eleven having been
-added on 2026-09-12.
+in the QC log and states it and its origin in the delivered header. **M5, the UI, is nine
+chunks of eleven done**, two of those eleven having been added on 2026-09-12.
 A batch can be made, opened, saved and filled with turnovers; the window
 shows it as a list; the list can be typed into; the turnover scan runs off the UI thread;
 every QC result is readable in the Issues dock and clickable back to its shot; and **the tool
@@ -29,7 +28,7 @@ is done**: the pane beside the list reads everything known about the selection, 
 of it, and follows three signals so it cannot show a value that is merely late. The rest of
 M5 is specified in section 5. **And all three of M5.7 is done**: the colour session
 reaches the model, so a run from the window is graded or it is held back and the five
-colour rules fire; the Settings page exists with four of its six sections live; and
+colour rules fire; the Settings page exists with five of its six sections live; and
 **the window can now ingest a session itself**, one turnover at a time, which is what
 closed the gap M5.7.1 opened between a check that refuses to render without a session
 and a window with no way to say there is one. **And M5.8.1 is done**: there is a rotating
@@ -37,10 +36,12 @@ log file, and every ffmpeg command line a *render* runs now actually reaches it,
 did not before - a spawned worker's root logger has no handlers, so FR-13's one named
 requirement was quietly false for the commands most worth reproducing. **And M5.8.2 is
 done**: the Log tab reads that log inside the window, filtered by level, by text and by the
-selected row, with the command lines copyable verbatim. 1467 tests passing, `ruff` and
-`mypy --strict` clean.
-**M5.8.3, the Advanced settings section, is next** and finishes M5.8, with M5.11, the
-toolbar tooltips, still small and still loose in the order beside it.
+selected row, with the command lines copyable verbatim. **M5.8.3 finished M5.8**: the
+Settings page's Advanced section is live, with the log level and an ffmpeg override that
+reaches a render's worker processes, and **Output is the only disabled section left**.
+1483 tests passing, `ruff` and `mypy --strict` clean.
+**M5.11, the toolbar tooltips, is next**, and then M5.9, the frozen columns, which is last
+on purpose.
 
 **Two of the three things added to the plan on 2026-09-12 are still unbuilt**: tooltips on the
 toolbar (M5.11) and a user guide with screenshots (PRD FR-17, the new M9). The third was the
@@ -916,8 +917,9 @@ has to survive a save.
 
 ### M5.7.2 is built: the Settings page
 
-Four of the six sections are live and two are listed and disabled, which is M5.1's rule
-for the toolbar applied to a page. **Five things settled here.**
+Four of the six sections were live at this chunk and two were listed and disabled, which is
+M5.1's rule for the toolbar applied to a page. **Advanced went live in M5.8.3**, leaving
+Output as the only one still waiting. **Five things settled here.**
 
 - **The page is a value and a drawing of it**, `ui/settings_form.py` and
   `ui/settings_dialog.py`, the same split `ui/metadata.py` and its pane use and for the
@@ -934,8 +936,8 @@ for the toolbar applied to a page. **Five things settled here.**
   module docstring. That is what disabled Output and Advanced: reference quality and the
   EXR compression level are applied **inside a worker**, so a setting has to travel on the
   `DeliverableJob` rather than be read from the page, and that is a chunk rather than a
-  field. The ffmpeg path override and the log level land with M5.8, which is what gives
-  logging somewhere to be configured from.
+  field. The ffmpeg path override and the log level landed with M5.8.3, which is what gave
+  logging somewhere to be configured from; **Advanced is live and Output is not**.
 - **The Colour section is mostly read only**, and the three read-only lines are read from
   `core/color.py` rather than copied, so a config bump cannot leave the page describing a
   library that has moved. The input transform **overrides** FR-12 asks for are not built:
@@ -1068,24 +1070,45 @@ with it. **Four things settled.**
 before `addTopLevelItem`, so every line arriving while a filter was on came in visible. It
 looks like a filter that ignores new lines and nothing about it raises.
 
-### Next task: M5.8.3, the Advanced settings section
+### M5.8.3 is built: the Advanced section, and M5.8 is done
 
-The last of M5.8. Two fields, and they are not the same size:
+The section M5.7.2 listed and disabled because logging had nowhere to be configured from.
+**Output is now the only disabled section left**, and it is disabled for the reason it always
+was: reference quality and the EXR compression level are read inside a worker, so they have to
+travel on a `DeliverableJob`.
 
-- **The log level** is easy and is what M5.7.2 was waiting for: an `AppSettings.log_level`, and
-  Apply calls `logsetup.set_level`. Note that a level changed mid-run does not reach the pool,
-  by design (M5.8.1): the parent's level travels to a worker at process creation.
-- **The ffmpeg path override** has the Output section's problem - `ffmpeg.resolve_tool` is
-  called inside a worker - except that M5.8.1 built the channel it can travel on, which is
-  `_worker_init`'s initargs. `resolve_tool` already takes an override argument and seven call
-  sites pass none, so the shape is a module level default in `core/ffmpeg.py` set at worker init
-  and at startup, rather than an argument threaded through seven signatures.
+- **`apply_to_process` is apart from `apply_values` on purpose.** One writes the settings
+  objects, the other changes what the interpreter does. Merging them would mean a test of the
+  form had side effects on the process running it, and there are now such tests.
+- **The ffmpeg override is a module global in `core/ffmpeg.py`, not an argument.**
+  `resolve_tool` already takes one and **seven call sites pass none**; threading a value
+  through seven signatures that only forward it is worse than one `set_override`. It crosses
+  the spawn boundary on the channel M5.8.1 built - `_worker_init`'s initargs - and `execute`
+  reads it off the module rather than taking it as an argument, for the same reason it reads
+  the log level: a setting a caller has to remember to forward is a setting that half works.
+- **An override that is not there raises rather than falling back.** That was already
+  `resolve_tool`'s behaviour and it is now the documented one: an override quietly ignored is a
+  render done with the wrong build of ffmpeg and nothing said about it.
+- **`set_override` clears `available_encoders`' cache**, which is keyed on the binary it asked.
+  A different build of ffmpeg is exactly the thing that changes the answer.
+- **The level is stored by name**, `"Debug"` rather than `10`, because a settings file is read
+  by a person now and then. An unknown name reads back as the default, which is
+  `core/settings.py`'s rule for every field and is what lets a file written by a later version
+  be opened by this one.
+- **A level changed mid-run applies from the next run**, by design: the parent's level travels
+  to a worker at process creation (M5.8.1). The help text on the page says so.
 
-**The Advanced section's note should also name the log file's path**, which is the one thing a
-person looking at that page will want and cannot otherwise find.
+### Next task: M5.11, the toolbar tooltips
 
-After that, **M5.11, the toolbar tooltips**, and **M5.9, the frozen columns**, which is last on
-purpose (section 5).
+Small, and worth a little more with every chunk: the answer to "why is Run doing nothing" is
+QC-008, and a disabled button that says so is the difference between a tool that looks broken
+and one that says what to do next. UI_SPEC section 1 is the spec, including the rule that the
+wording should match the user guide's button reference (PRD FR-17, the new M9) so the two
+cannot drift. `Ingest Colour Session` wants one both for what it does and because its tooltip
+is what would let the button read `Ingest` (docs/MAC_SESSION.md).
+
+Then **M5.9, the frozen columns**, which must not move earlier: it is last on purpose
+(section 5).
 
 - **M5.11, the toolbar tooltips**, is still small and still loose in the order, and it is
   worth a little more with every chunk: the answer to "why is Run doing nothing" is QC-008,
@@ -1292,7 +1315,7 @@ Entry points worth knowing:
 | M4 | QC: all rules both phases, xlsx exports, `qc` CLI | complete, 175 tests |
 | M4.5 | Colour pipeline, core only. Source log in, CLF applied, ACEScg out, the viewing LUT | complete, 111 tests |
 | M4.6 | Per shot source encoding: read from the clip metadata, the input transform table, the input transform out of the graded chains, QC-046 to QC-048 | complete, all five chunks (OQ-37 answered; OQ-46 wants confirming) |
-| M5 | UI: the list, the FR-14 metadata pane, settings, log. **No viewers** | **M5.1 to M5.7 and M5.10 done**, M5.8, M5.9 and M5.11 specified |
+| M5 | UI: the list, the FR-14 metadata pane, settings, log. **No viewers** | **M5.1 to M5.8 and M5.10 done**, M5.9 and M5.11 specified |
 | M6 | ~~Stringout with burn-ins~~ | **dropped 2026-09-11**, the colour session exports it |
 | M7 | Packaging: PyInstaller `.app`, dmg, Gatekeeper | not started, and needs a Mac (OQ-22) |
 | M8 | Polish, performance on a real turnover, docs | not started |
@@ -1373,7 +1396,7 @@ batch can do", so each chunk has something a person can look at:
 | M5.7.1 | The colour session reaches the model: `clf.ingest`, `Turnover.color_session_edl`, `ShotRow.approved` and `ShotRow.cdl`, and QC-008, QC-009, QC-019, QC-039 and QC-045 | **done, 1377 tests** |
 | M5.7.2 | The Settings page, PRD FR-12, **including the Colour group** | **done, 1408 tests.** `ui/settings_form.py` is the field list as a value and `ui/settings_dialog.py` draws it; Output and Advanced are listed and disabled |
 | M5.7.3 | `Ingest Colour Session` in the window, and what it reports | **done, 1427 tests.** One turnover at a time, the chooser opening where FR-12 remembers, and the report the CLI prints |
-| M5.8 | The Log tab and the rotating log file, FR-13 | **in progress**: M5.8.1 done, M5.8.2 and M5.8.3 specified below |
+| M5.8 | The Log tab and the rotating log file, FR-13 | **done, all three chunks** |
 | M5.9 | The frozen left columns: the overlaid second view sharing the model and the selection | not started |
 | M5.10 | The run's strip above the list: the thin batch progress bar and the line of text naming the step being done (UI_SPEC 7.1) | **done, 1266 tests.** `ui/run_strip.py` is three states in one band, and the line names the longest running job rather than the newest message |
 | M5.11 | A hover tooltip on every toolbar button, saying what it does and, when it is disabled, why (UI_SPEC section 1) | **new 2026-09-12**, not started |
@@ -1385,7 +1408,7 @@ requirement is three things and the first one is not a UI task at all:
 |---|---|---|
 | M5.8.1 | `core/logsetup.py`, the rotating file, and the bridge that gets a **worker process**'s ffmpeg command lines into it | **done, 1443 tests.** `ui/paths.log_dir()`, and `execute` owns a log queue per run |
 | M5.8.2 | The Log tab itself: the second tab of the bottom dock, filtered by level, by text and by the selected row | **done, 1467 tests.** `ui/log_view.py`, a locked ring buffer between the handler and the widget, drained on a timer |
-| M5.8.3 | The Settings page's **Advanced** section: the log level, and the ffmpeg path override travelling to a worker on the same init channel | not started |
+| M5.8.3 | The Settings page's **Advanced** section: the log level, and the ffmpeg path override travelling to a worker on the same init channel | **done, 1483 tests.** `settings_form.apply_to_process`, and `ffmpeg.set_override` |
 
 **M5.4 settled four things that should not be re-derived.**
 

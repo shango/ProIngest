@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from proingest.core import settings
+from proingest.core import logsetup, settings
 from proingest.core.render import DEFAULT_WORKERS
 
 
@@ -37,6 +37,32 @@ class TestRoundTrip:
         settings.save(settings.AppSettings(window_geometry="second"), path)
         assert settings.load(path).window_geometry == "second"
         assert list(tmp_path.iterdir()) == [path]
+
+    def test_the_two_advanced_fields_survive(self, tmp_path: Path) -> None:
+        """M5.8.3. The level is stored by name, because a settings file is sometimes read."""
+        path = tmp_path / "settings.json"
+        saved = settings.AppSettings(log_level="Debug", ffmpeg_path="/opt/ffmpeg")
+        settings.save(saved, path)
+        assert settings.load(path).log_level == "Debug"
+        assert settings.load(path).ffmpeg_path == "/opt/ffmpeg"
+        assert json.loads(path.read_text())["log_level"] == "Debug"
+
+    def test_a_level_the_file_names_wrongly_reads_back_as_the_default(
+        self, tmp_path: Path
+    ) -> None:
+        """A hand edit, or a later version's level this one does not know. Not an error."""
+        path = tmp_path / "settings.json"
+        path.write_text(json.dumps({"schema_version": 1, "log_level": "Chatty"}))
+        assert settings.load(path).log_level == logsetup.name_of(logsetup.DEFAULT_LEVEL)
+
+    def test_a_file_written_before_the_advanced_section_existed_logs_normally(
+        self, tmp_path: Path
+    ) -> None:
+        path = tmp_path / "settings.json"
+        path.write_text(json.dumps({"schema_version": 1}))
+        loaded = settings.load(path)
+        assert loaded.log_level == logsetup.name_of(logsetup.DEFAULT_LEVEL)
+        assert loaded.ffmpeg_path == ""
 
     def test_the_collapsed_metadata_sections_survive(self, tmp_path: Path) -> None:
         """Titles rather than indexes, so reordering the sections cannot collapse a

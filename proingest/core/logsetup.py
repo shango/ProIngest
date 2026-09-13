@@ -68,6 +68,32 @@ DEFAULT_LEVEL = logging.INFO
 FR-13 asks for them, so anything quieter would deliver a log with the one thing the
 requirement names missing from it."""
 
+LEVEL_NAMES: tuple[str, ...] = ("Debug", "Info", "Warning", "Error")
+"""What the Settings page's Advanced section offers, quietest last.
+
+Stored in `settings.json` by **name** rather than as a number, because a settings file
+is read by a person now and then and `"log_level": 20` says nothing. Debug is offered
+because it is the one that answers "what did the tool actually ask ffmpeg for", which is
+the question a support conversation starts with.
+"""
+
+
+def level_of(name: str) -> int:
+    """A name from `LEVEL_NAMES` as a logging level. Anything else is the default.
+
+    Anything else includes a settings file written by a later version that grew a level
+    this one does not know, which is a file to read as well as possible rather than an
+    error to raise: `core/settings.py` says why a settings file is disposable.
+    """
+    level = logging.getLevelNamesMapping().get(name.upper())
+    return level if name.capitalize() in LEVEL_NAMES and level is not None else DEFAULT_LEVEL
+
+
+def name_of(level: int) -> str:
+    """The `LEVEL_NAMES` entry for a level, for putting the page back as it was."""
+    return logging.getLevelName(level).capitalize()
+
+
 SHOT_FIELD = "shot"
 """The attribute a render worker stamps a record with, naming the shot it is about.
 

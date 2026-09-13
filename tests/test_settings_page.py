@@ -11,13 +11,16 @@ answers every other dialog the window can open.
 
 from __future__ import annotations
 
+import logging
 import re
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
+    QComboBox,
     QDialog,
     QLineEdit,
     QPlainTextEdit,
@@ -25,7 +28,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from proingest.core import color, naming, qc
+from proingest.core import color, ffmpeg, logsetup, naming, qc
 from proingest.core import settings as core_settings
 from proingest.core.settings import AppSettings
 from proingest.ui import settings_form
@@ -115,6 +118,16 @@ def window(qt_app: QApplication, tmp_path: Path) -> DrivenWindow:
 
 def editor(dialog: SettingsDialog, key: str) -> object:
     return dialog._editors[key]
+
+
+@pytest.fixture
+def restore_process() -> Iterator[None]:
+    """Put the log level and the ffmpeg override back, since both are process wide."""
+    level = logging.getLogger().level
+    override = ffmpeg.current_override()
+    yield
+    logging.getLogger().setLevel(level)
+    ffmpeg.set_override(override)
 
 
 class TestTheDialog:
@@ -280,3 +293,87 @@ def test_every_rule_id_a_help_line_names_is_live_rather_than_retired() -> None:
             for rule_id in re.findall(r"QC-\d{3}", field.help):
                 assert rule_id in rows, f"{field.key} names {rule_id}, which is not a rule"
                 assert "RETIRED" not in rows[rule_id], f"{field.key} names retired {rule_id}"
+
+
+class TestTheAdvancedSection:
+    """M5.8.3. The section M5.7.2 listed and disabled, waiting on there being a log."""
+
+    def test_it_is_live_and_output_is_the_only_one_still_waiting(self) -> None:
+        waiting = [s.title for s in settings_form.sections() if not s.enabled]
+        assert waiting == ["Output"]
+
+    def test_the_level_is_a_choice_rather_than_something_to_type(
+        self, dialog: SettingsDialog
+    ) -> None:
+        """A misspelt level in a settings file is a tool logging the wrong amount."""
+        box = editor(dialog, "app.log_level")
+        assert isinstance(box, QComboBox)
+        assert [box.itemText(i) for i in range(box.count())] == list(logsetup.LEVEL_NAMES)
+
+    def test_a_level_chosen_comes_back_out(self, dialog: SettingsDialog) -> None:
+        box = editor(dialog, "app.log_level")
+        assert isinstance(box, QComboBox)
+        box.setCurrentText("Debug")
+        app, _ = dialog.result_settings()
+        assert app.log_level == "Debug"
+
+    def test_the_page_says_where_the_log_file_is(self, dialog: SettingsDialog) -> None:
+        """The one thing a person on this page wants and cannot otherwise find."""
+        shown = settings_form.readonly_values()["readonly.log_file"]
+        assert shown.endswith(logsetup.LOG_FILENAME)
+        assert editor(dialog, "readonly.log_file") is not None
+
+    def test_an_ffmpeg_path_typed_in_comes_back_out(self, dialog: SettingsDialog) -> None:
+        row_widget = editor(dialog, "app.ffmpeg_path")
+        assert isinstance(row_widget, QWidget)
+        edit = row_widget.findChild(QLineEdit)
+        assert edit is not None
+        edit.setText("/opt/ffmpeg/bin")
+        app, _ = dialog.result_settings()
+        assert app.ffmpeg_path == "/opt/ffmpeg/bin"
+
+
+class TestPuttingThemInForce:
+    """`apply_to_process`, which is apart from `apply_values` on purpose."""
+
+    def test_the_level_reaches_the_root_logger(self, restore_process: None) -> None:
+        settings_form.apply_to_process(AppSettings(log_level="Error"))
+        assert logging.getLogger().getEffectiveLevel() == logging.ERROR
+
+    def test_a_level_the_file_does_not_explain_falls_back_to_the_default(
+        self, restore_process: None
+    ) -> None:
+        """A settings file is disposable; an unreadable value is not an error."""
+        settings_form.apply_to_process(AppSettings(log_level="Verbose"))
+        assert logging.getLogger().getEffectiveLevel() == logsetup.DEFAULT_LEVEL
+
+    def test_the_ffmpeg_override_reaches_resolve_tool(
+        self, restore_process: None, tmp_path: Path
+    ) -> None:
+        binary = tmp_path / "ffmpeg"
+        binary.write_text("#!/bin/sh\n")
+        settings_form.apply_to_process(AppSettings(ffmpeg_path=str(tmp_path)))
+        assert ffmpeg.resolve_tool("ffmpeg") == binary
+
+    def test_an_override_that_is_not_there_is_an_error_rather_than_a_fallback(
+        self, restore_process: None, tmp_path: Path
+    ) -> None:
+        """An override quietly ignored is a render done with the wrong build of ffmpeg."""
+        settings_form.apply_to_process(AppSettings(ffmpeg_path=str(tmp_path / "nowhere")))
+        with pytest.raises(ffmpeg.FFmpegNotFound):
+            ffmpeg.resolve_tool("ffmpeg")
+
+    def test_an_empty_override_restores_the_normal_order(
+        self, restore_process: None, tmp_path: Path
+    ) -> None:
+        settings_form.apply_to_process(AppSettings(ffmpeg_path=str(tmp_path)))
+        settings_form.apply_to_process(AppSettings())
+        assert ffmpeg.current_override() is None
+
+    def test_applying_the_page_puts_them_in_force_at_once(
+        self, window: DrivenWindow, restore_process: None
+    ) -> None:
+        window.settings_answer = QDialog.DialogCode.Accepted
+        window._settings.log_level = "Error"
+        window.action_settings.trigger()
+        assert logging.getLogger().getEffectiveLevel() == logging.ERROR

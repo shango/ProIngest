@@ -192,6 +192,9 @@ class MainWindow(QMainWindow):
         super().__init__()
         self._settings_path = settings_path
         self._settings = core_settings.load(settings_path)
+        # Before anything is built, because the window logs while it is being built and
+        # the log level is one of the two settings that decide what is kept (FR-13).
+        settings_form.apply_to_process(self._settings)
 
         self.setWindowTitle(WINDOW_TITLE)
         self.resize(*DEFAULT_SIZE)
@@ -492,6 +495,7 @@ class MainWindow(QMainWindow):
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
         self._settings, rules = dialog.result_settings()
+        settings_form.apply_to_process(self._settings)
         core_settings.save(self._settings, self._settings_path)
         if not self._batch_open:
             return

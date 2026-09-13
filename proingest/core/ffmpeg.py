@@ -68,12 +68,42 @@ def _platform_binary(tool: str) -> str:
     return f"{tool}.exe" if os.name == "nt" else tool
 
 
+_OVERRIDE: Path | None = None
+"""The Settings page's ffmpeg path, in force for this process (FR-12, Advanced).
+
+A module global rather than an argument because seven call sites pass none and threading
+one through every signature to reach `resolve_tool` would be a parameter each of them
+only forwards. It is set once at startup and once per **worker process** at its
+initialiser, which is how it crosses the spawn boundary: `core/render.py` hands it over
+beside the log queue, for the same reason and on the same channel.
+"""
+
+
+def set_override(path: Path | None) -> None:
+    """Point every later `resolve_tool` at this binary or folder. None restores normal.
+
+    `available_encoders` is cached against the binary it asked, so its answer is thrown
+    away here: a different build of ffmpeg is exactly the thing that changes it.
+    """
+    global _OVERRIDE
+    _OVERRIDE = path
+    available_encoders.cache_clear()
+
+
+def current_override() -> Path | None:
+    """What is in force, so a caller can hand it to a process that has not got it."""
+    return _OVERRIDE
+
+
 def resolve_tool(tool: str, override: Path | None = None) -> Path:
     """Locate `ffmpeg` or `ffprobe`.
 
     An override is honoured whether it names the binary itself or the folder holding
-    it, because both are natural things to paste into a settings field.
+    it, because both are natural things to paste into a settings field. **A path that
+    does not exist raises rather than falling back**: an override silently ignored is a
+    render done with the wrong build of ffmpeg and nothing said about it.
     """
+    override = override if override is not None else _OVERRIDE
     if override is not None:
         candidate = override / _platform_binary(tool) if override.is_dir() else override
         if candidate.is_file():
