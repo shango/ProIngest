@@ -453,7 +453,7 @@ class MainWindow(QMainWindow):
             return
         batch = Batch()
         if self._settings.rules:
-            batch.settings_overrides[qc.RULES_OVERRIDE_KEY] = dict(self._settings.rules)
+            batch.settings_overrides[qc.RULES_OVERRIDE_KEY] = self._app_rules().to_dict()
         self.set_batch(batch)
 
     def open_batch(self) -> None:

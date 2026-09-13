@@ -286,6 +286,13 @@ class TestApplyingFromTheWindow:
         window._settings.rules = {"nonsense": 1}
         assert window._app_rules() == qc.RuleSettings()
 
+    def test_unusable_defaults_in_the_file_do_not_stop_a_new_batch(self, window: DrivenWindow) -> None:
+        """New copies the defaults onto the batch; the same fallback has to apply there."""
+        window._settings.rules = {"nonsense": 1}
+        window.action_new.trigger()
+        assert window._batch_open
+        assert qc.settings_for(window.batch) == qc.RuleSettings()
+
 
 def test_every_rule_id_a_help_line_names_is_live_rather_than_retired() -> None:
     """A help line naming a retired rule sends somebody to a row that says "was".
