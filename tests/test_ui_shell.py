@@ -60,6 +60,7 @@ from tests.fixtures.batches import (
     turnover,
     warn,
 )
+from tests.test_runner import pump_until
 
 
 class DrivenWindow(MainWindow):
@@ -1017,6 +1018,46 @@ class TestClosingWithWorkInHand:
         edit(window, "checked")
         window.close()
         assert not window.autosave.pending
+
+    def test_a_close_during_a_run_waits_for_its_results(
+        self, window: DrivenWindow, tmp_path: Path
+    ) -> None:
+        """The results come back by a queued signal and are applied on this thread, so
+        a close that blocked on the worker would drop every deliverable it finished."""
+        window.set_batch(ingested(batch(row(), delivery_root=tmp_path), tmp_path))
+        started = stub_runner(window, busy=True)
+        cancels: list[bool] = []
+        window.runner.cancel = lambda: cancels.append(True)  # type: ignore[method-assign]
+        window.action_run.trigger()
+
+        def status() -> str:
+            return str(window.batch.rows[0].deliverables[0].status)
+
+        assert not window.close(), "refused for now"
+        assert cancels == [True], "but the run was told to stop"
+        assert status() == "planned"
+
+        window.runner._thread = None
+        window.runner.finished.emit(done(started[0]), True)
+
+        assert status() == "done", "the results were applied"
+        assert core_settings.load(window._settings_path).window_geometry != "", "and then it closed"
+
+    def test_a_close_stops_waiting_for_a_run_that_will_not_stop(
+        self, window: DrivenWindow, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A wedged worker must not be a window that cannot be closed."""
+        from proingest.ui import main_window as module
+
+        monkeypatch.setattr(module, "SHUTDOWN_WAIT_MS", 1)
+        window.set_batch(ingested(batch(row(), delivery_root=tmp_path), tmp_path))
+        stub_runner(window, busy=True)
+        window.runner.cancel = lambda: None  # type: ignore[method-assign]
+        window.runner.shutdown = lambda: None  # type: ignore[method-assign]
+        window.action_run.trigger()
+
+        assert not window.close()
+        assert pump_until(lambda: core_settings.load(window._settings_path).window_geometry != "")
 
     def test_opening_another_batch_asks_about_this_one_first(self, window: DrivenWindow) -> None:
         window.set_batch(batch(row(), name="first"))

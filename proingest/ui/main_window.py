@@ -61,7 +61,7 @@ from proingest.ui.issues import IssuesDock
 from proingest.ui.log_view import LogView
 from proingest.ui.metadata_pane import MetadataPane
 from proingest.ui.run_strip import LINK_COLOR, RunStrip
-from proingest.ui.runner import Runner, RunProgress
+from proingest.ui.runner import SHUTDOWN_WAIT_MS, Runner, RunProgress
 from proingest.ui.scanner import Scanner
 from proingest.ui.settings_dialog import SettingsDialog
 from proingest.ui.shot_list import ShotListView
@@ -90,6 +90,7 @@ BOTTOM_TABS = ("Issues", "Log", "Deliverables")
 
 NOTHING_TO_RENDER = "Nothing to render: no row produced a deliverable"
 SETTINGS_APPLIED = "Settings applied; the batch has been re-checked"
+CLOSING_AFTER_RUN = "Stopping the run, then closing..."
 
 INGEST_TITLE = "Colour session ingested"
 INGEST_READ = "Read from {name}, which holds {events} events."
@@ -386,6 +387,13 @@ class MainWindow(QMainWindow):
         self._run_timer = QTimer(self)
         self._run_timer.setInterval(RUN_REFRESH_MS)
         self._run_timer.timeout.connect(self._show_run_progress)
+        # A close during a run: the run is stopped and the close retried when its
+        # results are in, or when this gives up waiting for them.
+        self._close_wait = QTimer(self)
+        self._close_wait.setSingleShot(True)
+        self._close_wait.timeout.connect(self._close_without_results)
+        self._closing_after_run = False
+        self._close_wait_expired = False
         self.run_strip = RunStrip(self)
         self.run_strip.link_activated.connect(self._open_reports)
 
@@ -531,6 +539,29 @@ class MainWindow(QMainWindow):
         """Built here so a test can hand back one it has already answered."""
         rules = qc.settings_for(self.batch) if self._batch_open else self._app_rules()
         return SettingsDialog(self._settings, rules, self)
+
+    def _close_after_run(self) -> None:
+        """Stop the run and close once `_run_finished` has applied what it wrote."""
+        if self._closing_after_run:
+            return
+        self._closing_after_run = True
+        self.runner.finished.connect(self._close_now_that_the_run_is_over)
+        self._close_wait.start(SHUTDOWN_WAIT_MS)
+        self.stop_run()
+        self.statusBar().showMessage(CLOSING_AFTER_RUN)
+
+    def _close_now_that_the_run_is_over(self, *_: object) -> None:
+        """Connected after `_run_finished`, so the results are on the rows by now."""
+        self.runner.finished.disconnect(self._close_now_that_the_run_is_over)
+        self._close_wait.stop()
+        self._closing_after_run = False
+        self.close()
+
+    def _close_without_results(self) -> None:
+        """The bounded wait ran out: close the way it used to, dropping the results."""
+        log.warning("the run did not stop within %d ms; closing without its results", SHUTDOWN_WAIT_MS)
+        self._close_wait_expired = True
+        self.close()
 
     def _app_rules(self) -> qc.RuleSettings:
         """The thresholds a new batch would start from, or the defaults.
@@ -1342,10 +1373,20 @@ class MainWindow(QMainWindow):
         one the editor expects to lose, and what is still pending after it is a batch
         that has never been saved: the one case the editor has to answer for.
 
-        The scan and the run are stopped last and both are waited on, because a `QThread`
-        still running when its owner is collected is a crash on the way out. The run's
-        wait is the long one: it is waiting for in-flight jobs to reach a frame boundary.
+        The scan is stopped last and waited on, because a `QThread` still running when
+        its owner is collected is a crash on the way out.
+
+        **A run is stopped and the close retried when its results are in.** They come
+        back by a queued signal and are applied on this thread (`_run_finished`), so a
+        close that blocked here waiting for the thread would drop every deliverable the
+        run had finished. The wait is bounded the way `Runner.shutdown`'s is: a wedged
+        worker must not be a window that cannot be closed, and after that long the close
+        goes ahead without the results, as it always did.
         """
+        if self.runner.busy and not self._close_wait_expired:
+            self._close_after_run()
+            event.ignore()
+            return
         if not self._may_abandon_current():
             event.ignore()
             return
