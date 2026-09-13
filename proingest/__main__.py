@@ -249,17 +249,9 @@ def _ingest_color_session(batch: Batch, edl_path: Path | None) -> None:
     print(f"colour session: {len(session.events)} events, {len(session.clfs)} shots with a CLF")
     for turnover in batch.turnovers:
         report = clf.ingest(turnover, batch.rows_for(turnover.turnover_id), session)
-        print(
-            f"  {turnover.turnover_id}: {len(report.matched)} rows matched, "
-            f"{len(report.graded)} with a CLF"
-        )
-        for label, names in (
-            ("no event", report.unmatched),
-            ("trim overwritten by the approved cut", report.overwritten),
-            ("more than one CLF names the shot", report.ambiguous),
-        ):
-            if names:
-                print(f"    {label}: {', '.join(sorted(names))}")
+        print(f"  {turnover.turnover_id}: {report.counts}")
+        for label, names in report.notices():
+            print(f"    {label}: {', '.join(names)}")
 
 
 def _qc(batch_path: Path, delivery_root: Path | None, out: Path | None) -> int:

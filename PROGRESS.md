@@ -8,14 +8,14 @@ commit.
 
 ## 1. Resume here
 
-**State at 2026-09-12 (late). M1, M2, M3 and M4 complete; M4.5 is done, all four chunks, and
+**State at 2026-09-13. M1, M2, M3 and M4 complete; M4.5 is done, all four chunks, and
 M4.6 is done, all five.** The colour chain now reaches the files: a plate is delivered graded in linear
 ACEScg with AP1 primaries and a header that says what was applied to it, and a reference mp4 is
 encoded through the shot's grade and the ACES output transform baked into one cube. **The chain
 no longer converts ahead of the CLF**, which was the one thing in the code that would have
 delivered a wrong plate against a real session. The source encoding went back to camera native
 log on 2026-09-12 and the tool now reads it per shot, resolves it through a table, records it
-in the QC log and states it and its origin in the delivered header. **M5, the UI, is seven
+in the QC log and states it and its origin in the delivered header. **M5, the UI, is eight
 chunks in of eleven**, two of those eleven having been added on 2026-09-12.
 A batch can be made, opened, saved and filled with turnovers; the window
 shows it as a list; the list can be typed into; the turnover scan runs off the UI thread;
@@ -26,12 +26,15 @@ where they went. **M5.10 is done as well, out of order and on purpose**: the run
 itself above the list, a thin bar for the batch and a line of words for the step. **And M5.6
 is done**: the pane beside the list reads everything known about the selection, nine sections
 of it, and follows three signals so it cannot show a value that is merely late. The rest of
-M5 is specified in section 5. **And M5.7.1 and M5.7.2 are done**: the colour session now
+M5 is specified in section 5. **And all three of M5.7 is done**: the colour session
 reaches the model, so a run from the window is graded or it is held back and the five
-colour rules fire, and the Settings page exists with four of its six sections live.
-1408 tests passing, `ruff` and `mypy --strict` clean.
-**M5.7.3, ingesting a colour session from the window, is next, and it is the chunk that
-closes the gap M5.7.1 opened.**
+colour rules fire; the Settings page exists with four of its six sections live; and
+**the window can now ingest a session itself**, one turnover at a time, which is what
+closed the gap M5.7.1 opened between a check that refuses to render without a session
+and a window with no way to say there is one. 1427 tests passing, `ruff` and
+`mypy --strict` clean.
+**M5.8, the Log tab and the rotating log file, is next** (FR-13), with M5.11, the
+toolbar tooltips, still small and still loose in the order beside it.
 
 **Two of the three things added to the plan on 2026-09-12 are still unbuilt**: tooltips on the
 toolbar (M5.11) and a user guide with screenshots (PRD FR-17, the new M9). The third was the
@@ -940,34 +943,67 @@ a help line names is a live rule rather than a retired one, which catches a typo
 retirement and **cannot** catch this: naming the wrong live rule is prose being wrong, and
 asserting it would mean writing the mapping out twice.
 
-### Next task: M5.7.3, ingesting a colour session from the window
+### M5.7.3 is built: the window ingests a session
 
-**This is the chunk that closes the gap M5.7.1 opened.** The checks now refuse to render a
-turnover with no colour session, and the window has no way to tell them there is one: the
-CLI can ingest and the window cannot. A batch ingested from the CLI and reopened in the
-window runs correctly, because the ingest is on the batch, so nothing is broken - but a
-person working only in the window cannot deliver.
+**The chunk that closed the gap M5.7.1 opened.** The checks refused to render a turnover
+with no colour session and the window had no way to tell them there was one: a batch
+ingested from the CLI and reopened in the window ran correctly, but a person working only
+in the window could not deliver. `Ingest Colour Session` is a toolbar action beside Scan,
+the editor points at the final EDL, and `clf.load_session` then `clf.ingest` do the work
+the CLI already did. 19 tests.
 
-- A toolbar action and a file chooser opening at `AppSettings.color_session_folder`, which
-  M5.7.2 already remembers.
-- One turnover at a time, chosen from the selection (`ShotListView.selected_turnover`
-  exists) and asked for when the selection does not say.
-- `clf.load_session` then `clf.ingest`, reporting the `IngestReport`: rows matched, rows
-  that got a CLF, and the three lists a person acts on - no event, trim overwritten, more
-  than one CLF naming the shot. `--color-session` prints the same thing, so the wording is
-  already decided.
-- The rate the EDL is read at is the same question the CLI answers: the first row with
-  media, said out loud rather than assumed (`_ingest_color_session`).
-- **M5.11, the toolbar tooltips**, is small and still loose in the order: a line per
-  action, and the half worth care is the disabled button saying why. `Ingest` is the
-  action that most wants one, since the answer to "why is Run doing nothing" is now
-  QC-008. What should **not** happen is M5.9, the frozen columns, moving earlier: it is
-  last on purpose (section 5).
+**Five things settled here.**
 
-**The pane is where a Settings change will be seen first**, and it is already where an
-ingest is seen: its Colour section reads `source_encoding`, `source_encoding_origin` and
-`clf_path` off the row, so selecting a row is how a person checks that the right CLF was
-matched, without running anything.
+- **One turnover at a time, and the selection is asked before the editor is.** A batch of
+  one turnover never asks, a selected group header says which, and so does a selection of
+  rows that are all in the same one; a selection spanning two says nothing and a list
+  dialog asks. Turnovers with no rows are not offered, because an ingest writes onto rows.
+- **The rate is checked before the chooser opens, not after it.** The EDL's timecode is
+  read at one rate and a turnover can carry more than one (OQ-19), so the first row with
+  media decides and the report says so when there was a choice. A turnover whose rows have
+  no media has no rate at all, and being told that after picking a file is being told it
+  one dialog too late.
+- **The wording lives on `IngestReport`.** `counts` and `notices()` are the phrase and the
+  three labelled lists, and both the CLI's print and the window's report read them, so the
+  editor comparing a headless run against the window is comparing the same sentences. That
+  is the whole of what `core/clf.py` gained; nothing else moved.
+- **The report is a modal, and UI_SPEC section 1's rule was amended rather than bent.**
+  Section 1 keeps modals out of review; this is the answer to a file dialog the editor just
+  opened, and every list in it is something to act on now. `docs/MAC_SESSION.md` asks
+  whether a long list of unmatched rows wants somewhere it can be read twice.
+- **The rules re-run afterwards because the ingest moves In and Out.** A fixture row
+  arriving trimmed 8-231 and conformed to a four frame event fires QC-033 on the spot,
+  which is the check reading the cut that is now in force. QC-008 and QC-009 are pre-flight
+  and clear at the next Run, which is where they are meant to be read.
+
+**The chooser opens at `AppSettings.color_session_folder` and writes it back.** Where a
+turnover was graded from is on the turnover (OQ-50); this is only where the dialog starts,
+which is why it is a per user setting and not part of the batch.
+
+**One thing to look at on a Mac and it is cosmetic.** `Ingest Colour Session` is two and a
+half times the width of every other toolbar button, so a once-per-turnover action sits wider
+than Run. The alternative is `Ingest` with the full name in the tooltip M5.11 will add, and
+the argument against it is that this is a tool called ProIngest whose log is
+`qc_ingest_log.xlsx`: `Ingest` alone can be read as the whole job. Judged in front of the
+real window, not from a screenshot.
+
+### Next task: M5.8, the Log tab and the rotating log file
+
+FR-13 and the third of the bottom dock's three tabs, which has been present and empty since
+M5.1. It is also what gives M5.7.2's two Advanced fields somewhere to be configured from:
+the log level is a setting with nothing to set until there is a log, which is why that
+section is listed and disabled rather than half built.
+
+- **M5.11, the toolbar tooltips**, is still small and still loose in the order, and it is
+  worth a little more with every chunk: the answer to "why is Run doing nothing" is QC-008,
+  and a disabled button that says so is the difference between a tool that looks broken and
+  one that says what to do next. `Ingest Colour Session` now wants one too, both for what it
+  does and because its tooltip is what would let the button read `Ingest`.
+- **M5.9, the frozen columns, must not move earlier.** It is last on purpose (section 5).
+
+**The pane is where an ingest is seen without running anything**: its Colour section reads
+`source_encoding`, `source_encoding_origin` and `clf_path` off the row, so selecting a row
+is how a person checks that the right CLF was matched.
 
 **Two things worth asking and neither is a build task.** Ask **whoever briefs the
 shooters** which metadata field carries the log name and exactly what string goes in it
@@ -1098,7 +1134,7 @@ PDF viewer.
 | `core/resize.py` | antialiased Lanczos downscale for the EXR path | 96 |
 | `core/color.py` | the pinned OCIO config, every leg of the chain but the CLF, composing and applying them, and the view branch baked to a `.cube` | 209 |
 | `core/timeline.py` | OTIO and EDL loading, audio association | 233 |
-| `core/clf.py` | the colour session package: the final EDL as the conform, the CDL, the CLF matched per row, loaded, hashed and probed, and `ShotColor`, which is what rides on a job | 489 |
+| `core/clf.py` | the colour session package: the final EDL as the conform, the CDL, the CLF matched per row, loaded, hashed and probed, and `ShotColor`, which is what rides on a job | 606 |
 | `core/scan.py` | turnover folder -> Turnover + ShotRows | 459 |
 | `core/planner.py` | type table, deliverable jobs, version resolution, the shot's colour attached to each job | 485 |
 | `core/batchfile.py` | `.pibatch` save/load, backup, filesystem reconciliation | 86 |
@@ -1108,7 +1144,7 @@ PDF viewer.
 | `core/qc.py` | rule registry: phase A, `RuleSettings`, `preflight`, phase B | 1416 |
 | `core/settings.py` | what the app remembers between launches, as JSON. Takes the path; never works out where it is | 111 |
 | `ui/app.py` | the QApplication, its names, the theme, and `run()` | 49 |
-| `ui/main_window.py` | UI_SPEC section 1's frame: menus and their macOS roles, toolbar, bottom dock, status bar, the three empty states and the batch page, window state, the autosaver, the batch lifecycle (New, Open, Save, the two roots, Add Turnover and Scan) and the run (pre-flight, planning, Stop, the exports, the steps it narrates and section 7's banner text), and the metadata dock with the three signals that refresh it | 1042 |
+| `ui/main_window.py` | UI_SPEC section 1's frame: menus and their macOS roles, toolbar, bottom dock, status bar, the three empty states and the batch page, window state, the autosaver, the batch lifecycle (New, Open, Save, the two roots, Add Turnover and Scan), the colour session ingest (which turnover, which EDL, and what it reports), and the run (pre-flight, planning, Stop, the exports, the steps it narrates and section 7's banner text), and the metadata dock with the three signals that refresh it | 1275 |
 | `ui/shot_model.py` | the batch as a two level tree: section 2's columns, section 3's dot and tints, the In/Out display mode, what the four editable cells commit, where a given row sits, and how far a live run has got with it | 760 |
 | `ui/shot_list.py` | the view, the two line cell, the Progress column's slim bar, the search filter, the cell editor, Tab across the editable columns, the skip prompt, what is selected, and selecting a row somebody pointed at from the Issues dock | 410 |
 | `ui/batch_bar.py` | the batch name, the delivery root button, the three state In/Out toggle and the search box | 104 |
@@ -1163,7 +1199,7 @@ Entry points worth knowing:
 | M4 | QC: all rules both phases, xlsx exports, `qc` CLI | complete, 175 tests |
 | M4.5 | Colour pipeline, core only. Source log in, CLF applied, ACEScg out, the viewing LUT | complete, 111 tests |
 | M4.6 | Per shot source encoding: read from the clip metadata, the input transform table, the input transform out of the graded chains, QC-046 to QC-048 | complete, all five chunks (OQ-37 answered; OQ-46 wants confirming) |
-| M5 | UI: the list, the FR-14 metadata pane, settings, log. **No viewers** | **M5.1 to M5.6, M5.7.1, M5.7.2 and M5.10 done**, M5.7.3, M5.8, M5.9 and M5.11 specified |
+| M5 | UI: the list, the FR-14 metadata pane, settings, log. **No viewers** | **M5.1 to M5.7 and M5.10 done**, M5.8, M5.9 and M5.11 specified |
 | M6 | ~~Stringout with burn-ins~~ | **dropped 2026-09-11**, the colour session exports it |
 | M7 | Packaging: PyInstaller `.app`, dmg, Gatekeeper | not started, and needs a Mac (OQ-22) |
 | M8 | Polish, performance on a real turnover, docs | not started |
@@ -1243,7 +1279,7 @@ batch can do", so each chunk has something a person can look at:
 | M5.6 | The metadata pane, FR-14 and UI_SPEC section 12 | **done, 1344 tests.** `ui/metadata.py` is the field list as a value and `ui/metadata_pane.py` draws it; a right dock, three update signals, and a **Colour** section section 12.2 did not have |
 | M5.7.1 | The colour session reaches the model: `clf.ingest`, `Turnover.color_session_edl`, `ShotRow.approved` and `ShotRow.cdl`, and QC-008, QC-009, QC-019, QC-039 and QC-045 | **done, 1377 tests** |
 | M5.7.2 | The Settings page, PRD FR-12, **including the Colour group** | **done, 1408 tests.** `ui/settings_form.py` is the field list as a value and `ui/settings_dialog.py` draws it; Output and Advanced are listed and disabled |
-| M5.7.3 | `Ingest Colour Session` in the window, and what it reports | not started |
+| M5.7.3 | `Ingest Colour Session` in the window, and what it reports | **done, 1427 tests.** One turnover at a time, the chooser opening where FR-12 remembers, and the report the CLI prints |
 | M5.8 | The Log tab and the rotating log file, FR-13 | not started |
 | M5.9 | The frozen left columns: the overlaid second view sharing the model and the selection | not started |
 | M5.10 | The run's strip above the list: the thin batch progress bar and the line of text naming the step being done (UI_SPEC 7.1) | **done, 1266 tests.** `ui/run_strip.py` is three states in one band, and the line names the longest running job rather than the newest message |
@@ -1313,7 +1349,9 @@ goes next.
 
 **M5.7.1 is where the colour work finished.** The five rules that read `core/clf.py` are
 wired, and what a batch knows about its colour session is `Turnover.color_session_edl`
-rather than a Settings value (OQ-50). Nothing in core has to change for M5.7.2 or M5.7.3.
+rather than a Settings value (OQ-50). Nothing in core had to change for M5.7.2 or M5.7.3
+beyond `IngestReport.counts` and `notices()`, which are the words both surfaces report an
+ingest in, kept in one place so the CLI and the window cannot drift.
 
 M9 detail, asked for 2026-09-12 and specified against PRD FR-17. It is the first milestone
 whose deliverable is not code, and it is deliberately separate from M8.4: M8.4 is what the
@@ -1979,13 +2017,6 @@ is useful rather than not, but a test asserting "one stream" will fail on it.
 
 Nothing blocks the next task. These are live, in rough priority order:
 
-- **Nothing can be rendered from the window yet, because nothing can ingest a session
-  there.** M5.7.1 wired QC-008, so a turnover with no colour session is held back and a
-  run over a fresh batch writes nothing at all - which is COLOR_AND_FORMAT section 1 as
-  specified, and is the right refusal. What it leaves is a gap of one chunk: the CLI can
-  ingest (`--color-session`) and the window cannot until M5.7.3. A batch ingested from the
-  CLI and then opened in the window runs correctly, because the ingest is on the batch.
-
 - **The Settings page offers no input transform overrides and no output quality, and both
   are for the same reason.** Every one of them is applied inside a **spawned worker**, so
   the value has to travel on the `DeliverableJob` rather than be read from a settings file
@@ -2033,10 +2064,10 @@ Nothing blocks the next task. These are live, in rough priority order:
   or moves one string in `scan.py`. Until then a real turnover may scan with QC-046 on every
   row, which is loud and harmless and exactly what it is for.
 
-- **QC-046's error scope has a seam in it until M5 wires the colour session.** It is an error
+- **QC-046's error scope has a seam in it between the scan and the ingest.** It is an error
   on an aux still and lesser elsewhere, as `QC_RULES.md` specifies. A row with no CLF and no
   encoding also has nothing to render through, and the rules cannot say so at scan time because
-  no row has a CLF then. The render refuses that chain and QC-100 carries the reason. Section 1
+  no row has a CLF until a session has been ingested. The render refuses that chain and QC-100 carries the reason. Section 1
   has the whole of it.
 
 - **A row whose clip names no encoding cannot render an ungraded plate, and that is

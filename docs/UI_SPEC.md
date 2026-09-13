@@ -6,7 +6,7 @@ PySide6 6.7+. Dark theme in the spirit of DaVinci Resolve: near-black panels, th
 
 ```
 +------------------------------------------------------------------+
-| Toolbar: [New] [Open] [Save]  | [Add Turnover] [Scan] [Run] [Stop] | [Export] [Settings]   |
+| Toolbar: [New] [Open] [Save] | [Add Turnover] [Scan] [Ingest Colour Session] [Run] [Stop] | [Export] [Settings] |
 +------------------------------------------------------------------+
 | Batch bar: batch name, delivery root path (click to change), In/Out toggle [Frames|Source TC|Record TC], search box |
 +------------------------------------------------------------------+
@@ -34,7 +34,7 @@ editable metadata pane: In, Out, Shot Code, Notes and Skip are edited in their c
 nowhere else. That was true in the original spec, briefly untrue on 2026-09-11 when the
 viewers were given trim buttons, and is true again.
 
-Nothing opens a modal during review except Settings and file dialogs.
+Nothing opens a modal during review except Settings, file dialogs, and the report an ingest ends with (section 15), which is the answer to a file dialog rather than an interruption of the review.
 
 **Every toolbar button carries a hover tooltip** (asked for 2026-09-12, not yet built): one
 short sentence saying what the button does, in present tense, naming what changes, plus its
@@ -349,3 +349,29 @@ judgement now happens in the colour session, with the AD present, a real viewer 
 monitor. What is left in this tool is the occasional one-off trim of an already approved edit
 (PRD FR-5), and that is done by typing a number, which the In/Out cells have always supported in
 four formats (section 5).
+
+## 15. Ingest Colour Session
+
+The toolbar action that does PRD section 6 step 4, built in M5.7.3. The editor points at the
+colour session's final EDL; the tool writes what it says onto one turnover's rows - the approved
+In/Out, the CDL and the CLF per shot - and keeps the EDL's location on the turnover as the record
+of where the answers came from. Nothing reads the package again (`core/clf.py`).
+
+- **One turnover at a time**, because that is the scope the session is recorded at (OQ-50) and
+  the scope QC-008 holds a run back at: a turnover still waiting on colour is a different
+  turnover from this one. The selection says which - a group header, or rows that are all in the
+  same turnover - a batch of one turnover never asks, and a selection that spans two does.
+- **The chooser opens at the colour session folder in Settings** (PRD FR-12), not at the batch's
+  source root: a session and a turnover live nowhere near each other on the mount. Where it ended
+  up is remembered there for the next one.
+- **The EDL is read at the first row with media's rate**, and a turnover carrying more than one
+  says which was used rather than choosing silently (OQ-19). A turnover whose rows have no media
+  has no rate to read it at, and is told so before the chooser opens rather than after it.
+- **The approved cut overwrites a trim already made** and the report names the rows that lost one
+  (FR-5). The one-off trim made *after* an ingest is the supported one, and QC-045 reports it.
+- **The report says what `proingest run --color-session` prints**: the counts, and the three
+  lists a person acts on - rows with no event, trims the approved cut replaced, and shot codes
+  more than one CLF names. The labels live on `IngestReport` so the two surfaces cannot drift.
+- **The rules re-run afterwards**, because the ingest moves In and Out on the rows it matched and
+  the durations the thresholds judge have changed. QC-008 and QC-009 are pre-flight and clear at
+  the next Run.

@@ -311,7 +311,7 @@
   <header class="mast">
     <div class="eyebrow">
       <span>VFX turnover ingest &middot; macOS v01</span>
-      <span class="stamp">Updated <b>13 Sep 2026, 03:10 PDT</b></span>
+      <span class="stamp">Updated <b>13 Sep 2026, 00:20 PDT</b></span>
     </div>
     <h1>ProIngest Build Track</h1>
     <p class="standfirst">
@@ -328,7 +328,7 @@
       <div class="stat-l">Milestones done</div>
     </div>
     <div class="stat">
-      <div class="stat-n good">1406</div>
+      <div class="stat-n good">1427</div>
       <div class="stat-l">Tests, Linux + macOS</div>
     </div>
     <div class="stat">
@@ -336,7 +336,7 @@
       <div class="stat-l">Questions open</div>
     </div>
     <div class="stat">
-      <div class="stat-n">9<span style="color:var(--faint);font-size:17px">/13</span></div>
+      <div class="stat-n">10<span style="color:var(--faint);font-size:17px">/13</span></div>
       <div class="stat-l">Interface chunks</div>
     </div>
   </div>
@@ -679,7 +679,7 @@
         <div class="ms-body">
           <div class="ms-head">
             <span class="ms-name">User interface</span>
-            <span class="pill now">In progress &middot; 9 of 13</span>
+            <span class="pill now">In progress &middot; 10 of 13</span>
           </div>
           <p class="ms-goal">
             Main window, shot list with the keyboard model, metadata pane, validation
@@ -859,31 +859,47 @@
               <span class="c-st"><span class="tag ok">Done</span></span>
             </div>
 
-            <div class="chunk now">
+            <div class="chunk done">
               <span class="c-id">M5.7.3</span>
               <span class="c-name">Ingest, from the window</span>
               <span class="c-note">
-                A button and a file chooser: point at the session's edit list, one delivery at a
-                time, and read back what it matched - how many shots, how many got a colour file,
-                and the three lists worth acting on: shots the session says nothing about, trims
-                it overwrote, and shots more than one colour file claims. The command line does
-                this already and prints the same thing, so the shape is settled. <b>It is what
-                closes the gap the chunk before last opened</b>: the checks now refuse to render
-                a delivery whose colour has not arrived, and the window has no way yet to tell
-                them it has.
+                <b>A grading session can now be ingested without going to a terminal.</b> Point
+                the button at the session's edit list and the tool writes what it says onto one
+                delivery's shots - the approved In and Out, the readable record of the grade, and
+                which colour file each shot is graded with - then says what it did: how many shots
+                matched, how many got a colour file, and the three lists worth acting on, which
+                are the shots the session says nothing about, the trims the approved cut
+                overwrote, and the shots more than one colour file claims.
+                <b>One delivery at a time</b>, because that is the scope the check holds back at:
+                one can be waiting on colour while another is being written. The list says which -
+                a delivery heading, or shots that are all under the same one - and it only asks
+                when the selection does not say.
+                <b>It reports in the same words the command line prints</b>, and that is not
+                decoration: the sentences now live in one place, so somebody comparing a headless
+                run against the window is reading the same answer rather than two descriptions of
+                it.
+                <b>The edit list is read at the first shot's frame rate, and the tool says so
+                when there was a choice</b> rather than picking one quietly. A delivery whose
+                shots have no media has no rate to read it at, and is told so before the file
+                chooser opens rather than after it.
+                <b>This closes the gap the colour chunk opened.</b> A delivery whose colour had
+                not arrived was refused, correctly, and the window had no way to say that it had.
+                Somebody working only in the window can now deliver.
               </span>
-              <span class="c-st"><span class="tag now">Next</span></span>
+              <span class="c-st"><span class="tag ok">Done</span></span>
             </div>
 
-            <div class="chunk">
+            <div class="chunk now">
               <span class="c-id">M5.8</span>
               <span class="c-name">The log</span>
               <span class="c-note">
                 The Log tab and the rotating file behind it. Every command the tool runs is
                 already logged verbatim so a render can be reproduced by hand; this is where a
-                person can read them without going to a terminal.
+                person can read them without going to a terminal. It is also what gives the
+                greyed advanced settings something to configure: a log level is a setting with
+                nothing to set until there is a log.
               </span>
-              <span class="c-st"><span class="tag open">Planned</span></span>
+              <span class="c-st"><span class="tag now">Next</span></span>
             </div>
 
             <div class="chunk">
@@ -958,9 +974,9 @@
             <b>What it inherited was the last of the colour work, and that is now done</b>
             (M5.7.1). The grading session is ingested onto the shots rather than pointed at by a
             setting, and the checks that refuse to render a shot whose colour has not arrived are
-            live: a delivery with no session is held back while the ones beside it still go. What
-            is left of it is the button that does the ingesting from the window rather than the
-            command line (M5.7.3). The report already had its column for which grade each shot was
+            live: a delivery with no session is held back while the ones beside it still go, and
+            <b>the window now ingests one itself</b> (M5.7.3), so a person who never opens a
+            terminal can deliver. The report already had its column for which grade each shot was
             rendered through, so there was nothing to build behind it.
             <b>Two things in here are known to be awkward and both are written down.</b> The
             frozen left columns have no support in the toolkit and need the overlaid second list
@@ -2029,47 +2045,34 @@
   <footer>
     <b>Source of truth</b> &middot; PROGRESS.md, docs/OPEN_QUESTIONS.md, PRD.md section 9<br>
     <b>Verify</b> &middot; pytest &middot; ruff check . &amp;&amp; mypy proingest &middot; python -m proingest scan &lt;folder&gt;<br>
-    <b>Last updated</b> &middot; 13 September 2026, 03:10 PDT. <b>The tool has a settings
-    window.</b> A section list and a form, with how many outputs are written at once, every
-    threshold the checks compare against, the delivery naming and the colour section; changing a
-    threshold re-checks the open delivery immediately. The numbers are kept in two places on
-    purpose - the settings hold what a new delivery starts from, and each delivery keeps its own
-    copy, so changing them next month cannot re-judge one that shipped last week. Two sections
-    are shown greyed and say what they are waiting on, because their values are applied inside
-    the separate processes that write the files and have to travel with the work. 1406 tests
-    green.<br>
-    <b>Before that, the grading session now reaches
-    the shot list</b>, which is the change that makes a run from the window a real delivery rather
-    than a rehearsal. Ingesting a session writes what it says onto the shots - the approved In and
-    Out, the readable record of the grade, and which colour file each shot is graded with - so a
-    delivery reopened after the session has been archived still renders the grade it was signed
-    off with. The approved cut wins over a trim already made and the tool names the shots that
-    lost one; a trim made afterwards is still allowed and is reported. <b>And a delivery with no
-    grading session is held back rather than rendered ungraded</b>, while the deliveries beside it
-    still go. A run over a batch with nothing ingested now writes nothing at all, which is the
-    refusal the colour policy has always asked for and which nothing enforced.
-    <b>And before that, on 12 September, two chunks in one evening.</b>
-    <b>The run says what it is doing</b>: a thin bar for the whole delivery across the top of the
-    list with a line of text under it naming each step as it happens - checking the delivery,
-    planning it, each output as it is written, then the two spreadsheets - so a run can be
-    followed without reading the status bar. Four surfaces describe one run and each says
-    something the others cannot, and the band holds one thing at a time: nothing before a run,
-    the bar during one, the completion banner after.
-    <b>And the shot can now be read as well as edited</b>: a panel beside the list carrying
-    everything known about whatever is selected, in nine collapsible groups, including the
-    camera data file read out into lens, filter, stop and body - the first time any of that
-    appears in the window. Select several shots and it shows what they agree on and marks the
-    rest "mixed", which is how one clip at the wrong resolution in a delivery of thirty gets
-    noticed. Both driven on real deliveries before they were committed.<br>
+    <b>Last updated</b> &middot; 13 September 2026, 00:20 PDT. <b>The window can now ingest a
+    grading session.</b> Point the new button at the session's edit list and the tool writes what
+    it says onto one delivery's shots - the approved In and Out, the readable record of the grade,
+    and which colour file each shot is graded with - then says how many shots matched, how many
+    got a colour file, and the three lists worth acting on: shots the session says nothing about,
+    trims the approved cut overwrote, and shots more than one colour file claims. One delivery at
+    a time, chosen from the list and only asked about when the selection does not say. It reports
+    in the same words the command line prints, because those sentences now live in one place. <b>A
+    person working only in the window can now deliver</b>, which is the gap the colour chunk
+    opened and this closes. 1427 tests green.<br>
+    <b>Before that, the settings window and the grading session reaching the shot list.</b> The
+    settings page carries how many outputs are written at once, every threshold the checks compare
+    against, the delivery naming and colour, and changing a threshold re-checks the open delivery
+    immediately; the numbers are kept in two places on purpose, so changing them next month cannot
+    re-judge a delivery that shipped last week. And ingesting a session puts the approved cut and
+    the grade onto the shots themselves, so a delivery reopened after the session has been
+    archived still renders what was signed off, while <b>a delivery with no session is held back
+    rather than rendered ungraded</b> and the ones beside it still go.<br>
     <b>Still to do from 12 September</b> &middot; two of the three things the studio asked for
     after watching the run land: hover descriptions on every button along the top, and <b>a user
     guide</b> - install, quickstart, then a section per part of the window, with screenshots, as a
     PDF or something pasteable into a Google Doc. The first is small; the guide is its own
     milestone and is scheduled after the interface it describes.<br>
-    <b>Next</b> &middot; M5.7.3, the button that ingests a grading session from the window
-    rather than from the command line. It is what closes the gap the colour chunk opened: the
-    checks now refuse to render a delivery whose colour has not arrived, and the window has no
-    way yet to tell them it has. The button descriptions could still reasonably go first.
+    <b>Next</b> &middot; M5.8, the log: the tab that has been there and empty since the window was
+    built, and the rotating file behind it. Every command the tool runs is already written down
+    verbatim so a render can be reproduced by hand; this is where a person reads them without
+    opening a terminal. The button descriptions could still reasonably go first, and the new
+    ingest button is the one that most wants one.
   </footer>
 
 </div>

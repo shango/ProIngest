@@ -195,9 +195,16 @@ Treat it as a working session with the editor rather than a delivery.
       right refusal and may read as a dead button. The Issues dock carries the reason and the
       status bar names the turnover; whether that is enough, or whether Run should say it
       itself, is a judgement to make in front of the real window rather than from a test.
-- [ ] **Ingest one real session and read the report.** How many rows matched, how many got a
-      CLF, and the three lists a person acts on: no event, trim overwritten, more than one CLF
-      naming the shot. It is the first time `clf.ingest` meets an EDL it did not write. OQ-31.
+- [ ] **Ingest one real session from the window and read the report.** How many rows matched,
+      how many got a CLF, and the three lists a person acts on: no event, trim overwritten, more
+      than one CLF naming the shot. It is the first time `clf.ingest` meets an EDL it did not
+      write. Watch whether a modal is the right place for it, or whether a long list of
+      unmatched rows wants somewhere it can be read twice. OQ-31.
+- [ ] **Look at `Ingest Colour Session` in the toolbar.** Its label is two and a half times the
+      width of every other button, so a once-per-turnover action sits wider than Run. Decide in
+      front of the real window whether it should read `Ingest` with the full name in its tooltip
+      (M5.11), remembering that this is a tool called ProIngest and `Ingest` alone can be read
+      as the whole job. Checked offscreen on Linux only.
 - [ ] A full run end to end, then read the QC log and tracker with the editor. OQ-2 tracker
       columns, OQ-11 camData format.
 - [ ] OQ-21 container alpha, explicitly deferred until a real turnover existed.

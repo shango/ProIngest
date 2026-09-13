@@ -329,6 +329,24 @@ class IngestReport:
     """Rows whose shot code more than one CLF names. Left ungraded rather than resolved,
     because picking either one is picking a grade (`AmbiguousClfError`)."""
 
+    @property
+    def counts(self) -> str:
+        """What the ingest did, in the one phrase every surface says it in."""
+        return f"{len(self.matched)} rows matched, {len(self.graded)} with a CLF"
+
+    def notices(self) -> list[tuple[str, list[str]]]:
+        """The three lists a person acts on, labelled, and only where there is anything.
+
+        The labels live here rather than in each caller because the CLI and the window
+        both report an ingest and the editor compares what the two said.
+        """
+        lists = (
+            ("no event", self.unmatched),
+            ("trim overwritten by the approved cut", self.overwritten),
+            ("more than one CLF names the shot", self.ambiguous),
+        )
+        return [(label, sorted(names)) for label, names in lists if names]
+
 
 def ingest(turnover: Turnover, rows: list[ShotRow], session: ColorSession) -> IngestReport:
     """Write what the colour session says onto a turnover and its rows. PRD section 6 step 4.
