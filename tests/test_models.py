@@ -14,6 +14,7 @@ import pytest
 from proingest.core.models import (
     CDL,
     SCHEMA_VERSION,
+    AudioInfo,
     Batch,
     Deliverable,
     FrameRate,
@@ -57,6 +58,14 @@ def make_row(**overrides: object) -> ShotRow:
         "current": InOut(1001, 1240),
     }
     return ShotRow(**{**defaults, **overrides})  # type: ignore[arg-type]
+
+
+class TestAudioInfo:
+    def test_duration_in_frames_is_exact_at_an_ntsc_rate(self) -> None:
+        """48048 samples at 48 kHz is 1.001 s, which is exactly 24 frames at 23.976."""
+        info = AudioInfo(path=Path("a.wav"), duration_samples=48048, sample_rate=48000)
+        assert info.duration_in_frames(FrameRate(24000, 1001)) == 24
+        assert info.duration_in_frames(FrameRate(24)) == 24
 
 
 class TestFrameRate:

@@ -12,6 +12,7 @@ field name is a migration, not an edit.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from fractions import Fraction
 from pathlib import Path
 from typing import Any, Literal
 
@@ -239,7 +240,7 @@ class AudioInfo:
         """Length in project frames, rounded to the nearest whole frame."""
         if self.sample_rate <= 0:
             return 0
-        return round(self.duration_samples * rate.as_float() / self.sample_rate)
+        return round(Fraction(self.duration_samples * rate.numerator, self.sample_rate * rate.denominator))
 
     def to_dict(self) -> dict[str, Any]:
         return {
