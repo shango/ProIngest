@@ -174,7 +174,7 @@ def load(path: Path) -> AppSettings:
     preferences file would be a worse failure than losing a window position.
     """
     try:
-        data = json.loads(path.read_text())
+        data = json.loads(path.read_text(encoding="utf-8"))
     except FileNotFoundError:
         return AppSettings()
     except (OSError, ValueError) as exc:
@@ -199,5 +199,5 @@ def save(settings: AppSettings, path: Path) -> None:
     """
     path.parent.mkdir(parents=True, exist_ok=True)
     temp = path.with_suffix(path.suffix + ".part")
-    temp.write_text(json.dumps(settings.to_dict(), indent=2) + "\n")
+    temp.write_text(json.dumps(settings.to_dict(), indent=2) + "\n", encoding="utf-8")
     temp.replace(path)

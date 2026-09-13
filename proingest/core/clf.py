@@ -286,7 +286,8 @@ class ColorSession:
         matched = [
             event
             for event in self.events
-            if event.reel == shot_code and first <= event.source_in <= event.source_out <= last
+            if event.reel.casefold() == shot_code.casefold()
+            and first <= event.source_in <= event.source_out <= last
         ]
         return matched[0] if len(matched) == 1 else None
 
@@ -482,7 +483,7 @@ def read_final_edl(path: Path, rate: FrameRate) -> list[ConformEvent]:
     both has the picture event for the same cut anyway.
     """
     try:
-        text = path.read_text(errors="ignore")
+        text = path.read_text(encoding="utf-8", errors="ignore")
     except OSError as exc:
         raise ColorSessionError(f"could not read {path}: {exc}") from exc
 
