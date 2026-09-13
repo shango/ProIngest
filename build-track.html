@@ -311,7 +311,7 @@
   <header class="mast">
     <div class="eyebrow">
       <span>VFX turnover ingest &middot; macOS v01</span>
-      <span class="stamp">Updated <b>13 Sep 2026, 01:20 PDT</b></span>
+      <span class="stamp">Updated <b>13 Sep 2026, 03:10 PDT</b></span>
     </div>
     <h1>ProIngest Build Track</h1>
     <p class="standfirst">
@@ -328,7 +328,7 @@
       <div class="stat-l">Milestones done</div>
     </div>
     <div class="stat">
-      <div class="stat-n good">1377</div>
+      <div class="stat-n good">1406</div>
       <div class="stat-l">Tests, Linux + macOS</div>
     </div>
     <div class="stat">
@@ -336,7 +336,7 @@
       <div class="stat-l">Questions open</div>
     </div>
     <div class="stat">
-      <div class="stat-n">8<span style="color:var(--faint);font-size:17px">/13</span></div>
+      <div class="stat-n">9<span style="color:var(--faint);font-size:17px">/13</span></div>
       <div class="stat-l">Interface chunks</div>
     </div>
   </div>
@@ -679,7 +679,7 @@
         <div class="ms-body">
           <div class="ms-head">
             <span class="ms-name">User interface</span>
-            <span class="pill now">In progress &middot; 8 of 13</span>
+            <span class="pill now">In progress &middot; 9 of 13</span>
           </div>
           <p class="ms-goal">
             Main window, shot list with the keyboard model, metadata pane, validation
@@ -824,22 +824,42 @@
               <span class="c-st"><span class="tag ok">Done</span></span>
             </div>
 
-            <div class="chunk now">
+            <div class="chunk done">
               <span class="c-id">M5.7.2</span>
               <span class="c-name">The settings window</span>
               <span class="c-note">
-                A section list on the left and a form on the right: every threshold the checks
-                compare against, the delivery naming, the output quality, and the format table
-                and its overrides. Changing a threshold re-checks the open delivery. <b>Nothing
-                in it about which format a delivery is in</b>, because there is no mode - each
-                clip names its own - and <b>nothing in it about where the grading session is</b>,
-                because that is a record of what a delivery was rendered from rather than a
-                preference, so it lives with the delivery.
+                A section list on the left and a form on the right, the shape the editor already
+                knows from Resolve's project settings. <b>Four of the six sections are live</b>:
+                how many outputs are written at once, every threshold the checks compare against,
+                the delivery naming, and colour. <b>Changing a threshold re-checks the open
+                delivery immediately</b>, so the list and the issues panel describe it under the
+                numbers now in force. It is also <b>the one button that opens with no delivery
+                loaded</b>, because it is where a new one's numbers come from.
+                <b>The thresholds are kept in two places on purpose.</b> The settings hold the
+                numbers a <i>new</i> delivery starts from, and each delivery keeps its own copy
+                from the moment it is made - so changing them next month cannot quietly re-judge
+                a delivery that shipped last week. Same reasoning as the two folder locations,
+                which are kept with the delivery for the same reason.
+                <b>A value that will not parse changes nothing</b> rather than being corrected to
+                something plausible: a resolution half typed is somebody still typing, not
+                somebody asking for a height of zero.
+                <b>Two sections are shown and greyed, each saying what it is waiting on.</b>
+                Output quality and the advanced settings are applied inside the separate
+                processes that write the files, so the value has to travel with the work rather
+                than be read from a settings file those processes never see. That is real
+                plumbing and its own piece of work; a control that silently did nothing would be
+                worse than a greyed one that says why. <b>Nothing in it about which format a
+                delivery is in</b>, because there is no mode - each clip names its own - and
+                <b>nothing in it about where the grading session is</b>, because that is a record
+                of what a delivery was rendered from rather than a preference.
+                <b>Two check numbers in the on-screen help were wrong</b>, and were found by
+                rendering the page and reading it rather than by any test. That is the fifth time
+                looking at the real thing has caught something the tests could not.
               </span>
-              <span class="c-st"><span class="tag now">Next</span></span>
+              <span class="c-st"><span class="tag ok">Done</span></span>
             </div>
 
-            <div class="chunk">
+            <div class="chunk now">
               <span class="c-id">M5.7.3</span>
               <span class="c-name">Ingest, from the window</span>
               <span class="c-note">
@@ -847,9 +867,12 @@
                 time, and read back what it matched - how many shots, how many got a colour file,
                 and the three lists worth acting on: shots the session says nothing about, trims
                 it overwrote, and shots more than one colour file claims. The command line does
-                this already and prints the same thing, so the shape is settled.
+                this already and prints the same thing, so the shape is settled. <b>It is what
+                closes the gap the chunk before last opened</b>: the checks now refuse to render
+                a delivery whose colour has not arrived, and the window has no way yet to tell
+                them it has.
               </span>
-              <span class="c-st"><span class="tag open">Planned</span></span>
+              <span class="c-st"><span class="tag now">Next</span></span>
             </div>
 
             <div class="chunk">
@@ -2006,7 +2029,16 @@
   <footer>
     <b>Source of truth</b> &middot; PROGRESS.md, docs/OPEN_QUESTIONS.md, PRD.md section 9<br>
     <b>Verify</b> &middot; pytest &middot; ruff check . &amp;&amp; mypy proingest &middot; python -m proingest scan &lt;folder&gt;<br>
-    <b>Last updated</b> &middot; 13 September 2026, 01:20 PDT. <b>The grading session now reaches
+    <b>Last updated</b> &middot; 13 September 2026, 03:10 PDT. <b>The tool has a settings
+    window.</b> A section list and a form, with how many outputs are written at once, every
+    threshold the checks compare against, the delivery naming and the colour section; changing a
+    threshold re-checks the open delivery immediately. The numbers are kept in two places on
+    purpose - the settings hold what a new delivery starts from, and each delivery keeps its own
+    copy, so changing them next month cannot re-judge one that shipped last week. Two sections
+    are shown greyed and say what they are waiting on, because their values are applied inside
+    the separate processes that write the files and have to travel with the work. 1406 tests
+    green.<br>
+    <b>Before that, the grading session now reaches
     the shot list</b>, which is the change that makes a run from the window a real delivery rather
     than a rehearsal. Ingesting a session writes what it says onto the shots - the approved In and
     Out, the readable record of the grade, and which colour file each shot is graded with - so a
@@ -2015,8 +2047,8 @@
     lost one; a trim made afterwards is still allowed and is reported. <b>And a delivery with no
     grading session is held back rather than rendered ungraded</b>, while the deliveries beside it
     still go. A run over a batch with nothing ingested now writes nothing at all, which is the
-    refusal the colour policy has always asked for and which nothing enforced. 1377 tests green.
-    <b>Before that, on 12 September, two chunks in one evening.</b>
+    refusal the colour policy has always asked for and which nothing enforced.
+    <b>And before that, on 12 September, two chunks in one evening.</b>
     <b>The run says what it is doing</b>: a thin bar for the whole delivery across the top of the
     list with a line of text under it naming each step as it happens - checking the delivery,
     planning it, each output as it is written, then the two spreadsheets - so a run can be
@@ -2034,11 +2066,10 @@
     guide</b> - install, quickstart, then a section per part of the window, with screenshots, as a
     PDF or something pasteable into a Google Doc. The first is small; the guide is its own
     milestone and is scheduled after the interface it describes.<br>
-    <b>Next</b> &middot; M5.7.2, the settings window, and M5.7.3, the button that ingests a
-    grading session from the window rather than from the command line. The second is what closes
-    the gap this chunk opened: the checks now refuse to render a shot whose colour has not
-    arrived, and the window has no way yet to tell them it has. The button descriptions could
-    still reasonably go first.
+    <b>Next</b> &middot; M5.7.3, the button that ingests a grading session from the window
+    rather than from the command line. It is what closes the gap the colour chunk opened: the
+    checks now refuse to render a delivery whose colour has not arrived, and the window has no
+    way yet to tell them it has. The button descriptions could still reasonably go first.
   </footer>
 
 </div>
