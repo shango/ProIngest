@@ -150,27 +150,29 @@ def load(path: Path, project_rate: FrameRate | None = None) -> Timeline:
             ) from exc
         raise TimelineError(f"could not parse {path}: {exc}") from exc
 
-    video, audio = _extract_clips(timeline)
-    if not video and not audio:
-        raise TimelineError(f"{path} contains no clips at all")
-
     try:
         rate = _timeline_rate(timeline)
     except ValueError as exc:
         raise TimelineError(f"{path} is at a rate the tool does not support: {exc}") from exc
+
+    video, audio = _extract_clips(timeline, rate)
+    if not video and not audio:
+        raise TimelineError(f"{path} contains no clips at all")
 
     return Timeline(
         path=path,
         rate=rate,
         video=video,
         audio=audio,
-        global_start=_global_start(timeline),
+        global_start=_global_start(timeline, rate),
         is_edl=is_edl,
         is_drop_frame=_otio_is_drop_frame(timeline),
     )
 
 
-def _extract_clips(timeline: otio.schema.Timeline) -> tuple[list[ClipRecord], list[ClipRecord]]:
+def _extract_clips(
+    timeline: otio.schema.Timeline, rate: FrameRate
+) -> tuple[list[ClipRecord], list[ClipRecord]]:
     """Walk every track. Track kind decides video or audio; nothing else is inspected."""
     video: list[ClipRecord] = []
     audio: list[ClipRecord] = []
@@ -179,7 +181,7 @@ def _extract_clips(timeline: otio.schema.Timeline) -> tuple[list[ClipRecord], li
         label = track.name or f"{'A' if is_audio else 'V'}{index + 1}"
         target = audio if is_audio else video
         for clip in track.find_clips():
-            record = _clip_record(clip, label, is_audio)
+            record = _clip_record(clip, label, is_audio, rate)
             if record is not None:
                 target.append(record)
     video.sort(key=lambda c: (c.record_start, c.track))
@@ -187,8 +189,15 @@ def _extract_clips(timeline: otio.schema.Timeline) -> tuple[list[ClipRecord], li
     return video, audio
 
 
-def _clip_record(clip: otio.schema.Clip, track: str, is_audio: bool) -> ClipRecord | None:
-    """Convert one otio Clip. Returns None when it carries no usable range."""
+def _clip_record(
+    clip: otio.schema.Clip, track: str, is_audio: bool, rate: FrameRate
+) -> ClipRecord | None:
+    """Convert one otio Clip. Returns None when it carries no usable range.
+
+    Every time is rescaled to the timeline's rate before it becomes an integer. A
+    `RationalTime` carries its own rate, and a clip Resolve left at the camera's rate
+    would otherwise contribute a frame number in the wrong units.
+    """
     source_range = clip.source_range
     if source_range is None:
         return None
@@ -202,13 +211,18 @@ def _clip_record(clip: otio.schema.Clip, track: str, is_audio: bool) -> ClipReco
         name=clip.name or "",
         metadata=flatten_metadata(clip.metadata),
         track=track,
-        record_start=round(in_parent.start_time.value),
-        duration=round(in_parent.duration.value),
-        source_start=round(source_range.start_time.value),
-        available_start=round(available.start_time.value) if available is not None else None,
+        record_start=_frames(in_parent.start_time, rate),
+        duration=_frames(in_parent.duration, rate),
+        source_start=_frames(source_range.start_time, rate),
+        available_start=_frames(available.start_time, rate) if available is not None else None,
         media_url=str(url) if url else None,
         is_audio=is_audio,
     )
+
+
+def _frames(time: Any, rate: FrameRate) -> int:
+    """A `RationalTime` as a whole frame count at the timeline rate."""
+    return round(float(time.rescaled_to(rate.as_float()).value))
 
 
 def flatten_metadata(metadata: Any) -> dict[str, str]:
@@ -235,17 +249,21 @@ def _collect_strings(node: Any, into: dict[str, str]) -> None:
 
 
 def _timeline_rate(timeline: otio.schema.Timeline) -> FrameRate:
-    """The timeline's own rate, falling back to 24 when a timeline states none."""
-    for source in (timeline.duration(), timeline.global_start_time):
+    """The timeline's own rate, falling back to 24 when a timeline states none.
+
+    The global start is asked first: Resolve writes it at the project rate, whereas
+    the duration is computed from the clips and takes the rate of whichever came first.
+    """
+    for source in (timeline.global_start_time, timeline.duration()):
         if source is not None and source.rate:
             return FrameRate.from_float(float(source.rate))
     return FrameRate(24)
 
 
-def _global_start(timeline: otio.schema.Timeline) -> int:
+def _global_start(timeline: otio.schema.Timeline, rate: FrameRate) -> int:
     """Record timecode origin, in frames. Resolve writes 01:00:00:00 or 10:00:00:00."""
     start = timeline.global_start_time
-    return round(start.value) if start is not None else 0
+    return _frames(start, rate) if start is not None else 0
 
 
 _DROP_FRAME_TIMECODE = re.compile(r"\d{2}:\d{2}:\d{2};\d{2}")

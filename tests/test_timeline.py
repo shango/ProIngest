@@ -131,6 +131,36 @@ class TestLoad:
         with pytest.raises(TimelineError):
             timeline.load(bad)
 
+    def test_a_clip_at_another_rate_is_read_in_timeline_frames(self, tmp_path: Path) -> None:
+        """A RationalTime carries its own rate. A 48 fps clip on a 24 fps timeline is
+        still positioned and measured in the timeline's frames, and the timeline's
+        rate is the one its global start states, not the first clip's."""
+        import opentimelineio as otio
+        from opentimelineio import opentime as ot
+
+        built = otio.schema.Timeline(name="mixed")
+        built.global_start_time = ot.RationalTime(864000, 24)
+        track = otio.schema.Track(name="V1", kind=otio.schema.TrackKind.Video)
+        built.tracks.append(track)
+        for name, fps, start, length in (("fast", 48, 0, 20), ("slow", 24, 100, 10)):
+            track.append(
+                otio.schema.Clip(
+                    name=name,
+                    media_reference=otio.schema.ExternalReference(target_url=URL),
+                    source_range=ot.TimeRange(ot.RationalTime(start, fps), ot.RationalTime(length, fps)),
+                )
+            )
+        path = tmp_path / "mixed.otio"
+        otio.adapters.write_to_file(built, str(path))
+
+        loaded = timeline.load(path)
+        assert loaded.rate == FrameRate(24)
+        assert loaded.global_start == 864000
+        assert [(c.name, c.record_start, c.duration) for c in loaded.video] == [
+            ("fast", 0, 10),
+            ("slow", 10, 10),
+        ]
+
     def test_a_rate_the_tool_does_not_support_is_a_timeline_error(self, tmp_path: Path) -> None:
         """QC-002 catches TimelineError; a bare ValueError from the rate would escape it."""
         import opentimelineio as otio
