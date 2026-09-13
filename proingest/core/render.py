@@ -432,7 +432,7 @@ def _audio_skip(job: DeliverableJob) -> float:
     if job.audio_source is None or job.in_frame is None or job.rate is None:
         return 0.0
     offset = job.in_frame - job.source_start_frame
-    return max(0, offset) / job.rate.as_float()
+    return max(0, offset) * job.rate.denominator / job.rate.numerator
 
 
 # --- Audio and byte copies. ---

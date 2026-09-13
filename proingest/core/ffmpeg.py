@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import shlex
 import shutil
 import subprocess
 import sys
@@ -126,7 +127,7 @@ def resolve_tool(tool: str, override: Path | None = None) -> Path:
 
 def run(command: list[str], timeout: int = DEFAULT_TIMEOUT) -> subprocess.CompletedProcess[str]:
     """Run a command, logging it verbatim first. Does not raise on a non-zero exit."""
-    log.info("running: %s", " ".join(command))
+    log.info("running: %s", shlex.join(command))
     return subprocess.run(
         command,
         capture_output=True,
@@ -382,7 +383,7 @@ def decode_frames(
     frame_bytes = width * height * _PLANES * _RAW_DTYPE.itemsize
     expected = frames.duration(in_frame, out_frame)
     command = decode_command(source, in_frame, out_frame, is_sequence, target_size, ffmpeg)
-    log.info("running: %s", " ".join(command))
+    log.info("running: %s", shlex.join(command))
 
     with tempfile.TemporaryFile() as errors:
         # stderr goes to a file rather than a pipe nobody drains: a decode that fails
@@ -610,7 +611,10 @@ def encode_command(
 
 
 def _seconds(count: int, rate: str) -> float:
-    """`count` frames at `rate`, as seconds. The only place that division happens.
+    """`count` frames at `rate`, as seconds, at the ffmpeg boundary.
+
+    `render._audio_skip` is the other place frames become seconds; both divide by the
+    exact fraction rather than a float rate.
 
     `rate` arrives as the exact fraction `encode_command` passes to ffmpeg, so 23.976
     stays 24000/1001 until here and the audio cannot drift against the picture over a
