@@ -723,6 +723,15 @@ class TestDestinationWritable:
     def test_an_unreachable_root_is_qc_062(self) -> None:
         assert ids(qc.check_destination_writable(Path("/nonexistent-volume/x"))) == ["QC-062"]
 
+    def test_a_mount_that_refuses_to_answer_is_qc_062_rather_than_a_crash(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        def refuse(self: Path) -> bool:
+            raise PermissionError(f"{self}: not permitted")
+
+        monkeypatch.setattr(Path, "exists", refuse)
+        assert ids(qc.check_destination_writable(Path("/mnt/g/x"))) == ["QC-062"]
+
     def test_a_read_only_root_is_qc_062(self, tmp_path: Path) -> None:
         """Existence is not permission, which is the whole point on a network mount."""
         locked = tmp_path / "locked"
@@ -1034,6 +1043,12 @@ class TestPhaseBSequence:
         job = fabricated_sequence(tmp_path, {frame: 1000 for frame in (1002, 1003, 1004, 1005)})
         results = qc.run_phase_b(job, empty_deliverable(job))
         assert "QC-102" in ids(results)
+
+    def test_frames_delivered_for_a_job_that_planned_none_are_qc_102(self, tmp_path: Path) -> None:
+        """An In that was cleared after planning leaves a job with no range and a folder
+        with files; that is a fault to report, not an IndexError."""
+        job = replace(fabricated_sequence(tmp_path, {1001: 10}), in_frame=None, out_frame=None)
+        assert "QC-102" in ids(qc.run_phase_b(job, empty_deliverable(job)))
 
     def test_a_stray_file_in_the_folder_is_qc_102(self, tmp_path: Path) -> None:
         job, deliverable = rendered_sequence(tmp_path)

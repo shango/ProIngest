@@ -1048,8 +1048,12 @@ def check_destination_writable(delivery_root: Path | None) -> list[QCResult]:
 def _nearest_existing(path: Path) -> Path | None:
     """The deepest part of `path` that is already on disk, or None."""
     for candidate in (path, *path.parents):
-        if candidate.exists():
-            return candidate
+        try:
+            if candidate.exists():
+                return candidate
+        except OSError:
+            # `exists` swallows a missing path but not a mount that refuses to answer.
+            continue
     return None
 
 
@@ -1082,7 +1086,11 @@ def check_free_space(batch: Batch) -> list[QCResult]:
     if root is None or not root.is_dir():
         return []
     needed = estimate_output_bytes(batch)
-    free = shutil.disk_usage(root).free
+    try:
+        free = shutil.disk_usage(root).free
+    except OSError as exc:
+        # A mount that will not say is a warning, not a crash out of pre-flight.
+        return [QCResult("QC-063", "warning", "batch", f"free space at {root} could not be read: {exc}")]
     if free >= needed:
         return []
     return [
@@ -1272,6 +1280,8 @@ def _check_numbering(job: DeliverableJob, paths: list[Path]) -> list[QCResult]:
     numbers = [parsed.frame for parsed in found if parsed is not None and parsed.frame is not None]
     unparsed = [path.name for path, parsed in zip(paths, found, strict=True) if parsed is None]
     expected = list(job.output_frames())
+    if not expected:
+        return [_failure("QC-102", f"{job.name} planned no frames but {len(paths)} were delivered")]
     if unparsed:
         return [
             _failure("QC-102", f"{job.name} holds files that are not delivery frames: {unparsed[0]}")
