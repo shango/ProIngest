@@ -7,19 +7,25 @@ docs, they win.**
 
 It replaces the previous session's file of the same name, which closed on M5.4.
 
-## The one paragraph version
+## The one paragraph version, and the one thing that came after it
 
 **M5.5 is built: the tool renders from the window.** Run pre-flights, plans, and drives
 `render.execute` on a `QThread`; the rows fill a slim bar with their job count as outputs land;
 the status bar carries percent, jobs running, frames per second and ETA; Stop reaches a job mid
 flight; and a finished run writes both spreadsheets and shows the banner UI_SPEC section 7
 specifies, with the reports path as its link. 1249 tests, `ruff` and `mypy --strict` clean.
-**M5.6, the metadata pane, is next**, and section 5 of `PROGRESS.md` has the four chunks of M5
-after it.
+Section 5 of `PROGRESS.md` has the six chunks of M5 that come after it, two of which were added
+the same evening.
 
 **Driven end to end before it was committed**, on a real two shot turnover through the real
 pool: ten deliverables, both spreadsheets under `MELT/_reports`, every row at 5/5. That is the
 fourth chunk running that launching the app has been part of finishing it.
+
+**Then the user asked for three more things and none of them is built.** They are recorded in
+the docs that own them and on the board, and the last section of this file says what to know
+before picking one up: the run's progress strip above the list (**M5.10**), hover tooltips on
+the toolbar (**M5.11**), and a **user guide** with screenshots, which is the new milestone
+**M9** and PRD **FR-17**.
 
 ## What this chunk did, in one line
 
@@ -59,7 +65,40 @@ fourth chunk running that launching the app has been part of finishing it.
   not land. The spec now says so, and says why. The banner reads "Run stopped" rather than
   "Batch complete".
 
+## The three new asks, and what decides each one's shape
+
+Added 2026-09-12 after M5.5 landed, as a heads up rather than a change of direction. Section 5
+of `PROGRESS.md` has them in its tables and section 1 has the long note; this is the short
+version. **The user was asked which to do first and had not answered when the session closed.**
+
+- **M5.10, the run's strip above the list** (`docs/UI_SPEC.md` **section 7.1**). A thin bar for
+  the whole batch across the top of the list, and a line of text saying what is being done at
+  each step. **Per row progress already exists** - M5.5 put a slim bar under a `3/5` count in
+  the Progress column - so what is new is the batch bar and the words. What decides the shape:
+  **four surfaces would then report one run**, so each has to say something the others cannot
+  (this shot, the batch, what is happening now, the numbers) and all four must read the same
+  `RunProgress` or they will disagree on screen. The strip is the completion banner's strip,
+  with three states and only ever one showing.
+- **M5.11, a tooltip on every toolbar button** (`docs/UI_SPEC.md` section 1). One sentence each.
+  The half worth building carefully is the **disabled** button saying *why* it is disabled: the
+  toolbar carries actions that are not available yet by design, and that is the difference
+  between a tool that looks broken and one that says what to do next.
+- **M9, the user guide** (PRD **FR-17**, five chunks in section 5). Install, quickstart, a
+  section per surface, screenshots, one document. Two things already decided rather than left
+  open: the screenshots come from **a harness** that builds a demo batch and grabs the window,
+  so a changed interface is a re-run and no production name reaches a document that gets
+  emailed around; and there is **one source**, an HTML file with the images embedded, because
+  that both prints to PDF and pastes into Google Docs whole. **OQ-49** is the question left for
+  the user: a fixed PDF, or a Doc the studio edits, which decides whether the repo's copy stays
+  the only one. The shipped screenshots must be taken on the Mac and `docs/MAC_SESSION.md`
+  carries the line.
+
 ## Next task
+
+**Either M5.10 or M5.11 - both small, both wanted, and M5.10 finishes what the user had just
+watched being built - or M5.6, the metadata pane, which is what the plan said before those
+arrived.** Ask if it is not obvious from the first message. What should **not** move earlier is
+M5.9, the frozen columns: it is last on purpose.
 
 **M5.6, the metadata pane** (FR-14, UI_SPEC section 12): read only, never takes focus, collapses
 to nothing, and deliberately does not repeat the list's columns.
@@ -72,5 +111,5 @@ which is harder to notice.
 **Nothing is blocked.** Two things that are true and are worth saying out loud: a run from the
 window plans **ungraded** until M5.7 gives it the colour session, and pre-flight and planning
 run on the UI thread and have never been measured on a real turnover. Both are in `PROGRESS.md`
-section 9. The Mac checklist gained five lines this session, and `docs/PACKAGING.md` gained the
+section 9. The Mac checklist gained six lines this session, and `docs/PACKAGING.md` gained the
 `multiprocessing.freeze_support()` line M7 will need now that the app itself starts a pool.
