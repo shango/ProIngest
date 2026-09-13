@@ -87,3 +87,17 @@ class TestADowngrade:
         settings.save(loaded, path)
         written = json.loads(path.read_text())
         assert (written["window_geometry"], written["spare"]) == ("new", 1)
+
+
+class TestTheLastFolder:
+    """Where the file choosers open when the batch cannot say (UI_SPEC section 11)."""
+
+    def test_it_survives_a_save_and_a_load(self, tmp_path: Path) -> None:
+        path = tmp_path / "settings.json"
+        settings.save(settings.AppSettings(last_folder="/Volumes/drive/turnovers"), path)
+        assert settings.load(path).last_folder == "/Volumes/drive/turnovers"
+
+    def test_a_first_run_has_none_and_guesses_none(self) -> None:
+        """A wrong guess opens somewhere plausible and empty, which reads as the folder
+        being wrong rather than as nothing having been chosen yet."""
+        assert settings.AppSettings().last_folder == ""

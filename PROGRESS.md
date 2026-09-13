@@ -17,8 +17,12 @@ delivered a wrong plate against a real session. The source encoding went back to
 log on 2026-09-12 and the tool now reads it per shot, resolves it through a table, records it
 in the QC log and states it and its origin in the delivered header. **M5, the UI, has started:
 M5.1, M5.2 and M5.3 are built, so the window shows a batch and the batch can be typed into**,
-and the rest of M5 is specified in section 5. 1125 tests passing, `ruff` and `mypy --strict`
-clean.
+and **M5.4 is done, so a batch can be made, opened, saved and filled with turnovers**,
+scanned off the UI thread, with every QC result readable in the Issues dock and
+clickable back to its shot. The rest of M5 is specified in section 5. 1199 tests
+passing, `ruff` and `mypy --strict` clean.
+**M5.5, the run and its progress, is next.**
+
 **M5 is not blocked**: OQ-37 came back the same day and
 answered the expensive half of M4.6. Two questions are open and both are about correctness rather
 than scope, OQ-46 and **OQ-47, which is new and was found by building M4.6.2**.
@@ -797,7 +801,7 @@ PDF viewer.
 |---|---|---|
 | `core/naming.py` | every output name, both directions; `next_version`; clip and shot code parsing | 324 |
 | `core/frames.py` | integer frame math, timecode, In/Out input grammar | 179 |
-| `core/models.py` | Batch, Turnover, ShotRow, Deliverable, MediaInfo, AudioInfo, FrameRate, QCResult, and a row's frame math context | 673 |
+| `core/models.py` | Batch, Turnover, ShotRow, Deliverable, MediaInfo, AudioInfo, FrameRate, QCResult, and a row's frame math context | 686 |
 | `core/ffmpeg.py` | the only place anything shells out; tool lookup, ffprobe, decode, audio extract, reference encode through the viewing LUT | 608 |
 | `core/media.py` | DirectoryIndex, sequence detection, path remap, probe cache | 465 |
 | `core/exr.py` | EXR header and pixel reading, delivery frame writing, and the provenance a graded plate carries | 299 |
@@ -812,17 +816,19 @@ PDF viewer.
 | `core/exports.py` | the QC log's five sheets and the studio tracker's rows to paste | 378 |
 | `core/render.py` | executing a job and a batch of them: atomic writes, the plate and view branches, pool, progress, cancel | 631 |
 | `core/qc.py` | rule registry: phase A, `RuleSettings`, `preflight`, phase B | 1416 |
-| `core/settings.py` | what the app remembers between launches, as JSON. Takes the path; never works out where it is | 98 |
+| `core/settings.py` | what the app remembers between launches, as JSON. Takes the path; never works out where it is | 111 |
 | `ui/app.py` | the QApplication, its names, the theme, and `run()` | 49 |
-| `ui/main_window.py` | UI_SPEC section 1's frame: menus and their macOS roles, toolbar, bottom dock, status bar, the empty state and the batch page, window state, the autosaver | 312 |
-| `ui/shot_model.py` | the batch as a two level tree: section 2's columns, section 3's dot and tints, the In/Out display mode, and what the four editable cells commit | 649 |
-| `ui/shot_list.py` | the view, the two line cell, the search filter, the cell editor, Tab across the editable columns and the skip prompt | 322 |
-| `ui/batch_bar.py` | the batch name, the three state In/Out toggle and the search box | 80 |
+| `ui/main_window.py` | UI_SPEC section 1's frame: menus and their macOS roles, toolbar, bottom dock, status bar, the three empty states and the batch page, window state, the autosaver, and the batch lifecycle: New, Open, Save, the two roots, Add Turnover and Scan | 679 |
+| `ui/shot_model.py` | the batch as a two level tree: section 2's columns, section 3's dot and tints, the In/Out display mode, what the four editable cells commit, and where a given row sits | 663 |
+| `ui/shot_list.py` | the view, the two line cell, the search filter, the cell editor, Tab across the editable columns, the skip prompt and selecting a row somebody pointed at from the Issues dock | 340 |
+| `ui/batch_bar.py` | the batch name, the delivery root button, the three state In/Out toggle and the search box | 104 |
 | `ui/paths.py` | the one place that asks `QStandardPaths` where the app's own files live | 33 |
-| `ui/autosave.py` | the debounced write of an edited batch, and what it does with one that has no file yet | 86 |
+| `ui/autosave.py` | the debounced write of an edited batch, and what it does with one that has no file yet | 97 |
+| `ui/scanner.py` | `core/scan.py` on a `QThread`: one result per folder, a copied probe cache, cancel between folders, and a shutdown that waits | 184 |
+| `ui/issues.py` | UI_SPEC section 6: every QC result in the batch as a table, with the rule ID in its own column and a double-click that selects the shot | 155 |
 | `__main__.py` | `proingest scan`, `run` and `qc` CLI, `--rules` overrides, and the UI when there is no subcommand | 440 |
 
-Not built yet: the rest of `proingest/ui/`, which is M5.4 onward. **`core/stringout.py` will not be built**: M6 is dropped
+Not built yet: the rest of `proingest/ui/`, which is M5.5 onward. **`core/stringout.py` will not be built**: M6 is dropped
 (PRD FR-9). `naming.stringout_mp4` and `naming.normalize_shooter` are therefore reachable
 from tests only; they are kept deliberately, because the stringout name is now something a
 human types and the tool can still check it, exactly as with the lens grid.
@@ -863,7 +869,7 @@ Entry points worth knowing:
 | M4 | QC: all rules both phases, xlsx exports, `qc` CLI | complete, 175 tests |
 | M4.5 | Colour pipeline, core only. Source log in, CLF applied, ACEScg out, the viewing LUT | complete, 111 tests |
 | M4.6 | Per shot source encoding: read from the clip metadata, the input transform table, the input transform out of the graded chains, QC-046 to QC-048 | complete, all five chunks (OQ-37 answered; OQ-46 wants confirming) |
-| M5 | UI: the list, the FR-14 metadata pane, settings, log. **No viewers** | **M5.1, M5.2 and M5.3 done**, M5.4 to M5.9 specified |
+| M5 | UI: the list, the FR-14 metadata pane, settings, log. **No viewers** | **M5.1 to M5.4 done**, M5.5 to M5.9 specified |
 | M6 | ~~Stringout with burn-ins~~ | **dropped 2026-09-11**, the colour session exports it |
 | M7 | Packaging: PyInstaller `.app`, dmg, Gatekeeper | not started, and needs a Mac (OQ-22) |
 | M8 | Polish, performance on a real turnover, docs | not started |
@@ -937,12 +943,47 @@ batch can do", so each chunk has something a person can look at:
 | M5.1 | The shell: `ui/app.py`, `ui/main_window.py`, `ui/theme.qss`, `ui/paths.py`, `core/settings.py`, and the offscreen Qt test harness | **done, 975 tests** |
 | M5.2 | The shot list: a model over a `Batch`, section 2's columns, turnover group headers, the three state In/Out display, the status dot and row tints, the search box | **done, 1061 tests.** Read only until M5.3, and **without the frozen columns**, which are M5.9 |
 | M5.3 | Editing: shot code, In, Out and Notes in their cells, section 5's input parsing, Ctrl+K skip, per row revalidation, autosave | **done, 1125 tests.** A commit re-runs the row's rules only, and `ui/autosave.py` holds the edits of a batch that has no file yet |
-| M5.4 | Batch lifecycle: New, Open, Save, Add Turnover against the source root, the scan off the UI thread, the Issues dock | not started |
+| M5.4 | Batch lifecycle: New, Open, Save, Add Turnover against the source root, the scan off the UI thread, the Issues dock | **done, 1199 tests.** The scan is a `QThread` with a copied probe cache; `Scan` re-tries only the turnovers with no rows (OQ-48) |
 | M5.5 | Run and progress: the worker pool driven from the window, the Progress column, the status bar, Stop, the completion banner | not started |
 | M5.6 | The metadata pane, FR-14 and UI_SPEC section 12 | not started |
 | M5.7 | The Settings page, PRD FR-12, **including the Colour group**, and with it QC-008, QC-009, QC-019, QC-039 and QC-045 | not started |
 | M5.8 | The Log tab and the rotating log file, FR-13 | not started |
 | M5.9 | The frozen left columns: the overlaid second view sharing the model and the selection | not started |
+
+**M5.4 settled four things that should not be re-derived.**
+
+- **Where the scan runs: a `QThread` owned by the window, with a worker `QObject` moved
+  onto it** (`ui/scanner.py`). Core stays Qt-free, which is the rule the render pool
+  already obeys. Three things cross the boundary and each is handed over rather than
+  shared: the worker gets a **copy** of the probe cache and emits a copy back per folder,
+  the `Turnover` and its rows are built there and never touched again, and the batch
+  itself never goes near the worker. Cancellation is checked between folders only,
+  because `scan_turnover` is one call into core that cannot be interrupted part way and
+  threading a flag through five core functions to change that would be a worse trade.
+- **`Add Turnover` scans the folder it is given straight away; `Scan` re-tries only the
+  turnovers that came back with no rows.** A folder that is added and shows nothing until
+  a second button is pressed is a dead click, and a turnover that has rows is never
+  re-scanned because a scan rebuilds rows and the rows carry the editor's In, Out, shot
+  code, notes and skip reasons. The useful version of a re-scan is a merge that keeps the
+  overrides, and that is **OQ-48**, new and unasked for.
+- **The file a batch is first saved as is what names it.** Found by driving the window
+  rather than by a test: a batch made by New is called `untitled`, and the batch name is
+  what `exports.report_names` builds the QC log and tracker filenames from. A name
+  somebody has already given is never overwritten.
+- **A new batch has no file, and closing with edits in hand asks.** Save writes the batch
+  itself rather than routing through the autosaver, because Save is the one write the
+  editor is waiting on and a failure has to be reported rather than logged and left
+  pending. `AutoSaver.adopt` is how the autosaver learns where the file went.
+- **`Batch.source_root` is on the batch, not in the settings** (UI_SPEC section 13), like
+  `delivery_root` already was, so a second batch on another drive does not move the
+  first one's starting point. `AppSettings.last_folder` is the fallback for a chooser
+  with no batch to ask, and **nothing anywhere guesses at a Drive mount**.
+
+**The tests grew a `DrivenWindow`**, a `MainWindow` subclass whose every dialog is
+overridden to an answer that changes nothing. It is not tidiness: an offscreen modal is a
+hung suite rather than a failed assertion, so a test that forgot to stub one would not
+fail, it would stop - which is exactly what happened the first time a test opened a batch
+whose delivery root did not exist.
 
 **M5.9 is last on purpose.** UI_SPEC section 2 freezes Status, Shot and Elem while the rest
 scrolls, and QTreeView has no such thing: it takes a second view overlaid on the first, sharing
@@ -970,10 +1011,10 @@ M3 detail:
 The stringout moved off this table: it is M6 and always was. The M3.5 row said "ref
 mp4 and stringout" and that was a mistake in the row, not a change of plan.
 
-Tests by file: qc 176, naming 115, shot_model 85, render 75, planner 66, clf 65,
-frames 55, media 46, ui_shell 45, ffmpeg 43, models 41, shot_list 40, color 40, timeline 37,
-exr 37, scan 34, cli 31, exports 28, batchfile 18, resize 16, camdata 12, settings 10,
-autosave 10. 1125 in total, counted rather than carried forward.
+Tests by file: qc 176, naming 115, shot_model 85, ui_shell 86, render 75, planner 66,
+clf 65, frames 55, media 46, ffmpeg 43, models 42, shot_list 40, color 40, timeline 37,
+exr 37, scan 34, cli 31, exports 28, issues 18, batchfile 18, resize 16, settings 12,
+camdata 12, scanner 11, autosave 11. 1199 in total, counted rather than carried forward.
 
 ---
 
@@ -1636,6 +1677,19 @@ Nothing blocks the next task. These are live, in rough priority order:
   one session has run end to end on one shot. That single exercise answers OQ-29, OQ-30, OQ-33
   and OQ-39 at the same time, and it is the cheapest thing on this list: it needs one graded shot,
   not a whole turnover.
+
+- **A scanned turnover cannot be re-scanned without losing the edits on it (OQ-48).**
+  `Scan` re-tries only the turnovers with no rows. There is deliberately no way to re-scan
+  one that has them, because a scan rebuilds rows from the timeline and the rows carry In,
+  Out, shot code, notes and the skip reasons. The version worth building is a merge that
+  keeps the overrides and reports what moved underneath them, which wants QC-035's snapshot
+  machinery; nobody has asked for it, and in the workflow as described a turnover is
+  re-delivered rather than re-scanned.
+
+- **The Issues dock's Fix column is text and nothing else.** UI_SPEC section 6 says
+  "Locate media" opens a file picker and writes a path override into the batch. That is a
+  batch edit made from outside the list, and section 1 says the list is the only thing that
+  writes to the model, so the two want reconciling before one of them is built past a hint.
 
 - **A reference encode reports no progress and cannot be cancelled mid-encode.** It is one
   ffmpeg process, so the job goes from started to done with nothing in between, and a

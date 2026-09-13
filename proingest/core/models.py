@@ -622,12 +622,28 @@ class Turnover:
         )
 
 
+DEFAULT_BATCH_NAME = "untitled"
+"""What a batch is called before anything has named it. The UI replaces it with the
+file's own stem on the first save, so a batch cannot reach the exports unnamed."""
+
+
 @dataclass
 class Batch:
     """Everything needed to reopen a session. Serialized as `.pibatch` (FR-11)."""
 
-    name: str = "untitled"
+    name: str = DEFAULT_BATCH_NAME
     schema_version: int = SCHEMA_VERSION
+    source_root: Path | None = None
+    """The folder turnovers are added from (UI_SPEC section 13). The `Add Turnover`
+    chooser opens here and the folder picked beneath it is what gets scanned.
+
+    Remembered on the batch rather than in the app settings, so a second batch on
+    another drive does not move the first one's starting point. Additive, so the schema
+    version does not move: a batch saved before this reads back as None, which is the
+    same state a batch that has never added a turnover is in. It is a starting point and
+    not a fence: adding a turnover from outside it is allowed and moves it.
+    """
+
     delivery_root: Path | None = None
     project_rate: FrameRate = field(default_factory=lambda: FrameRate(24))
     turnovers: list[Turnover] = field(default_factory=list)
@@ -644,6 +660,7 @@ class Batch:
         return {
             "schema_version": self.schema_version,
             "name": self.name,
+            "source_root": str(self.source_root) if self.source_root else None,
             "delivery_root": str(self.delivery_root) if self.delivery_root else None,
             "project_rate": self.project_rate.to_dict(),
             "turnovers": [item.to_dict() for item in self.turnovers],
@@ -659,8 +676,9 @@ class Batch:
         if version != SCHEMA_VERSION:
             raise ValueError(f"batch schema version {version} is not supported (expected {SCHEMA_VERSION})")
         return cls(
-            name=str(data.get("name", "untitled")),
+            name=str(data.get("name", DEFAULT_BATCH_NAME)),
             schema_version=version,
+            source_root=_as_path(data.get("source_root")),
             delivery_root=_as_path(data.get("delivery_root")),
             project_rate=FrameRate.from_dict(data["project_rate"]),
             turnovers=[Turnover.from_dict(item) for item in data.get("turnovers", [])],

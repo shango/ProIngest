@@ -222,6 +222,24 @@ class ShotListView(QTreeView):
                 rows.append(row)
         return rows
 
+    def select_row(self, row: ShotRow) -> None:
+        """Put the cursor on a shot somebody pointed at from somewhere else.
+
+        A row the search box has filtered out has no index in the proxy, so the filter
+        is cleared first: the alternative is a double-click in the Issues dock that
+        silently does nothing because of a search the editor typed a minute ago.
+        """
+        source = self.shot_model.index_for_row(row)
+        if not source.isValid():
+            return
+        index = self.proxy.mapFromSource(source)
+        if not index.isValid():
+            self.filter_by("")
+            index = self.proxy.mapFromSource(source)
+        self.setCurrentIndex(index)
+        self.scrollTo(index)
+        self.setFocus(Qt.FocusReason.OtherFocusReason)
+
     def _fit_group_headers(self) -> None:
         """Expand every turnover and let its header span the full width.
 

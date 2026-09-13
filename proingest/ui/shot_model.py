@@ -325,6 +325,20 @@ class ShotListModel(QAbstractItemModel):
         rows = self._rows[turnover.turnover_id]
         return rows[index.row()] if index.row() < len(rows) else None
 
+    def index_for_row(self, row: ShotRow) -> QModelIndex:
+        """Where a `ShotRow` sits, for anything holding a row and wanting the cell.
+
+        Identity rather than equality, because two rows of a turnover can be equal in
+        every field that is set before a scan finishes and only one of them is the one
+        the Issues dock was talking about.
+        """
+        for position, turnover in enumerate(self._batch.turnovers):
+            rows = self._rows[turnover.turnover_id]
+            for offset, candidate in enumerate(rows):
+                if candidate is row:
+                    return self.index(offset, 0, self.index(position, 0, NO_PARENT))
+        return QModelIndex()
+
     def turnover_at(self, index: ModelIndex) -> Turnover | None:
         """The turnover an index is under, header or row alike."""
         if not index.isValid():

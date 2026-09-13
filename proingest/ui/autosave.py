@@ -4,10 +4,11 @@ UI_SPEC section 5 ends every commit with "autosave fires". It is debounced rathe
 written per keystroke, because a batch file is the whole batch serialized and tabbing
 along a row is four commits in a second.
 
-**A batch with no file yet is not an error and is not silently dropped.** New, Open and
-Save are M5.4; until one of them gives the batch a path there is nowhere to write, so
-the pending state is kept and the first `watch` that supplies a path writes it. That is
-also why `flush` is public: closing the window is the other moment the wait has to end.
+**A batch with no file yet is not an error and is not silently dropped.** A batch made
+by New has no path until it is saved, so until then the pending state is kept and
+`adopt` is what Save calls once there is somewhere to write. That is also why `flush` is
+public: closing the window is the other moment the wait has to end, and what is still
+pending there is what the window asks about before it closes.
 
 Core writes the file (`core/batchfile.py`) and it writes atomically, so a save
 interrupted by a crash leaves the previous batch rather than half of this one.
@@ -59,6 +60,16 @@ class AutoSaver(QObject):
         """
         self.flush()
         self._batch = batch
+        self._path = path
+        self._pending = False
+
+    def adopt(self, path: Path) -> None:
+        """Follow the same batch to a file it did not have before. What Save does.
+
+        `watch` would be wrong here: it flushes to the *old* path first, and the old
+        path is the one that does not exist. Nothing is left pending because Save has
+        just written the batch itself; what changes is where the next autosave goes.
+        """
         self._path = path
         self._pending = False
 

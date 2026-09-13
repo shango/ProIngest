@@ -241,6 +241,7 @@ class TestBatch:
     def test_round_trip_through_real_json(self) -> None:
         batch = Batch(
             name="melt_day1",
+            source_root=Path("/source"),
             delivery_root=Path("/delivery"),
             turnovers=[Turnover("t1", Path("/t"), number=1)],
             rows=[make_row()],
@@ -248,6 +249,12 @@ class TestBatch:
         )
         restored = Batch.from_dict(json.loads(json.dumps(batch.to_dict())))
         assert restored == batch
+
+    def test_a_batch_saved_before_the_source_root_existed_still_reads(self) -> None:
+        """Additive, like every other field added after the schema was frozen."""
+        data = Batch().to_dict()
+        del data["source_root"]
+        assert Batch.from_dict(data).source_root is None
 
     def test_empty_batch_round_trips(self) -> None:
         assert Batch.from_dict(json.loads(json.dumps(Batch().to_dict()))) == Batch()

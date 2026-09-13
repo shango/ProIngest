@@ -43,6 +43,17 @@ class AppSettings:
     window_geometry: str = ""
     window_state: str = ""
 
+    last_folder: str = ""
+    """Where the file choosers open when the batch cannot say (UI_SPEC section 11).
+
+    Per user rather than per batch, because it is about the last thing this person
+    browsed to and not about the work: the batch's own two roots are on the batch
+    (section 13) and they are what a chooser prefers when there is one open. Empty on a
+    first run, which opens the chooser wherever the platform would: **nothing here
+    guesses at a Drive mount**, because a wrong guess opens somewhere plausible and
+    empty and reads as the folder being wrong.
+    """
+
     unknown: dict[str, Any] = field(default_factory=dict)
     """Keys a newer version wrote that this one does not know, kept so a save does not
     delete them. Never read; it exists so downgrading is not destructive."""
@@ -53,14 +64,16 @@ class AppSettings:
             "schema_version": SCHEMA_VERSION,
             "window_geometry": self.window_geometry,
             "window_state": self.window_state,
+            "last_folder": self.last_folder,
         }
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> AppSettings:
-        known = {"schema_version", "window_geometry", "window_state"}
+        known = {"schema_version", "window_geometry", "window_state", "last_folder"}
         return cls(
             window_geometry=str(data.get("window_geometry", "")),
             window_state=str(data.get("window_state", "")),
+            last_folder=str(data.get("last_folder", "")),
             unknown={key: value for key, value in data.items() if key not in known},
         )
 

@@ -88,6 +88,17 @@ Append to this as M5 and M6 are built.
 - [ ] **Ctrl+K's reason prompt is a `QInputDialog` and it has not been looked at.** It should be
       a sheet on the window rather than a free-floating box, and its Cancel should read as
       cancelling the skip rather than cancelling the reason. `UI_SPEC.md` section 4.
+- [ ] **The file dialogs are the native ones and they open where an editor expects.** New,
+      Open, Save and Add Turnover all go through `QFileDialog`, which is the macOS panel rather
+      than Qt's own, and what it does with a starting folder on a Drive mount is not something
+      Linux can answer (M5.4, `UI_SPEC.md` sections 11 and 13). Watch in particular that Save
+      offers the batch name with the `.pibatch` suffix and does not hide it.
+- [ ] **The unsaved-batch prompt on close should be a sheet.** It is a `QMessageBox` today and
+      it is the one modal the editor meets without asking for it (M5.4). Check its three buttons
+      read the way macOS orders them, and that Cancel really leaves the window open.
+- [ ] **The delivery root in the batch bar shows a whole Drive path.** It is a flat button with
+      the full path on it (M5.4, `UI_SPEC.md` section 13), and a Google Drive path on a Mac is
+      long enough that this is a layout question rather than a styling one.
 - [ ] Metadata pane: width and section states persist, long paths elide in the middle, values
       copy. `UI_SPEC.md` section 12.
 - [ ] Dark theme and font rendering at Retina, including the IBM Plex fallback chain.

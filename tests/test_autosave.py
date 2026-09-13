@@ -115,3 +115,16 @@ def test_it_says_what_it_wrote(saver: AutoSaver, tmp_path: Path) -> None:
     saver.schedule()
     saver.flush()
     assert written == [tmp_path / "melt.pibatch"]
+
+
+def test_adopting_a_path_is_what_save_does(saver: AutoSaver, tmp_path: Path) -> None:
+    """Save writes the batch itself, so what `adopt` changes is where the next one goes."""
+    path = tmp_path / "melt.pibatch"
+    saver.watch(batch(row()), None)
+    saver.schedule()
+    saver.adopt(path)
+    assert not saver.pending
+
+    saver.schedule()
+    saver.flush()
+    assert path.exists()
