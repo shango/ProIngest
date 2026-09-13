@@ -35,7 +35,7 @@ from proingest.ui import settings_form
 from proingest.ui.main_window import SETTINGS_APPLIED
 from proingest.ui.settings_dialog import SettingsDialog
 from tests.fixtures.batches import batch, row
-from tests.test_ui_shell import DrivenWindow
+from tests.test_ui_shell import DrivenWindow, set_in
 
 
 class TestTheForm:
@@ -246,6 +246,19 @@ class TestApplyingFromTheWindow:
         self.apply(window, edit)
         assert "QC-033" in [result.rule_id for result in window.batch.rows[0].qc]
         assert window.statusBar().currentMessage() == SETTINGS_APPLIED
+
+    def test_an_edit_after_applying_is_judged_by_the_new_thresholds(
+        self, window: DrivenWindow
+    ) -> None:
+        """A commit re-runs the row's rules; they must be the ones Apply just wrote."""
+
+        def edit(dialog: SettingsDialog) -> None:
+            dialog._editors["rules.min_duration_frames"].setValue(400)  # type: ignore[attr-defined]
+
+        window.set_batch(batch(row()))
+        self.apply(window, edit)
+        set_in(window, "9")
+        assert "QC-033" in [result.rule_id for result in window.batch.rows[0].qc]
 
     def test_it_opens_with_no_batch_and_writes_only_the_file(
         self, window: DrivenWindow, tmp_path: Path
