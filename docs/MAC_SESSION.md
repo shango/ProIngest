@@ -92,6 +92,16 @@ Treat it as a working session with the editor rather than a delivery.
       place or the filename search over the source root covers it on its own.
 - [ ] Scan a real turnover from each of the three shooters. OQ-1 folder structure, OQ-3 what
       the consolidated media actually is, OQ-4 how stills and BTS are named.
+- [ ] **Open one of those turnovers and look for `Input Color Space` in the clip metadata.**
+      The scan reads the source encoding from that one field (M4.6.4), because it is Resolve's
+      own Media Pool column for the input transform, and **nothing has confirmed Resolve exports
+      it into the `.otio`**. If it is absent, look at what the clip does carry and at the
+      container's tags, which is the second place the tool looks. The fix is one string in
+      `scan.SOURCE_ENCODING_KEY`; the point of looking is to find out which string. OQ-44.
+- [ ] **Read what the shooters actually wrote in it.** "S-Log3" on its own resolves to nothing,
+      deliberately, because it names four colour spaces. If that is what arrives, the outcome is
+      an instruction to the shooters rather than a change to the tool: ask for the Resolve input
+      transform name verbatim. OQ-34, OQ-44.
 - [ ] 100 shots scanned in under 60 seconds from a warm mount. `PRD.md` section 8.
 - [ ] **Time QC-111 on a real reference.** It runs `ffmpeg -count_frames`, a full decode, once
       per delivered mp4, and that is two decodes of a 240 frame plate per row on top of the
