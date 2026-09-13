@@ -1,115 +1,78 @@
-# Session close, 12 September 2026 (late night, second session)
+# Session close, 12 September 2026 (M5.10)
 
 **This file is disposable and it is not the handoff record.** `PROGRESS.md` section 1 is, and it
 is written to be picked up cold. This is a note about what one session did, kept because context
 is being cleared. Delete it once it has been read. **If it disagrees with `PROGRESS.md` or the
 docs, they win.**
 
-It replaces the previous session's file of the same name, which closed on M5.4.
+It replaces the previous session's file of the same name, which closed on M5.5.
 
-## The one paragraph version, and the one thing that came after it
+## The one paragraph version
 
-**M5.5 is built: the tool renders from the window.** Run pre-flights, plans, and drives
-`render.execute` on a `QThread`; the rows fill a slim bar with their job count as outputs land;
-the status bar carries percent, jobs running, frames per second and ETA; Stop reaches a job mid
-flight; and a finished run writes both spreadsheets and shows the banner UI_SPEC section 7
-specifies, with the reports path as its link. 1249 tests, `ruff` and `mypy --strict` clean.
-Section 5 of `PROGRESS.md` has the six chunks of M5 that come after it, two of which were added
-the same evening.
+**M5.10 is built: the run says what it is doing.** A four pixel bar for the whole batch sits
+across the top of the list with a line of words under it naming one step at a time, and the
+band it lives in is the completion banner's band, showing one of the three at a time. 1266
+tests, `ruff` and `mypy --strict` clean. **Driven end to end on a real two shot turnover through
+the real pool** before it was committed: 14 deliverables, the line naming each step in order,
+and the banner taking the band at the end.
 
-**Driven end to end before it was committed**, on a real two shot turnover through the real
-pool: ten deliverables, both spreadsheets under `MELT/_reports`, every row at 5/5. That is the
-fourth chunk running that launching the app has been part of finishing it.
-
-**Then the user asked for three more things and none of them is built.** They are recorded in
-the docs that own them and on the board, and the last section of this file says what to know
-before picking one up: the run's progress strip above the list (**M5.10**), hover tooltips on
-the toolbar (**M5.11**), and a **user guide** with screenshots, which is the new milestone
-**M9** and PRD **FR-17**.
+**It was built ahead of M5.6**, which is what the plan said, because the previous session left
+the order open and M5.10 finishes the thing the user had just watched being built in M5.5. The
+user was told the choice in the first reply and given the chance to redirect.
 
 ## What this chunk did, in one line
 
 | file | what changed |
 |---|---|
-| `ui/runner.py` | new: `render.execute` on a worker thread, progress forwarded onto the UI thread, `RunProgress` (percent, throughput, ETA, per job fraction), a shutdown that quits before it waits |
-| `ui/main_window.py` | Run, Stop, the status bar line and its 200 ms timer, the exports, the banner and its link, and what is disabled while a run is going |
-| `ui/shot_model.py` | `set_run`, `refresh_rows`, `state_for`, `PROGRESS_ROLE`, and a Progress column that reads the run before the row |
-| `ui/shot_list.py` | the slim bar in the Progress cell, on the demoted line under the count |
-| `ui/theme.qss` | `#run_banner` |
-| `tests/fixtures/batches.py` | `batch(delivery_root=...)`, so a test can plan into a real folder |
+| `ui/run_strip.py` | new: the band above the list, three states and only ever one, and the banner moved into it |
+| `ui/runner.py` | `RunProgress.activity`, the words for the job in flight, plus `STARTING` and `RENDERING` |
+| `ui/main_window.py` | the four steps it narrates itself, the strip drawn on the existing 200 ms timer, `banner_text` writing the accent into the anchor |
+| `ui/theme.qss` | `#run_strip_progress`, `#run_strip_bar` and its chunk, `#run_strip_line` |
+| `docs/UI_SPEC.md` | 7.1 is no longer "not yet built", and now says why there is no "Verifying" step |
+| `docs/MAC_SESSION.md` | two lines: the band in all three states at 2x, and the step line not truncating a deliverable name |
 
 ## The decisions worth knowing about
 
-- **The pool goes on a `QThread` and the jobs are what cross it.** Same shape as
-  `ui/scanner.py`. Pre-flight, planning and `apply_results` all write to the batch, so all three
-  stay on the UI thread; the worker gets a list of `DeliverableJob` and hands back `Deliverable`s.
-- **`execute` calls back on its own drain thread**, which is neither Qt thread. The emit is safe
-  because the receiver is on the UI thread, so Qt queues it, and `Progress` is frozen.
-- **One 200 ms timer draws everything a run shows.** Messages only update `RunProgress`. A
-  repaint per message is a message per frame per worker.
-- **Rendering is a state only a live run can report**, because `apply_results` does not write
-  the statuses back until the run ends. `ShotListModel.state_for` is where the run's answer and
-  the row's meet, and skipped still wins.
-- **The run writes the two spreadsheets**, because section 7's banner says where they went.
+- **Not a `QStackedWidget`.** It takes the tallest page's height whichever page is showing, so
+  the empty state would be a dead band above the list forever. Two children and the widget
+  itself are toggled instead, and `RunStrip.state` is where the invariant is asserted.
+- **The line names the longest running job, not the newest message.** `_states` is in the order
+  jobs first reported, so the first still running is the oldest still running and it holds
+  still until it finishes. Following the newest message is a flicker with four workers.
+- **Four steps come from the window rather than a worker**, because they run on the UI thread
+  with nothing else going: checking the batch, planning it, applying what came back, writing
+  the spreadsheets. Those are exactly the moments the window looks frozen.
+- **`say` repaints immediately**, guarded on the text changing. Two of those four steps block
+  the UI thread, so a line waiting for the event loop appears after its step has finished.
+- **No "Verifying" step, deliberately.** Post-render QC runs inside the worker between the
+  rename and the record coming back and the pool publishes nothing for it. Saying otherwise is
+  a new `render.ProgressState` and a publish inside `render_job`, which is a core change for a
+  wait nobody has measured. UI_SPEC 7.1 carries the reasoning.
 
 ## Two things worth carrying forward
 
-- **`Runner.shutdown` deadlocked until a test caught it.** The thread normally ends when
-  `_collect` runs, on the UI thread, which is the thread `shutdown` blocks. Waiting without
-  calling `thread.quit()` first sat there for the full 120 second timeout, and the only symptom
-  was one test taking exactly 120 seconds. `ui/scanner.py` had it right; this copied everything
-  but that line.
-- **UI_SPEC section 7 said Stop "leaves rows in their previous state" and that was too simple.**
-  The records of a stopped run are applied, because a job that finished before Stop wrote a real
-  file. So a stopped row's unfinished deliverables read `skipped` and QC-150 says how many did
-  not land. The spec now says so, and says why. The banner reads "Run stopped" rather than
-  "Batch complete".
-
-## The three new asks, and what decides each one's shape
-
-Added 2026-09-12 after M5.5 landed, as a heads up rather than a change of direction. Section 5
-of `PROGRESS.md` has them in its tables and section 1 has the long note; this is the short
-version. **The user was asked which to do first and had not answered when the session closed.**
-
-- **M5.10, the run's strip above the list** (`docs/UI_SPEC.md` **section 7.1**). A thin bar for
-  the whole batch across the top of the list, and a line of text saying what is being done at
-  each step. **Per row progress already exists** - M5.5 put a slim bar under a `3/5` count in
-  the Progress column - so what is new is the batch bar and the words. What decides the shape:
-  **four surfaces would then report one run**, so each has to say something the others cannot
-  (this shot, the batch, what is happening now, the numbers) and all four must read the same
-  `RunProgress` or they will disagree on screen. The strip is the completion banner's strip,
-  with three states and only ever one showing.
-- **M5.11, a tooltip on every toolbar button** (`docs/UI_SPEC.md` section 1). One sentence each.
-  The half worth building carefully is the **disabled** button saying *why* it is disabled: the
-  toolbar carries actions that are not available yet by design, and that is the difference
-  between a tool that looks broken and one that says what to do next.
-- **M9, the user guide** (PRD **FR-17**, five chunks in section 5). Install, quickstart, a
-  section per surface, screenshots, one document. Two things already decided rather than left
-  open: the screenshots come from **a harness** that builds a demo batch and grabs the window,
-  so a changed interface is a re-run and no production name reaches a document that gets
-  emailed around; and there is **one source**, an HTML file with the images embedded, because
-  that both prints to PDF and pastes into Google Docs whole. **OQ-49** is the question left for
-  the user: a fixed PDF, or a Doc the studio edits, which decides whether the repo's copy stays
-  the only one. The shipped screenshots must be taken on the Mac and `docs/MAC_SESSION.md`
-  carries the line.
+- **The banner's link was unreadable and no test could have caught it.** Qt's own `#0000ff` on
+  the `#1b1e23` band. A stylesheet cannot select an anchor inside a `QLabel`, and it overrides
+  the palette `Link` role that could, so the colour is written into the anchor by `banner_text`
+  from `run_strip.LINK_COLOR`. Every test about that banner passed, because they all checked
+  the words. Found by grabbing the window and sampling the pixels.
+- **A driver script that opens the window and starts the pool needs `if __name__ == "__main__"`.**
+  Without it each spawned worker re-runs the whole script: four more windows, four more pools.
+  That is the scratch script's bug rather than the app's, and it is the same thing
+  `docs/PACKAGING.md` records `multiprocessing.freeze_support()` for in M7. Worth knowing
+  before writing the next driver.
 
 ## Next task
 
-**Either M5.10 or M5.11 - both small, both wanted, and M5.10 finishes what the user had just
-watched being built - or M5.6, the metadata pane, which is what the plan said before those
-arrived.** Ask if it is not obvious from the first message. What should **not** move earlier is
-M5.9, the frozen columns: it is last on purpose.
+**M5.6, the metadata pane** (FR-14, UI_SPEC section 12) is what the plan says, and `PROGRESS.md`
+section 1's "Next task" note has the thing to decide first: where the pane gets its updates
+from, since the selection alone is one signal too few.
 
-**M5.6, the metadata pane** (FR-14, UI_SPEC section 12): read only, never takes focus, collapses
-to nothing, and deliberately does not repeat the list's columns.
+**M5.11, the toolbar tooltips**, is still small, still wanted and still loose in the order - a
+line per action, and the half worth care is the disabled button saying *why*. Either can go
+first. What should **not** move earlier is M5.9, the frozen columns: it is last on purpose.
 
-**The thing to decide first** is where the pane gets its updates from. The selection alone is
-not enough: a cell commit emits `row_edited` and a run repaints through `refresh_rows`, and a
-pane listening to one signal too few shows a value that is stale rather than one that is wrong,
-which is harder to notice.
-
-**Nothing is blocked.** Two things that are true and are worth saying out loud: a run from the
-window plans **ungraded** until M5.7 gives it the colour session, and pre-flight and planning
-run on the UI thread and have never been measured on a real turnover. Both are in `PROGRESS.md`
-section 9. The Mac checklist gained six lines this session, and `docs/PACKAGING.md` gained the
-`multiprocessing.freeze_support()` line M7 will need now that the app itself starts a pool.
+**Nothing is blocked.** The two things that were true at the end of M5.5 still are: a run from
+the window plans **ungraded** until M5.7 gives it the colour session, and pre-flight and
+planning run on the UI thread and have never been measured on a real turnover. Both are in
+`PROGRESS.md` section 9.
