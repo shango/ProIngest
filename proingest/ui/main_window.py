@@ -381,7 +381,7 @@ class MainWindow(QMainWindow):
         # A commit re-runs that row's rules (M5.3), so what the dock is showing about
         # that row is what just changed. Rebuilt whole: the results are a list short
         # enough that finding the ones that moved costs more than redrawing them.
-        self.shot_model.row_edited.connect(lambda _row: self.issues.show_batch(self.batch))
+        self.shot_model.row_edited.connect(lambda _row: self._show_results())
         self._camdata_cache: dict[Path, dict[str, str]] = {}
         self.autosave.saved.connect(lambda path: self.statusBar().showMessage(f"Saved {path.name}"))
         self.batch_bar = BatchBar(self)
@@ -1252,7 +1252,6 @@ class MainWindow(QMainWindow):
         # stale rather than wrong, which is the harder kind to notice.
         selection = self.shot_list.selectionModel()
         selection.selectionChanged.connect(lambda *_: self.refresh_metadata())
-        self.shot_model.row_edited.connect(lambda _row: self.refresh_metadata())
 
     def refresh_metadata(self) -> None:
         """Redraw the pane from the current selection. Cheap when nothing moved.
