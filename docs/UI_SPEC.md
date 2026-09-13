@@ -36,6 +36,19 @@ viewers were given trim buttons, and is true again.
 
 Nothing opens a modal during review except Settings and file dialogs.
 
+**Every toolbar button carries a hover tooltip** (asked for 2026-09-12, not yet built): one
+short sentence saying what the button does, in present tense, naming what changes, plus its
+keyboard shortcut. Not a restatement of the label - "Scan" saying "Scans" is a tooltip nobody
+reads twice.
+
+**A disabled button keeps its tooltip and says why it is disabled**, which is the half that
+earns the feature: the toolbar is deliberately full of buttons that are not available yet
+(every action exists from the first launch and the ones with nothing behind them are greyed),
+so "Run: add a turnover first" is the difference between a tool that looks broken and one that
+is telling you what to do next. The tooltip is the only place the window explains itself in
+words, and the wording should match the user guide's button reference (PRD FR-17) so the two
+cannot drift.
+
 ## 2. Shot list columns
 
 Frozen left: status dot, Shot Code (editable), Elem.
@@ -120,6 +133,32 @@ batch that finished with most of it skipped.
 sentence true, and the path in it is the link: clicking it opens `_reports` in the Finder. A
 batch whose rows have no shot code has no show to file reports under, and the banner then says
 no exports were written rather than naming a folder that does not exist.
+
+### 7.1 The strip above the list (asked for 2026-09-12, not yet built)
+
+The user asked for the run to be readable without looking down at the status bar. Two things
+are added above the list, in the strip the completion banner already occupies:
+
+- **A thin progress bar spanning the width of the list**, carrying the **whole batch**, shown
+  only while a run is going. Thin: a few pixels, no text in it, no percentage written on it.
+- **A progress text line under it saying what is being done, in words**, one step at a time:
+  "Planning 42 shots", "Rendering MELT0001_pl01 raw 4k", "Verifying MELT0001_pl01_ref_HD_v01",
+  "Writing the QC log". One line, replaced in place, never a scrollback.
+
+**The strip has three states and only ever one of them**: empty when no run has happened, the
+bar and its line during a run, the completion banner after one. That is why they share a strip
+rather than stacking: a banner from the last run sitting above the bar of this one is two
+answers to the same question.
+
+**Four surfaces now report a run and each has to say something the others do not.** The
+Progress column says how far **this shot** has got and is the only per row answer. The strip's
+bar says how far **the batch** has got. The text line says **what is happening now**, which no
+bar can say. The status bar says **the numbers**: percent, jobs running, throughput and ETA.
+Every one of them reads from the same run state, so they cannot disagree about the percentage.
+
+**The per row indication exists already** (M5.5): a slim bar in the Progress column under the
+job count, the count being `3/5` of that row's deliverables. What 7.1 adds is the batch bar,
+the text line, and the naming of each step as it happens.
 
 ## 8. Stringout burn-ins: dropped
 

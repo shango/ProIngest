@@ -117,6 +117,12 @@ Append to this as M5 and M6 are built.
 - [ ] **Closing the window mid-run waits for the jobs in flight and says nothing.** Up to two
       minutes if a reference encode is going (M5.5). Decide whether that wants a sheet
       explaining itself, or a prompt before the close.
+- [ ] **Take the user guide's screenshots** (FR-17, M9.4). The harness builds a demo batch and
+      grabs the window, so this is running a script and collecting the files rather than posing
+      the app by hand - but the shipped set has to come from **this** machine, because a guide
+      illustrated with a Linux font stack and Linux window furniture is a guide to a tool the
+      editor does not have. Budget a slot for it late in the day, after the interface has been
+      looked at and anything embarrassing has been fixed.
 - [ ] Metadata pane: width and section states persist, long paths elide in the middle, values
       copy. `UI_SPEC.md` section 12.
 - [ ] Dark theme and font rendering at Retina, including the IBM Plex fallback chain.

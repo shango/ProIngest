@@ -161,6 +161,13 @@ FR-16 Viewers: **dropped from v01, 2026-09-11.**
 - What went with it: `docs/UI_SPEC.md` section 14, `core/preview.py` and M4.5.5, and the single frame fetch and cache they needed. In/Out are edited by typing, per FR-5, which is now the only way a row is edited at all.
 - **What this gives up**: an editor judging a cut point reads frame numbers and timecode rather than pictures. That is what the review session with the AD was for, and that session now happens in Resolve with Ben, where there is a proper viewer and a calibrated monitor.
 
+FR-17 User documentation (asked for 2026-09-12)
+- **One document the editor can be handed**, covering three things in this order: **how to install it**, a **quickstart** that takes one turnover from Add Turnover to the exports in about a page, and a **reference guide with one section per surface of the window** - the list and its columns, editing, the Issues dock, the run, Settings, the log, the metadata pane.
+- **Screenshots wherever a screenshot says it faster than a sentence.** They are taken by a harness that builds a demo batch and grabs the window, not by hand, so a changed interface is a re-run rather than a re-shoot, and the demo data is the synthetic `MELT` show rather than anything from a production.
+- **Delivered as something the studio can read and keep**: a PDF, or a file that pastes whole into Google Docs. One source rather than two exports that drift; OQ-49 is which, with a default.
+- It is written against the built app rather than the spec, and its button reference and the toolbar tooltips (UI_SPEC section 1) share their wording.
+- This is M9, and it is deliberately **not** the same thing as M8.4's handover notes, which are what the studio keeps about the *build* - the rule IDs, what to do when a check fires. FR-17 is what somebody reads to use the tool.
+
 ## 8. Non-functional requirements
 
 - 100 shots per batch, 30 per turnover, must scan in under 60 seconds from the Drive mount with warm cache.
@@ -181,6 +188,7 @@ M5 UI: main window, list view with keyboard model, metadata pane, validation col
 M6 **Dropped 2026-09-11.** Was: stringout with burn-ins. The colour session exports it instead (FR-9). The number is not reused.
 M7 Packaging: PyInstaller `.app`, disk image, bundled ffmpeg, first-run experience, icon.
 M8 Polish pass against `docs/UI_SPEC.md`, performance on a real turnover, docs.
+M9 The user guide (FR-17, added 2026-09-12): install guide, quickstart, a reference section per surface of the window, screenshots from a harness, delivered as one document the studio can keep.
 
 ## 10. v02 backlog (do not build in v01, but do not design against it)
 

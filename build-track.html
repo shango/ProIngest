@@ -311,20 +311,20 @@
   <header class="mast">
     <div class="eyebrow">
       <span>VFX turnover ingest &middot; macOS v01</span>
-      <span class="stamp">Updated <b>12 Sep 2026, 23:40 PDT</b></span>
+      <span class="stamp">Updated <b>13 Sep 2026, 00:20 PDT</b></span>
     </div>
     <h1>ProIngest Build Track</h1>
     <p class="standfirst">
-      The seven milestones left of the eight in <span class="mono">PRD.md</span> section 9 - the
-      review movie was withdrawn on 11 September - with what each delivers, broken into the
-      chunks they are actually built in. <span class="mono">PROGRESS.md</span> in the repo stays
+      The eight milestones left in <span class="mono">PRD.md</span> section 9 - the review movie
+      was withdrawn on 11 September and a user guide was added on the 12th - with what each
+      delivers, broken into the chunks they are actually built in. <span class="mono">PROGRESS.md</span> in the repo stays
       the source of truth and is updated at every commit; this board is the readable view of it.
     </p>
   </header>
 
   <div class="stats">
     <div class="stat">
-      <div class="stat-n">4<span style="color:var(--faint);font-size:17px">/7</span></div>
+      <div class="stat-n">4<span style="color:var(--faint);font-size:17px">/8</span></div>
       <div class="stat-l">Milestones done</div>
     </div>
     <div class="stat">
@@ -332,11 +332,11 @@
       <div class="stat-l">Tests, Linux + macOS</div>
     </div>
     <div class="stat">
-      <div class="stat-n">25<span style="color:var(--faint);font-size:17px">/48</span></div>
+      <div class="stat-n">26<span style="color:var(--faint);font-size:17px">/49</span></div>
       <div class="stat-l">Questions open</div>
     </div>
     <div class="stat">
-      <div class="stat-n">5<span style="color:var(--faint);font-size:17px">/9</span></div>
+      <div class="stat-n">5<span style="color:var(--faint);font-size:17px">/11</span></div>
       <div class="stat-l">Interface chunks</div>
     </div>
   </div>
@@ -679,7 +679,7 @@
         <div class="ms-body">
           <div class="ms-head">
             <span class="ms-name">User interface</span>
-            <span class="pill now">In progress &middot; 5 of 9</span>
+            <span class="pill now">In progress &middot; 5 of 11</span>
           </div>
           <p class="ms-goal">
             Main window, shot list with the keyboard model, metadata pane, validation
@@ -818,6 +818,35 @@
                 twice.
               </span>
               <span class="c-st"><span class="tag open">Last</span></span>
+            </div>
+
+            <div class="chunk">
+              <span class="c-id">M5.10</span>
+              <span class="c-name">The run, said out loud</span>
+              <span class="c-note">
+                <b>Asked for on 12 September, after the run itself was built.</b> A thin bar for
+                the whole delivery across the top of the list, and <b>a line of text saying what
+                is being done at each step</b> - which shot, which output, and the report writing
+                at the end - so the work can be followed without reading the status bar. The
+                per-shot bars and counts are already there. Four surfaces will then describe one
+                run, so each says something the others cannot: this shot, the whole delivery,
+                what is happening right now, and the numbers.
+              </span>
+              <span class="c-st"><span class="tag open">New</span></span>
+            </div>
+
+            <div class="chunk">
+              <span class="c-id">M5.11</span>
+              <span class="c-name">Buttons that say what they do</span>
+              <span class="c-note">
+                <b>Asked for on 12 September.</b> A hover description on every button along the
+                top, one sentence each. The half worth care is the <b>greyed</b> buttons: the
+                toolbar deliberately shows what the tool can do before every part of it works, so
+                a button that says <i>why</i> it is unavailable - add a delivery first, set a
+                delivery folder first - is the difference between a tool that looks broken and
+                one that says what to do next.
+              </span>
+              <span class="c-st"><span class="tag open">New</span></span>
             </div>
 
           </div>
@@ -1005,6 +1034,86 @@
         </div>
       </div>
 
+      <div class="ms">
+        <div class="ms-id">M9</div>
+        <div class="ms-body">
+          <div class="ms-head">
+            <span class="ms-name">The user guide</span>
+            <span class="pill">New &middot; 0 of 5</span>
+          </div>
+          <p class="ms-goal">
+            One document the editor is handed: how to install it, a quickstart, then a section on
+            each part of the window, with screenshots. Added 12 September at the studio's request.
+          </p>
+          <div class="chunks">
+
+            <div class="chunk">
+              <span class="c-id">M9.1</span>
+              <span class="c-name">Installing it</span>
+              <span class="c-note">
+                The disk image, what macOS says the first time and what to do about it, where the
+                app keeps its settings and its logs. Waits on the packaged app existing.
+              </span>
+              <span class="c-st"><span class="tag open">Needs M7</span></span>
+            </div>
+
+            <div class="chunk">
+              <span class="c-id">M9.2</span>
+              <span class="c-name">Quickstart</span>
+              <span class="c-note">
+                One delivery from opening the app to the finished spreadsheets, in about a page.
+                The thing somebody reads once and then does not need again.
+              </span>
+              <span class="c-st"><span class="tag open">Can start</span></span>
+            </div>
+
+            <div class="chunk">
+              <span class="c-id">M9.3</span>
+              <span class="c-name">A section per part of the window</span>
+              <span class="c-note">
+                The list and its columns, editing a shot, the issues panel, the run, settings, the
+                log, the information panel. Written against the built tool rather than the
+                specification, and sharing its wording with the buttons' own descriptions.
+              </span>
+              <span class="c-st"><span class="tag open">Follows</span></span>
+            </div>
+
+            <div class="chunk">
+              <span class="c-id">M9.4</span>
+              <span class="c-name">Screenshots, from a script</span>
+              <span class="c-note">
+                <b>Taken by a harness rather than by hand</b>: it builds a demonstration delivery
+                and grabs the window, so a changed interface is a re-run instead of a re-shoot,
+                and no production shot name or drive path ends up in a document that gets emailed
+                around. The pictures that ship have to come from the Mac, because a guide showing
+                Linux window furniture is a guide to a tool the editor does not have.
+              </span>
+              <span class="c-st"><span class="tag open">Needs a Mac</span></span>
+            </div>
+
+            <div class="chunk">
+              <span class="c-id">M9.5</span>
+              <span class="c-name">The document itself</span>
+              <span class="c-note">
+                <b>One source rather than two exports that drift.</b> A single file in the repo
+                with the pictures embedded, which both prints to a PDF and pastes into a Google
+                Doc whole - which is the only shape that answers "a PDF <i>or</i> something
+                pasteable" without maintaining both.
+              </span>
+              <span class="c-st"><span class="tag open">Last</span></span>
+            </div>
+
+          </div>
+          <div class="gate">
+            <b>The first milestone whose deliverable is not code</b>, and deliberately not the same
+            thing as the handover notes in M8: those are what the studio keeps about the build -
+            what each check means, what to do when one fires - and this is what somebody reads to
+            use the tool. One question is open with it: whether the studio wants a fixed PDF or a
+            Google Doc they can edit, which decides whether the repo's copy stays the only one.
+          </div>
+        </div>
+      </div>
+
     </div>
   </section>
 
@@ -1012,7 +1121,7 @@
     <h2>Open questions</h2>
     <p class="standfirst" style="margin-bottom:14px">
       The live list. Questions answered days ago and no longer affecting anything have been
-      taken off this board; none is deleted, and all 48 of them, closed ones included, stay in
+      taken off this board; none is deleted, and all 49 of them, closed ones included, stay in
       <span class="mono">docs/OPEN_QUESTIONS.md</span> with the reasoning that closed them.
       What is kept here is what is still open, what was answered in the last two days, and
       what was built to a default that one real delivery would confirm.
@@ -1023,6 +1132,11 @@
           <tr><th>ID</th><th>Question</th><th>State</th></tr>
         </thead>
         <tbody>
+          <tr>
+            <td class="id">OQ-49</td>
+            <td><b style="color:var(--text)">New 12 September, with the user guide.</b> A PDF and a Google Doc are two different products: a PDF reads the same for everyone and cannot be edited, a Doc can be corrected and shared by link and then drifts from the copy in the repo that nobody can regenerate. The plan is one source with the pictures embedded, which prints to PDF and pastes into a Doc whole. What the answer changes is whether the studio's copy becomes the real one. Worth settling before the first hand-over rather than after</td>
+            <td class="st"><span class="tag open">New</span></td>
+          </tr>
           <tr class="resolved">
             <td class="id">OQ-37</td>
             <td><b style="color:var(--text)">Answered the same day, and it was the cheapest question on the board.</b> The grading session starts each shot's colour file from the camera's own format, or from the house format in the other mode. So the colour file is the entire conversion and the tool performs none of its own on a plate, it cannot disagree with Resolve about what a camera format is, and a camera nobody has mapped still delivers. The common working format that used to sit in between is gone from the chain</td>
@@ -1814,15 +1928,21 @@
   <footer>
     <b>Source of truth</b> &middot; PROGRESS.md, docs/OPEN_QUESTIONS.md, PRD.md section 9<br>
     <b>Verify</b> &middot; pytest &middot; ruff check . &amp;&amp; mypy proingest &middot; python -m proingest scan &lt;folder&gt;<br>
-    <b>Last updated</b> &middot; 12 September 2026, 23:40 PDT. <b>The tool now renders from the
+    <b>Last updated</b> &middot; 13 September 2026, 00:20 PDT. <b>The tool now renders from the
     window.</b> Run works out which version this run writes, hands the work to the worker pool
     off the interface thread, and fills a bar per row as each output lands; the status bar carries
     the overall percent, the jobs going, frames per second and time remaining. Stop finishes the
     frames in flight and leaves no half-written files. When a run ends, both spreadsheets are
     written and a banner above the list says what landed and links to the folder holding them.
     Proved end to end on a real two-shot delivery before it was committed. 1249 tests green.<br>
+    <b>Added 12 September, not yet built</b> &middot; three things the studio asked for after
+    watching the run land: a thin progress bar for the whole delivery across the top of the list
+    with <b>a line of text naming each step as it happens</b>, hover descriptions on every button
+    along the top, and <b>a user guide</b> - install, quickstart, then a section per part of the
+    window, with screenshots, as a PDF or something pasteable into a Google Doc. The first two are
+    small; the guide is its own milestone and is scheduled after the interface it describes.<br>
     <b>Next</b> &middot; M5.6, the metadata panel: everything known about the selected shot, read
-    only, beside the list.
+    only, beside the list. The two small additions above could reasonably go first.
   </footer>
 
 </div>

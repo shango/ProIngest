@@ -24,6 +24,10 @@ they go, Stop reaches a job mid flight, and a finished run writes both spreadshe
 where they went. The rest of M5 is specified in section 5. 1249 tests passing, `ruff` and
 `mypy --strict` clean. **M5.6, the metadata pane, is next.**
 
+**Three things were added to the plan the same evening and none is built**: the run's progress
+strip above the list (M5.10), tooltips on the toolbar (M5.11), and a user guide with screenshots
+(PRD FR-17, the new M9). The note below this one says what each is and what decides its shape.
+
 **M5 is not blocked**: OQ-37 came back the same day and
 answered the expensive half of M4.6. Two questions are open and both are about correctness rather
 than scope, OQ-46 and **OQ-47, which is new and was found by building M4.6.2**.
@@ -454,6 +458,37 @@ should not be re-derived.
   paths that build a `ShotColor`, with a session and without, need the same answer. QC-047 is
   where it is reported, and that is M4.6.4.
 
+### New scope, 2026-09-12 (late): three things the user asked for, none built
+
+Asked for immediately after M5.5 landed, as a heads up rather than a change of direction.
+Nothing here was built; all three are in section 5's tables and in the specs that own them.
+
+- **The run should narrate itself above the list.** A thin progress bar for the whole batch
+  across the top of the list, and **a line of text saying what is being done at each step**.
+  `docs/UI_SPEC.md` **section 7.1** is the spec, and this is **M5.10**. Per row progress was
+  asked for in the same sentence and is **already built** (M5.5): the Progress column carries a
+  slim bar under a `3/5` count. What is new is the batch bar and the words.
+  The thing that decides the shape: **four surfaces would then report one run**, so each has to
+  say something the others cannot - this shot, the batch, what is happening now, and the
+  numbers - and all four have to read the same `RunProgress` or they will disagree on screen.
+  The strip above the list is the completion banner's strip, with three states and only ever one
+  of them showing.
+- **Every toolbar button should say what it does on hover**, concisely. `docs/UI_SPEC.md`
+  section 1, and this is **M5.11**. The half worth building carefully is the **disabled**
+  button: the toolbar deliberately carries actions that are not available yet, so a tooltip
+  that says *why* one is greyed is the difference between a tool that looks broken and one
+  that says what to do next.
+- **A user guide**, and it is a milestone rather than a task: install, quickstart, then a
+  section per surface of the window, with screenshots, delivered as a PDF or something that
+  pastes into Google Docs. **PRD FR-17** and **M9**, five chunks in section 5. The user said
+  "later", so it is scheduled after the interface it documents rather than alongside it.
+  **OQ-49** is the one question in it: which of those two forms, and whether anybody but the
+  editor edits the result.
+
+**None of the three is blocked and none blocks anything.** M5.10 and M5.11 are small and can
+land whenever; they are numbered after M5.9 but do not wait on it. M9.1 waits on M7 and M9.4's
+shipped images wait on the Mac session; M9.2 and the harness could be drafted today.
+
 ### M5.5 is built: the run reaches the window
 
 Built 2026-09-12. `ui/runner.py` is new, the window gains Run, Stop, the status bar line, the
@@ -728,6 +763,13 @@ that is simply wrong rather than one that is late.
 Which fields earn their place is OQ-26 and it wants a real review session; build section
 12.2's list, and let the pane be the thing that gets argued about in front of the user.
 
+**The order here is open and the user has not set one.** M5.10 and M5.11 arrived after M5.5
+and both are small - the progress strip is a widget over a `RunProgress` that already exists,
+and the tooltips are a line per action. Either could reasonably go before the metadata pane,
+and the argument for doing so is that M5.10 finishes the thing the user had just watched being
+built. What should **not** happen is M5.9, the frozen columns, moving earlier: it is last on
+purpose (section 5).
+
 `docs/UI_SPEC.md` is M5's spec, and the things M5 still owes the colour chain are small,
 known, and all in M5.7:
 
@@ -943,6 +985,7 @@ Entry points worth knowing:
 | M6 | ~~Stringout with burn-ins~~ | **dropped 2026-09-11**, the colour session exports it |
 | M7 | Packaging: PyInstaller `.app`, dmg, Gatekeeper | not started, and needs a Mac (OQ-22) |
 | M8 | Polish, performance on a real turnover, docs | not started |
+| M9 | The user guide: install, quickstart, a section per surface, screenshots (PRD FR-17) | **new 2026-09-12**, not started, specified in section 5 |
 
 M4 detail. The milestone had no chunk table until M4.1; this is it:
 
@@ -1019,6 +1062,8 @@ batch can do", so each chunk has something a person can look at:
 | M5.7 | The Settings page, PRD FR-12, **including the Colour group**, and with it QC-008, QC-009, QC-019, QC-039 and QC-045 | not started |
 | M5.8 | The Log tab and the rotating log file, FR-13 | not started |
 | M5.9 | The frozen left columns: the overlaid second view sharing the model and the selection | not started |
+| M5.10 | The run's strip above the list: the thin batch progress bar and the line of text naming the step being done (UI_SPEC 7.1) | **new 2026-09-12**, not started |
+| M5.11 | A hover tooltip on every toolbar button, saying what it does and, when it is disabled, why (UI_SPEC section 1) | **new 2026-09-12**, not started |
 
 **M5.4 settled four things that should not be re-derived.**
 
@@ -1085,6 +1130,35 @@ goes next.
 **M5.7 is where the colour work finishes.** Five rules read `core/clf.py` and none of them can
 fire until a batch knows where its colour session is, which is a Settings value. Nothing in
 core has to change for it.
+
+M9 detail, asked for 2026-09-12 and specified against PRD FR-17. It is the first milestone
+whose deliverable is not code, and it is deliberately separate from M8.4: M8.4 is what the
+studio keeps about the **build**, and M9 is what somebody reads to **use the tool**.
+
+| chunk | scope | state |
+|---|---|---|
+| M9.1 | Install guide: the dmg, the quarantine bit and Gatekeeper (OQ-9), first run, where settings and logs live | needs M7 |
+| M9.2 | Quickstart: one turnover from Add Turnover to the exports, about a page | can be drafted now |
+| M9.3 | The reference guide, one section per surface: the list and its columns, editing, the Issues dock, the run, Settings, the log, the metadata pane | follows the surfaces it documents |
+| M9.4 | The screenshot harness: builds a demo batch, grabs the window, writes the files the guide references. Drafted on Linux, **shipped set taken on the Mac** | harness now, images on the Mac |
+| M9.5 | The document itself: one source, printed to PDF and pasteable into Google Docs whole (OQ-49) | last |
+
+**Three things about M9 that are decisions rather than tasks.**
+
+- **The screenshots come from a harness, not from a person with a screenshot key.** A guide
+  illustrated by hand is a guide that goes stale silently the first time a column moves. A
+  script that builds a demo batch and calls `QWidget.grab()` makes a changed interface a
+  re-run. It also fixes the data problem: the demo batch is the synthetic `MELT` show the
+  fixtures already build, so no production shot code, shooter name or Drive path is in a
+  document that gets emailed around.
+- **The shipped images have to come from the Mac** even though the harness runs headless on
+  Linux, because a guide showing a Linux font stack and Linux window furniture is a guide to a
+  tool the editor does not have. Linux images are fine for drafting the layout. `MAC_SESSION.md`
+  carries the line.
+- **One source, not two exports.** OQ-49 asks the user which form they want and the default is
+  one HTML file in the repo with the images embedded: it prints to PDF and pastes into Google
+  Docs whole, images included, which is the only shape that satisfies "a pdf **or** a file that
+  can be pasted into google docs" without maintaining two.
 
 M3 detail:
 
