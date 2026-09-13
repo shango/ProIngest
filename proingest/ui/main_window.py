@@ -40,7 +40,7 @@ from PySide6.QtWidgets import (
 )
 
 from proingest import __version__
-from proingest.core import batchfile, clf, exports, planner, qc, render, scan
+from proingest.core import batchfile, camdata, clf, exports, planner, qc, render, scan
 from proingest.core import settings as core_settings
 from proingest.core.models import (
     DEFAULT_BATCH_NAME,
@@ -50,9 +50,11 @@ from proingest.core.models import (
     ShotRow,
     Turnover,
 )
+from proingest.ui import metadata
 from proingest.ui.autosave import AutoSaver
 from proingest.ui.batch_bar import BatchBar
 from proingest.ui.issues import IssuesDock
+from proingest.ui.metadata_pane import MetadataPane
 from proingest.ui.run_strip import LINK_COLOR, RunStrip
 from proingest.ui.runner import Runner, RunProgress
 from proingest.ui.scanner import Scanner
@@ -88,6 +90,17 @@ WRITING_REPORTS = "Writing the QC log and the shot tracker"
 Section 7.1's line names one step at a time, and the ones a worker reports come from
 `RunProgress.activity`. These four are the ones either side of the pool, which are the
 steps that would otherwise be a window that has stopped responding with nothing said.
+"""
+
+METADATA_WIDTH = 360
+"""What the pane opens at on a window that has never been arranged."""
+
+METADATA_MIN_WIDTH = 260
+"""How narrow the pane can be dragged. Section 1 calls it a fixed width reading surface.
+
+Narrow enough to give the list most of a 1500 pixel window and wide enough that a
+`label  value` line does not wrap on every field. Paths elide rather than wrap, so this
+is about the values that are words.
 """
 
 RUN_REFRESH_MS = 200
@@ -138,9 +151,10 @@ class MainWindow(QMainWindow):
         self.resize(*DEFAULT_SIZE)
 
         self._build_actions()
+        self._build_central()
+        self._build_metadata_dock()
         self._build_menus()
         self._build_toolbar()
-        self._build_central()
         self._build_bottom_dock()
         self._build_status_bar()
         self._restore_window_state()
@@ -233,6 +247,7 @@ class MainWindow(QMainWindow):
         view_menu = menus.addMenu("View")
         view_menu.addAction(self.action_cycle_display)
         view_menu.addAction(self.action_find)
+        view_menu.addAction(self.action_metadata)
 
     def _build_toolbar(self) -> None:
         """Section 1's toolbar, in its three groups, separated as it is drawn there."""
@@ -270,6 +285,7 @@ class MainWindow(QMainWindow):
         # that row is what just changed. Rebuilt whole: the results are a list short
         # enough that finding the ones that moved costs more than redrawing them.
         self.shot_model.row_edited.connect(lambda _row: self.issues.show_batch(self.batch))
+        self._camdata_cache: dict[Path, dict[str, str]] = {}
         self.autosave.saved.connect(lambda path: self.statusBar().showMessage(f"Saved {path.name}"))
         self.batch_bar = BatchBar(self)
         self.batch_bar.display_mode_picked.connect(self.set_display_mode)
@@ -330,7 +346,8 @@ class MainWindow(QMainWindow):
         self._batch_open = True
         self.batch_bar.set_batch_name(batch.name)
         self.batch_bar.show_delivery_root(batch.delivery_root)
-        self.issues.show_batch(batch)
+        self._camdata_cache.clear()
+        self._show_results()
         self.pages.setCurrentIndex(1)
         self._update_state()
 
@@ -534,7 +551,7 @@ class MainWindow(QMainWindow):
         batch.probe_cache.update(probe_cache)
         qc.apply_batch_rules(batch, qc.settings_for(batch))
         self.shot_model.set_batch(batch)
-        self.issues.show_batch(batch)
+        self._show_results()
         self.autosave.schedule()
         self._update_state()
 
@@ -579,7 +596,7 @@ class MainWindow(QMainWindow):
         self.run_strip.say(CHECKING_BATCH)
         qc.preflight(batch)
         blocking = [result for result in batch.qc if result.severity == "error"]
-        self.issues.show_batch(batch)
+        self._show_results()
         self.shot_model.refresh_rows()
         if blocking:
             self.run_strip.clear()
@@ -667,7 +684,7 @@ class MainWindow(QMainWindow):
         self.run_strip.say(CHECKING_RESULTS)
         render.apply_results(batch, written)
         self.shot_model.refresh_rows()
-        self.issues.show_batch(batch)
+        self._show_results()
         self.autosave.schedule()
 
         self.run_strip.say(WRITING_REPORTS)
@@ -859,6 +876,99 @@ class MainWindow(QMainWindow):
         self._settings.last_folder = str(folder)
         return chosen
 
+    def _build_metadata_dock(self) -> None:
+        """Section 1's reading surface beside the list, in a dock for what a dock gives.
+
+        A `QDockWidget` rather than a splitter pane, because three things section 12
+        asks for come with one and would otherwise be built: it collapses to nothing,
+        its width and whether it is showing are remembered by `saveState` alongside the
+        bottom dock, and `toggleViewAction` is the Ctrl+I the spec names. It is closable
+        but **not movable or floatable**: it is a fixed width reading surface, not a
+        second workspace, and a pane the editor can drag onto the left is a layout
+        nobody asked to maintain.
+        """
+        dock = QDockWidget("Metadata", self)
+        dock.setObjectName("metadata_dock")
+        dock.setAllowedAreas(Qt.DockWidgetArea.RightDockWidgetArea)
+        dock.setFeatures(QDockWidget.DockWidgetFeature.DockWidgetClosable)
+
+        self.metadata = MetadataPane(dock)
+        self.metadata.issue_clicked.connect(self._show_issue)
+        self.metadata.set_collapsed(self._settings.metadata_collapsed)
+        dock.setWidget(self.metadata)
+        dock.setMinimumWidth(METADATA_MIN_WIDTH)
+
+        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, dock)
+        self.metadata_dock = dock
+        # A starting width, for a window that has never been arranged. `restoreState`
+        # runs after this and wins whenever there is something saved, so this is only
+        # ever the first launch: without it the dock opens at its minimum, which is the
+        # narrowest the pane is allowed to be rather than the width it wants.
+        self.resizeDocks([dock], [METADATA_WIDTH], Qt.Orientation.Horizontal)
+
+        self.action_metadata = dock.toggleViewAction()
+        self.action_metadata.setText("Metadata")
+        self.action_metadata.setShortcut(QKeySequence("Ctrl+I"))
+
+        # Three signals, not one. The selection is the obvious one; a commit changes a
+        # value the pane is showing (M5.3), and `_show_results` covers everything that
+        # rewrites QC wholesale. A pane on the selection alone shows a value that is
+        # stale rather than wrong, which is the harder kind to notice.
+        selection = self.shot_list.selectionModel()
+        selection.selectionChanged.connect(lambda *_: self.refresh_metadata())
+        self.shot_model.row_edited.connect(lambda _row: self.refresh_metadata())
+
+    def refresh_metadata(self) -> None:
+        """Redraw the pane from the current selection. Cheap when nothing moved.
+
+        `MetadataPane.show_sections` compares the answer against what is drawn and
+        returns without touching a widget when they are equal, so this can be called
+        from anything that might have changed a value without counting how often.
+        """
+        rows = self.shot_list.selected_rows()
+        if rows:
+            sections = metadata.describe(rows, self.batch, self._camdata)
+            summary = metadata.selection_summary(len(rows)) if len(rows) > 1 else ""
+            self.metadata.show_sections(sections, summary)
+            return
+        turnover = self.shot_list.selected_turnover()
+        if turnover is not None:
+            self.metadata.show_sections(metadata.describe_turnover(turnover))
+            return
+        self.metadata.clear()
+
+    def _camdata(self, path: Path) -> dict[str, str]:
+        """camData's key/values, read once per file per batch (CLAUDE.md: scan once).
+
+        The only field in the pane that lives on disk rather than in the model, and the
+        pane is redrawn on every selection change, so an uncached read would be a round
+        trip to a Drive mount per arrow key. Unreadable reads as empty: QC-053 already
+        says so in the Issues dock and the pane is not the place to say it twice.
+        """
+        cached = self._camdata_cache.get(path)
+        if cached is None:
+            try:
+                cached = camdata.parse(path)
+            except (OSError, UnicodeDecodeError):
+                cached = {}
+            self._camdata_cache[path] = cached
+        return cached
+
+    def _show_issue(self, rule_id: str) -> None:
+        """A rule ID clicked in the pane: bring the Issues dock forward (section 12.2)."""
+        self._show_issues()
+        self.issues.select_result(rule_id, self.shot_list.selected_rows())
+
+    def _show_results(self) -> None:
+        """The Issues dock and the metadata pane, which read the same QC results.
+
+        One method because they are always right or wrong together: every place that
+        re-runs a rule has to tell both, and a place that told only one is the bug this
+        exists to make impossible to write.
+        """
+        self.issues.show_batch(self.batch)
+        self.refresh_metadata()
+
     def _build_bottom_dock(self) -> None:
         """Issues (M5.4), then Log and Deliverables, empty until each has something."""
         dock = QDockWidget("Details", self)
@@ -909,6 +1019,7 @@ class MainWindow(QMainWindow):
         """Write what the window looks like now. Called on close."""
         self._settings.window_geometry = b64encode(self.saveGeometry().data()).decode()
         self._settings.window_state = b64encode(self.saveState().data()).decode()
+        self._settings.metadata_collapsed = self.metadata.collapsed
         core_settings.save(self._settings, self._settings_path)
 
     def closeEvent(self, event: QCloseEvent) -> None:

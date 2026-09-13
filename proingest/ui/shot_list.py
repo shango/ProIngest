@@ -43,7 +43,7 @@ from PySide6.QtWidgets import (
 )
 
 from proingest.core.frames import ParsedInput
-from proingest.core.models import ShotRow
+from proingest.core.models import ShotRow, Turnover
 from proingest.ui import shot_model
 from proingest.ui.shot_model import (
     COLUMNS,
@@ -275,6 +275,22 @@ class ShotListView(QTreeView):
             if row is not None:
                 rows.append(row)
         return rows
+
+    def selected_turnover(self) -> Turnover | None:
+        """The turnover whose group header is the selection, or None.
+
+        Section 12.3 gives a selected header the Turnover section alone, and a header
+        is the one thing in the list that `selected_rows` deliberately drops. Only when
+        nothing else is selected: a header plus two of its shots is a selection of two
+        shots, and the pane should say so rather than describing the folder.
+        """
+        indexes = self.selectionModel().selectedRows()
+        if len(indexes) != 1:
+            return None
+        source = self.proxy.mapToSource(indexes[0])
+        if self.shot_model.row_at(source) is not None:
+            return None
+        return self.shot_model.turnover_at(source)
 
     def select_row(self, row: ShotRow) -> None:
         """Put the cursor on a shot somebody pointed at from somewhere else.

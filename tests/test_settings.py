@@ -37,6 +37,20 @@ class TestRoundTrip:
         assert settings.load(path).window_geometry == "second"
         assert list(tmp_path.iterdir()) == [path]
 
+    def test_the_collapsed_metadata_sections_survive(self, tmp_path: Path) -> None:
+        """Titles rather than indexes, so reordering the sections cannot collapse a
+        different one the next time the window opens (UI_SPEC section 12.1)."""
+        path = tmp_path / "settings.json"
+        settings.save(settings.AppSettings(metadata_collapsed=["Range", "Turnover"]), path)
+        assert settings.load(path).metadata_collapsed == ["Range", "Turnover"]
+
+    def test_a_file_written_before_the_pane_existed_collapses_nothing(
+        self, tmp_path: Path
+    ) -> None:
+        path = tmp_path / "settings.json"
+        path.write_text(json.dumps({"schema_version": settings.SCHEMA_VERSION}))
+        assert settings.load(path).metadata_collapsed == []
+
     def test_the_schema_version_is_written(self, tmp_path: Path) -> None:
         path = tmp_path / "settings.json"
         settings.save(settings.AppSettings(), path)

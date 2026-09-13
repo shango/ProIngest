@@ -23,6 +23,7 @@ errors being at the top of a table that is already coloured by severity.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 from PySide6.QtCore import Qt, Signal
@@ -146,6 +147,34 @@ class IssuesDock(QTreeWidget):
     @property
     def count(self) -> int:
         return self.topLevelItemCount()
+
+    def select_result(self, rule_id: str, rows: Sequence[ShotRow] = ()) -> bool:
+        """Select the row for this rule, preferring one about a shot that is selected.
+
+        What the metadata pane's rule ID links land on (UI_SPEC section 12.2). Preferring
+        the selection matters because a rule fires on many shots: QC-023 clicked while
+        MELT0007 is selected should land on MELT0007's line, not on the first one in the
+        batch. Falls back to the first line carrying that rule, and selects nothing when
+        the dock no longer holds one.
+        """
+        wanted = {id(row) for row in rows}
+        fallback: QTreeWidgetItem | None = None
+        for position in range(self.topLevelItemCount()):
+            item = self.topLevelItem(position)
+            if item is None or item.text(COLUMNS.index("Rule")) != rule_id:
+                continue
+            if fallback is None:
+                fallback = item
+            index = item.data(0, Qt.ItemDataRole.UserRole)
+            row = self._rows[index] if index is not None else None
+            if row is not None and id(row) in wanted:
+                fallback = item
+                break
+        if fallback is None:
+            return False
+        self.setCurrentItem(fallback)
+        self.scrollToItem(fallback)
+        return True
 
     def _activated(self, item: QTreeWidgetItem, _column: int = 0) -> None:
         """Ask for the shot this result is about, if it is about one."""

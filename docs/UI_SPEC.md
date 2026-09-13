@@ -204,6 +204,14 @@ A single window with a left section list and right form, like Resolve's project 
   this automatically, but it means About and Settings must be created with the right roles
   (`QAction.AboutRole`, `PreferencesRole`) or macOS will not move them into the application
   menu where users look for them.
+- The metadata pane is a **right dock** rather than a splitter pane (M5.6), which is what
+  gives it three of the things section 12 asks for without building any of them: it collapses
+  to nothing, its width and whether it is showing travel in `saveState` beside the bottom
+  dock, and `toggleViewAction` is Ctrl+I. It is closable but **not movable or floatable**:
+  section 1 calls it a fixed width reading surface, not a second workspace. Which sections
+  the editor has collapsed is the one thing Qt's blob cannot hold, so it is a settings field
+  of its own, storing **titles of the shut ones**: a section a later chunk adds then arrives
+  open, and reordering the sections cannot collapse a different one.
 - Settings is reached by Cmd+, as well as from the toolbar. That shortcut is a macOS
   convention strong enough that its absence reads as a bug.
 - Remembers window geometry and dock state per user, in
@@ -236,12 +244,22 @@ data, turnover details, and the paths themselves.
 - **Every value is selectable and copyable**, paths and checksums especially. An editor
   chasing a media problem needs to paste a path into a terminal or a Resolve dialog. A
   copy button on each path row, and the whole pane copyable as `key: value` text.
+  Selecting is by mouse only and the labels are `NoFocus`, because `TextSelectableByKeyboard`
+  would put the pane back into the Tab order the list owns.
 - **Live.** Values recompute as In/Out are typed, the same as Duration and Max Available in
   the row.
 - **Collapsible sections**, each remembering its open state, and a remembered pane width.
   Both live with the rest of the window state (section 11).
 - Long paths elide in the middle, never at the end: the filename is the part that identifies
   the file, and the middle of a Google Drive path is the least informative part of it.
+- **Every value is one line and elides to fit** (M5.6, 2026-09-12), paths in the middle and
+  everything else at the end, with the whole value in the tooltip. Not a style choice: a
+  wrapping label reports a one line minimum height whatever it will actually need, so a
+  column of them inside a scroll area gives the scroll area a minimum far too small and the
+  sections are squashed to fit the viewport instead of scrolling. One line per field makes
+  every height exact, and it also stops one unbreakable long value setting the pane's minimum
+  width. What is given up is reading a long message here, which is why the Issues dock carries
+  the full text of every one and why a rule ID in the pane clicks straight through to it.
 
 ### 12.2 Sections, and the fields in each
 
@@ -255,9 +273,10 @@ it is hidden rather than shown empty.
 | Frame rate | timeline rate (authoritative), rate stated by the media, and an explicit disagreement note when they differ. COLOR_AND_FORMAT section 5 explains why the timeline wins; QC-026 is the rule |
 | Range | record In/Out, source In/Out in frames and timecode, turnover snapshot In/Out, current In/Out, duration, max available out, and whether the editor has moved it off the snapshot (QC-035) |
 | Audio | path, sample rate, channels, bit depth, duration in samples and in frames, and the sync difference against the video range (QC-043) |
-| Side files | HDRI path, camData path, and the parsed camData key/values once OQ-11 is settled. This is the single most useful thing in the pane for an AD sitting with the editor, because it is the only place lens, filter and camera body ever appear |
+| Colour | source encoding as the shooter wrote it, which carrier named it, and the CLF the colour session delivered. **Added 2026-09-12 with M5.6**: M4.6 put all three on the row after this table was written, none has a column in the list, and the encoding is shown verbatim because the string is what has to be corrected when it is wrong |
+| Side files | HDRI path, camData path, and the parsed camData key/values once OQ-11 is settled. This is the single most useful thing in the pane for an AD sitting with the editor, because it is the only place lens, filter and camera body ever appear. **The pane never reads the file itself**: the parsed pairs arrive through a lookup the window caches per batch, because the pane redraws on every arrow key and a turnover sits on a Drive mount |
 | Turnover | number, date, shooter, folder, timeline file. Shown alone when a turnover group header is the selection |
-| QC | count by severity with the rule IDs, each clicking through to that row in the Issues dock |
+| QC | count by severity with the rule IDs, each clicking through to that row in the Issues dock. **Built across the whole selection rather than merged field by field**, unlike every other section: two rows with different problems agree on nothing, so a merge would reduce this to "mixed", which is the one answer that helps nobody |
 
 ### 12.3 Empty and edge states
 
@@ -265,10 +284,17 @@ it is hidden rather than shown empty.
 - **More than one row selected**: show only the fields the selection agrees on, with a count
   ("12 shots selected"). Fields that differ read "mixed". This is what makes the pane useful
   for spotting one clip at the wrong resolution in a turnover of thirty.
-- **Turnover header selected**: the Turnover section alone.
+- **Turnover header selected**: the Turnover section alone. The turnover's own results are
+  fields inside it rather than a QC section beside it, so "alone" stays literally true; the
+  rows' results are not rolled up here because the group header in the list already counts
+  them and the Issues dock lists every one.
 - **Media unresolved** (QC-011, QC-012): the Identity and Range sections still populate from
   the timeline, and Source media reads why it is missing rather than vanishing. An unresolved
   row is exactly when someone wants to see what the timeline claimed the path was.
+  **Where that sentence comes from** (M5.6): the pane reads the QC result rather than
+  re-deriving anything, because the scan is the only thing that knows what it looked for.
+  Nothing stores the claimed path once a row has no media, so **QC-012's message names it**,
+  which is the one record of what the timeline asked for.
 - **Media on a Drive placeholder** that has not downloaded yet: show the download-wait state
   rather than blocking the pane, matching the scan behaviour in PRD section 8.
 

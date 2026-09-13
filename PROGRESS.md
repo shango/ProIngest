@@ -22,9 +22,11 @@ every QC result is readable in the Issues dock and clickable back to its shot; a
 now renders from the window**: Run plans the batch and drives the pool, the rows fill in as
 they go, Stop reaches a job mid flight, and a finished run writes both spreadsheets and says
 where they went. **M5.10 is done as well, out of order and on purpose**: the run now narrates
-itself above the list, a thin bar for the batch and a line of words for the step. The rest of
-M5 is specified in section 5. 1266 tests passing, `ruff` and `mypy --strict` clean.
-**M5.6, the metadata pane, is next.**
+itself above the list, a thin bar for the batch and a line of words for the step. **And M5.6
+is done**: the pane beside the list reads everything known about the selection, nine sections
+of it, and follows three signals so it cannot show a value that is merely late. The rest of
+M5 is specified in section 5. 1344 tests passing, `ruff` and `mypy --strict` clean.
+**M5.7, the Settings page and the last of the colour work, is next.**
 
 **Two of the three things added to the plan on 2026-09-12 are still unbuilt**: tooltips on the
 toolbar (M5.11) and a user guide with screenshots (PRD FR-17, the new M9). The third was the
@@ -484,6 +486,69 @@ Nothing here was built; all three are in section 5's tables and in the specs tha
 whenever; it is numbered after M5.9 but does not wait on it. M9.1 waits on M7 and M9.4's
 shipped images wait on the Mac session; M9.2 and the harness could be drafted today.
 
+### M5.6 is built: the pane beside the list
+
+Built 2026-09-12. `ui/metadata.py` and `ui/metadata_pane.py` are new, `ui/shot_list.py` gains
+`selected_turnover`, `ui/issues.py` gains `select_result`, and `core/settings.py` remembers
+which sections are shut. 78 tests, 1344 in total. **Driven on a real three shot turnover**
+with a hand written camData file: nine sections, the lens and filter reading out of the side
+file, and a three row selection reporting `mixed` on the clip name and `3840x2160` on the
+resolution they agree about.
+
+- **The field list is a value, not a layout, and that is the point of the split.**
+  `describe(rows, batch)` returns `Section`s of frozen `Field`s with no Qt in it. Two things
+  fall out. **OQ-26 wants a review session with the AD** about which fields earn their place,
+  and arguing with a list is easier than arguing with a widget. And **the pane redraws only
+  when the answer moved**, because two answers can be compared exactly, which is what lets it
+  be wired to every signal that might change a value without counting how often they fire.
+- **Where the pane gets its updates from was the thing to decide first, and it is three
+  signals.** The selection is the obvious one. A cell commit (`row_edited`) changes a value
+  while the selection has not moved. And `_show_results` is now the single method that
+  refreshes the Issues dock and the pane together, called from all five places that rewrite
+  QC wholesale - opening a batch, a scan landing, pre-flight, and a run finishing. **The run
+  timer is deliberately not one of them**: it fires five times a second and a run does not
+  change what the pane says until `apply_results` has run, which `_show_results` covers.
+- **A right `QDockWidget` rather than a splitter pane**, which is three of section 12's asks
+  for free: it collapses to nothing, `saveState` remembers its width and whether it is
+  showing, and `toggleViewAction` is the Ctrl+I the spec names. Closable but **not movable or
+  floatable**: section 1 calls it a fixed width reading surface, not a second workspace.
+  Which sections are shut is the one thing Qt's blob cannot hold, so it is a settings field
+  storing **the titles of the shut ones** - a section a later chunk adds then arrives open.
+- **Every value is one elided line, and that is structural rather than cosmetic.** A wrapping
+  `QLabel` reports a one line minimum height whatever it will actually need, so a column of
+  them in a scroll area gives the scroll area a minimum far too small: the sections are
+  squashed to fit the viewport instead of scrolling, and one overlaps the next. That is what
+  it did, and the screenshot is how it was found. One line per field makes every height
+  exact, and it also stops one unbreakable 40 character value setting the pane's minimum
+  width. What is given up is reading a long message here, which is why a rule ID in the pane
+  clicks through to the Issues dock and why the dock carries the full text.
+- **The pane never reads a file.** camData is the one field that lives on disk, so it arrives
+  through a lookup the window supplies and caches per batch. The pane redraws on every arrow
+  key; an uncached read would be a round trip to a Drive mount per keystroke.
+- **There is a Colour section and section 12.2's table did not have one.** M4.6 put the
+  source encoding, its origin and the CLF path on the row after that table was written, and
+  all three are exactly what the pane is for: facts about a shot with no column in the list.
+  UI_SPEC 12.2 now carries the row and says when it was added.
+- **A turnover header shows the Turnover section alone**, and the turnover's own results are
+  fields inside it rather than a QC section beside it, so section 12.3's sentence stays
+  literally true. The rows' results are not rolled up: the group header in the list already
+  counts them and the Issues dock lists every one.
+- **The QC section is built across the selection rather than merged field by field**, unlike
+  every other section. Two rows with different problems agree on nothing, so the merge would
+  reduce it to `mixed`, which is the one answer that helps nobody.
+- **QC-012 now names the path the timeline claimed.** Section 12.3 says an unresolved row is
+  exactly when somebody wants to see it, and **nothing stores it** once the row has no media,
+  so the rule's message is the only record. Three lines in `core/scan.py`; the alternative
+  was a new `ShotRow` field, which is a schema change for a string that is already written
+  down somewhere.
+
+**What M5.6 does not do.** The pane shows no deliverable: section 12.4 keeps that boundary
+and the Deliverables tab in the bottom dock is where an output file belongs. Nothing about
+a Drive placeholder that has not downloaded yet, which section 12.3 asks for and which
+depends on a scan behaviour nothing has needed yet. And **the field list is a default, not an
+answer**: OQ-26 is still open and wants the review session `docs/MAC_SESSION.md` now has a
+line for.
+
 ### M5.10 is built: the run says what it is doing
 
 Built 2026-09-12, out of order and ahead of M5.6, because it finishes the thing the user
@@ -788,30 +853,16 @@ nothing written. **When M5 wires the colour session into Settings**, the rules w
 tell "no session yet" from "this session had no grade for this row", and that is the moment to
 decide whether QC-046's error widens.
 
-### Next task: M5.6, the metadata pane
+### Next task: M5.7, the Settings page and the last of the colour work
 
-Everything the list can do, it can now do: a batch is made, filled, edited, run,
-narrated and exported from the window. What is missing beside the list is the reading surface UI_SPEC
-section 12 specifies, and it is the smallest chunk left in M5: **read only, never takes
-focus, collapses to nothing, and deliberately does not repeat the list's columns**. The
-field list is section 12.2 and it was taken from what `core/models.py` actually holds
-rather than invented, so nothing in core has to change for it. `ShotListView.selected_rows`
-already hands back what is selected and section 12.3 says what a multiple selection shows:
-the fields the rows agree on, and a count where they do not.
+Everything the list can do, it can now do: a batch is made, filled, edited, run, narrated,
+read and exported from the window. **M5.7 is the one chunk left that anything else depends
+on**, because it is where the colour chain finally reaches the window: until it lands, a run
+from the UI plans every row ungraded, which is exactly the state QC-008 exists to refuse.
+That is the strongest reason it should not slip.
 
-**The thing to decide first** is where the pane gets its updates from. The list emits
-`row_edited` on a commit and the model repaints whole rows on `refresh_rows`; a pane that
-listens to the selection alone will show a stale value the moment a cell is edited or a
-run finishes. Following one signal too few is the failure mode, and it looks like a field
-that is simply wrong rather than one that is late.
-
-Which fields earn their place is OQ-26 and it wants a real review session; build section
-12.2's list, and let the pane be the thing that gets argued about in front of the user.
-
-**The order is now partly set. M5.10 went first**, ahead of this, because it finished the
-thing the user had just watched being built; the user was told the choice and did not object.
-**M5.11, the toolbar tooltips, is still small and still loose** - a line per action, and the
-half worth care is the disabled button saying why - so it can go before or after the pane.
+**M5.11, the toolbar tooltips, is small and still loose in the order** - a line per action,
+and the half worth care is the disabled button saying why. It can go before or after M5.7.
 What should **not** happen is M5.9, the frozen columns, moving earlier: it is last on purpose
 (section 5).
 
@@ -831,6 +882,12 @@ known, and all in M5.7:
   exists to refuse, and it is the strongest reason M5.7 should not slip far.
 - **The QC log's CLF column is already written** and so is `ShotRow.clf_path`, so the UI has
   something to show per row without any new plumbing.
+
+**The pane is where a Settings change will be seen first.** Its Colour section reads
+`source_encoding`, `source_encoding_origin` and `clf_path` off the row, and the first two are
+already filled in by the scan while the third is filled in by the planner. So the moment
+M5.7 gives a batch its colour session, selecting a row is how a person checks that the right
+CLF was matched, without running anything.
 
 **OQ-37 is answered and the code matches it**: the colourist starts the CLF from whatever
 the clip is encoded in, so the tool applies no input transform on a graded plate and ACEScct
@@ -974,16 +1031,18 @@ PDF viewer.
 | `core/qc.py` | rule registry: phase A, `RuleSettings`, `preflight`, phase B | 1416 |
 | `core/settings.py` | what the app remembers between launches, as JSON. Takes the path; never works out where it is | 111 |
 | `ui/app.py` | the QApplication, its names, the theme, and `run()` | 49 |
-| `ui/main_window.py` | UI_SPEC section 1's frame: menus and their macOS roles, toolbar, bottom dock, status bar, the three empty states and the batch page, window state, the autosaver, the batch lifecycle (New, Open, Save, the two roots, Add Turnover and Scan) and the run (pre-flight, planning, Stop, the exports, the steps it narrates and section 7's banner text) | 931 |
+| `ui/main_window.py` | UI_SPEC section 1's frame: menus and their macOS roles, toolbar, bottom dock, status bar, the three empty states and the batch page, window state, the autosaver, the batch lifecycle (New, Open, Save, the two roots, Add Turnover and Scan) and the run (pre-flight, planning, Stop, the exports, the steps it narrates and section 7's banner text), and the metadata dock with the three signals that refresh it | 1042 |
 | `ui/shot_model.py` | the batch as a two level tree: section 2's columns, section 3's dot and tints, the In/Out display mode, what the four editable cells commit, where a given row sits, and how far a live run has got with it | 760 |
-| `ui/shot_list.py` | the view, the two line cell, the Progress column's slim bar, the search filter, the cell editor, Tab across the editable columns, the skip prompt and selecting a row somebody pointed at from the Issues dock | 394 |
+| `ui/shot_list.py` | the view, the two line cell, the Progress column's slim bar, the search filter, the cell editor, Tab across the editable columns, the skip prompt, what is selected, and selecting a row somebody pointed at from the Issues dock | 410 |
 | `ui/batch_bar.py` | the batch name, the delivery root button, the three state In/Out toggle and the search box | 104 |
 | `ui/paths.py` | the one place that asks `QStandardPaths` where the app's own files live | 33 |
 | `ui/autosave.py` | the debounced write of an edited batch, and what it does with one that has no file yet | 97 |
 | `ui/scanner.py` | `core/scan.py` on a `QThread`: one result per folder, a copied probe cache, cancel between folders, and a shutdown that waits | 184 |
 | `ui/runner.py` | `core/render.py`'s pool on a `QThread`: the jobs over, the records back, progress forwarded onto the UI thread, a `RunProgress` that turns it into a percentage, a throughput and an ETA, the words for the job in flight, and a shutdown that waits | 383 |
 | `ui/run_strip.py` | UI_SPEC section 7.1's band above the list: the batch's thin bar, the line saying what step the run is on, and section 7's completion banner. Three states and only ever one of them | 128 |
-| `ui/issues.py` | UI_SPEC section 6: every QC result in the batch as a table, with the rule ID in its own column and a double-click that selects the shot | 155 |
+| `ui/metadata.py` | UI_SPEC section 12's field list as a value: a selection into `Section`s of `Field`s, what a multiple selection agrees on, and the `key: value` text Copy all puts on the clipboard. No Qt and no I/O | 561 |
+| `ui/metadata_pane.py` | the pane that draws it: one elided line per field, collapsible sections that remember what was shut, a copy button per path, and a rule ID that clicks through to the Issues dock | 343 |
+| `ui/issues.py` | UI_SPEC section 6: every QC result in the batch as a table, with the rule ID in its own column, a double-click that selects the shot, and `select_result` for the pane's links | 184 |
 | `__main__.py` | `proingest scan`, `run` and `qc` CLI, `--rules` overrides, and the UI when there is no subcommand | 440 |
 
 Not built yet: the rest of `proingest/ui/`, which is M5.6 onward. **`core/stringout.py` will not be built**: M6 is dropped
@@ -1027,7 +1086,7 @@ Entry points worth knowing:
 | M4 | QC: all rules both phases, xlsx exports, `qc` CLI | complete, 175 tests |
 | M4.5 | Colour pipeline, core only. Source log in, CLF applied, ACEScg out, the viewing LUT | complete, 111 tests |
 | M4.6 | Per shot source encoding: read from the clip metadata, the input transform table, the input transform out of the graded chains, QC-046 to QC-048 | complete, all five chunks (OQ-37 answered; OQ-46 wants confirming) |
-| M5 | UI: the list, the FR-14 metadata pane, settings, log. **No viewers** | **M5.1 to M5.5 and M5.10 done**, M5.6 to M5.9 and M5.11 specified |
+| M5 | UI: the list, the FR-14 metadata pane, settings, log. **No viewers** | **M5.1 to M5.6 and M5.10 done**, M5.7 to M5.9 and M5.11 specified |
 | M6 | ~~Stringout with burn-ins~~ | **dropped 2026-09-11**, the colour session exports it |
 | M7 | Packaging: PyInstaller `.app`, dmg, Gatekeeper | not started, and needs a Mac (OQ-22) |
 | M8 | Polish, performance on a real turnover, docs | not started |
@@ -1104,7 +1163,7 @@ batch can do", so each chunk has something a person can look at:
 | M5.3 | Editing: shot code, In, Out and Notes in their cells, section 5's input parsing, Ctrl+K skip, per row revalidation, autosave | **done, 1125 tests.** A commit re-runs the row's rules only, and `ui/autosave.py` holds the edits of a batch that has no file yet |
 | M5.4 | Batch lifecycle: New, Open, Save, Add Turnover against the source root, the scan off the UI thread, the Issues dock | **done, 1199 tests.** The scan is a `QThread` with a copied probe cache; `Scan` re-tries only the turnovers with no rows (OQ-48) |
 | M5.5 | Run and progress: the worker pool driven from the window, the Progress column, the status bar, Stop, the completion banner | **done, 1249 tests.** `ui/runner.py` is a `QThread` over `render.execute`; one 200 ms timer draws everything a run shows; the run writes both spreadsheets |
-| M5.6 | The metadata pane, FR-14 and UI_SPEC section 12 | not started |
+| M5.6 | The metadata pane, FR-14 and UI_SPEC section 12 | **done, 1344 tests.** `ui/metadata.py` is the field list as a value and `ui/metadata_pane.py` draws it; a right dock, three update signals, and a **Colour** section section 12.2 did not have |
 | M5.7 | The Settings page, PRD FR-12, **including the Colour group**, and with it QC-008, QC-009, QC-019, QC-039 and QC-045 | not started |
 | M5.8 | The Log tab and the rotating log file, FR-13 | not started |
 | M5.9 | The frozen left columns: the overlaid second view sharing the model and the selection | not started |

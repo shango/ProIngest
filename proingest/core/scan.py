@@ -275,26 +275,31 @@ def _resolve_media(
     row: ShotRow,
 ) -> media_module.Sequence | media_module.FileEntry | None:
     """FR-2: prefer the referenced URL, then fall back to a filename search."""
+    claimed: Path | None = None
     if clip.media_url:
         referenced = media_module.url_to_path(clip.media_url)
-        remapped = media_module.remap(referenced, settings.path_map)
-        if remapped != referenced:
+        claimed = media_module.remap(referenced, settings.path_map)
+        if claimed != referenced:
             row.qc.append(
-                QCResult("QC-016", "warning", "row", f"media path remapped to {remapped}")
+                QCResult("QC-016", "warning", "row", f"media path remapped to {claimed}")
             )
-        located = _index_entry_for(index, remapped)
+        located = _index_entry_for(index, claimed)
         if located is not None:
             return located
 
     matches = index.media_matching(clip.name)
     if not matches:
+        # The claimed path is named because it is the only record of what the timeline
+        # asked for: nothing stores it once the row has no media, and it is the first
+        # thing anybody wants when a shot will not resolve (UI_SPEC section 12.3).
+        wanted = f"{claimed} is missing" if claimed else "the clip references no path"
         row.qc.append(
             QCResult(
                 "QC-012",
                 "error",
                 "row",
-                f"media not found for {clip.name!r}: the referenced path is missing and "
-                f"no file in the turnover matches the name",
+                f"media not found for {clip.name!r}: {wanted} and no file in the "
+                f"turnover matches the name",
             )
         )
         return None

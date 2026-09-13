@@ -120,6 +120,19 @@ Append to this as M5 and M6 are built.
 - [ ] **The step line is legible and does not truncate a deliverable name.** It names jobs like
       `MELT0001_pl01_raw_4k_v01` (M5.10). At the default width on a Mac font stack, check the
       longest name the naming spec can produce still fits.
+- [ ] **The metadata pane reads as a column, not a wall.** Select a shot and read down it
+      (M5.6, `UI_SPEC.md` section 12). Every value is one elided line, so what Linux cannot
+      answer is whether the label column is wide enough on a Mac font stack and whether the
+      values are elided so hard at the default width that the pane stops being readable.
+      Drag it wider and narrower and decide where the default should sit.
+- [ ] **Ctrl+I toggles the pane and Tab still walks the row's cells afterwards.** Click a
+      value in the pane to select text, then press Tab (M5.6, section 12.1). Tab must still
+      be in the list. This is the one behaviour in the pane that a test asserts by policy
+      flags rather than by pressing the key.
+- [ ] **The camData section is what to show the AD.** A real turnover's camData in the pane
+      is the only place lens, filter and body appear in the window (section 12.2, OQ-26).
+      Read it with the editor and settle which fields earn their place, which is the open
+      question against this chunk.
 - [ ] **The rendering dot is not animated and section 3 asks for it to be.** Look at a run in
       progress and decide whether the static accent dot plus a moving bar is enough, before
       anybody builds a repaint timer for it (`PROGRESS.md` section 9).

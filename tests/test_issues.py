@@ -28,6 +28,37 @@ def texts(dock: IssuesDock, column: str) -> list[str]:
     return [item.text(position) for item in items if item is not None]
 
 
+class TestClickingThroughFromThePane:
+    """`select_result`, which the metadata pane's rule IDs land on (UI_SPEC 12.2)."""
+
+    def test_a_rule_selects_its_line(self, dock: IssuesDock) -> None:
+        dock.show_batch(batch(warn(row())))
+        assert dock.select_result("QC-030")
+        current = dock.currentItem()
+        assert current is not None and current.text(COLUMNS.index("Rule")) == "QC-030"
+
+    def test_a_rule_that_fired_on_several_shots_prefers_the_selected_one(
+        self, dock: IssuesDock
+    ) -> None:
+        """QC-023 clicked while MELT0007 is selected should land on MELT0007's line."""
+        first, second = warn(row(), "QC-023"), warn(row("MELT0007_pl01"), "QC-023")
+        dock.show_batch(batch(first, second))
+        assert dock.select_result("QC-023", [second])
+        current = dock.currentItem()
+        assert current is not None and current.text(COLUMNS.index("Shot")) == "MELT0007"
+
+    def test_it_falls_back_to_the_first_line_carrying_that_rule(self, dock: IssuesDock) -> None:
+        first, second = warn(row(), "QC-023"), warn(row("MELT0007_pl01"), "QC-023")
+        dock.show_batch(batch(first, second))
+        assert dock.select_result("QC-023", [])
+        current = dock.currentItem()
+        assert current is not None and current.text(COLUMNS.index("Shot")) == "MELT0001"
+
+    def test_a_rule_the_dock_no_longer_holds_selects_nothing(self, dock: IssuesDock) -> None:
+        dock.show_batch(batch(row()))
+        assert not dock.select_result("QC-030")
+
+
 class TestWhatIsCollected:
     def test_a_row_s_results_are_labelled_with_its_shot_code(self) -> None:
         found = issues_for(batch(warn(row())))

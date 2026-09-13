@@ -54,6 +54,14 @@ class AppSettings:
     empty and reads as the folder being wrong.
     """
 
+    metadata_collapsed: list[str] = field(default_factory=list)
+    """Which sections of the metadata pane the editor has shut (UI_SPEC section 12.1).
+
+    The shut ones rather than the open ones, so a section a later chunk adds arrives
+    open: a field list nobody can see is worse than one nobody asked for. Titles rather
+    than indexes, so reordering the sections does not silently collapse a different one.
+    """
+
     unknown: dict[str, Any] = field(default_factory=dict)
     """Keys a newer version wrote that this one does not know, kept so a save does not
     delete them. Never read; it exists so downgrading is not destructive."""
@@ -65,15 +73,23 @@ class AppSettings:
             "window_geometry": self.window_geometry,
             "window_state": self.window_state,
             "last_folder": self.last_folder,
+            "metadata_collapsed": list(self.metadata_collapsed),
         }
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> AppSettings:
-        known = {"schema_version", "window_geometry", "window_state", "last_folder"}
+        known = {
+            "schema_version",
+            "window_geometry",
+            "window_state",
+            "last_folder",
+            "metadata_collapsed",
+        }
         return cls(
             window_geometry=str(data.get("window_geometry", "")),
             window_state=str(data.get("window_state", "")),
             last_folder=str(data.get("last_folder", "")),
+            metadata_collapsed=[str(item) for item in data.get("metadata_collapsed", [])],
             unknown={key: value for key, value in data.items() if key not in known},
         )
 

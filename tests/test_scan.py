@@ -95,6 +95,26 @@ class TestScanTurnover:
         assert "QC-012" in rules(rows[0])
         assert rows[0].media is None
 
+    def test_qc_012_names_the_path_the_timeline_claimed(self, tmp_path: Path) -> None:
+        """Nothing stores it once the row has no media, so the rule's message is the
+        only record of what the timeline asked for (UI_SPEC section 12.3)."""
+        folder = tmp_path / GOOD_FOLDER
+        folder.mkdir(parents=True)
+        fixtures.make_otio(
+            folder / "t.otio", [("MELT0001_pl01", "file:///nowhere/x.exr")], duration=4
+        )
+        _, rows = scan.scan_turnover(folder, "t1")
+        message = next(r.message for r in rows[0].qc if r.rule_id == "QC-012")
+        assert "/nowhere/x.exr is missing" in message
+
+    def test_a_clip_referencing_no_path_at_all_says_that_instead(self, tmp_path: Path) -> None:
+        folder = tmp_path / GOOD_FOLDER
+        folder.mkdir(parents=True)
+        fixtures.make_otio(folder / "t.otio", [("MELT0001_pl01", "")], duration=4)
+        _, rows = scan.scan_turnover(folder, "t1")
+        message = next(r.message for r in rows[0].qc if r.rule_id == "QC-012")
+        assert "references no path" in message
+
     def test_ambiguous_media_is_qc_013(self, tmp_path: Path) -> None:
         folder = tmp_path / GOOD_FOLDER
         fixtures.make_exr_sequence(folder / "a", base="MELT0001_pl01", count=4)

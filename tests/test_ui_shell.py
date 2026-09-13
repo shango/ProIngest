@@ -13,7 +13,14 @@ from pathlib import Path
 import pytest
 from PySide6.QtCore import Qt, QThread
 from PySide6.QtGui import QAction, QKeySequence
-from PySide6.QtWidgets import QApplication, QLabel, QMessageBox, QPushButton, QWidget
+from PySide6.QtWidgets import (
+    QApplication,
+    QDockWidget,
+    QLabel,
+    QMessageBox,
+    QPushButton,
+    QWidget,
+)
 
 from proingest.core import batchfile, naming
 from proingest.core import settings as core_settings
@@ -32,6 +39,7 @@ from proingest.ui.main_window import (
     WRITING_REPORTS,
     MainWindow,
 )
+from proingest.ui.metadata import MIXED, NO_SELECTION, as_text
 from proingest.ui.run_strip import LINK_COLOR, RunStrip
 from proingest.ui.runner import RENDERING
 from proingest.ui.shot_model import IN, NOTES, DisplayMode, RowState
@@ -978,6 +986,129 @@ class TestRunningABatch:
         assert window.run_strip.state == "empty"
 
 
+class TestTheMetadataPane:
+    """M5.6. The window's half of it: where the pane gets its updates from, which is
+    the thing the plan said to decide first. `tests/test_metadata.py` has the rest."""
+
+    def test_it_starts_empty_and_says_so(self, window: DrivenWindow) -> None:
+        window.set_batch(batch(row()))
+        assert not window.metadata.placeholder.isHidden()
+        assert window.metadata.placeholder.text() == NO_SELECTION
+
+    def test_selecting_a_row_fills_it(self, window: DrivenWindow) -> None:
+        window.set_batch(batch(row()))
+        window.shot_list.select_row(window.batch.rows[0])
+        assert [box.title for box in window.metadata._boxes] == [
+            "Identity",
+            "Source media",
+            "Frame rate",
+            "Range",
+            "Turnover",
+            "QC",
+        ]
+
+    def test_selecting_two_rows_shows_what_they_agree_on(self, window: DrivenWindow) -> None:
+        window.set_batch(batch(row(), row("MELT0002_pl01", record_in=224)))
+        window.shot_list.selectAll()
+        text = pane_text(window)
+        assert "2 shots selected" in window.metadata.summary.text()
+        assert f"Clip name: {MIXED}" in text
+        assert "Show: MELT" in text
+
+    def test_selecting_a_turnover_header_shows_the_turnover_alone(
+        self, window: DrivenWindow
+    ) -> None:
+        window.set_batch(batch(row()))
+        header = window.shot_list.proxy.index(0, 0)
+        window.shot_list.setCurrentIndex(header)
+        assert [box.title for box in window.metadata._boxes] == ["Turnover"]
+
+    def test_a_committed_cell_refreshes_the_pane(self, window: DrivenWindow) -> None:
+        """The selection has not moved, so a pane on that signal alone would be showing
+        the value the editor just replaced."""
+        window.set_batch(batch(row()))
+        window.shot_list.select_row(window.batch.rows[0])
+        assert "Current in/out: 8 - 231" in pane_text(window)
+        set_in(window, "20")
+        assert "Current in/out: 20 - 231" in pane_text(window)
+
+    def test_a_finished_run_refreshes_the_pane(self, window: DrivenWindow, tmp_path: Path) -> None:
+        """QC-150 and QC-151 are written by `apply_results`, so the QC section is only
+        right after it."""
+        window.set_batch(batch(row(), delivery_root=tmp_path))
+        window.shot_list.select_row(window.batch.rows[0])
+        started = stub_runner(window)
+        window.action_run.trigger()
+        window._run_finished(done(started[0], status="failed"), False)
+
+        assert "Results: none" not in pane_text(window)
+
+    def test_a_new_batch_empties_the_pane(self, window: DrivenWindow) -> None:
+        window.set_batch(batch(row()))
+        window.shot_list.select_row(window.batch.rows[0])
+        window.set_batch(Batch())
+        assert window.metadata._boxes == []
+
+    def test_a_rule_id_brings_the_issues_dock_forward(self, window: DrivenWindow) -> None:
+        window.set_batch(batch(fail(row())))
+        window.shot_list.select_row(window.batch.rows[0])
+        window.metadata.issue_clicked.emit("QC-011")
+
+        assert window.bottom_tabs.currentIndex() == BOTTOM_TABS.index("Issues")
+        current = window.issues.currentItem()
+        assert current is not None and current.text(1) == "QC-011"
+
+    def test_ctrl_i_is_what_toggles_it(self, window: DrivenWindow) -> None:
+        assert window.action_metadata.shortcut() == QKeySequence("Ctrl+I")
+        assert window.action_metadata.isCheckable()
+
+    def test_the_pane_is_not_movable_out_of_its_place(self, window: DrivenWindow) -> None:
+        """Section 1 calls it a fixed width reading surface, not a second workspace."""
+        features = window.metadata_dock.features()
+        assert features & QDockWidget.DockWidgetFeature.DockWidgetClosable
+        assert not features & QDockWidget.DockWidgetFeature.DockWidgetFloatable
+        assert not features & QDockWidget.DockWidgetFeature.DockWidgetMovable
+
+    def test_what_the_editor_collapsed_is_remembered(
+        self, window: DrivenWindow, tmp_path: Path
+    ) -> None:
+        window.set_batch(batch(row()))
+        window.shot_list.select_row(window.batch.rows[0])
+        next(box for box in window.metadata._boxes if box.title == "Range").set_open(False)
+        window.close()
+
+        reopened = DrivenWindow(window._settings_path)
+        assert reopened.metadata.collapsed == ["Range"]
+
+    def test_camdata_is_read_once_rather_than_per_selection(
+        self, window: DrivenWindow, tmp_path: Path
+    ) -> None:
+        """The pane redraws on every arrow key and this is the one field on disk."""
+        camdata_file = tmp_path / "MELT0001_pl01_camData.txt"
+        camdata_file.write_text("Lens: Zeiss Supreme Prime 35mm\n")
+        sided = row()
+        sided.side_files.camdata = camdata_file
+        window.set_batch(batch(sided, row("MELT0002_pl01", record_in=224)))
+
+        window.shot_list.select_row(window.batch.rows[0])
+        assert "Lens: Zeiss Supreme Prime 35mm" in pane_text(window)
+        camdata_file.write_text("Lens: something else\n")
+        window.shot_list.select_row(window.batch.rows[1])
+        window.shot_list.select_row(window.batch.rows[0])
+
+        assert "Lens: Zeiss Supreme Prime 35mm" in pane_text(window), "read again off disk"
+
+    def test_unreadable_camdata_is_not_the_pane_s_problem_to_report(
+        self, window: DrivenWindow, tmp_path: Path
+    ) -> None:
+        """QC-053 says so in the Issues dock; saying it twice is two places to correct."""
+        sided = row()
+        sided.side_files.camdata = tmp_path / "gone.txt"
+        window.set_batch(batch(sided))
+        window.shot_list.select_row(window.batch.rows[0])
+        assert "camData:" in pane_text(window)
+
+
 class TestTheRunStrip:
     """The widget itself. UI_SPEC section 7.1: three states and only ever one of them."""
 
@@ -1102,6 +1233,18 @@ def rules_shown(window: DrivenWindow) -> set[str]:
 def tmp_batch_path(window: DrivenWindow) -> Path:
     """Beside the window's temporary settings file, which is already in `tmp_path`."""
     return window._settings_path.with_name("melt.pibatch")
+
+
+def pane_text(window: DrivenWindow) -> str:
+    """The metadata pane as `key: value`, which is what it is easiest to assert against."""
+    return as_text(window.metadata.sections)
+
+
+def set_in(window: DrivenWindow, text: str) -> None:
+    """Commit the In cell the way the delegate does, through the proxy."""
+    proxy = window.shot_list.proxy
+    index = proxy.index(0, IN, proxy.index(0, 0))
+    assert proxy.setData(index, text, Qt.ItemDataRole.EditRole)
 
 
 def edit(window: DrivenWindow, notes: str) -> None:
