@@ -100,6 +100,24 @@ class TestWrittenMetadata:
         with OpenEXR.File(str(path)) as handle:
             assert handle.header()[exr.SOURCE_ENCODING_ATTRIBUTE] == "ARRI LogC3 (EI800)"
 
+    def test_the_origin_of_the_encoding_is_named_beside_it(self, tmp_path: Path) -> None:
+        """How a wrong encoding is traced back to whoever wrote it (M4.6.5)."""
+        path = tmp_path / "frame.exr"
+        shot_color = clf.ShotColor(
+            source_encoding="BMDFilm WideGamut Gen5", source_encoding_origin="container tag"
+        )
+        exr.write_frame(path, image(), shot_color=shot_color)
+        with OpenEXR.File(str(path)) as handle:
+            assert handle.header()[exr.SOURCE_ENCODING_ORIGIN_ATTRIBUTE] == "container tag"
+
+    def test_an_origin_with_no_encoding_beside_it_is_not_written(self, tmp_path: Path) -> None:
+        """A source for a name the header does not state would say nothing at all."""
+        path = tmp_path / "frame.exr"
+        shot_color = clf.ShotColor(source_encoding=None, source_encoding_origin="clip metadata")
+        exr.write_frame(path, image(), shot_color=shot_color)
+        with OpenEXR.File(str(path)) as handle:
+            assert exr.SOURCE_ENCODING_ORIGIN_ATTRIBUTE not in handle.header()
+
     def test_a_clip_that_named_no_encoding_leaves_the_attribute_out(self, tmp_path: Path) -> None:
         """Absent rather than a guess. There is no default to write (M4.6.1, QC-046)."""
         path = tmp_path / "frame.exr"

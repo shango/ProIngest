@@ -48,6 +48,14 @@ constant.
 SOURCE_ENCODING_ATTRIBUTE = "proingest/source_encoding"
 """The log encoding the source was read as, and therefore the input transform applied."""
 
+SOURCE_ENCODING_ORIGIN_ATTRIBUTE = "proingest/source_encoding_origin"
+"""Where that name came from: the clip's metadata, a container tag, or an override.
+
+The encoding is the fact that matters and the origin is how a wrong one is traced back
+to whoever wrote it (COLOR_AND_FORMAT, EXR metadata). Written only beside an encoding,
+so the header never carries a source for a name it does not state.
+"""
+
 CLF_ATTRIBUTE = "proingest/clf"
 CLF_HASH_ATTRIBUTE = "proingest/clf_hash"
 """The CLF's filename and its sha256. **The hash is what identifies the grade**: a CLF
@@ -224,6 +232,8 @@ def provenance(
     header: dict[str, Any] = {}
     if shot_color.source_encoding is not None:
         header[SOURCE_ENCODING_ATTRIBUTE] = shot_color.source_encoding
+        if shot_color.source_encoding_origin is not None:
+            header[SOURCE_ENCODING_ORIGIN_ATTRIBUTE] = shot_color.source_encoding_origin
     if loaded_clf is not None:
         header[CLF_ATTRIBUTE] = loaded_clf.path.name
         header[CLF_HASH_ATTRIBUTE] = loaded_clf.digest

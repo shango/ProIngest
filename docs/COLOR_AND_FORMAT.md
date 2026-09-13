@@ -265,8 +265,8 @@ needs no table.
 **The source encoding is recorded on every deliverable**, and since 2026-09-12 that is the
 whole of its job on a plate: the tool did not apply it, the CLF did. It is still worth writing,
 because a plate that does not say what it was made from cannot be checked against the session
-that made it. `proingest/source_encoding` names it, and
-`proingest/source_encoding_origin` is specified below for where the name came from.
+that made it. `proingest/source_encoding` names it and `proingest/source_encoding_origin` says which
+carrier it was read from.
 
 ### The chain
 
@@ -395,10 +395,16 @@ was done to it.
   2026-09-12 it does not name a transform the tool applied**, because the CLF starts there and
   the tool converts nothing before it. It is provenance: what the plate was made from, so the
   file can be checked against the session that made it. On an **aux still** it does name the
-  transform applied, because that is the one chain with no CLF in it. **Not yet written:**
-  `proingest/source_encoding_origin`, which says whether that name came from the clip's
-  metadata or from a per row override. The encoding is the fact that matters and the origin is
-  how a wrong one gets traced back to whoever wrote it.
+  transform applied, because that is the one chain with no CLF in it.
+- `proingest/source_encoding_origin` says which carrier named it: `clip metadata` or
+  `container tag`, the two the scan reads (OQ-44). The encoding is the fact that matters and
+  the origin is how a wrong one gets traced back to whoever wrote it, because a name typed into
+  the session and a name that travelled inside the file were written by different people at
+  different times. It is written **only beside an encoding**, so the header never states a
+  source for a name it does not carry. This paragraph read "the clip's metadata or a per row
+  override" while no override existed and the second carrier did; **a per row override, if the
+  tool is ever given one, is a third value rather than a second mechanism.** Nothing in
+  `UI_SPEC.md` asks for one today.
 - `proingest/clf` names the CLF and `proingest/clf_hash` is its sha256. **The hash is what
   identifies the grade**: a CLF that is re-exported and redelivered gets a different one, so the
   deliverables rendered from the old version stay findable afterwards. Both are **absent** from

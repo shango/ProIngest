@@ -344,7 +344,10 @@ def _shot_color(session: clf.ColorSession | None, row: ShotRow) -> clf.ShotColor
     picking a grade (`clf.AmbiguousClfError`).
     """
     if session is None:
-        return clf.ShotColor(source_encoding=clf.resolved_encoding(row))
+        return clf.ShotColor(
+            source_encoding=clf.resolved_encoding(row),
+            source_encoding_origin=row.source_encoding_origin,
+        )
     return session.shot_color(row)
 
 
@@ -464,7 +467,10 @@ def _aux_plan(shot: _Shot) -> RowPlan:
                     rate=shot.media.rate,
                     source_start_frame=shot.media.start_frame,
                     source_start_timecode=shot.media.start_timecode,
-                    shot_color=clf.ShotColor(source_encoding=shot.color.source_encoding),
+                    shot_color=clf.ShotColor(
+                        source_encoding=shot.color.source_encoding,
+                        source_encoding_origin=shot.color.source_encoding_origin,
+                    ),
                 )
             ]
         )

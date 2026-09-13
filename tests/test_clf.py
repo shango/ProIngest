@@ -18,7 +18,7 @@ import PyOpenColorIO as ocio
 import pytest
 
 from proingest.core import clf, color, naming
-from proingest.core.models import FrameRate, MediaInfo, ShotRow
+from proingest.core.models import FrameRate, MediaInfo, ShotRow, SourceEncodingOrigin
 
 RATE_24 = FrameRate(24)
 
@@ -63,14 +63,18 @@ def edl(tmp_path: Path, text: str = FINAL_EDL) -> Path:
 
 
 def row(
-    clip_name: str = "MELT0001_pl01", source_encoding: str | None = None, **kwargs: object
+    clip_name: str = "MELT0001_pl01",
+    source_encoding: str | None = None,
+    source_encoding_origin: SourceEncodingOrigin | None = None,
+    **kwargs: object,
 ) -> ShotRow:
-    """A scanned row: 240 frames of ProRes starting at 01:00:00:00."""
+    """A scanned row: 240 frames of ProRes starting at 01:00:00:00. `kwargs` are the media's."""
     return ShotRow(
         turnover_id="turnover001",
         clip_name=clip_name,
         identity=naming.parse_clip_name(clip_name),
         source_encoding=source_encoding,
+        source_encoding_origin=source_encoding_origin,
         media=MediaInfo(
             path=Path(f"/turnover/{clip_name}.mov"),
             codec="prores",
@@ -579,6 +583,22 @@ class TestSessionShotColor:
         """QC-047 is where this is reported. A graded row renders regardless."""
         session = clf.load_session(edl(tmp_path), RATE_24)
         assert session.shot_color(row(source_encoding="S-Log3")).source_encoding is None
+
+    def test_the_origin_of_the_name_travels_with_it(self, tmp_path: Path) -> None:
+        """It is the row's, not the session's: the session has no opinion about it."""
+        session = clf.load_session(edl(tmp_path), RATE_24)
+        scanned = row(source_encoding="BM Film", source_encoding_origin="container tag")
+        assert session.shot_color(scanned).source_encoding_origin == "container tag"
+
+    def test_a_name_that_resolved_to_nothing_still_says_where_it_came_from(
+        self, tmp_path: Path
+    ) -> None:
+        """Which is the case the origin exists for: QC-047 names a string to correct."""
+        session = clf.load_session(edl(tmp_path), RATE_24)
+        scanned = row(source_encoding="S-Log3", source_encoding_origin="clip metadata")
+        shot_color = session.shot_color(scanned)
+        assert shot_color.source_encoding is None
+        assert shot_color.source_encoding_origin == "clip metadata"
 
     def test_a_row_naming_no_encoding_gets_a_chain_that_names_none(self, tmp_path: Path) -> None:
         """Renderable where the CLF is the whole chain, and QC-046 where it is not."""

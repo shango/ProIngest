@@ -468,6 +468,25 @@ class TestShotColourOnJobs:
         jobs = planner.plan_batch(batch)
         assert {job.shot_color.source_encoding for job in jobs} == {None}
 
+    def test_where_the_name_came_from_reaches_every_job_too(self) -> None:
+        """The resolved space loses the shooter's string, so the origin is what traces it."""
+        scanned = row(source_encoding="C-Log3", source_encoding_origin="container tag")
+        batch = Batch(name="b", rows=[scanned], delivery_root=ROOT)
+        jobs = planner.plan_batch(batch)
+        assert {job.shot_color.source_encoding_origin for job in jobs} == {"container tag"}
+
+    def test_an_aux_still_carries_the_origin_as_well_as_the_encoding(self) -> None:
+        """Its chain is the one the encoding is applied on, so its header states both."""
+        aux = row(
+            "MELT0001_pl01_colorChart_01",
+            source_encoding="ACEScc",
+            source_encoding_origin="clip metadata",
+        )
+        batch = Batch(name="b", rows=[aux], delivery_root=ROOT)
+        jobs = planner.plan_batch(batch)
+        still = next(job for job in jobs if job.kind == "aux_still")
+        assert still.shot_color.source_encoding_origin == "clip metadata"
+
     def test_two_rows_may_name_two_different_encodings(self) -> None:
         """A turnover may mix encodings freely, so nothing batch wide can stand in."""
         rows = [

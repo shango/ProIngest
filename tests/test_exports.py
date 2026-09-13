@@ -165,6 +165,21 @@ class TestQcLogSheets:
         header, values = sheet_rows(path, "Shots")
         assert dict(zip(header, values, strict=True))["CLF"] == "MELT0001_grade_v02.clf"
 
+    def test_the_shots_sheet_names_the_encoding_the_clip_asked_for(
+        self, tmp_path: Path
+    ) -> None:
+        """Verbatim, because what QC-047 needs corrected is the string somebody typed."""
+        named = row()
+        named.source_encoding = "C-Log3"
+        path = tmp_path / "log.xlsx"
+        exports.write_qc_log(Batch(name="b", rows=[named]), path)
+        header, values = sheet_rows(path, "Shots")
+        assert dict(zip(header, values, strict=True))["Source encoding"] == "C-Log3"
+
+    def test_a_clip_that_named_no_encoding_leaves_the_column_empty(self, log: Path) -> None:
+        header, values = sheet_rows(log, "Shots")
+        assert not dict(zip(header, values, strict=True))["Source encoding"]
+
     def test_an_ungraded_row_leaves_the_clf_column_empty(self, log: Path) -> None:
         """openpyxl reads an empty string back as None; either way the cell says nothing."""
         header, values = sheet_rows(log, "Shots")

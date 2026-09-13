@@ -9,15 +9,16 @@ commit.
 ## 1. Resume here
 
 **State at 2026-09-12 (late). M1, M2, M3 and M4 complete; M4.5 is done, all four chunks, and
-M4.6 is done but for its last chunk: M4.6.1, M4.6.2, M4.6.3 and M4.6.4 are built.** The colour chain now reaches the files: a plate is delivered graded in linear
+M4.6 is done, all five.** The colour chain now reaches the files: a plate is delivered graded in linear
 ACEScg with AP1 primaries and a header that says what was applied to it, and a reference mp4 is
 encoded through the shot's grade and the ACES output transform baked into one cube. **The chain
 no longer converts ahead of the CLF**, which was the one thing in the code that would have
-delivered a wrong plate against a real session. **M5, the UI, is next**, and the rest of
-**M4.6** sits beside it: the source encoding went back to camera native log on 2026-09-12 and
-the tool still has to read it per shot. 876 tests passing, `ruff` and `mypy --strict` clean.
-**M5 is not blocked, and M4.6 is no longer blocked either**: OQ-37 came back the same day and
-answered the expensive half of it. Two questions are open and both are about correctness rather
+delivered a wrong plate against a real session. The source encoding went back to camera native
+log on 2026-09-12 and the tool now reads it per shot, resolves it through a table, records it
+in the QC log and states it and its origin in the delivered header. **M5, the UI, is next and
+nothing sits beside it any more.** 934 tests passing, `ruff` and `mypy --strict` clean.
+**M5 is not blocked**: OQ-37 came back the same day and
+answered the expensive half of M4.6. Two questions are open and both are about correctness rather
 than scope, OQ-46 and **OQ-47, which is new and was found by building M4.6.2**.
 
 **M4 is done.** `core/exports.py` writes both spreadsheets, `proingest qc <batch>` writes them
@@ -446,6 +447,29 @@ should not be re-derived.
   paths that build a `ShotColor`, with a session and without, need the same answer. QC-047 is
   where it is reported, and that is M4.6.4.
 
+### M4.6.5 is built: the encoding is recorded where it can be read back
+
+Built 2026-09-12, the last chunk of M4.6 and the only one that touches no pixel. 934 tests.
+`ShotRow.source_encoding_origin` is set wherever the encoding is, rides to the worker on
+`clf.ShotColor`, and comes out as `proingest/source_encoding_origin` in the EXR header; the QC
+log's Shots sheet gains a Source encoding column beside the CLF one. Three things in it should
+not be re-derived.
+
+- **The two places record two different strings, on purpose.** The header names the **resolved
+  colour space**, because that is what the pixels went through. The QC log names **what the
+  clip's metadata said, verbatim**, because that column is read when QC-046 or QC-047 fires and
+  what has to be corrected is the string somebody typed. Neither is derivable from the other:
+  four names resolve to `S-Log3 S-Gamut3.Cine` and one resolves to nothing.
+- **The origin's values are the two carriers the scan reads**, `clip metadata` and
+  `container tag`, as `models.SourceEncodingOrigin`. COLOR_AND_FORMAT specified the pair as
+  "the clip's metadata or a per row override" while no override existed and the second carrier
+  did; **the doc was corrected rather than the code**. An override, if the tool is ever given
+  one, is a third value rather than a second mechanism, and `UI_SPEC.md` asks for none.
+- **An origin is written only beside an encoding.** A row whose name resolved to nothing still
+  carries its origin through the planner, since that is exactly the case someone has to trace,
+  but the header states no source for a name it does not state. The QC log carries the
+  unresolvable name itself, which is the whole of what QC-047 needs.
+
 ### M4.6.4 is built: the encoding is read off the clip
 
 Built 2026-09-12. The scan reads one named metadata field into `ShotRow.source_encoding`, and
@@ -484,11 +508,10 @@ nothing written. **When M5 wires the colour session into Settings**, the rules w
 tell "no session yet" from "this session had no grade for this row", and that is the moment to
 decide whether QC-046's error widens.
 
-### Next task: M5, the UI, or the rest of M4.6
+### Next task: M5, the UI
 
-M4.5 is finished and so are M4.6.1 to M4.6.4. What is left of M4.6 is **M4.6.5**, the two
-places the encoding is recorded: `proingest/source_encoding_origin` in the EXR header, and the
-source encoding column in the QC log beside the CLF one. It changes no pixel.
+M4.5 and M4.6 are both finished, so **M5 is the whole of what is next** and nothing in core is
+waiting on anything.
 
 `docs/UI_SPEC.md` is M5's spec and it was already cut down when the four colour controls and
 the three viewers were dropped. The things M5 owes the colour chain are small and known:
@@ -689,7 +712,7 @@ Entry points worth knowing:
 | M3 | Render | complete, 172 tests |
 | M4 | QC: all rules both phases, xlsx exports, `qc` CLI | complete, 175 tests |
 | M4.5 | Colour pipeline, core only. Source log in, CLF applied, ACEScg out, the viewing LUT | complete, 111 tests |
-| M4.6 | Per shot source encoding: read from the clip metadata, the input transform table, the input transform out of the graded chains, QC-046 to QC-048 | **M4.6.1 to M4.6.4 done**, M4.6.5 left (OQ-37 answered; OQ-46 wants confirming) |
+| M4.6 | Per shot source encoding: read from the clip metadata, the input transform table, the input transform out of the graded chains, QC-046 to QC-048 | complete, all five chunks (OQ-37 answered; OQ-46 wants confirming) |
 | M5 | UI: the list, the FR-14 metadata pane, settings, log. **No viewers** | not started |
 | M6 | ~~Stringout with burn-ins~~ | **dropped 2026-09-11**, the colour session exports it |
 | M7 | Packaging: PyInstaller `.app`, dmg, Gatekeeper | not started, and needs a Mac (OQ-22) |
@@ -721,7 +744,7 @@ constant rather than a parameter. A test asserts red sits at 0.713, 0.293 rather
 the constant back, because a regression to Rec.709's 0.64 is exactly what a test that reads the
 constant cannot see.
 
-M4.6 detail, specified 2026-09-12 and **not started**. It is small because M4.5 already
+M4.6 detail, specified and built 2026-09-12. It is small because M4.5 already
 threads the source encoding per shot; what is missing is where the string comes from and what
 happens when it cannot be resolved.
 
@@ -731,7 +754,7 @@ happens when it cannot be resolved.
 | M4.6.2 | **Take the input transform out of the graded chains.** `ShotColor.plate_transforms` drops `input_transform` when a CLF is present, `WORKING_SPACE` and `plate_transform` collapse into one source-to-ACEScg leg, and `view_lut` bakes the CLF and the output transform only | **done, 876 tests.** OQ-47 found on the way |
 | M4.6.3 | The mapping table in `core/color.py`: what a shooter writes to one OCIO colour space, extensible by a row, refusing the unrecognised and the ambiguous | **done, 897 tests.** `INPUT_TRANSFORMS` and `resolve_encoding` |
 | M4.6.4 | Read the encoding at scan time from the carrier OQ-44 names, and QC-046, QC-047 and QC-048 | **done, 924 tests.** OQ-44 built to its default: `Input Color Space`, clip metadata first, container tags second |
-| M4.6.5 | `proingest/source_encoding_origin` in the EXR header, and the source encoding column in the QC log beside the CLF one | not started |
+| M4.6.5 | `proingest/source_encoding_origin` in the EXR header, and the source encoding column in the QC log beside the CLF one | **done, 934 tests.** `models.SourceEncodingOrigin`, and the header's name and the log's name are deliberately different strings |
 
 **M4.6.2 was the chunk to get right and it was the only one that changes a delivered plate.**
 It returned `[input_transform, clf]`, which under the answered OQ-37 converts twice: the CLF
@@ -1382,10 +1405,11 @@ Nothing blocks the next task. These are live, in rough priority order:
   how dark the grade is and separates every encoding in play by an order of magnitude. Left
   alone in M4.6.2 because it is QC-039's definition rather than the chain.
 
-- **Where the source encoding comes from is built, and the field name is a guess (M4.6.5 is
-  what is left).** The encoding is read at scan time from `Input Color Space` on the clip, or
-  from the container's tags, resolved through the input transform table, and reported by
-  QC-046, QC-047 and QC-048. **The field name is Resolve's own column name and nothing has
+- **Where the source encoding comes from is built, and the field name is a guess.** The
+  encoding is read at scan time from `Input Color Space` on the clip, or
+  from the container's tags, resolved through the input transform table, reported by
+  QC-046, QC-047 and QC-048, and recorded with its origin in the header and the QC log
+  (M4.6.5). **The field name is Resolve's own column name and nothing has
   confirmed Resolve exports it** (OQ-44): one real export from the shooters either confirms it
   or moves one string in `scan.py`. Until then a real turnover may scan with QC-046 on every
   row, which is loud and harmless and exactly what it is for.

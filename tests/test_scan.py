@@ -195,6 +195,12 @@ class TestSourceEncoding:
         """Stored as written, because QC-047 has to quote it back at whoever typed it."""
         row = self.scanned(tmp_path, source_encoding="C-Log3")
         assert row.source_encoding == "C-Log3"
+        assert row.source_encoding_origin == "clip metadata"
+
+    def test_a_clip_that_names_none_has_no_origin_either(self, tmp_path: Path) -> None:
+        """Nothing wrote it, so there is nobody to trace a wrong one back to (M4.6.5)."""
+        row = self.scanned(tmp_path, source_encoding=None)
+        assert row.source_encoding_origin is None
 
     def test_a_clip_that_names_none_says_so_rather_than_guessing(self, tmp_path: Path) -> None:
         row = self.scanned(tmp_path, source_encoding=None)
@@ -216,7 +222,10 @@ class TestSourceEncoding:
         clip = fixtures.clip_record("MELT0001_pl01", metadata={})
         row = ShotRow(turnover_id="t1", clip_name="MELT0001_pl01")
         row.media = fixtures.media_info_with_tags({scan.SOURCE_ENCODING_KEY: "BM Film"})
-        assert scan._source_encoding(clip, row, scan.SOURCE_ENCODING_KEY) == "BM Film"
+        assert scan._source_encoding(clip, row, scan.SOURCE_ENCODING_KEY) == (
+            "BM Film",
+            "container tag",
+        )
 
     def test_the_clip_wins_over_the_container(self, tmp_path: Path) -> None:
         clip = fixtures.clip_record(
@@ -224,19 +233,22 @@ class TestSourceEncoding:
         )
         row = ShotRow(turnover_id="t1", clip_name="MELT0001_pl01")
         row.media = fixtures.media_info_with_tags({scan.SOURCE_ENCODING_KEY: "BM Film"})
-        assert scan._source_encoding(clip, row, scan.SOURCE_ENCODING_KEY) == "C-Log3"
+        assert scan._source_encoding(clip, row, scan.SOURCE_ENCODING_KEY) == (
+            "C-Log3",
+            "clip metadata",
+        )
 
     def test_a_field_that_is_there_and_empty_is_no_field(self, tmp_path: Path) -> None:
         """QC-046's own words: the field is absent, or empty."""
         clip = fixtures.clip_record("MELT0001_pl01", metadata={scan.SOURCE_ENCODING_KEY: "   "})
         row = ShotRow(turnover_id="t1", clip_name="MELT0001_pl01")
-        assert scan._source_encoding(clip, row, scan.SOURCE_ENCODING_KEY) is None
+        assert scan._source_encoding(clip, row, scan.SOURCE_ENCODING_KEY) == (None, None)
 
     def test_the_field_name_is_a_setting(self, tmp_path: Path) -> None:
         """OQ-44's answer is a different field name and nothing else."""
         clip = fixtures.clip_record("MELT0001_pl01", metadata={"Camera Log": "C-Log3"})
         row = ShotRow(turnover_id="t1", clip_name="MELT0001_pl01")
-        assert scan._source_encoding(clip, row, "camera log") == "C-Log3"
+        assert scan._source_encoding(clip, row, "camera log") == ("C-Log3", "clip metadata")
 
 
 class TestTurnoverLevelProblems:

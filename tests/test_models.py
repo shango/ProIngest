@@ -184,6 +184,7 @@ class TestShotRow:
             deliverables=[Deliverable("raw", "n.exr", Path("/d/n.exr"), 1, res="4k")],
             qc=[QCResult("QC-030", "warning", "row", "handles")],
             source_encoding="S-Log3 S-Gamut3.Cine",
+            source_encoding_origin="clip metadata",
         )
         assert ShotRow.from_dict(row.to_dict()) == row
 
@@ -192,6 +193,14 @@ class TestShotRow:
         data = make_row().to_dict()
         del data["source_encoding"]
         assert ShotRow.from_dict(data).source_encoding is None
+
+    def test_a_row_saved_before_the_origin_existed_reads_back_naming_none(self) -> None:
+        """Additive, so the schema version does not move (M4.6.5)."""
+        data = make_row(source_encoding="C-Log3").to_dict()
+        del data["source_encoding_origin"]
+        read = ShotRow.from_dict(data)
+        assert read.source_encoding == "C-Log3"
+        assert read.source_encoding_origin is None
 
     def test_round_trip_of_an_unparsed_row(self) -> None:
         """A QC-010 row still appears so the editor can fix the name in place."""

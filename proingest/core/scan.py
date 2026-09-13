@@ -27,6 +27,7 @@ from proingest.core.models import (
     QCResult,
     ShotRow,
     SideFiles,
+    SourceEncodingOrigin,
     Turnover,
 )
 
@@ -213,7 +214,9 @@ def _build_row(
     if item is not None:
         _probe_into(row, item, cache, loaded.rate)
 
-    row.source_encoding = _source_encoding(clip, row, settings.source_encoding_key)
+    row.source_encoding, row.source_encoding_origin = _source_encoding(
+        clip, row, settings.source_encoding_key
+    )
     _derive_ranges(row, clip)
     _attach_audio(row, clip, loaded, index)
     _attach_side_files(row, index)
@@ -221,8 +224,10 @@ def _build_row(
     return row
 
 
-def _source_encoding(clip: timeline.ClipRecord, row: ShotRow, key: str) -> str | None:
-    """What this clip says it is encoded in, verbatim, or None when it says nothing.
+def _source_encoding(
+    clip: timeline.ClipRecord, row: ShotRow, key: str
+) -> tuple[str | None, SourceEncodingOrigin | None]:
+    """What this clip says it is encoded in, verbatim, and which carrier said it.
 
     **The clip's own metadata first and the container's tags second** (OQ-44). The
     timeline is where a person filled the field in; a container tag is the same string
@@ -233,15 +238,21 @@ def _source_encoding(clip: timeline.ClipRecord, row: ShotRow, key: str) -> str |
     Read here because this is the only moment the timeline and the probe are both in
     front of the tool, and stored as written rather than resolved: what a shooter typed
     is what QC-047 has to be able to quote back.
+
+    The origin travels with the name because a wrong encoding is traced back to whoever
+    wrote it, and the two carriers are written by different people at different times
+    (`models.SourceEncodingOrigin`). It rides to the delivered EXR header from here.
     """
-    sources: list[Mapping[str, str]] = [clip.metadata]
+    sources: list[tuple[SourceEncodingOrigin, Mapping[str, str]]] = [
+        ("clip metadata", clip.metadata)
+    ]
     if row.media is not None:
-        sources.append(row.media.tags)
-    for source in sources:
-        value = _named_value(source, key)
+        sources.append(("container tag", row.media.tags))
+    for origin, fields in sources:
+        value = _named_value(fields, key)
         if value is not None:
-            return value
-    return None
+            return value, origin
+    return None, None
 
 
 def _named_value(fields: Mapping[str, str], key: str) -> str | None:

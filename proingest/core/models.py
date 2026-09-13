@@ -24,6 +24,17 @@ Severity = Literal["error", "warning", "info"]
 Scope = Literal["batch", "turnover", "row", "deliverable"]
 DeliverableStatus = Literal["planned", "rendering", "done", "failed", "exists", "skipped"]
 
+SourceEncodingOrigin = Literal["clip metadata", "container tag"]
+"""Which carrier named a row's source encoding. COLOR_AND_FORMAT, EXR metadata.
+
+The two the scan reads, in the order it reads them (OQ-44). It is written into the
+delivered EXR header and the QC log because the encoding is the fact that matters and
+the origin is how a wrong one is traced back to whoever wrote it: a name from the clip
+metadata was typed into the session, one from a container tag travelled in the file and
+may predate it. An override typed by an editor would be a third value rather than a second
+mechanism; nothing sets one today.
+"""
+
 
 def _as_path(value: Any) -> Path | None:
     return Path(value) if value else None
@@ -382,6 +393,14 @@ class ShotRow:
     the schema version does not move and an older batch simply names no encoding.
     """
 
+    source_encoding_origin: SourceEncodingOrigin | None = None
+    """Which carrier named it, or None when nothing named one.
+
+    Set wherever `source_encoding` is set, so the two never disagree. Additive, so the
+    schema version does not move and an older batch names no origin for an encoding it
+    does name, which reads as unknown rather than as either carrier.
+    """
+
     clf_path: Path | None = None
     """The CLF the colour session delivered for this shot, or None when it delivered none.
 
@@ -440,6 +459,7 @@ class ShotRow:
             "audio": self.audio.to_dict() if self.audio else None,
             "audio_clip_count": self.audio_clip_count,
             "source_encoding": self.source_encoding,
+            "source_encoding_origin": self.source_encoding_origin,
             "clf_path": str(self.clf_path) if self.clf_path else None,
             "side_files": self.side_files.to_dict(),
             "notes": self.notes,
@@ -469,6 +489,7 @@ class ShotRow:
             audio=AudioInfo.from_dict(data["audio"]) if data.get("audio") else None,
             audio_clip_count=int(data.get("audio_clip_count", 0)),
             source_encoding=data.get("source_encoding"),
+            source_encoding_origin=data.get("source_encoding_origin"),
             clf_path=_as_path(data.get("clf_path")),
             side_files=SideFiles.from_dict(data.get("side_files", {})),
             notes=str(data.get("notes", "")),

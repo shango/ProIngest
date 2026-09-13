@@ -32,7 +32,7 @@ import numpy as np
 import PyOpenColorIO as ocio
 
 from proingest.core import color, frames, naming
-from proingest.core.models import FrameRate, InOut, MediaInfo, ShotRow
+from proingest.core.models import FrameRate, InOut, MediaInfo, ShotRow, SourceEncodingOrigin
 
 CLF_EXTENSION = ".clf"
 
@@ -179,6 +179,15 @@ class ShotColor:
     the CLF is the whole chain there, and it is not renderable on any other.
     """
 
+    source_encoding_origin: SourceEncodingOrigin | None = None
+    """Which carrier named it, carried so the delivered EXR header can say.
+
+    It describes the row's written name rather than the colour space above it, which is
+    what the resolution was performed on. Set even where `source_encoding` is None, since
+    a name that resolved to nothing still came from somewhere; `exr.provenance` writes it
+    only beside an encoding, because an origin with nothing to originate says nothing.
+    """
+
     clf_path: Path | None = None
     cdl: CDL | None = None
 
@@ -287,6 +296,7 @@ class ColorSession:
         event = self.event_for(row)
         return ShotColor(
             source_encoding=resolved_encoding(row),
+            source_encoding_origin=row.source_encoding_origin,
             clf_path=self.clf_for(row.shot_code) if row.shot_code else None,
             cdl=event.cdl if event is not None else None,
         )
