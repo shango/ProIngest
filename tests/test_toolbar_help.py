@@ -30,7 +30,7 @@ def native(action: QAction) -> str:
     """The shortcut as the tooltip spells it, which is not how a test would spell it.
 
     `toString()` gives the portable `Ctrl+R` on every platform; the tooltip asks for
-    native text, so macOS draws `\u2318R` and Linux draws `Ctrl+R`. A test that wrote
+    native text, so macOS draws Cmd-R as one glyph and Linux draws `Ctrl+R`. A test that wrote
     either one out passed here and failed on the arm64 runner, which is what that runner
     is for.
     """

@@ -1185,13 +1185,19 @@ contains the conversion and one that does not is two plausible looking images an
   day**, as the grade carrier went CLF, then CDL, then CLF again, and **OQ-19 was reopened after
   a day** by the real tracker's FPS column. New: OQ-35, OQ-36, OQ-39, OQ-41. OQ-29 is mostly
   answered, since the colour session pins ACES 1.3, and its config half is now built.
-- **Everything through M5.7.3 is pushed**, at the user's instruction on 2026-09-13: 7 commits
-  went at once, the five that had been sitting from the M5.7.1 and M5.7.2 session and the two
-  from this one. **Run 34764055432 is green on both runners**, macOS arm64 in 1m52s and Linux in
-  2m15s, so **all 1427 tests pass on Apple Silicon against the bundled ffmpeg 9.0.1** rather than
-  only against this machine's 6.1.1. Check CI rather than assuming, and **pushing is still the
-  user's call** rather than an automatic step: this line has twice claimed a push that had not
-  happened, which is why it names the commit count and the run.
+- **Everything through M5.11 is pushed**, at the user's instruction on 2026-09-13: 6 commits,
+  the four chunks of this session plus the handoff rewrite and the shortcut fix below.
+  **Run 34767414688 is green on both runners**, macOS arm64 in 2m08s and Linux in 2m17s, so
+  **all 1509 tests pass on Apple Silicon against the bundled ffmpeg 9.0.1** rather than only
+  against this machine's 6.1.1. Check CI rather than assuming, and **pushing is still the user's
+  call** rather than an automatic step: this line has twice claimed a push that had not happened,
+  which is why it names the commit count and the run.
+- **The push before it went red first, and that is worth expecting.** Run 34767259404 failed on
+  the arm64 runner alone, on two M5.11 tests that had written `Ctrl+R` into their expected text
+  where macOS draws one glyph. Nothing was wrong with the code. **Two of the last two CI-only
+  failures have been the Mac disagreeing about something the Linux machine cannot observe** - the
+  other was `-shortest` and the audio length on ffmpeg 9.0.1 - so a first push that goes red is
+  the runner doing its job rather than a regression.
 
 ---
 
