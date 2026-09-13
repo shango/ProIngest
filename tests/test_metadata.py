@@ -196,7 +196,7 @@ class TestWhatOneRowSays:
         sections = describe([flagged], batch(flagged))
         assert value(sections, "QC", "Results") == "1 error, 1 warning"
         rules = [f.rule_id for f in section(sections, "QC").fields if f.rule_id]
-        assert rules == ["QC-011", "QC-030"]
+        assert rules == ["QC-012", "QC-030"]
 
     def test_a_clean_row_says_none_rather_than_hiding_the_section(self) -> None:
         assert value(describe([row()], batch(row())), "QC", "Results") == "none"
@@ -213,6 +213,13 @@ class TestTheEdgeStates:
         missing.media = None
         sections = describe([missing], batch(missing))
         assert "not resolved" in value(sections, "Source media", "Media")
+        assert "media not found" in value(sections, "Source media", "Media")
+
+    def test_ambiguous_media_says_why_too(self) -> None:
+        """QC-013 is the other rule that leaves a row without media."""
+        ambiguous = fail(row(), "QC-013")
+        ambiguous.media = None
+        sections = describe([ambiguous], batch(ambiguous))
         assert "media not found" in value(sections, "Source media", "Media")
 
     def test_unresolved_media_keeps_identity_and_range(self) -> None:
@@ -271,7 +278,7 @@ class TestMoreThanOneRow:
         sections = describe(rows, batch(*rows))
         assert value(sections, "QC", "Results") == "1 error, 1 warning"
         assert {f.rule_id for f in section(sections, "QC").fields if f.rule_id} == {
-            "QC-011",
+            "QC-012",
             "QC-030",
         }
 
@@ -370,8 +377,8 @@ class TestTheWidget:
         flagged = fail(row())
         pane.show_sections(describe([flagged], batch(flagged)))
         box = next(b for b in pane._boxes if b.title == "QC")
-        box.link_clicked.emit("QC-011")
-        assert asked == ["QC-011"]
+        box.link_clicked.emit("QC-012")
+        assert asked == ["QC-012"]
 
     def test_a_shut_section_is_remembered_by_title(self, pane: MetadataPane) -> None:
         """Titles rather than indexes, so a section a later chunk adds does not

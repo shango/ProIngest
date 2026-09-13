@@ -189,7 +189,7 @@ def _unresolved_reason(row: ShotRow) -> str:
     only thing that knows what it looked for and it has already written that down.
     """
     for result in row.qc:
-        if result.rule_id in ("QC-011", "QC-012") and result.severity == "error":
+        if result.rule_id in ("QC-012", "QC-013") and result.severity == "error":
             return f"{UNRESOLVED}: {result.message}"
     return UNRESOLVED
 

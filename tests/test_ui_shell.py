@@ -1396,11 +1396,11 @@ class TestTheMetadataPane:
     def test_a_rule_id_brings_the_issues_dock_forward(self, window: DrivenWindow) -> None:
         window.set_batch(batch(fail(row())))
         window.shot_list.select_row(window.batch.rows[0])
-        window.metadata.issue_clicked.emit("QC-011")
+        window.metadata.issue_clicked.emit("QC-012")
 
         assert window.bottom_tabs.currentIndex() == BOTTOM_TABS.index("Issues")
         current = window.issues.currentItem()
-        assert current is not None and current.text(1) == "QC-011"
+        assert current is not None and current.text(1) == "QC-012"
 
     def test_ctrl_i_is_what_toggles_it(self, window: DrivenWindow) -> None:
         assert window.action_metadata.shortcut() == QKeySequence("Ctrl+I")

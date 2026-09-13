@@ -460,7 +460,7 @@ class TestTooltips:
         built = ShotListModel()
         built.set_batch(batch(fail(warn(row()))))
         tip = str(cell(built, 0, STATUS, Qt.ItemDataRole.ToolTipRole))
-        assert "QC-030" in tip and "QC-011" in tip
+        assert "QC-030" in tip and "QC-012" in tip
 
     def test_a_row_with_nothing_wrong_has_no_dot_tooltip(self, model: ShotListModel) -> None:
         assert cell(model, 0, STATUS, Qt.ItemDataRole.ToolTipRole) is None
