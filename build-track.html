@@ -311,7 +311,7 @@
   <header class="mast">
     <div class="eyebrow">
       <span>VFX turnover ingest &middot; macOS v01</span>
-      <span class="stamp">Updated <b>13 Sep 2026, 00:20 PDT</b></span>
+      <span class="stamp">Updated <b>13 Sep 2026, 09:17 PDT</b></span>
     </div>
     <h1>ProIngest Build Track</h1>
     <p class="standfirst">
@@ -324,11 +324,11 @@
 
   <div class="stats">
     <div class="stat">
-      <div class="stat-n">4<span style="color:var(--faint);font-size:17px">/8</span></div>
+      <div class="stat-n">5<span style="color:var(--faint);font-size:17px">/8</span></div>
       <div class="stat-l">Milestones done</div>
     </div>
     <div class="stat">
-      <div class="stat-n good">1427</div>
+      <div class="stat-n good">1536</div>
       <div class="stat-l">Tests, Linux + macOS</div>
     </div>
     <div class="stat">
@@ -336,7 +336,7 @@
       <div class="stat-l">Questions open</div>
     </div>
     <div class="stat">
-      <div class="stat-n">10<span style="color:var(--faint);font-size:17px">/13</span></div>
+      <div class="stat-n good">15<span style="color:var(--faint);font-size:17px">/15</span></div>
       <div class="stat-l">Interface chunks</div>
     </div>
   </div>
@@ -674,12 +674,12 @@
         </div>
       </div>
 
-      <div class="ms now">
+      <div class="ms done">
         <div class="ms-id">M5</div>
         <div class="ms-body">
           <div class="ms-head">
             <span class="ms-name">User interface</span>
-            <span class="pill now">In progress &middot; 10 of 13</span>
+            <span class="pill done">Complete &middot; 15 of 15</span>
           </div>
           <p class="ms-goal">
             Main window, shot list with the keyboard model, metadata pane, validation
@@ -829,7 +829,8 @@
               <span class="c-name">The settings window</span>
               <span class="c-note">
                 A section list on the left and a form on the right, the shape the editor already
-                knows from Resolve's project settings. <b>Four of the six sections are live</b>:
+                knows from Resolve's project settings. <b>Four of the six sections were live when it
+                landed, and five are now</b>:
                 how many outputs are written at once, every threshold the checks compare against,
                 the delivery naming, and colour. <b>Changing a threshold re-checks the open
                 delivery immediately</b>, so the list and the issues panel describe it under the
@@ -843,12 +844,13 @@
                 <b>A value that will not parse changes nothing</b> rather than being corrected to
                 something plausible: a resolution half typed is somebody still typing, not
                 somebody asking for a height of zero.
-                <b>Two sections are shown and greyed, each saying what it is waiting on.</b>
-                Output quality and the advanced settings are applied inside the separate
-                processes that write the files, so the value has to travel with the work rather
-                than be read from a settings file those processes never see. That is real
-                plumbing and its own piece of work; a control that silently did nothing would be
-                worse than a greyed one that says why. <b>Nothing in it about which format a
+                <b>Two sections were shown and greyed, each saying what it is waiting on</b>,
+                because their values are applied inside the separate processes that write the
+                files, so a value has to travel with the work rather than be read from a settings
+                file those processes never see. That is real plumbing and its own piece of work; a
+                control that silently did nothing would be worse than a greyed one that says why.
+                <b>The advanced one went live with the log</b> (M5.8.3); output quality is the
+                only one left. <b>Nothing in it about which format a
                 delivery is in</b>, because there is no mode - each clip names its own - and
                 <b>nothing in it about where the grading session is</b>, because that is a record
                 of what a delivery was rendered from rather than a preference.
@@ -889,30 +891,98 @@
               <span class="c-st"><span class="tag ok">Done</span></span>
             </div>
 
-            <div class="chunk now">
-              <span class="c-id">M5.8</span>
-              <span class="c-name">The log</span>
+            <div class="chunk done">
+              <span class="c-id">M5.8.1</span>
+              <span class="c-name">The log file, and the commands that were missing from it</span>
               <span class="c-note">
-                The Log tab and the rotating file behind it. Every command the tool runs is
-                already logged verbatim so a render can be reproduced by hand; this is where a
-                person can read them without going to a terminal. It is also what gives the
-                greyed advanced settings something to configure: a log level is a setting with
-                nothing to set until there is a log.
+                <b>The tool has always written every command it runs into its log, so a render
+                can be reproduced by hand. It turns out the ones that matter most were never
+                written down.</b> The files are produced in separate worker processes, and a
+                freshly started process has nowhere to write a log until it is told where, so
+                every command a <i>render</i> ran went nowhere at all: not to a file, not to the
+                screen, not to a terminal. Everything the main window did was logged correctly,
+                which is why nothing looked wrong.
+                <b>The workers now send their lines back</b> to the one process that owns the
+                file, which is also the only arrangement that is safe: a log that rotates at
+                midnight is one file being renamed, and two processes doing that lose a day of
+                it. The headless command got the same fix for nothing, so
+                <span class="mono">run -v</span> finally prints what its help has always
+                promised.
+                <b>A day of log is kept for a fortnight</b>, dated, in the folder Apple's
+                guidelines name. The one trap worth recording: the way old files are found for
+                deletion has to agree with the way new ones are named, and it fails <b>silently</b>
+                if they disagree - nothing breaks, the folder simply grows forever. A test drops
+                twenty days of logs in a folder and checks the oldest six are found.
               </span>
-              <span class="c-st"><span class="tag now">Next</span></span>
+              <span class="c-st"><span class="tag ok">Done</span></span>
             </div>
 
-            <div class="chunk">
+            <div class="chunk done">
+              <span class="c-id">M5.8.2</span>
+              <span class="c-name">Reading it in the window</span>
+              <span class="c-note">
+                The tab that has been there and empty since the window was built. Time, level,
+                shot and message, over a row of filters: a minimum level, a search box, and
+                <b>one shot at a time</b>, which is the filter the specification actually asks
+                for. <b>Commands are never shortened or re-wrapped and Ctrl+C copies them</b>,
+                because a command that cannot be got out of the window has only half kept the
+                promise of writing it down verbatim.
+                <b>It is bounded and the file is not.</b> The panel keeps the last few thousand
+                lines and the file keeps everything, which is the honest division: a hundred shot
+                run is thousands of lines, and a panel that grows until the window closes is a
+                memory leak with a scrollbar. A line hidden by a filter still ages out, so no
+                filter can be the thing that makes it grow.
+                It follows the newest line only when it is already at the bottom, because
+                somebody who has scrolled up is reading something.
+              </span>
+              <span class="c-st"><span class="tag ok">Done</span></span>
+            </div>
+
+            <div class="chunk done">
+              <span class="c-id">M5.8.3</span>
+              <span class="c-name">The advanced settings, ungreyed</span>
+              <span class="c-note">
+                The section that was shown and greyed since the settings window was built,
+                waiting for there to be a log to configure. Two things: <b>how much is
+                logged</b>, and <b>which copy of the video tools writes the files</b>, plus a
+                line naming where the log file is, which is the one thing somebody on that page
+                wants and cannot otherwise find.
+                <b>The second one is why this waited.</b> The video tools are run inside the
+                separate worker processes, which know nothing the settings window was told, so
+                an override that stayed in the main process would mean <b>a delivery rendered
+                with the wrong copy and nothing said about it</b>. It travels on the same
+                channel the log lines came back on, which is the part built two chunks ago.
+                <b>A path that is not there stops the run</b> rather than quietly falling back to
+                the bundled tools, for the same reason.
+                A level changed while a run is going applies from the next run, and the page says
+                so: a worker is told how much to log when it starts.
+              </span>
+              <span class="c-st"><span class="tag ok">Done</span></span>
+            </div>
+
+            <div class="chunk done">
               <span class="c-id">M5.9</span>
               <span class="c-name">Frozen left columns</span>
               <span class="c-note">
-                The first three columns stay put while the rest scrolls sideways. <b>The toolkit
-                has no feature for this</b>: it takes a second list overlaid on the first, sharing
-                the model, the selection and the scroll. It has to keep working through typing,
-                filtering and selection, which is why it is built <b>after</b> those rather than
-                twice.
+                <b>The interface is finished with this one.</b> The state dot, the shot code and
+                the element now stay put while the other twelve columns scroll sideways, so a row
+                can still be identified while reading a column at the far right of it. <b>The
+                toolkit has no feature for this</b>: it takes a second list laid over the first,
+                showing the same shots through the same filter and sharing the selection outright,
+                with everything the toolkit keeps per list - the scroll, which deliveries are open,
+                the column widths - held in step both ways.
+                <b>Typing still works across the join</b>, which is the half that made it worth
+                building last. An edit opens in whichever of the two lists can actually be seen, so
+                tabbing out of the shot code and into the In point crosses from one to the other
+                with nothing to notice. An earlier version moved the keyboard instead of the edit
+                and was deleted: it could not cover every way an edit begins.
+                <b>The delivery heading is drawn by both lists and had to be made to land in the
+                same place.</b> Left alone it read as two sentences spliced together, and then slid
+                apart as soon as the list was scrolled sideways. <b>Both faults were found by
+                grabbing a picture of the real window</b> rather than by any test - the sixth time
+                that has caught something - and both now have a test that fails without the fix.
               </span>
-              <span class="c-st"><span class="tag open">Last</span></span>
+              <span class="c-st"><span class="tag ok">Done</span></span>
             </div>
 
             <div class="chunk done">
@@ -942,23 +1012,40 @@
               <span class="c-st"><span class="tag ok">Done</span></span>
             </div>
 
-            <div class="chunk">
+            <div class="chunk done">
               <span class="c-id">M5.11</span>
               <span class="c-name">Buttons that say what they do</span>
               <span class="c-note">
-                <b>Asked for on 12 September.</b> A hover description on every button along the
-                top, one sentence each. The half worth care is the <b>greyed</b> buttons: the
-                toolbar deliberately shows what the tool can do before every part of it works, so
-                a button that says <i>why</i> it is unavailable - add a delivery first, set a
-                delivery folder first - is the difference between a tool that looks broken and
-                one that says what to do next.
+                <b>Asked for on 12 September, built on the 13th.</b> A hover description on every
+                button along the top, one sentence each, with its keyboard shortcut. The half
+                worth care is the <b>greyed</b> buttons: the toolbar deliberately shows what the
+                tool can do before every part of it works, so a button that says <i>why</i> it is
+                unavailable - no delivery open, a scan is going, every delivery already has shots
+                - is the difference between a tool that looks broken and one that says what to do
+                next.
+                <b>One description lands on a button that is not greyed at all, and it is the
+                case that made this worth building.</b> A delivery with shots but no grading
+                session ingested <i>runs</i>: it is refused, correctly, and writes nothing, which
+                looks exactly like a dead button. Run now says so before it is pressed rather
+                than after.
+                <b>The wording lives apart from the window</b>, for the reason the settings page
+                and the information panel do - it is the part that gets argued about - and for
+                one of its own: the user guide's button reference is meant to use the same
+                sentences, and a sentence buried in the code that draws a button cannot be
+                shared. The guide will read them.
+                <b>And they had to be measured rather than written.</b> A hover description is
+                drawn on one line however long it is, so a sentence that reads perfectly in the
+                code becomes a strip most of the way across the screen. The first draft had one
+                at 104 characters. Nothing about that fails, and it was found by printing the
+                real window rather than by any test - so the test now holds every line of every
+                description, in every state the window can be in, under a width.
               </span>
-              <span class="c-st"><span class="tag open">New</span></span>
+              <span class="c-st"><span class="tag ok">Done</span></span>
             </div>
 
           </div>
           <div class="mods">
-            <span>main_window</span><i>/</i><span>shot_model</span><i>/</i><span>shot_list</span><i>/</i><span>batch_bar</span><i>/</i><span>scanner</span><i>/</i><span>runner</span><i>/</i><span>issues</span><i>/</i><span>autosave</span><i>/</i><span>run_strip</span><i>/</i><span>metadata</span><i>/</i><span>theme.qss</span>
+            <span>main_window</span><i>/</i><span>shot_model</span><i>/</i><span>shot_list</span><i>/</i><span>batch_bar</span><i>/</i><span>scanner</span><i>/</i><span>runner</span><i>/</i><span>issues</span><i>/</i><span>autosave</span><i>/</i><span>run_strip</span><i>/</i><span>metadata</span><i>/</i><span>log_view</span><i>/</i><span>toolbar_help</span><i>/</i><span>theme.qss</span>
           </div>
           <div class="gate">
             <b>This milestone got smaller on 11 September.</b> Three frame viewers and four
@@ -978,18 +1065,19 @@
             <b>the window now ingests one itself</b> (M5.7.3), so a person who never opens a
             terminal can deliver. The report already had its column for which grade each shot was
             rendered through, so there was nothing to build behind it.
-            <b>Two things in here are known to be awkward and both are written down.</b> The
-            frozen left columns have no support in the toolkit and need the overlaid second list
-            (M5.9). And progress on the Dock icon has no interface in Qt 6 at all, so it needs a
-            small shim through PyObjC, isolated in a macOS-only helper - it is decoration, and the
-            status bar carries the same information if the shim is never built.
-            <b>Four chunks running have now been caught by launching the app rather than by a
+            <b>Of the two things in here known to be awkward, one is now built</b>: the frozen
+            left columns and their overlaid second list (M5.9). What is left is progress on the
+            Dock icon, which has no interface in Qt 6 at all, so it needs a small shim through
+            PyObjC, isolated in a macOS-only helper - it is decoration, and the status bar carries
+            the same information if the shim is never built.
+            <b>Five chunks running have now been caught by launching the app rather than by a
             test</b>: the settings landing a folder too deep, Tab leaving the list, a delivery
-            saved under a name still calling itself untitled, and the link in the completion
-            banner rendering in a blue so dark on the near-black band that it could not be read.
+            saved under a name still calling itself untitled, the link in the completion banner
+            rendering in a blue so dark on the near-black band that it could not be read, and the
+            delivery heading in the frozen columns reading as two sentences spliced together.
             That is the argument for driving the real window once per chunk, and it is now the
-            practice. The last of the four is the clearest case for it: every test about that
-            banner passed, because they all checked the words rather than the colour.
+            practice. The banner is the clearest case for it: every test about it passed, because
+            they all checked the words rather than the colour.
           </div>
         </div>
       </div>
@@ -2045,34 +2133,42 @@
   <footer>
     <b>Source of truth</b> &middot; PROGRESS.md, docs/OPEN_QUESTIONS.md, PRD.md section 9<br>
     <b>Verify</b> &middot; pytest &middot; ruff check . &amp;&amp; mypy proingest &middot; python -m proingest scan &lt;folder&gt;<br>
-    <b>Last updated</b> &middot; 13 September 2026, 00:20 PDT. <b>The window can now ingest a
-    grading session.</b> Point the new button at the session's edit list and the tool writes what
-    it says onto one delivery's shots - the approved In and Out, the readable record of the grade,
-    and which colour file each shot is graded with - then says how many shots matched, how many
-    got a colour file, and the three lists worth acting on: shots the session says nothing about,
-    trims the approved cut overwrote, and shots more than one colour file claims. One delivery at
-    a time, chosen from the list and only asked about when the selection does not say. It reports
-    in the same words the command line prints, because those sentences now live in one place. <b>A
-    person working only in the window can now deliver</b>, which is the gap the colour chunk
-    opened and this closes. 1427 tests green.<br>
-    <b>Before that, the settings window and the grading session reaching the shot list.</b> The
-    settings page carries how many outputs are written at once, every threshold the checks compare
-    against, the delivery naming and colour, and changing a threshold re-checks the open delivery
-    immediately; the numbers are kept in two places on purpose, so changing them next month cannot
-    re-judge a delivery that shipped last week. And ingesting a session puts the approved cut and
-    the grade onto the shots themselves, so a delivery reopened after the session has been
-    archived still renders what was signed off, while <b>a delivery with no session is held back
-    rather than rendered ungraded</b> and the ones beside it still go.<br>
-    <b>Still to do from 12 September</b> &middot; two of the three things the studio asked for
-    after watching the run land: hover descriptions on every button along the top, and <b>a user
-    guide</b> - install, quickstart, then a section per part of the window, with screenshots, as a
-    PDF or something pasteable into a Google Doc. The first is small; the guide is its own
-    milestone and is scheduled after the interface it describes.<br>
-    <b>Next</b> &middot; M5.8, the log: the tab that has been there and empty since the window was
-    built, and the rotating file behind it. Every command the tool runs is already written down
-    verbatim so a render can be reproduced by hand; this is where a person reads them without
-    opening a terminal. The button descriptions could still reasonably go first, and the new
-    ingest button is the one that most wants one.
+    <b>Last updated</b> &middot; 13 September 2026, 09:17 PDT. <b>The interface is finished.</b>
+    The last chunk of it freezes the first three columns - the state dot, the shot code and the
+    element - so they stay put while the other twelve scroll sideways, and a row can still be
+    identified while reading a column at the far right of it. The toolkit has no feature for that:
+    it takes a second list laid over the first, sharing the shots and the selection outright, with
+    the scroll, the open deliveries and the column widths held in step both ways. <b>Typing works
+    across the join</b> - an edit opens in whichever list can actually be seen, so tabbing out of
+    the shot code and into the In point crosses between them with nothing to notice. <b>Two faults
+    in it were found by grabbing a picture of the real window rather than by any test</b>, both in
+    the delivery heading, which both lists draw: it read as two sentences spliced together, and it
+    slid apart when the list was scrolled. That is the sixth time looking at the real thing has
+    caught something, and both now have a test that fails without the fix. 1536 tests green, and
+    <b>all fifteen interface chunks are done</b>.<br>
+    <b>Before that, the buttons along the top were given descriptions</b>, one sentence each with
+    its shortcut, and a greyed button adds the reason it cannot be pressed - no delivery open, a
+    scan is going, every delivery already has shots. One of them lands on a button that is not
+    greyed at all: a delivery with shots but no grading session ingested <i>runs</i>, is refused,
+    and writes nothing, which looks exactly like a dead button. The sentences live apart from the
+    code that draws the toolbar, so the user guide can use the same ones rather than a second set
+    that drifts.<br>
+    <b>Before that, the log</b>, which found that the commands most worth having were never being
+    written down: the files are produced in separate worker processes, and a freshly started
+    process has nowhere to write until it is told where, so every command a render ran went
+    nowhere at all. The workers now send their lines back to the one process that owns the file, a
+    day is kept for a fortnight, the Log tab reads it inside the window, and the advanced settings
+    are ungreyed - how much is logged, and which copy of the video tools writes the files.<br>
+    <b>Next</b> &middot; <b>nothing left in the plan can be finished on this machine alone.</b>
+    Packaging needs a Mac, the proving pass needs a real delivery and a real grading session, and
+    the user guide needs both - its install section waits on the packaged app and its pictures
+    have to be taken on the Mac, because a guide showing Linux window furniture is a guide to a
+    tool the editor does not have. What can be drafted here meanwhile is the quickstart and the
+    script that takes the screenshots. <b>Two questions are worth asking before a real delivery
+    depends on them</b>: which field the shooters write their camera's format into and exactly
+    what they write, and whether a grading session's colour file really does contain the
+    conversion - because if the tool also converts, it converts twice, and nothing fails.
   </footer>
 
 </div>
+
