@@ -183,9 +183,8 @@ def _run(
 
     `--color-session` ingests the session package into every turnover, which is the same
     step the window offers (PRD section 6 step 4): it writes the approved In/Out, the CDL
-    and the CLF onto the rows, and the plan reads them from there. Without it the run
-    still produces every deliverable, in ACEScg, ungraded, and QC-008 says so; the CLF is
-    the only difference.
+    and the CLF onto the rows, and the plan reads them from there. Without it QC-008
+    holds every turnover back (`qc.blocked_turnovers`) and nothing is rendered.
     """
     try:
         batch = batchfile.load(batch_path)

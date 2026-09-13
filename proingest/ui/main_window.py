@@ -1285,7 +1285,7 @@ class MainWindow(QMainWindow):
         if cached is None:
             try:
                 cached = camdata.parse(path)
-            except (OSError, UnicodeDecodeError):
+            except OSError:
                 cached = {}
             self._camdata_cache[path] = cached
         return cached

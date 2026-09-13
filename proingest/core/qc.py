@@ -7,10 +7,10 @@ be recomputed from a saved batch, and the handful of pre-flight rules that must 
 at the disk are grouped at the bottom of this module under `preflight`.
 
 Severity comes from docs/QC_RULES.md and is not reinterpreted here. Three phase A
-rules are deliberately not implemented yet and each is recorded in PROGRESS.md
-section 9: QC-024 needs decoded pixels rather than a header, QC-053 needs the camData
-parser that lands with the exports, and QC-061 needs a Force re-render setting that
-does not exist.
+rules are deliberately not implemented yet: QC-024 needs decoded pixels rather than a
+header, QC-061 needs a Force re-render setting that does not exist (both in PROGRESS.md
+section 9), and QC-018, the container's colour tags against the named source encoding,
+is specified in QC_RULES.md and not yet raised anywhere.
 
 Rules are scoped by what the row actually is. An aux still and a BTS frame are single
 frames with no timeline range, so the duration, handle and timecode rules skip them:
@@ -503,8 +503,9 @@ def check_audio_presence(row: ShotRow) -> list[QCResult]:
     """QC-040 and QC-041: a plate with no audio, or with more than one candidate.
 
     Only the plate delivers audio (`planner.AUDIO_TYPES`), so only the plate is asked
-    about it. More than one overlapping clip is a warning because the association
-    picked the first, and which one it should have been is a human question.
+    whether it has any. More than one overlapping clip is a warning on any row, because
+    the association picked the first, and which one it should have been is a human
+    question.
     """
     results: list[QCResult] = []
     if is_plate(row) and row.audio_path is None:
@@ -1105,7 +1106,10 @@ def check_free_space(batch: Batch) -> list[QCResult]:
 
 
 def blocked_turnovers(batch: Batch) -> frozenset[str]:
-    """Turnovers carrying a pre-flight error, whose rows must not be rendered.
+    """Turnovers carrying any turnover-scope error, whose rows must not be rendered.
+
+    Scan-time errors count as much as pre-flight ones: a timeline at the wrong rate
+    (QC-002) is no more renderable than a missing colour session (QC-008).
 
     The one place turnover scope means something at run time. FR-6's rule is that a
     batch scope error stops the run and a row scope one does not, and a turnover sits

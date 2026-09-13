@@ -51,7 +51,8 @@ def parse(path: Path) -> dict[str, str]:
     below rather than edited in place.
 
     Returns an empty dict for a file that holds no pairs. Unreadable is the caller's
-    problem to report, so OSError and UnicodeDecodeError travel.
+    problem to report, so OSError travels; bytes that are not UTF-8 are replaced, not
+    raised on, because the RTF wrapper is what matters and it is ASCII.
     """
     text = strip_rtf(path.read_text(encoding="utf-8", errors="replace"))
     pairs: dict[str, str] = {}

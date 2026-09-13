@@ -46,7 +46,6 @@ from PySide6.QtWidgets import (
 
 from proingest.core.frames import ParsedInput
 from proingest.core.models import ShotRow, Turnover
-from proingest.ui import shot_model
 from proingest.ui.shot_model import (
     COLUMNS,
     DOT_COLORS,
@@ -601,8 +600,3 @@ class ShotListView(QTreeView):
     def current_shot_row(self) -> ShotRow | None:
         """The row under the cursor, or None when a group header is."""
         return self.shot_model.row_at(self.proxy.mapToSource(self.currentIndex()))
-
-
-def display_mode_of(view: ShotListView) -> shot_model.DisplayMode:
-    """Convenience for the batch bar, which owns the control rather than the state."""
-    return view.shot_model.display_mode
