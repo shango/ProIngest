@@ -311,7 +311,7 @@
   <header class="mast">
     <div class="eyebrow">
       <span>VFX turnover ingest &middot; macOS v01</span>
-      <span class="stamp">Updated <b>13 Sep 2026, 00:20 PDT</b></span>
+      <span class="stamp">Updated <b>12 Sep 2026, 22:45 PDT</b></span>
     </div>
     <h1>ProIngest Build Track</h1>
     <p class="standfirst">
@@ -328,7 +328,7 @@
       <div class="stat-l">Milestones done</div>
     </div>
     <div class="stat">
-      <div class="stat-n good">1249</div>
+      <div class="stat-n good">1266</div>
       <div class="stat-l">Tests, Linux + macOS</div>
     </div>
     <div class="stat">
@@ -336,7 +336,7 @@
       <div class="stat-l">Questions open</div>
     </div>
     <div class="stat">
-      <div class="stat-n">5<span style="color:var(--faint);font-size:17px">/11</span></div>
+      <div class="stat-n">6<span style="color:var(--faint);font-size:17px">/11</span></div>
       <div class="stat-l">Interface chunks</div>
     </div>
   </div>
@@ -679,7 +679,7 @@
         <div class="ms-body">
           <div class="ms-head">
             <span class="ms-name">User interface</span>
-            <span class="pill now">In progress &middot; 5 of 11</span>
+            <span class="pill now">In progress &middot; 6 of 11</span>
           </div>
           <p class="ms-goal">
             Main window, shot list with the keyboard model, metadata pane, validation
@@ -820,19 +820,31 @@
               <span class="c-st"><span class="tag open">Last</span></span>
             </div>
 
-            <div class="chunk">
+            <div class="chunk done">
               <span class="c-id">M5.10</span>
               <span class="c-name">The run, said out loud</span>
               <span class="c-note">
-                <b>Asked for on 12 September, after the run itself was built.</b> A thin bar for
-                the whole delivery across the top of the list, and <b>a line of text saying what
-                is being done at each step</b> - which shot, which output, and the report writing
-                at the end - so the work can be followed without reading the status bar. The
-                per-shot bars and counts are already there. Four surfaces will then describe one
-                run, so each says something the others cannot: this shot, the whole delivery,
-                what is happening right now, and the numbers.
+                <b>Asked for on 12 September and built the same day</b>, ahead of the information
+                panel, because it finishes the thing the studio had just watched being built. A
+                thin bar for the whole delivery runs across the top of the list, and <b>a line of
+                text under it names each step as it happens</b>: checking the delivery, planning
+                it, then each output as it is written, then checking what landed and writing the
+                two spreadsheets. <b>Four surfaces now describe one run</b> and each says
+                something the others cannot - this shot, the whole delivery, what is happening
+                right now, and the numbers - and all four read the same figures, so they cannot
+                disagree.
+                <b>The line holds still rather than flickering.</b> Four outputs are being written
+                at once and each reports several times a second, so the line names the one that
+                has been going longest and keeps naming it until it finishes, instead of chasing
+                whichever spoke last.
+                One band carries all of this and the completion banner, and shows <b>one of them
+                at a time</b>: nothing before a run, the bar during one, the banner after. A
+                banner from the last run sitting above the bar of this one would be two answers to
+                the same question.
+                Driven end to end on a real two-shot delivery through the real worker pool before
+                it was committed: 14 outputs, every step named in order.
               </span>
-              <span class="c-st"><span class="tag open">New</span></span>
+              <span class="c-st"><span class="tag ok">Done</span></span>
             </div>
 
             <div class="chunk">
@@ -851,7 +863,7 @@
 
           </div>
           <div class="mods">
-            <span>main_window</span><i>/</i><span>shot_model</span><i>/</i><span>shot_list</span><i>/</i><span>batch_bar</span><i>/</i><span>scanner</span><i>/</i><span>runner</span><i>/</i><span>issues</span><i>/</i><span>autosave</span><i>/</i><span>theme.qss</span>
+            <span>main_window</span><i>/</i><span>shot_model</span><i>/</i><span>shot_list</span><i>/</i><span>batch_bar</span><i>/</i><span>scanner</span><i>/</i><span>runner</span><i>/</i><span>issues</span><i>/</i><span>autosave</span><i>/</i><span>run_strip</span><i>/</i><span>theme.qss</span>
           </div>
           <div class="gate">
             <b>This milestone got smaller on 11 September.</b> Three frame viewers and four
@@ -874,10 +886,13 @@
             (M5.9). And progress on the Dock icon has no interface in Qt 6 at all, so it needs a
             small shim through PyObjC, isolated in a macOS-only helper - it is decoration, and the
             status bar carries the same information if the shim is never built.
-            <b>Three chunks running have now been caught by launching the app rather than by a
-            test</b>: the settings landing a folder too deep, Tab leaving the list, and a delivery
-            saved under a name still calling itself untitled. That is the argument for driving the
-            real window once per chunk, and it is now the practice.
+            <b>Four chunks running have now been caught by launching the app rather than by a
+            test</b>: the settings landing a folder too deep, Tab leaving the list, a delivery
+            saved under a name still calling itself untitled, and the link in the completion
+            banner rendering in a blue so dark on the near-black band that it could not be read.
+            That is the argument for driving the real window once per chunk, and it is now the
+            practice. The last of the four is the clearest case for it: every test about that
+            banner passed, because they all checked the words rather than the colour.
           </div>
         </div>
       </div>
@@ -1928,21 +1943,22 @@
   <footer>
     <b>Source of truth</b> &middot; PROGRESS.md, docs/OPEN_QUESTIONS.md, PRD.md section 9<br>
     <b>Verify</b> &middot; pytest &middot; ruff check . &amp;&amp; mypy proingest &middot; python -m proingest scan &lt;folder&gt;<br>
-    <b>Last updated</b> &middot; 13 September 2026, 00:20 PDT. <b>The tool now renders from the
-    window.</b> Run works out which version this run writes, hands the work to the worker pool
-    off the interface thread, and fills a bar per row as each output lands; the status bar carries
-    the overall percent, the jobs going, frames per second and time remaining. Stop finishes the
-    frames in flight and leaves no half-written files. When a run ends, both spreadsheets are
-    written and a banner above the list says what landed and links to the folder holding them.
-    Proved end to end on a real two-shot delivery before it was committed. 1249 tests green.<br>
-    <b>Added 12 September, not yet built</b> &middot; three things the studio asked for after
-    watching the run land: a thin progress bar for the whole delivery across the top of the list
-    with <b>a line of text naming each step as it happens</b>, hover descriptions on every button
-    along the top, and <b>a user guide</b> - install, quickstart, then a section per part of the
-    window, with screenshots, as a PDF or something pasteable into a Google Doc. The first two are
-    small; the guide is its own milestone and is scheduled after the interface it describes.<br>
+    <b>Last updated</b> &middot; 12 September 2026, 22:45 PDT. <b>The run now says what it is
+    doing.</b> A thin bar for the whole delivery sits across the top of the list with a line of
+    text under it naming each step as it happens - checking the delivery, planning it, each output
+    as it is written, then the two spreadsheets - so a run can be followed without reading the
+    status bar. Four surfaces describe one run and each says something the others cannot: this
+    shot, the whole delivery, what is happening now, and the numbers. The band holds one thing at
+    a time: nothing before a run, the bar during one, the completion banner after. Driven end to
+    end on a real two-shot delivery through the real worker pool: 14 outputs, every step named in
+    order. 1266 tests green.<br>
+    <b>Still to do from 12 September</b> &middot; two of the three things the studio asked for
+    after watching the run land: hover descriptions on every button along the top, and <b>a user
+    guide</b> - install, quickstart, then a section per part of the window, with screenshots, as a
+    PDF or something pasteable into a Google Doc. The first is small; the guide is its own
+    milestone and is scheduled after the interface it describes.<br>
     <b>Next</b> &middot; M5.6, the metadata panel: everything known about the selected shot, read
-    only, beside the list. The two small additions above could reasonably go first.
+    only, beside the list. The button descriptions could reasonably go first.
   </footer>
 
 </div>
