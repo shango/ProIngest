@@ -49,7 +49,7 @@ import numpy as np
 import numpy.typing as npt
 import PyOpenColorIO as ocio
 
-from proingest.core import batchfile, clf, color, exr, ffmpeg, logsetup, media, qc, resize
+from proingest.core import batchfile, clf, color, exr, ffmpeg, logsetup, media, naming, qc, resize
 from proingest.core.models import Batch, Deliverable, QCResult
 from proingest.core.planner import DeliverableJob
 
@@ -664,7 +664,11 @@ def execute(
     return [results[index] for index in sorted(results)]
 
 
-def apply_results(batch: Batch, deliverables: Sequence[Deliverable]) -> None:
+def apply_results(
+    batch: Batch,
+    deliverables: Sequence[Deliverable],
+    show_pattern: str = naming.DEFAULT_SHOW_PATTERN,
+) -> None:
     """Write executed records back onto the rows that planned them, then re-run QC-150.
 
     Matched on destination path, which is unique across a run because the planner
@@ -672,9 +676,10 @@ def apply_results(batch: Batch, deliverables: Sequence[Deliverable]) -> None:
 
     QC-150 and QC-151 are the only phase B rules that cannot run in a worker: one asks
     whether a whole row landed and the other reads every name in the batch, and a
-    worker sees one job. They run here, where the results have just been collected.
+    worker sees one job. They run here, where the results have just been collected,
+    under the same show pattern the names were planned with.
     """
     executed = {deliverable.path: deliverable for deliverable in deliverables}
     for row in batch.rows:
         row.deliverables = [executed.get(planned.path, planned) for planned in row.deliverables]
-    qc.apply_phase_b(batch)
+    qc.apply_phase_b(batch, show_pattern)

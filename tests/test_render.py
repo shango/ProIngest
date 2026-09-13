@@ -958,3 +958,15 @@ class TestPostRenderQC:
         batch = Batch(rows=[row])
         render.apply_results(batch, [deliverable])
         assert "QC-151" in ids(batch.qc)
+
+    def test_apply_results_reparses_under_the_pattern_the_names_were_planned_with(
+        self, tmp_path: Path
+    ) -> None:
+        """A custom show pattern names the deliverables; QC-151 must read them with it too."""
+        job = raw_job(tmp_path, count=2)
+        deliverable = render.render_job(job)
+        deliverable.name = "mx0001_pl01_raw_4k_v01"
+        row = ShotRow(turnover_id="t1", clip_name="x", deliverables=[job.to_deliverable()])
+        batch = Batch(rows=[row])
+        render.apply_results(batch, [deliverable], show_pattern="[a-z]{2}")
+        assert "QC-151" not in ids(batch.qc)

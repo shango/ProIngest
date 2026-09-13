@@ -903,7 +903,7 @@ class MainWindow(QMainWindow):
 
         batch = self.batch
         self.run_strip.say(CHECKING_RESULTS)
-        render.apply_results(batch, written)
+        render.apply_results(batch, written, settings_form.show_pattern_of(self._settings))
         self.shot_model.refresh_rows()
         self._show_results()
         self.autosave.schedule()

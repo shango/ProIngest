@@ -1361,6 +1361,20 @@ class TestTheMetadataPane:
 
         assert "Results: none" not in pane_text(window)
 
+    def test_a_finished_run_reparses_names_under_the_settings_show_pattern(
+        self, window: DrivenWindow, tmp_path: Path
+    ) -> None:
+        """The plan named the deliverables with the settings pattern; the reparse after
+        the run must use the same one, or every name fails QC-151 as unparseable."""
+        window._settings.show_pattern = "[a-z]{2}"
+        lower = row("mx0001_pl01", identity=naming.parse_clip_name("mx0001_pl01", "[a-z]{2}"))
+        window.set_batch(ingested(batch(lower, delivery_root=tmp_path), tmp_path))
+        started = stub_runner(window)
+        window.action_run.trigger()
+        window._run_finished(done(started[0]), False)
+
+        assert "QC-151" not in rules_shown(window)
+
     def test_a_new_batch_empties_the_pane(self, window: DrivenWindow) -> None:
         window.set_batch(batch(row()))
         window.shot_list.select_row(window.batch.rows[0])
