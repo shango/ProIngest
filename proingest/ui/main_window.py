@@ -53,6 +53,7 @@ from proingest.core.models import (
 from proingest.ui.autosave import AutoSaver
 from proingest.ui.batch_bar import BatchBar
 from proingest.ui.issues import IssuesDock
+from proingest.ui.run_strip import LINK_COLOR, RunStrip
 from proingest.ui.runner import Runner, RunProgress
 from proingest.ui.scanner import Scanner
 from proingest.ui.shot_list import ShotListView
@@ -77,6 +78,17 @@ BATCH_FILTER = "ProIngest batch (*.pibatch)"
 BOTTOM_TABS = ("Issues", "Log", "Deliverables")
 
 NOTHING_TO_RENDER = "Nothing to render: no row produced a deliverable"
+
+CHECKING_BATCH = "Checking the batch"
+PLANNING = "Planning {count} shots"
+CHECKING_RESULTS = "Checking what landed"
+WRITING_REPORTS = "Writing the QC log and the shot tracker"
+"""The steps of a run that happen on the UI thread rather than in a worker.
+
+Section 7.1's line names one step at a time, and the ones a worker reports come from
+`RunProgress.activity`. These four are the ones either side of the pool, which are the
+steps that would otherwise be a window that has stopped responding with nothing said.
+"""
 
 RUN_REFRESH_MS = 200
 """How often the status bar and the row bars are redrawn while a run is going.
@@ -104,7 +116,8 @@ def banner_text(
     )
     if reports is None:
         return f"{text} No exports were written."
-    return f'{text} Exports written to <a href="#reports">{reports}</a>'
+    link = f'<a href="#reports" style="color:{LINK_COLOR}">{reports}</a>'
+    return f"{text} Exports written to {link}"
 
 
 
@@ -277,6 +290,8 @@ class MainWindow(QMainWindow):
         self._run_timer = QTimer(self)
         self._run_timer.setInterval(RUN_REFRESH_MS)
         self._run_timer.timeout.connect(self._show_run_progress)
+        self.run_strip = RunStrip(self)
+        self.run_strip.link_activated.connect(self._open_reports)
 
         self.list_pages = QStackedWidget(self)
         self.list_pages.addWidget(self.shot_list)
@@ -287,7 +302,7 @@ class MainWindow(QMainWindow):
         batch_layout.setContentsMargins(0, 0, 0, 0)
         batch_layout.setSpacing(0)
         batch_layout.addWidget(self.batch_bar)
-        batch_layout.addWidget(self._build_banner())
+        batch_layout.addWidget(self.run_strip)
         batch_layout.addWidget(self.list_pages)
 
         self.pages = QStackedWidget(self)
@@ -309,7 +324,7 @@ class MainWindow(QMainWindow):
         """
         self.shot_model.set_batch(batch)
         self.shot_model.set_run(None)
-        self.banner.setVisible(False)
+        self.run_strip.clear()
         self.autosave.watch(batch, path)
         self._batch_path = path
         self._batch_open = True
@@ -560,12 +575,14 @@ class MainWindow(QMainWindow):
             if batch.delivery_root is None:
                 return
 
-        self.banner.setVisible(False)
+        self.run_strip.start()
+        self.run_strip.say(CHECKING_BATCH)
         qc.preflight(batch)
         blocking = [result for result in batch.qc if result.severity == "error"]
         self.issues.show_batch(batch)
         self.shot_model.refresh_rows()
         if blocking:
+            self.run_strip.clear()
             self.report_problem(
                 "The batch cannot run",
                 "\n".join(f"{result.rule_id}: {result.message}" for result in blocking),
@@ -573,13 +590,16 @@ class MainWindow(QMainWindow):
             self._show_issues()
             return
 
+        self.run_strip.say(PLANNING.format(count=len(batch.rows)))
         try:
             jobs = planner.plan_batch(batch, batch.delivery_root)
         except (ValueError, clf.ClfError) as exc:
+            self.run_strip.clear()
             self.report_problem("The batch cannot be planned", str(exc))
             return
         self.shot_model.refresh_rows()
         if not jobs:
+            self.run_strip.clear()
             self.statusBar().showMessage(NOTHING_TO_RENDER)
             return
 
@@ -612,10 +632,21 @@ class MainWindow(QMainWindow):
             self._run_progress.update(message)
 
     def _show_run_progress(self) -> None:
-        """The status bar and the row bars, five times a second while a run is going."""
+        """Every surface a run has, five times a second, all off the one `RunProgress`.
+
+        Four of them and each says what the others cannot (section 7.1): the strip's
+        bar for the batch, its line for the step, the status bar for the numbers, and
+        the Progress column for the shot. Drawn from one object in one place, so they
+        cannot disagree about how far along the run is.
+        """
         if self._run_progress is None:
             return
         self.progress.setValue(self._run_progress.percent)
+        self.run_strip.set_percent(self._run_progress.percent)
+        # Left alone when nothing is running: at the end of a run every job is finished
+        # and the next thing to say is `_run_finished`'s rather than a worker's.
+        if activity := self._run_progress.activity:
+            self.run_strip.say(activity)
         self.statusBar().showMessage(self._run_progress.summary())
         self.shot_model.refresh_rows()
 
@@ -633,15 +664,16 @@ class MainWindow(QMainWindow):
         self.progress.setVisible(False)
 
         batch = self.batch
+        self.run_strip.say(CHECKING_RESULTS)
         render.apply_results(batch, written)
         self.shot_model.refresh_rows()
         self.issues.show_batch(batch)
         self.autosave.schedule()
 
+        self.run_strip.say(WRITING_REPORTS)
         reports = self._write_reports(batch)
         text = banner_text(written, reports, cancelled)
-        self.banner.setText(text)
-        self.banner.setVisible(True)
+        self.run_strip.show_banner(text)
         self._reports_folder = reports
         # The same sentence without its link, because the banner is above the list and
         # the status bar is where the eye already is when a long run ends.
@@ -667,16 +699,6 @@ class MainWindow(QMainWindow):
             self.report_problem("The exports could not be written", str(exc))
             return None
         return log_path.parent
-
-    def _build_banner(self) -> QLabel:
-        """Section 7's non-modal banner, above the list and hidden until a run ends."""
-        banner = QLabel("", self)
-        banner.setObjectName("run_banner")
-        banner.setVisible(False)
-        banner.setTextFormat(Qt.TextFormat.RichText)
-        banner.linkActivated.connect(self._open_reports)
-        self.banner = banner
-        return banner
 
     def _open_reports(self) -> None:
         """The banner's link: the folder the two spreadsheets went into."""

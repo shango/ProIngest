@@ -49,6 +49,21 @@ FINISHED_STATES = frozenset({"done", "failed", "cancelled"})
 
 RUNNING_STATES = frozenset({"started", "frame"})
 
+STARTING = "Starting the render pool"
+"""What the strip says between the last plan and the first message from a worker.
+
+A spawned pool takes a second or two to exist and the run has genuinely started, so the
+alternative is a blank line under a bar at zero, which reads as a tool that has stalled.
+"""
+
+RENDERING = "Rendering"
+"""The verb the line uses for a job in flight, followed by the deliverable's name.
+
+The name verbatim rather than a prettier form of it: it is the name on disk, the name in
+the Deliverables tab and the name in the log, and a line that renames it is a line the
+editor cannot search for.
+"""
+
 
 class RunProgress:
     """Everything one run has said so far, folded into what the window shows.
@@ -156,6 +171,24 @@ class RunProgress:
         if rate is None or not self.frames_total:
             return None
         return max(0.0, (self.frames_total - self.frames_done) / rate)
+
+    @property
+    def activity(self) -> str:
+        """What the run is working on now, in words (UI_SPEC section 7.1).
+
+        The **longest running** job rather than the most recent message: four workers
+        report several times a second and a line that follows the newest one is a
+        flicker rather than a sentence. `_states` is in the order jobs first reported,
+        so the job named here stays named until it finishes.
+
+        Empty once every job is finished, because what comes next - applying the
+        records and writing the spreadsheets - is the window's step rather than a
+        worker's, and the window is what says it.
+        """
+        for name, state in self._states.items():
+            if state in RUNNING_STATES:
+                return f"{RENDERING} {name}"
+        return STARTING if not self._states else ""
 
     def summary(self) -> str:
         """The status bar's line: percent, jobs running, throughput and ETA (section 7).

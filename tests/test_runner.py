@@ -30,7 +30,7 @@ from proingest.core import frames, render
 from proingest.core.models import Deliverable, FrameRate
 from proingest.core.planner import DeliverableJob
 from proingest.core.render import Progress
-from proingest.ui.runner import Runner, RunProgress, format_eta
+from proingest.ui.runner import RENDERING, STARTING, Runner, RunProgress, format_eta
 from tests.fixtures import color as color_fixtures
 from tests.fixtures import media as media_fixtures
 
@@ -177,6 +177,42 @@ class TestTheArithmetic:
     )
     def test_an_eta_reads_coarser_the_longer_it_is(self, seconds: int, text: str) -> None:
         assert format_eta(seconds) == text
+
+
+class TestTheLineOfWords:
+    """`activity`, which is what UI_SPEC section 7.1's line under the bar says."""
+
+    def test_a_run_whose_pool_has_not_spoken_yet_says_it_is_starting(self) -> None:
+        assert RunProgress([job()]).activity == STARTING
+
+    def test_a_running_job_is_named(self) -> None:
+        progress = RunProgress([job()])
+        progress.update(Progress("MELT0001_pl01_v01", "started", 0, 10))
+        assert progress.activity == f"{RENDERING} MELT0001_pl01_v01"
+
+    def test_the_line_holds_still_while_other_jobs_report(self) -> None:
+        """Four workers report several times a second, and a line that followed the
+        newest message would be a flicker rather than a sentence."""
+        progress = RunProgress([job("a"), job("b")])
+        progress.update(Progress("a", "started", 0, 10))
+        progress.update(Progress("b", "started", 0, 10))
+        progress.update(Progress("b", "frame", 5, 10))
+        assert progress.activity == f"{RENDERING} a"
+
+    def test_it_moves_on_when_the_job_it_names_finishes(self) -> None:
+        progress = RunProgress([job("a"), job("b")])
+        progress.update(Progress("a", "started", 0, 10))
+        progress.update(Progress("b", "started", 0, 10))
+        progress.update(Progress("a", "done", 10, 10))
+        assert progress.activity == f"{RENDERING} b"
+
+    def test_a_run_with_nothing_left_running_says_nothing(self) -> None:
+        """What comes after the last job is the window's step, not a worker's."""
+        progress = RunProgress([job()])
+        progress.update(Progress("MELT0001_pl01_v01", "started", 0, 10))
+        progress.update(Progress("MELT0001_pl01_v01", "done", 10, 10))
+        assert progress.activity == ""
+
 
 
 class TestWhereItRuns:

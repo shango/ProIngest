@@ -134,21 +134,24 @@ sentence true, and the path in it is the link: clicking it opens `_reports` in t
 batch whose rows have no shot code has no show to file reports under, and the banner then says
 no exports were written rather than naming a folder that does not exist.
 
-### 7.1 The strip above the list (asked for 2026-09-12, not yet built)
+### 7.1 The strip above the list
 
 The user asked for the run to be readable without looking down at the status bar. Two things
 are added above the list, in the strip the completion banner already occupies:
 
 - **A thin progress bar spanning the width of the list**, carrying the **whole batch**, shown
-  only while a run is going. Thin: a few pixels, no text in it, no percentage written on it.
+  only while a run is going. Thin: four pixels, no text in it, no percentage written on it, the
+  same height as the per row bar in the Progress column.
 - **A progress text line under it saying what is being done, in words**, one step at a time:
-  "Planning 42 shots", "Rendering MELT0001_pl01 raw 4k", "Verifying MELT0001_pl01_ref_HD_v01",
-  "Writing the QC log". One line, replaced in place, never a scrollback.
+  "Checking the batch", "Planning 42 shots", "Starting the render pool",
+  "Rendering MELT0001_pl01_raw_4k_v01", "Checking what landed",
+  "Writing the QC log and the shot tracker". One line, replaced in place, never a scrollback.
 
 **The strip has three states and only ever one of them**: empty when no run has happened, the
 bar and its line during a run, the completion banner after one. That is why they share a strip
 rather than stacking: a banner from the last run sitting above the bar of this one is two
-answers to the same question.
+answers to the same question. Empty is the strip hidden rather than an empty band, so a window
+that has never run a batch gives the height back to the list.
 
 **Four surfaces now report a run and each has to say something the others do not.** The
 Progress column says how far **this shot** has got and is the only per row answer. The strip's
@@ -159,6 +162,17 @@ Every one of them reads from the same run state, so they cannot disagree about t
 **The per row indication exists already** (M5.5): a slim bar in the Progress column under the
 job count, the count being `3/5` of that row's deliverables. What 7.1 adds is the batch bar,
 the text line, and the naming of each step as it happens.
+
+**The line names the longest running job, not the newest message** (M5.10, 2026-09-12). Four
+workers report several times a second and a line that followed the newest message would be a
+flicker rather than a sentence, so the job named holds still until it finishes and the line
+then moves to the next one still going.
+
+**There is no "Verifying" step**, which an earlier draft of this section listed. Post-render
+QC runs inside the worker between the rename and the record coming back, and the pool reports
+no message for it, so a line claiming it would be the tool guessing at its own state. Adding
+one is a new `render.ProgressState` and a publish in `render_job`, and it can be built when
+the wait is long enough for anyone to notice it.
 
 ## 8. Stringout burn-ins: dropped
 

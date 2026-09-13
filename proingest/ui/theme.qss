@@ -189,7 +189,30 @@ QLineEdit:focus {
   border-color: #4d8fd6;
 }
 
-/* ---- the completion banner (UI_SPEC section 7) ---- */
+/* ---- the strip above the list (UI_SPEC sections 7 and 7.1) ---- */
+
+/* #run_strip itself is unstyled: it is the frame the two states sit in, and each of
+   them carries the background and the rule under it so that whichever is showing looks
+   like one band rather than two. */
+
+#run_strip_progress {
+  background: #1b1e23;
+  border-bottom: 1px solid #262a31;
+}
+
+#run_strip_bar {
+  background: #2b2f36;
+  border: none;
+}
+
+#run_strip_bar::chunk {
+  background: #4d8fd6;
+}
+
+#run_strip_line {
+  color: #868d9a;
+  padding: 6px 10px 7px;
+}
 
 #run_banner {
   background: #1b1e23;

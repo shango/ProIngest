@@ -21,12 +21,15 @@ shows it as a list; the list can be typed into; the turnover scan runs off the U
 every QC result is readable in the Issues dock and clickable back to its shot; and **the tool
 now renders from the window**: Run plans the batch and drives the pool, the rows fill in as
 they go, Stop reaches a job mid flight, and a finished run writes both spreadsheets and says
-where they went. The rest of M5 is specified in section 5. 1249 tests passing, `ruff` and
-`mypy --strict` clean. **M5.6, the metadata pane, is next.**
+where they went. **M5.10 is done as well, out of order and on purpose**: the run now narrates
+itself above the list, a thin bar for the batch and a line of words for the step. The rest of
+M5 is specified in section 5. 1266 tests passing, `ruff` and `mypy --strict` clean.
+**M5.6, the metadata pane, is next.**
 
-**Three things were added to the plan the same evening and none is built**: the run's progress
-strip above the list (M5.10), tooltips on the toolbar (M5.11), and a user guide with screenshots
-(PRD FR-17, the new M9). The note below this one says what each is and what decides its shape.
+**Two of the three things added to the plan on 2026-09-12 are still unbuilt**: tooltips on the
+toolbar (M5.11) and a user guide with screenshots (PRD FR-17, the new M9). The third was the
+run's strip, and it was built first because it finishes what the user had just watched being
+built. The note below says what each of the remaining two is and what decides its shape.
 
 **M5 is not blocked**: OQ-37 came back the same day and
 answered the expensive half of M4.6. Two questions are open and both are about correctness rather
@@ -463,16 +466,8 @@ should not be re-derived.
 Asked for immediately after M5.5 landed, as a heads up rather than a change of direction.
 Nothing here was built; all three are in section 5's tables and in the specs that own them.
 
-- **The run should narrate itself above the list.** A thin progress bar for the whole batch
-  across the top of the list, and **a line of text saying what is being done at each step**.
-  `docs/UI_SPEC.md` **section 7.1** is the spec, and this is **M5.10**. Per row progress was
-  asked for in the same sentence and is **already built** (M5.5): the Progress column carries a
-  slim bar under a `3/5` count. What is new is the batch bar and the words.
-  The thing that decides the shape: **four surfaces would then report one run**, so each has to
-  say something the others cannot - this shot, the batch, what is happening now, and the
-  numbers - and all four have to read the same `RunProgress` or they will disagree on screen.
-  The strip above the list is the completion banner's strip, with three states and only ever one
-  of them showing.
+- **The run should narrate itself above the list.** **Built the same day as M5.10**; the note
+  further down says how. `docs/UI_SPEC.md` section 7.1 is the spec.
 - **Every toolbar button should say what it does on hover**, concisely. `docs/UI_SPEC.md`
   section 1, and this is **M5.11**. The half worth building carefully is the **disabled**
   button: the toolbar deliberately carries actions that are not available yet, so a tooltip
@@ -485,9 +480,59 @@ Nothing here was built; all three are in section 5's tables and in the specs tha
   **OQ-49** is the one question in it: which of those two forms, and whether anybody but the
   editor edits the result.
 
-**None of the three is blocked and none blocks anything.** M5.10 and M5.11 are small and can
-land whenever; they are numbered after M5.9 but do not wait on it. M9.1 waits on M7 and M9.4's
+**Neither of the two left is blocked and neither blocks anything.** M5.11 is small and can land
+whenever; it is numbered after M5.9 but does not wait on it. M9.1 waits on M7 and M9.4's
 shipped images wait on the Mac session; M9.2 and the harness could be drafted today.
+
+### M5.10 is built: the run says what it is doing
+
+Built 2026-09-12, out of order and ahead of M5.6, because it finishes the thing the user
+had just watched being built. `ui/run_strip.py` is new, `RunProgress` gains `activity`,
+and the window narrates the steps either side of the pool. 17 tests, 1266 in total.
+**Driven end to end on a real two shot turnover through the real pool**: 14 deliverables,
+the line naming each step in order, and the banner taking the strip when it finished.
+
+- **The strip is one band with three states and the empty one is the widget hidden.**
+  A `QStackedWidget` would have been the obvious way and it is the wrong one: it takes the
+  tallest page's height whichever page is showing, so a window that has never run a batch
+  would carry an empty band above the list forever. Toggling two children and the widget
+  itself gives the height back, and `RunStrip.state` is the one place the "only ever one
+  of them" invariant is asserted.
+- **The line names the longest running job, not the newest message.** `_states` is in the
+  order jobs first reported, so the first one still running is the oldest one still
+  running, and it holds still until it finishes. Following the newest message instead is a
+  line that changes several times a second with four workers, which is a flicker rather
+  than a sentence. This is the one decision in the chunk that is not obvious from the
+  spec.
+- **Four steps come from the window rather than from a worker**, because they happen on
+  the UI thread with nothing else running: checking the batch, planning it, applying what
+  came back, and writing the two spreadsheets. Those are exactly the moments the window
+  looks frozen, so they are the ones most worth naming.
+- **`RunStrip.say` repaints immediately**, which is not decoration. Two of those four
+  steps block the UI thread for as long as they take, so a label that waited for the next
+  trip round the event loop would appear **after** the step it announces had finished. The
+  repaint is guarded on the text having changed, so the five draws a second a run does
+  cost nothing.
+- **All four surfaces read one `RunProgress` and are drawn by the one 200 ms timer.**
+  That was the thing section 7.1 said would decide the shape and it turned out to cost
+  nothing, because M5.5 had already put the arithmetic in one Qt-free object.
+- **There is no "Verifying" step and the spec now says why.** Post-render QC runs inside
+  the worker between the rename and the record coming back and the pool publishes nothing
+  for it, so the line says "Rendering" through it. Saying otherwise means a new
+  `render.ProgressState` and a publish inside `render_job`, which is a core change for a
+  wait nobody has measured. UI_SPEC 7.1 carries the note.
+- **The banner's link was unreadable and this chunk fixed it.** It rendered in Qt's own
+  `#0000ff` on the `#1b1e23` band. A stylesheet cannot select an anchor inside a `QLabel`,
+  and the palette's `Link` role that could is overridden by the application stylesheet
+  this window sets, so the colour is written into the anchor by `banner_text` from
+  `run_strip.LINK_COLOR`. A test pins it. It is M5.5's bug, fixed here because it is in
+  the widget this chunk took ownership of.
+
+**What M5.10 does not do.** The bar reports the same frame-counted percentage the status
+bar does, so a run made only of copies falls back to counting jobs exactly as section 7's
+numbers do. The line says nothing between the last job finishing and `_run_finished`
+running, which is a gap of milliseconds. And a run started from the CLI narrates nothing,
+because this is a window and `proingest run` has its own reporter.
 
 ### M5.5 is built: the run reaches the window
 
@@ -745,8 +790,8 @@ decide whether QC-046's error widens.
 
 ### Next task: M5.6, the metadata pane
 
-Everything the list can do, it can now do: a batch is made, filled, edited, run and
-exported from the window. What is missing beside the list is the reading surface UI_SPEC
+Everything the list can do, it can now do: a batch is made, filled, edited, run,
+narrated and exported from the window. What is missing beside the list is the reading surface UI_SPEC
 section 12 specifies, and it is the smallest chunk left in M5: **read only, never takes
 focus, collapses to nothing, and deliberately does not repeat the list's columns**. The
 field list is section 12.2 and it was taken from what `core/models.py` actually holds
@@ -763,12 +808,12 @@ that is simply wrong rather than one that is late.
 Which fields earn their place is OQ-26 and it wants a real review session; build section
 12.2's list, and let the pane be the thing that gets argued about in front of the user.
 
-**The order here is open and the user has not set one.** M5.10 and M5.11 arrived after M5.5
-and both are small - the progress strip is a widget over a `RunProgress` that already exists,
-and the tooltips are a line per action. Either could reasonably go before the metadata pane,
-and the argument for doing so is that M5.10 finishes the thing the user had just watched being
-built. What should **not** happen is M5.9, the frozen columns, moving earlier: it is last on
-purpose (section 5).
+**The order is now partly set. M5.10 went first**, ahead of this, because it finished the
+thing the user had just watched being built; the user was told the choice and did not object.
+**M5.11, the toolbar tooltips, is still small and still loose** - a line per action, and the
+half worth care is the disabled button saying why - so it can go before or after the pane.
+What should **not** happen is M5.9, the frozen columns, moving earlier: it is last on purpose
+(section 5).
 
 `docs/UI_SPEC.md` is M5's spec, and the things M5 still owes the colour chain are small,
 known, and all in M5.7:
@@ -929,14 +974,15 @@ PDF viewer.
 | `core/qc.py` | rule registry: phase A, `RuleSettings`, `preflight`, phase B | 1416 |
 | `core/settings.py` | what the app remembers between launches, as JSON. Takes the path; never works out where it is | 111 |
 | `ui/app.py` | the QApplication, its names, the theme, and `run()` | 49 |
-| `ui/main_window.py` | UI_SPEC section 1's frame: menus and their macOS roles, toolbar, bottom dock, status bar, the three empty states and the batch page, window state, the autosaver, the batch lifecycle (New, Open, Save, the two roots, Add Turnover and Scan) and the run (pre-flight, planning, Stop, the exports and section 7's banner) | 909 |
+| `ui/main_window.py` | UI_SPEC section 1's frame: menus and their macOS roles, toolbar, bottom dock, status bar, the three empty states and the batch page, window state, the autosaver, the batch lifecycle (New, Open, Save, the two roots, Add Turnover and Scan) and the run (pre-flight, planning, Stop, the exports, the steps it narrates and section 7's banner text) | 931 |
 | `ui/shot_model.py` | the batch as a two level tree: section 2's columns, section 3's dot and tints, the In/Out display mode, what the four editable cells commit, where a given row sits, and how far a live run has got with it | 760 |
 | `ui/shot_list.py` | the view, the two line cell, the Progress column's slim bar, the search filter, the cell editor, Tab across the editable columns, the skip prompt and selecting a row somebody pointed at from the Issues dock | 394 |
 | `ui/batch_bar.py` | the batch name, the delivery root button, the three state In/Out toggle and the search box | 104 |
 | `ui/paths.py` | the one place that asks `QStandardPaths` where the app's own files live | 33 |
 | `ui/autosave.py` | the debounced write of an edited batch, and what it does with one that has no file yet | 97 |
 | `ui/scanner.py` | `core/scan.py` on a `QThread`: one result per folder, a copied probe cache, cancel between folders, and a shutdown that waits | 184 |
-| `ui/runner.py` | `core/render.py`'s pool on a `QThread`: the jobs over, the records back, progress forwarded onto the UI thread, a `RunProgress` that turns it into a percentage, a throughput and an ETA, and a shutdown that waits | 350 |
+| `ui/runner.py` | `core/render.py`'s pool on a `QThread`: the jobs over, the records back, progress forwarded onto the UI thread, a `RunProgress` that turns it into a percentage, a throughput and an ETA, the words for the job in flight, and a shutdown that waits | 383 |
+| `ui/run_strip.py` | UI_SPEC section 7.1's band above the list: the batch's thin bar, the line saying what step the run is on, and section 7's completion banner. Three states and only ever one of them | 128 |
 | `ui/issues.py` | UI_SPEC section 6: every QC result in the batch as a table, with the rule ID in its own column and a double-click that selects the shot | 155 |
 | `__main__.py` | `proingest scan`, `run` and `qc` CLI, `--rules` overrides, and the UI when there is no subcommand | 440 |
 
@@ -981,7 +1027,7 @@ Entry points worth knowing:
 | M4 | QC: all rules both phases, xlsx exports, `qc` CLI | complete, 175 tests |
 | M4.5 | Colour pipeline, core only. Source log in, CLF applied, ACEScg out, the viewing LUT | complete, 111 tests |
 | M4.6 | Per shot source encoding: read from the clip metadata, the input transform table, the input transform out of the graded chains, QC-046 to QC-048 | complete, all five chunks (OQ-37 answered; OQ-46 wants confirming) |
-| M5 | UI: the list, the FR-14 metadata pane, settings, log. **No viewers** | **M5.1 to M5.5 done**, M5.6 to M5.9 specified |
+| M5 | UI: the list, the FR-14 metadata pane, settings, log. **No viewers** | **M5.1 to M5.5 and M5.10 done**, M5.6 to M5.9 and M5.11 specified |
 | M6 | ~~Stringout with burn-ins~~ | **dropped 2026-09-11**, the colour session exports it |
 | M7 | Packaging: PyInstaller `.app`, dmg, Gatekeeper | not started, and needs a Mac (OQ-22) |
 | M8 | Polish, performance on a real turnover, docs | not started |
@@ -1062,7 +1108,7 @@ batch can do", so each chunk has something a person can look at:
 | M5.7 | The Settings page, PRD FR-12, **including the Colour group**, and with it QC-008, QC-009, QC-019, QC-039 and QC-045 | not started |
 | M5.8 | The Log tab and the rotating log file, FR-13 | not started |
 | M5.9 | The frozen left columns: the overlaid second view sharing the model and the selection | not started |
-| M5.10 | The run's strip above the list: the thin batch progress bar and the line of text naming the step being done (UI_SPEC 7.1) | **new 2026-09-12**, not started |
+| M5.10 | The run's strip above the list: the thin batch progress bar and the line of text naming the step being done (UI_SPEC 7.1) | **done, 1266 tests.** `ui/run_strip.py` is three states in one band, and the line names the longest running job rather than the newest message |
 | M5.11 | A hover tooltip on every toolbar button, saying what it does and, when it is disabled, why (UI_SPEC section 1) | **new 2026-09-12**, not started |
 
 **M5.4 settled four things that should not be re-derived.**

@@ -111,6 +111,15 @@ Append to this as M5 and M6 are built.
 - [ ] **The slim progress bar in the Progress column reads as a bar at 2x Retina.** Four
       pixels tall on the demoted line (M5.5, `ui/shot_list.py`), under a `3/5` count. If it
       disappears into the row separator, the height is one constant.
+- [ ] **The strip above the list reads as one band, in all three of its states.** Empty, then
+      the four pixel batch bar with its line of words, then the completion banner, and never
+      two of them at once (M5.10, `ui/run_strip.py`, `UI_SPEC.md` section 7.1). What Linux
+      cannot answer is whether four pixels is still a bar at 2x when it spans the whole window
+      rather than a 90 pixel cell, and whether the band jumping in and out at the start and
+      end of a run shifts the list under the pointer enough to be annoying.
+- [ ] **The step line is legible and does not truncate a deliverable name.** It names jobs like
+      `MELT0001_pl01_raw_4k_v01` (M5.10). At the default width on a Mac font stack, check the
+      longest name the naming spec can produce still fits.
 - [ ] **The rendering dot is not animated and section 3 asks for it to be.** Look at a run in
       progress and decide whether the static accent dot plus a moving bar is enough, before
       anybody builds a repaint timer for it (`PROGRESS.md` section 9).

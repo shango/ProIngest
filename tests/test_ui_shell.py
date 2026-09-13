@@ -24,12 +24,16 @@ from proingest.ui import app as ui_app
 from proingest.ui import paths
 from proingest.ui.main_window import (
     BOTTOM_TABS,
+    CHECKING_BATCH,
     EMPTY_STATE_TEXT,
     NO_ROWS_TEXT,
     NO_TURNOVERS_TEXT,
     NOTHING_TO_RENDER,
+    WRITING_REPORTS,
     MainWindow,
 )
+from proingest.ui.run_strip import LINK_COLOR, RunStrip
+from proingest.ui.runner import RENDERING
 from proingest.ui.shot_model import IN, NOTES, DisplayMode, RowState
 from tests.fixtures.batches import batch, fail, media, row, warn
 
@@ -823,6 +827,63 @@ class TestRunningABatch:
         assert window.progress.isVisible() or window.progress.value() > 0
         assert window.shot_model.state_for(window.batch.rows[0]) is RowState.RENDERING
 
+    def test_all_four_surfaces_report_the_same_run(
+        self, window: DrivenWindow, tmp_path: Path
+    ) -> None:
+        """Section 7.1: the strip's bar for the batch, its line for the step, the
+        status bar for the numbers, the Progress column for the shot. One `RunProgress`
+        behind all four, so they cannot disagree about how far along the run is."""
+        window.set_batch(batch(row(), delivery_root=tmp_path))
+        started = stub_runner(window, busy=True)
+        window.action_run.trigger()
+        window._run_progressed(Progress(started[0][0].name, "started", 0, 100))
+        window._run_progressed(Progress(started[0][0].name, "frame", 50, 100))
+        window._show_run_progress()
+
+        percent = window._run_progress.percent  # type: ignore[union-attr]
+        assert window.run_strip.state == "running"
+        assert window.run_strip.bar.value() == percent
+        assert window.run_strip.line.text() == f"{RENDERING} {started[0][0].name}"
+        assert f"{percent}%" in window.statusBar().currentMessage()
+
+    def test_the_line_names_the_steps_either_side_of_the_pool(
+        self, window: DrivenWindow, tmp_path: Path
+    ) -> None:
+        """Planning and writing the spreadsheets both block the UI thread, so a run
+        that said nothing about them would look like a window that had stopped."""
+        window.set_batch(batch(row(), delivery_root=tmp_path))
+        said: list[str] = []
+        window.run_strip.say = said.append  # type: ignore[assignment]
+        started = stub_runner(window)
+        window.action_run.trigger()
+        window._run_finished(done(started[0]), False)
+
+        assert said[0] == CHECKING_BATCH
+        assert "Planning 1 shots" in said
+        assert WRITING_REPORTS in said
+        assert said.index(WRITING_REPORTS) == len(said) - 1
+
+    def test_a_run_that_never_starts_takes_the_strip_away_again(
+        self, window: DrivenWindow, tmp_path: Path
+    ) -> None:
+        """A bar left over a batch that was refused is a run that never happened."""
+        window.set_batch(batch(row(skipped=True, skip_reason="not needed"), delivery_root=tmp_path))
+        stub_runner(window)
+        window.action_run.trigger()
+
+        assert window.run_strip.state == "empty"
+
+    def test_a_blocked_batch_takes_the_strip_away_too(
+        self, window: DrivenWindow, tmp_path: Path
+    ) -> None:
+        blocked = tmp_path / "not-a-folder"
+        blocked.write_text("")
+        window.set_batch(batch(fail(row()), delivery_root=blocked))
+        stub_runner(window)
+        window.action_run.trigger()
+
+        assert window.run_strip.state == "empty"
+
     def test_stop_asks_the_pool_to_stop_and_then_asks_nothing_else(
         self, window: DrivenWindow, tmp_path: Path
     ) -> None:
@@ -854,10 +915,10 @@ class TestRunningABatch:
         window.action_run.trigger()
         window._run_finished(done(started[0]), False)
 
-        assert not window.banner.isHidden()
-        assert "Batch complete: 4 done, 0 failed, 0 skipped." in window.banner.text()
+        assert not window.run_strip.banner.isHidden()
+        assert "Batch complete: 4 done, 0 failed, 0 skipped." in window.run_strip.banner.text()
         reports = naming.reports_dir(tmp_path, "MELT")
-        assert str(reports) in window.banner.text()
+        assert str(reports) in window.run_strip.banner.text()
         assert sorted(path.name.split("_")[0] for path in reports.iterdir()) == ["qc", "shot"]
 
     def test_a_stopped_run_says_so_rather_than_calling_itself_complete(
@@ -868,7 +929,20 @@ class TestRunningABatch:
         window.action_run.trigger()
         window._run_finished(done(started[0], status="skipped"), True)
 
-        assert window.banner.text().startswith("Run stopped: 0 done, 0 failed, 4 skipped.")
+        assert window.run_strip.banner.text().startswith("Run stopped: 0 done, 0 failed, 4 skipped.")
+
+    def test_the_link_is_the_accent_rather_than_qt_s_own_blue(
+        self, window: DrivenWindow, tmp_path: Path
+    ) -> None:
+        """Written into the anchor because nothing else can reach it: a stylesheet
+        cannot select an anchor inside a QLabel, and it overrides the palette that
+        could. Without it the path is #0000ff on a #1b1e23 band."""
+        window.set_batch(batch(row(), delivery_root=tmp_path))
+        started = stub_runner(window)
+        window.action_run.trigger()
+        window._run_finished(done(started[0]), False)
+
+        assert f'style="color:{LINK_COLOR}"' in window.run_strip.banner.text()
 
     def test_the_banner_link_opens_the_reports_folder(
         self, window: DrivenWindow, tmp_path: Path
@@ -889,7 +963,7 @@ class TestRunningABatch:
         window._run_finished([], False)
 
         assert window.problems and "show" in window.problems[0][1]
-        assert "No exports were written." in window.banner.text()
+        assert "No exports were written." in window.run_strip.banner.text()
 
     def test_a_new_batch_clears_the_banner_of_the_last_one(
         self, window: DrivenWindow, tmp_path: Path
@@ -900,7 +974,76 @@ class TestRunningABatch:
         window._run_finished(done(started[0]), False)
         window.set_batch(Batch())
 
-        assert not window.banner.isVisible()
+        assert not window.run_strip.banner.isVisible()
+        assert window.run_strip.state == "empty"
+
+
+class TestTheRunStrip:
+    """The widget itself. UI_SPEC section 7.1: three states and only ever one of them."""
+
+    def test_a_strip_that_has_seen_no_run_is_nothing_at_all(self, qt_app: QApplication) -> None:
+        """Hidden rather than an empty band: the height belongs to the list until a
+        run wants it."""
+        strip = RunStrip()
+        assert strip.state == "empty"
+        assert strip.isHidden()
+
+    def test_a_run_shows_the_bar_and_the_line(self, qt_app: QApplication) -> None:
+        strip = RunStrip()
+        strip.start()
+        strip.set_percent(40)
+        strip.say("Rendering MELT0001_pl01_raw_4k_v01")
+
+        assert strip.state == "running"
+        assert strip.bar.value() == 40
+        assert strip.line.text() == "Rendering MELT0001_pl01_raw_4k_v01"
+
+    def test_the_banner_replaces_the_bar_rather_than_joining_it(
+        self, qt_app: QApplication
+    ) -> None:
+        """A banner from the last run above the bar of this one is two answers to the
+        same question."""
+        strip = RunStrip()
+        strip.start()
+        strip.show_banner("Batch complete: 4 done, 0 failed, 0 skipped.")
+
+        assert strip.state == "done"
+        assert strip.running_side.isHidden()
+
+    def test_a_second_run_puts_the_last_one_s_banner_away(self, qt_app: QApplication) -> None:
+        strip = RunStrip()
+        strip.show_banner("Batch complete: 4 done, 0 failed, 0 skipped.")
+        strip.start()
+
+        assert strip.state == "running"
+        assert strip.banner.isHidden()
+
+    def test_a_new_run_starts_the_bar_from_nothing(self, qt_app: QApplication) -> None:
+        strip = RunStrip()
+        strip.start()
+        strip.set_percent(80)
+        strip.say("Rendering MELT0001_pl01_raw_4k_v01")
+        strip.start()
+
+        assert strip.bar.value() == 0
+        assert strip.line.text() == ""
+
+    def test_a_percentage_outside_the_bar_is_clamped_rather_than_refused(
+        self, qt_app: QApplication
+    ) -> None:
+        strip = RunStrip()
+        strip.start()
+        strip.set_percent(140)
+        assert strip.bar.value() == 100
+
+    def test_the_link_in_the_banner_is_forwarded(self, qt_app: QApplication) -> None:
+        clicked: list[bool] = []
+        strip = RunStrip()
+        strip.link_activated.connect(lambda: clicked.append(True))
+        strip.show_banner('Exports written to <a href="#reports">/tmp/x</a>')
+        strip.banner.linkActivated.emit("#reports")
+
+        assert clicked == [True]
 
 
 def stub_scanner(window: DrivenWindow, busy: bool = False) -> list[list[tuple[Path, str]]]:
