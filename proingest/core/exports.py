@@ -284,9 +284,7 @@ def write_qc_log(batch: Batch, path: Path, when: date | None = None) -> Path:
     _write_deliverables(book, batch)
     _write_side_files(book, batch)
     _write_camera_data(book, batch)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    book.save(path)
-    return path
+    return _save(book, path)
 
 
 # --- The tracker: the studio's columns, rows to paste --------------------------------
@@ -382,6 +380,13 @@ def write_shot_tracker(batch: Batch, path: Path) -> Path:
             sheet.cell(row=sheet.max_row, column=plates_column).alignment = Alignment(
                 wrap_text=True, vertical="top"
             )
+    return _save(book, path)
+
+
+def _save(book: Workbook, path: Path) -> Path:
+    """Atomic, like every deliverable: a crash mid-save must not leave a finished-looking file."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    book.save(path)
+    temp = path.with_name(path.name + ".part")
+    book.save(temp)
+    temp.replace(path)
     return path

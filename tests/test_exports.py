@@ -120,6 +120,15 @@ class TestReportPaths:
             exports.report_paths(batch_of(ShotRow(turnover_id="t", clip_name="junk")), Path("/d"))
 
 
+class TestTheWrite:
+    def test_both_files_land_atomically(self, tmp_path: Path) -> None:
+        """Written to a temp name and renamed, like every deliverable: a crash mid-save
+        must not leave a file that looks finished, and no temp name survives."""
+        exports.write_qc_log(batch_of(row()), tmp_path / "r" / "log.xlsx")
+        exports.write_shot_tracker(batch_of(row()), tmp_path / "r" / "tracker.xlsx")
+        assert sorted(p.name for p in (tmp_path / "r").iterdir()) == ["log.xlsx", "tracker.xlsx"]
+
+
 class TestQcLogSheets:
     @pytest.fixture
     def log(self, tmp_path: Path) -> Path:
