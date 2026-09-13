@@ -215,3 +215,9 @@ Treat it as a working session with the editor rather than a delivery.
 - [ ] Calibrate `h264_videotoolbox -q:v` against x264 CRF 18 on a real plate. CI has already
       proven the encoder opens; this is the half of OQ-23 about how it looks.
 - [ ] Agree how future builds reach the editor without acquiring quarantine. OQ-9.
+- [ ] **Confirm the log really lands in `~/Library/Logs/ProIngest/proingest.log`** and that the
+      folder is created on a first launch. `ui/paths.log_dir()` derives it from Qt's generic data
+      location's parent rather than writing `~/Library` out, which is only ever exercised on
+      Linux here: both runners and this machine take the other branch, and the test that covers
+      the macOS half fakes `sys.platform`. Also read one real run's log and judge whether an
+      ffmpeg command line per deliverable is the right density, or whether it wants DEBUG.

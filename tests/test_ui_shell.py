@@ -165,6 +165,26 @@ class TestTheApplication:
         assert paths.settings_path().parent == paths.app_data_dir()
         assert paths.settings_path().name == core_settings.SETTINGS_FILENAME
 
+    def test_the_log_folder_is_named_after_the_app_on_every_platform(
+        self, qt_app: QApplication
+    ) -> None:
+        """macOS puts it under `~/Library/Logs`; nowhere else has such a place."""
+        assert paths.log_dir().name in (paths.APPLICATION_NAME, "logs")
+        assert "~" not in str(paths.log_dir())
+
+    def test_the_mac_log_folder_is_derived_rather_than_written_out(
+        self, qt_app: QApplication, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """CLAUDE.md forbids a hardcoded platform path, and PACKAGING.md names this one.
+
+        Asserted here rather than left to a Mac session, because the branch is the whole
+        of the decision and neither runner exercises both halves of it.
+        """
+        monkeypatch.setattr(paths.sys, "platform", paths.MACOS_LOGS)
+        folder = paths.log_dir()
+        assert folder.name == paths.APPLICATION_NAME
+        assert folder.parent.name == "Logs"
+
     def test_the_theme_is_loaded_and_is_not_empty(self) -> None:
         assert "QMainWindow" in ui_app.theme()
 

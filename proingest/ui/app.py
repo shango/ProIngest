@@ -12,6 +12,7 @@ from pathlib import Path
 from PySide6.QtWidgets import QApplication
 
 from proingest import __version__
+from proingest.core import logsetup
 from proingest.ui import paths
 from proingest.ui.main_window import MainWindow
 
@@ -44,8 +45,14 @@ def build_application(argv: list[str] | None = None) -> QApplication:
 
 
 def run(argv: list[str] | None = None) -> int:
-    """Launch the window and hand control to Qt. Returns the process exit code."""
+    """Launch the window and hand control to Qt. Returns the process exit code.
+
+    Logging is set up after the application, because the folder it writes into is built
+    from the application name, and before the window, because the window logs while it
+    is being built.
+    """
     app = build_application(argv)
+    logsetup.configure(paths.log_dir())
     window = MainWindow(paths.settings_path())
     window.show()
     return app.exec()

@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from proingest import __version__
-from proingest.core import batchfile, clf, color, exports, planner, qc, render, scan
+from proingest.core import batchfile, clf, color, exports, logsetup, planner, qc, render, scan
 from proingest.core.models import Batch, Deliverable, ShotRow, Turnover
 
 COLUMNS = ("STATUS", "SHOT", "ELEM", "SOURCE", "RES", "FPS", "IN", "OUT", "DUR", "MAX", "AUDIO")
@@ -65,10 +65,9 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     args = parser.parse_args(argv)
-    logging.basicConfig(
-        level=logging.INFO if args.verbose else logging.WARNING,
-        format="%(levelname)s %(name)s: %(message)s",
-    )
+    # Console only: the log file lives in a folder `ui/paths.py` asks Qt for, and the
+    # subcommands are the headless half that must not import PySide6 to print a table.
+    logsetup.configure(level=logging.INFO if args.verbose else logging.WARNING)
 
     if args.command == "scan":
         return _scan(args.folders, args.save, args.name, args.rules)

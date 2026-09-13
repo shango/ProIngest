@@ -16,7 +16,8 @@ no longer converts ahead of the CLF**, which was the one thing in the code that 
 delivered a wrong plate against a real session. The source encoding went back to camera native
 log on 2026-09-12 and the tool now reads it per shot, resolves it through a table, records it
 in the QC log and states it and its origin in the delivered header. **M5, the UI, is eight
-chunks in of eleven**, two of those eleven having been added on 2026-09-12.
+chunks in of eleven and part way through the ninth**, two of those eleven having been
+added on 2026-09-12.
 A batch can be made, opened, saved and filled with turnovers; the window
 shows it as a list; the list can be typed into; the turnover scan runs off the UI thread;
 every QC result is readable in the Issues dock and clickable back to its shot; and **the tool
@@ -31,10 +32,13 @@ reaches the model, so a run from the window is graded or it is held back and the
 colour rules fire; the Settings page exists with four of its six sections live; and
 **the window can now ingest a session itself**, one turnover at a time, which is what
 closed the gap M5.7.1 opened between a check that refuses to render without a session
-and a window with no way to say there is one. 1427 tests passing, `ruff` and
-`mypy --strict` clean.
-**M5.8, the Log tab and the rotating log file, is next** (FR-13), with M5.11, the
-toolbar tooltips, still small and still loose in the order beside it.
+and a window with no way to say there is one. **And M5.8.1 is done**: there is a rotating
+log file, and every ffmpeg command line a *render* runs now actually reaches it, which it
+did not before - a spawned worker's root logger has no handlers, so FR-13's one named
+requirement was quietly false for the commands most worth reproducing. 1443 tests passing,
+`ruff` and `mypy --strict` clean.
+**M5.8.2, the Log tab itself, is next**, then M5.8.3, the Advanced settings section, with
+M5.11, the toolbar tooltips, still small and still loose in the order beside them.
 
 **Two of the three things added to the plan on 2026-09-12 are still unbuilt**: tooltips on the
 toolbar (M5.11) and a user guide with screenshots (PRD FR-17, the new M9). The third was the
@@ -987,12 +991,68 @@ the argument against it is that this is a tool called ProIngest whose log is
 `qc_ingest_log.xlsx`: `Ingest` alone can be read as the whole job. Judged in front of the
 real window, not from a screenshot.
 
-### Next task: M5.8, the Log tab and the rotating log file
+### M5.8.1 is built: every ffmpeg command line is now actually logged
 
-FR-13 and the third of the bottom dock's three tabs, which has been present and empty since
-M5.1. It is also what gives M5.7.2's two Advanced fields somewhere to be configured from:
-the log level is a setting with nothing to set until there is a log, which is why that
-section is listed and disabled rather than half built.
+**The requirement was false, not merely unconfigured.** FR-13 asks for every ffmpeg command
+line in the log, and `core/ffmpeg.py` has logged each one at INFO since M1. But a render runs
+in a process started by the spawn context, which is a fresh interpreter whose root logger has
+**no handlers at all**: `logging.lastResort` prints WARNING and above to stderr and silently
+drops everything below it. So every command line a *render* ran - which is all of the ones
+worth reproducing - went nowhere. `core/logsetup.py` is the fix and it is where the three
+decisions live.
+
+- **The worker sends records; the parent handles them.** A `QueueHandler` in the worker, a
+  `QueueListener` in the parent, which is the logging cookbook's own answer and the only one
+  that keeps **one process** writing the file: a `TimedRotatingFileHandler` renames the file it
+  is holding open, so two processes rotating one path is how a day's log is lost. The queue and
+  its listener belong to `execute`, not to the process, because nothing outside a render has a
+  worker to hear from, and that means the **CLI got the same fix for free**: `proingest run -v`
+  now prints the commands its workers ran, which is what `-v`'s help has always claimed.
+- **The parent's level travels to the worker** at process creation, so a quiet parent is not
+  sent a record per frame to throw away. The consequence is that a level changed mid-run does
+  not reach the pool; that is the right trade and it is why `set_level` exists for the window's
+  own logging rather than for a run's.
+- **The shot is stamped on the handler, not on the logger.** `record.shot` is what M5.8.2's
+  "filter by row" will read, and a record does not know: `ffmpeg.run` holds a command line and
+  nothing else. A **logger**'s filters run only for records logged through that logger, and
+  every record worth stamping is made by `proingest.core.ffmpeg` and merely propagates to the
+  root - so a filter on the root logger would have stamped nothing. On the handler it runs for
+  everything the handler is given.
+
+**Two smaller things that would otherwise be rediscovered.**
+
+- **`configure` removes only its own handlers.** A test runner's handler is somebody else's,
+  and closing it is how a suite loses its captured output halfway through. It stands in for
+  `logging.basicConfig`, which does nothing at all when handlers already exist and is therefore
+  the reason a log level cannot be applied twice.
+- **The rotated file's name and the pruning are one decision.** PACKAGING.md names
+  `proingest-YYYYMMDD.log`, which needs a `namer`; `getFilesToDelete` finds old files by
+  searching their names for the handler's own date pattern, which is `%Y-%m-%d` and matches
+  nothing in a name with no dashes. That fails **silently** - rotation keeps working and the
+  folder grows forever - so `suffix` and `extMatch` are set together and a test drops twenty
+  dated files in a folder and asserts the oldest six are found. PACKAGING.md was corrected to
+  say that the live file is `proingest.log` and only a rotated one is dated.
+
+**Where the folder is, and the one platform branch.** macOS keeps logs in
+`~/Library/Logs/ProIngest` and `QStandardPaths` models no log location to ask for, so
+`ui/paths.log_dir()` derives it from the generic data location's parent rather than writing a
+`~` into the source, and answers `logs` beside `settings.json` everywhere else. Both halves are
+tested, because neither runner exercises both.
+
+### Next task: M5.8.2, the Log tab
+
+The third of the bottom dock's three tabs, present and empty since M5.1. The records are
+already arriving in the right process - that is what M5.8.1 was - so this is a widget and a
+handler that appends to it, plus the filters FR-13 names. Things to settle when building it:
+**it must be bounded** (a run emits a record per ffmpeg call and a hundred shot batch is
+thousands), the handler runs on the **listener's thread** for anything from a worker so the
+hand-off into Qt has to be queued the way `ui/runner.py` does it, and "filter by row" reads
+`logsetup.shot_of`, which is empty for everything the window itself logs.
+
+Then **M5.8.3**, the Advanced section: the log level calls `logsetup.set_level`, and the ffmpeg
+path override has the same problem the Output section has - it is read inside a worker, by
+`ffmpeg.resolve_tool` - except that M5.8.1 has now built the channel it can travel on, which is
+`_worker_init`'s initargs.
 
 - **M5.11, the toolbar tooltips**, is still small and still loose in the order, and it is
   worth a little more with every chunk: the answer to "why is Run doing nothing" is QC-008,
@@ -1280,10 +1340,19 @@ batch can do", so each chunk has something a person can look at:
 | M5.7.1 | The colour session reaches the model: `clf.ingest`, `Turnover.color_session_edl`, `ShotRow.approved` and `ShotRow.cdl`, and QC-008, QC-009, QC-019, QC-039 and QC-045 | **done, 1377 tests** |
 | M5.7.2 | The Settings page, PRD FR-12, **including the Colour group** | **done, 1408 tests.** `ui/settings_form.py` is the field list as a value and `ui/settings_dialog.py` draws it; Output and Advanced are listed and disabled |
 | M5.7.3 | `Ingest Colour Session` in the window, and what it reports | **done, 1427 tests.** One turnover at a time, the chooser opening where FR-12 remembers, and the report the CLI prints |
-| M5.8 | The Log tab and the rotating log file, FR-13 | not started |
+| M5.8 | The Log tab and the rotating log file, FR-13 | **in progress**: M5.8.1 done, M5.8.2 and M5.8.3 specified below |
 | M5.9 | The frozen left columns: the overlaid second view sharing the model and the selection | not started |
 | M5.10 | The run's strip above the list: the thin batch progress bar and the line of text naming the step being done (UI_SPEC 7.1) | **done, 1266 tests.** `ui/run_strip.py` is three states in one band, and the line names the longest running job rather than the newest message |
 | M5.11 | A hover tooltip on every toolbar button, saying what it does and, when it is disabled, why (UI_SPEC section 1) | **new 2026-09-12**, not started |
+
+M5.8 detail, specified 2026-09-13 against FR-13. It is three chunks because the
+requirement is three things and the first one is not a UI task at all:
+
+| chunk | scope | state |
+|---|---|---|
+| M5.8.1 | `core/logsetup.py`, the rotating file, and the bridge that gets a **worker process**'s ffmpeg command lines into it | **done, 1443 tests.** `ui/paths.log_dir()`, and `execute` owns a log queue per run |
+| M5.8.2 | The Log tab itself: the third tab of the bottom dock, filtered by level, by text and by the selected row | not started |
+| M5.8.3 | The Settings page's **Advanced** section: the log level, and the ffmpeg path override travelling to a worker on the same init channel | not started |
 
 **M5.4 settled four things that should not be re-derived.**
 

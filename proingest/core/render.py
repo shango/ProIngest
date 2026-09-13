@@ -49,7 +49,7 @@ import numpy as np
 import numpy.typing as npt
 import PyOpenColorIO as ocio
 
-from proingest.core import batchfile, clf, color, exr, ffmpeg, media, qc, resize
+from proingest.core import batchfile, clf, color, exr, ffmpeg, logsetup, media, qc, resize
 from proingest.core.models import Batch, Deliverable, QCResult
 from proingest.core.planner import DeliverableJob
 
@@ -503,10 +503,39 @@ class Progress:
 _QUEUE: MPQueue[Progress | None] | None = None
 _CANCEL: EventType | None = None
 
+_JOB_SHOT = ""
+"""The shot the job in flight belongs to, stamped onto every record this worker makes.
 
-def _worker_init(queue: MPQueue[Progress | None], cancel: EventType) -> None:
+A module global because a worker runs one job at a time and the logging calls it wants
+stamped are five modules down, in `ffmpeg.run` and friends, which know about a command
+line and nothing else. FR-13's panel filters by row, so a command line that cannot say
+which row it was run for is a line the filter has to throw away.
+"""
+
+
+class _ShotFilter(logging.Filter):
+    """Stamp `record.shot` on the way out of a worker. Never filters anything out.
+
+    It goes on the **handler** rather than on the root logger. A logger's filters run
+    only for records logged through that logger, and every record worth stamping is
+    made by `proingest.core.ffmpeg` and merely propagates to the root; a handler's
+    filters run for everything the handler is given.
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        setattr(record, logsetup.SHOT_FIELD, _JOB_SHOT)
+        return True
+
+
+def _worker_init(
+    queue: MPQueue[Progress | None],
+    cancel: EventType,
+    log_queue: MPQueue[logging.LogRecord | None],
+    log_level: int,
+) -> None:
     global _QUEUE, _CANCEL
     _QUEUE, _CANCEL = queue, cancel
+    logsetup.install_worker_handler(log_queue, log_level).addFilter(_ShotFilter())
 
 
 def _publish(message: Progress) -> None:
@@ -528,6 +557,8 @@ def _worker(job: DeliverableJob) -> Deliverable:
     def cancelled() -> bool:
         return _CANCEL is not None and _CANCEL.is_set()
 
+    global _JOB_SHOT
+    _JOB_SHOT = job.shot_code
     _publish(Progress(job.name, "started", 0, job.frame_count))
     try:
         deliverable = render_job(job, on_frame=on_frame, cancelled=cancelled)
@@ -595,13 +626,21 @@ def execute(
     drain = threading.Thread(target=_drain, args=(queue, on_progress), daemon=True)
     drain.start()
 
+    # A spawned worker starts with no logging at all, so its ffmpeg command lines go
+    # nowhere unless they are sent here to be handled (FR-13, and `core/logsetup.py`).
+    # The queue and its listener belong to the run rather than to the process: nothing
+    # outside a render has a worker to hear from.
+    log_queue: MPQueue[logging.LogRecord | None] = context.Queue()
+    listener = logsetup.start_listener(log_queue)
+    log_level = logging.getLogger().getEffectiveLevel()
+
     results: dict[int, Deliverable] = {}
     try:
         with ProcessPoolExecutor(
             max_workers=max(1, workers),
             mp_context=context,
             initializer=_worker_init,
-            initargs=(queue, cancel),
+            initargs=(queue, cancel, log_queue, log_level),
         ) as pool:
             futures = {
                 pool.submit(_worker, job): index for index, job in enumerate(jobs)
@@ -611,6 +650,9 @@ def execute(
     finally:
         queue.put(None)
         drain.join(timeout=_DRAIN_TIMEOUT)
+        # After the pool's own context manager has joined every worker, so nothing is
+        # still writing to the queue when the listener stops reading it.
+        listener.stop()
 
     return [results[index] for index in sorted(results)]
 

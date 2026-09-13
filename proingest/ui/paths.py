@@ -10,6 +10,7 @@ cannot check Qt's.
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 from PySide6.QtCore import QStandardPaths
@@ -36,3 +37,25 @@ def app_data_dir() -> Path:
 def settings_path() -> Path:
     """`settings.json` inside it. Not created here; `core.settings.save` makes the folder."""
     return app_data_dir() / core_settings.SETTINGS_FILENAME
+
+
+MACOS_LOGS = "darwin"
+"""The one platform where the log folder is not under the app data folder.
+
+macOS keeps logs in `~/Library/Logs/<app>`, which PACKAGING.md names, and Qt has no
+standard location for it: `QStandardPaths` models data, cache and config and stops
+there. So the folder is derived from the generic data location's parent rather than
+written out with a `~` in it, which keeps CLAUDE.md's rule about platform paths and
+still lands where the spec says. Everywhere else - the Linux dev machine and the Linux
+CI runner - a `logs` folder beside `settings.json` is the honest answer.
+"""
+
+
+def log_dir() -> Path:
+    """Where the rotating log file goes. `core/logsetup.py` creates it, not this."""
+    if sys.platform == MACOS_LOGS:
+        generic = Path(
+            QStandardPaths.writableLocation(QStandardPaths.StandardLocation.GenericDataLocation)
+        )
+        return generic.parent / "Logs" / APPLICATION_NAME
+    return app_data_dir() / "logs"

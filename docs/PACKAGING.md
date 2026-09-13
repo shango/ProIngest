@@ -127,7 +127,13 @@ M7 rather than at delivery.
 ## Runtime locations
 
 - Settings: `~/Library/Application Support/ProIngest/settings.json`
-- Logs: `~/Library/Logs/ProIngest/proingest-YYYYMMDD.log`, rotated daily, 14 kept
+- Logs: `~/Library/Logs/ProIngest/`. The file being written now is `proingest.log`; at
+  midnight it is renamed `proingest-YYYYMMDD.log` and 14 of those are kept. Built in M5.8.1.
+  The live file is undated because a `TimedRotatingFileHandler` holds one path open and dates
+  it on the way out, and a handler that reopened a new path every midnight would be a second
+  mechanism to get wrong. Off macOS - the Linux dev machine and the Linux CI runner - the
+  folder is `logs` beside `settings.json`, because `~/Library/Logs` exists nowhere else and
+  `QStandardPaths` models no log location to ask (`ui/paths.py`)
 - Crash dumps: same folder, with the batch path and last 200 log lines
 - Batches: wherever the user saves them; default suggestion is the delivery root
 
