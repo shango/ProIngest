@@ -216,8 +216,10 @@ class TestStartingAndStopping:
         """A `QThread` still running when its owner is collected is a crash on the way out."""
         monkeypatch.setattr(scan, "scan_turnover", fake_scan())
         scanner.start([(tmp_path, "t1")], scan.ScanSettings())
+        thread = scanner._thread
+        assert thread is not None
         scanner.shutdown()
-        assert not scanner.busy or pump_until(lambda: not scanner.busy)
+        assert thread.isFinished()
 
 
 def test_a_real_turnover_scans_through_the_worker(scanner: Scanner, tmp_path: Path) -> None:

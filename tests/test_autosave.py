@@ -13,7 +13,7 @@ import pytest
 from PySide6.QtWidgets import QApplication
 
 from proingest.core import batchfile
-from proingest.ui.autosave import DELAY_MS, AutoSaver
+from proingest.ui.autosave import AutoSaver
 from tests.fixtures.batches import batch, row
 
 
@@ -39,12 +39,16 @@ def test_it_waits_rather_than_writing_per_keystroke(saver: AutoSaver, tmp_path: 
 
 
 def test_the_wait_is_restarted_rather_than_queued(saver: AutoSaver, tmp_path: Path) -> None:
+    """Two edits inside the window are one write, not two."""
+    written: list[object] = []
+    saver.saved.connect(written.append)
     saver.watch(batch(row()), tmp_path / "melt.pibatch")
     saver.schedule()
     saver.schedule()
+    assert saver._timer.isActive()
     saver.flush()
-    assert not saver.pending
-    assert DELAY_MS > 0
+    assert len(written) == 1
+    assert not saver._timer.isActive() and not saver.pending
 
 
 def test_the_timer_is_what_calls_flush(saver: AutoSaver, tmp_path: Path) -> None:

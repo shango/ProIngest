@@ -342,8 +342,10 @@ class TestStartingAndStopping:
         """A `QThread` still running when its owner is collected is a crash on the way out."""
         monkeypatch.setattr(render, "execute", fake_execute())
         runner.start([job()])
+        thread = runner._thread
+        assert thread is not None
         runner.shutdown()
-        assert not runner.busy or pump_until(lambda: not runner.busy)
+        assert thread.isFinished()
 
 
 def test_a_real_pool_runs_through_the_worker_thread(runner: Runner, tmp_path: Path) -> None:

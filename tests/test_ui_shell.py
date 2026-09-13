@@ -9,7 +9,7 @@ theme, and the theme is the one part of this a person has to judge (docs/MAC_SES
 from __future__ import annotations
 
 import sys
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from pathlib import Path
 
 import pytest
@@ -131,9 +131,15 @@ class DrivenWindow(MainWindow):
 
 
 @pytest.fixture
-def window(qt_app: QApplication, tmp_path: Path) -> DrivenWindow:
-    """A window whose settings file is a temporary one, never the user's own."""
-    return DrivenWindow(tmp_path / "settings.json")
+def window(qt_app: QApplication, tmp_path: Path) -> Iterator[DrivenWindow]:
+    """A window whose settings file is a temporary one, never the user's own.
+
+    Detached from the root logger afterwards: every window installs a handler there,
+    and one left behind per test means every later log line is formatted into all of them.
+    """
+    built = DrivenWindow(tmp_path / "settings.json")
+    yield built
+    built.log_view.detach()
 
 
 REMEMBERED_SIZE = (640, 480)
@@ -319,7 +325,7 @@ class TestTheLayout:
         assert isinstance(window.bottom_tabs.widget(BOTTOM_TABS.index("Deliverables")), QLabel)
 
     def test_the_status_bar_progress_is_hidden_until_a_run(self, window: DrivenWindow) -> None:
-        assert not window.progress.isVisible()
+        assert window.progress.isHidden()
 
 
 class TestOpeningABatch:

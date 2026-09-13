@@ -184,9 +184,8 @@ class TestRunCommand:
         batch_path = self.scanned(tmp_path)
         delivery = tmp_path / "delivery"
 
-        # Reference encodes are M3.5, so those jobs fail and the exit code is 1.
         argv = ["run", str(batch_path), "--delivery-root", str(delivery), "--jobs", "2"]
-        main(argv + self.graded(tmp_path))
+        assert main(argv + self.graded(tmp_path)) == 0
         out = capsys.readouterr().out
 
         shot = delivery / "MELT" / "MELT0001"

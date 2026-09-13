@@ -94,7 +94,7 @@ class TestTheTree:
             for i in range(len(COLUMNS))
         ]
         assert titles[SHOT : ELEM + 1] == ["Shot", "Elem"]
-        assert titles[IN], titles[OUT]
+        assert (titles[IN], titles[OUT]) == ("In", "Out")
 
     def test_rows_belong_to_their_own_turnover(self, qt_app: QApplication) -> None:
         """Two turnovers, and neither shows the other's shots."""
@@ -403,9 +403,8 @@ class TestTheGroupHeader:
     def test_one_shot_is_not_one_shots(self, qt_app: QApplication) -> None:
         built = ShotListModel()
         built.set_batch(batch(row()))
-        assert "1 shot," in str(
-            built.index(0, 0, QModelIndex()).data(Qt.ItemDataRole.DisplayRole)
-        ) or "1 shot" in str(built.index(0, 0, QModelIndex()).data(Qt.ItemDataRole.DisplayRole))
+        header = str(built.index(0, 0, QModelIndex()).data(Qt.ItemDataRole.DisplayRole))
+        assert "1 shot" in header and "1 shots" not in header
 
     def test_its_state_is_the_worst_thing_under_it(self) -> None:
         assert turnover_state(turnover(), [warn(row()), fail(row())]) is RowState.ERROR

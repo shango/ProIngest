@@ -194,7 +194,7 @@ class TestMultipleVideoTracks:
         from opentimelineio import opentime as ot
 
         tl = otio.schema.Timeline(name="two_tracks")
-        for index, (track_name, clip_name) in enumerate(
+        for track_name, clip_name in (
             [("V1", "MELT0001_pl01"), ("V2", "MELT0002_el01")]
         ):
             track = otio.schema.Track(name=track_name, kind=otio.schema.TrackKind.Video)
@@ -205,7 +205,6 @@ class TestMultipleVideoTracks:
                     source_range=ot.TimeRange(ot.RationalTime(0, 24), ot.RationalTime(100, 24)),
                 )
             )
-            assert index >= 0
         path = tmp_path / "t.otio"
         otio.adapters.write_to_file(tl, str(path))
 
