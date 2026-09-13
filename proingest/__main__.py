@@ -169,9 +169,11 @@ def _run(
     Planning happens here rather than at scan time because the version depends on what
     is in the delivery folder at the moment the run starts (NAMING_SPEC section 4).
 
-    `--color-session` is where the colour session package lives until Settings holds it
-    (PRD section 7). Without it the run still produces every deliverable, in ACEScg,
-    ungraded; the CLF is the only difference.
+    `--color-session` ingests the session package into every turnover, which is the same
+    step the window offers (PRD section 6 step 4): it writes the approved In/Out, the CDL
+    and the CLF onto the rows, and the plan reads them from there. Without it the run
+    still produces every deliverable, in ACEScg, ungraded, and QC-008 says so; the CLF is
+    the only difference.
     """
     try:
         batch = batchfile.load(batch_path)
@@ -180,22 +182,28 @@ def _run(
         return 2
 
     try:
-        session = _load_color_session(batch, color_session)
+        _ingest_color_session(batch, color_session)
     except (clf.ColorSessionError, color.ColorError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
 
     root = delivery_root or batch.delivery_root
-    try:
-        planned = planner.plan_batch(batch, root, session=session)
-    except (ValueError, clf.ClfError) as exc:
-        print(f"error: {exc}", file=sys.stderr)
+    if root is None:
+        print("error: no delivery root: pass --delivery-root, or set one on the batch", file=sys.stderr)
         return 2
 
     batch.delivery_root = root
     qc.preflight(batch)
-    blocking = _print_preflight(batch)
-    if blocking:
+    if _print_preflight(batch):
+        return 2
+
+    held_back = qc.blocked_turnovers(batch)
+    for turnover_id in sorted(held_back):
+        print(f"holding back {turnover_id}: its pre-flight found an error")
+    try:
+        planned = planner.plan_batch(batch, root, skip_turnovers=held_back)
+    except (ValueError, clf.ClfError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
         return 2
 
     if not planned:
@@ -220,15 +228,18 @@ def _run(
     return _report_run(written, batch_path)
 
 
-def _load_color_session(batch: Batch, edl_path: Path | None) -> clf.ColorSession | None:
-    """Read the colour session package, or None when the run was given none.
+def _ingest_color_session(batch: Batch, edl_path: Path | None) -> None:
+    """Read the colour session package and ingest it into every turnover.
+
+    One package for the whole batch, because a command line run is one delivery: the
+    window is where a turnover is ingested on its own (`Turnover.color_session_edl`).
 
     The EDL's timecode is read at one rate and a batch can carry more than one (OQ-19
     reopened this), so the rate is taken from the first row that has media and the
     choice is printed rather than assumed silently.
     """
     if edl_path is None:
-        return None
+        return
     rates = [row.media.rate for row in batch.rows if row.media is not None]
     if not rates:
         raise clf.ColorSessionError("no row has media, so there is no rate to read the EDL at")
@@ -236,7 +247,19 @@ def _load_color_session(batch: Batch, edl_path: Path | None) -> clf.ColorSession
         print(f"note: the batch carries more than one rate; reading the EDL at {rates[0]}")
     session = clf.load_session(edl_path, rates[0])
     print(f"colour session: {len(session.events)} events, {len(session.clfs)} shots with a CLF")
-    return session
+    for turnover in batch.turnovers:
+        report = clf.ingest(turnover, batch.rows_for(turnover.turnover_id), session)
+        print(
+            f"  {turnover.turnover_id}: {len(report.matched)} rows matched, "
+            f"{len(report.graded)} with a CLF"
+        )
+        for label, names in (
+            ("no event", report.unmatched),
+            ("trim overwritten by the approved cut", report.overwritten),
+            ("more than one CLF names the shot", report.ambiguous),
+        ):
+            if names:
+                print(f"    {label}: {', '.join(sorted(names))}")
 
 
 def _qc(batch_path: Path, delivery_root: Path | None, out: Path | None) -> int:

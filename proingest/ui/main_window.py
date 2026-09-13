@@ -81,6 +81,9 @@ BOTTOM_TABS = ("Issues", "Log", "Deliverables")
 
 NOTHING_TO_RENDER = "Nothing to render: no row produced a deliverable"
 
+HELD_BACK = "{count} turnovers are held back by an error; see the Issues dock"
+HELD_BACK_ONE = "{name} is held back by an error; see the Issues dock"
+
 CHECKING_BATCH = "Checking the batch"
 PLANNING = "Planning {count} shots"
 CHECKING_RESULTS = "Checking what landed"
@@ -577,11 +580,11 @@ class MainWindow(QMainWindow):
         turnover with no lens grid is a warning the editor reads, and a delivery root
         that cannot be written to is not.
 
-        **The run carries no colour session yet.** Settings is where the session package
-        lives (PRD FR-12) and that is M5.7, so every row plans ungraded exactly as the
-        CLI does without `--color-session`: the same files in the same places, without
-        the CLF in them. QC-008 is the rule that refuses a run in that state and it
-        lands with the Settings page that can answer it.
+        **A turnover whose pre-flight found an error is held back rather than rendered**,
+        and the rest of the batch still delivers (`qc.blocked_turnovers`). That is what
+        QC-008 buys by being turnover scope: a turnover waiting on its colour session
+        would otherwise render every row ungraded, which is the wrong pixels under the
+        right filename, while the turnovers beside it are ready to go.
         """
         if not self._batch_open or self.runner.busy or self.scanner.busy:
             return
@@ -607,9 +610,13 @@ class MainWindow(QMainWindow):
             self._show_issues()
             return
 
+        held_back = qc.blocked_turnovers(batch)
+        if held_back:
+            self.statusBar().showMessage(self._held_back_text(held_back))
+
         self.run_strip.say(PLANNING.format(count=len(batch.rows)))
         try:
-            jobs = planner.plan_batch(batch, batch.delivery_root)
+            jobs = planner.plan_batch(batch, batch.delivery_root, skip_turnovers=held_back)
         except (ValueError, clf.ClfError) as exc:
             self.run_strip.clear()
             self.report_problem("The batch cannot be planned", str(exc))
@@ -628,6 +635,16 @@ class MainWindow(QMainWindow):
         self._run_timer.start()
         self._update_state()
         self.runner.start(jobs)
+
+    def _held_back_text(self, held_back: frozenset[str]) -> str:
+        """What the status bar says about the turnovers this run will not touch."""
+        if len(held_back) > 1:
+            return HELD_BACK.format(count=len(held_back))
+        one = next(iter(held_back))
+        name = next(
+            (t.folder.name for t in self.batch.turnovers if t.turnover_id == one), one
+        )
+        return HELD_BACK_ONE.format(name=name)
 
     def stop_run(self) -> None:
         """Stop: no new jobs, in-flight ones stop at their next frame boundary.

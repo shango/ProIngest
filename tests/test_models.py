@@ -12,6 +12,7 @@ from pathlib import Path
 import pytest
 
 from proingest.core.models import (
+    CDL,
     SCHEMA_VERSION,
     Batch,
     Deliverable,
@@ -202,6 +203,31 @@ class TestShotRow:
         assert read.source_encoding == "C-Log3"
         assert read.source_encoding_origin is None
 
+    def test_round_trip_of_what_the_colour_session_wrote(self) -> None:
+        """A batch reopened after the package is archived renders the same grade."""
+        row = make_row(
+            approved=InOut(1008, 1223),
+            cdl=CDL(
+                slope=(1.02, 0.99, 1.01),
+                offset=(0.001, -0.002, 0.0),
+                power=(0.98, 1.0, 1.02),
+                saturation=1.05,
+                sop_text="(1.02 0.99 1.01)(0.001 -0.002 0.0)(0.98 1.0 1.02)",
+                sat_text="1.05",
+            ),
+            clf_path=Path("/session/MELT0001_grade.clf"),
+        )
+        assert ShotRow.from_dict(row.to_dict()) == row
+
+    def test_a_row_saved_before_the_session_was_ingestible_reads_back_bare(self) -> None:
+        """Additive, so the schema version does not move (M5.7.1)."""
+        data = make_row().to_dict()
+        del data["approved"]
+        del data["cdl"]
+        read = ShotRow.from_dict(data)
+        assert read.approved is None
+        assert read.cdl is None
+
     def test_round_trip_of_an_unparsed_row(self) -> None:
         """A QC-010 row still appears so the editor can fix the name in place."""
         row = ShotRow(turnover_id="t1", clip_name="garbage name", identity=None)
@@ -228,9 +254,20 @@ class TestTurnover:
 
     def test_round_trip(self) -> None:
         turnover = Turnover(
-            "t1", Path("/t"), timeline_path=Path("/t/a.otio"), number=1, shooter="Daniel Luckett"
+            "t1",
+            Path("/t"),
+            timeline_path=Path("/t/a.otio"),
+            color_session_edl=Path("/session/MELT_FINAL.edl"),
+            number=1,
+            shooter="Daniel Luckett",
         )
         assert Turnover.from_dict(turnover.to_dict()) == turnover
+
+    def test_a_turnover_saved_before_the_session_existed_has_ingested_nothing(self) -> None:
+        """Additive, so the schema version does not move (M5.7.1)."""
+        data = Turnover("t1", Path("/t")).to_dict()
+        del data["color_session_edl"]
+        assert Turnover.from_dict(data).color_session_edl is None
 
 
 class TestBatch:

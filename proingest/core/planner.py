@@ -14,6 +14,7 @@ direct comparison between what was planned and what the written filename says.
 
 from __future__ import annotations
 
+from collections.abc import Collection
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Literal
@@ -275,7 +276,7 @@ def plan_batch(
     batch: Batch,
     delivery_root: Path | None = None,
     show_pattern: str = naming.DEFAULT_SHOW_PATTERN,
-    session: clf.ColorSession | None = None,
+    skip_turnovers: Collection[str] = (),
 ) -> list[DeliverableJob]:
     """Plan every row of a batch and record the plan on the rows.
 
@@ -287,13 +288,20 @@ def plan_batch(
     run rather than when a batch is opened: the state recorded against a row belongs to
     the version that produced it, not to the one about to be written.
 
-    `session` is the colour session package, and it is optional here rather than
-    required because a batch is planned and previewed long before one exists
-    (COLOR_AND_FORMAT section 1). Without it every row plans ungraded: the deliverables
-    are the same files in the same places, and the difference is whether the CLF is in
-    them. QC-008 is what refuses a **run** in that state, and it is a rule about the
-    batch rather than something the planner decides.
+    **The colour session is not a parameter here.** It is ingested onto the rows before
+    a run (`clf.ingest`, PRD section 6 step 4), so every row already carries the CLF, the
+    CDL and the approved In/Out it was matched with and planning reads them off the model
+    like every other field. A batch nothing has been ingested into plans ungraded: the
+    deliverables are the same files in the same places, and the difference is whether the
+    CLF is in them. QC-008 is what refuses a **run** in that state, and it is a rule about
+    the turnover rather than something the planner decides.
+
+    `skip_turnovers` is what that refusal does here: a turnover whose pre-flight found an
+    error plans nothing, and the turnovers beside it still deliver (`qc.blocked_turnovers`).
+    It is passed in rather than read off the turnovers' QC lists, so planning does not
+    depend on a rule pass having run that it cannot see.
     """
+    skipped = frozenset(skip_turnovers)
     root = delivery_root or batch.delivery_root
     if root is None:
         raise ValueError("no delivery root: pass one, or set batch.delivery_root")
@@ -302,8 +310,7 @@ def plan_batch(
     jobs: list[DeliverableJob] = []
     for row in batch.rows:
         identity = plannable_identity(row, show_pattern)
-        if identity is None:
-            row.clf_path = None
+        if identity is None or row.turnover_id in skipped:
             _record(row, RowPlan())
             continue
 
@@ -312,9 +319,7 @@ def plan_batch(
             versions[code] = resolve_version(naming.shot_dir(root, identity), show_pattern)
         version = versions[code]
 
-        shot_color = _shot_color(session, row)
-        row.clf_path = shot_color.clf_path
-        plan = plan_row(row, root, version, show_pattern, shot_color)
+        plan = plan_row(row, root, version, show_pattern, clf.shot_color(row))
         if version > 1:
             plan.qc.append(
                 QCResult(
@@ -328,27 +333,6 @@ def plan_batch(
         _record(row, plan)
         jobs.extend(plan.jobs)
     return jobs
-
-
-def _shot_color(session: clf.ColorSession | None, row: ShotRow) -> clf.ShotColor:
-    """This row's colour: the session's answer, or the ungraded chain when there is none.
-
-    The source encoding comes off the row and through the input transform table, because
-    the clip's own metadata is what names it and a turnover may mix encodings freely
-    (COLOR_AND_FORMAT section 1). There is nothing batch wide to fall back to: a row that
-    names none, or names one that does not resolve, carries none, which renders where the
-    CLF is the whole chain and is QC-046 or QC-047 where it is not.
-
-    An ambiguous CLF propagates rather than being resolved to one of the candidates.
-    Two CLFs naming one shot is a redelivery nobody cleaned up, and picking either is
-    picking a grade (`clf.AmbiguousClfError`).
-    """
-    if session is None:
-        return clf.ShotColor(
-            source_encoding=clf.resolved_encoding(row),
-            source_encoding_origin=row.source_encoding_origin,
-        )
-    return session.shot_color(row)
 
 
 def _record(row: ShotRow, plan: RowPlan) -> None:

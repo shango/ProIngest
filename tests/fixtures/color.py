@@ -62,3 +62,47 @@ def plate_clf(path: Path) -> Path:
         ),
         ocio.ColorSpaceTransform(src=CLF_SOURCE, dst=color.PLATE_SPACE),
     )
+
+
+def display_clf(path: Path, size: int = 9) -> Path:
+    """A CLF with the ACES output transform baked into it, which is QC-039's failure.
+
+    Sampled into a 3D LUT because that is the only way such a CLF exists: the output
+    transform uses ops CLF cannot express, so a session that exported one would have had
+    to bake it, exactly as here.
+    """
+    view = ocio.DisplayViewTransform(src=CLF_SOURCE, display=color.DISPLAY, view=color.VIEW)
+    cpu = color.config().getProcessor(view).getDefaultCPUProcessor()
+    lut = ocio.Lut3DTransform(gridSize=size, interpolation=color.INTERPOLATION)
+    for red in range(size):
+        for green in range(size):
+            for blue in range(size):
+                sample = [value / (size - 1) for value in (red, green, blue)]
+                lut.setValue(red, green, blue, *cpu.applyRGB(sample))
+    return write_clf(path, lut)
+
+
+def make_session(folder: Path, shots: int = 1, frames: int = 4) -> Path:
+    """A colour session package for the `media.make_turnover` fixture: an EDL and a CLF each.
+
+    A run needs one (QC-008), so the tests that are about anything else still have to
+    have one. It is written to match the fixture turnover exactly: one event per shot at
+    the media's own `01:00:00:00`, and a CLF named after the shot the way OQ-33 expects.
+    """
+    folder.mkdir(parents=True, exist_ok=True)
+    edl = folder / "MELT_FINAL_v01.edl"
+    events = ["TITLE: MELT_FINAL_v01", "FCM: NON-DROP FRAME", ""]
+    for index in range(1, shots + 1):
+        shot = f"MELT{index:04d}"
+        out_timecode = f"01:00:00:{frames:02d}"
+        events += [
+            f"{index:03d}  {shot} V     C        01:00:00:00 {out_timecode} "
+            f"01:00:00:00 {out_timecode}",
+            f"* FROM CLIP NAME: {shot}_pl01.exr",
+            "*ASC_SOP (1.020000 0.990000 1.010000)"
+            "(0.001000 -0.002000 0.000000)(0.980000 1.000000 1.020000)",
+            "*ASC_SAT 1.050000",
+        ]
+        plate_clf(folder / f"{shot}_grade_v01.clf")
+    edl.write_text("\n".join(events) + "\n")
+    return edl

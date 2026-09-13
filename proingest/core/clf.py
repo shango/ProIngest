@@ -25,14 +25,22 @@ from __future__ import annotations
 
 import hashlib
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import numpy as np
 import PyOpenColorIO as ocio
 
 from proingest.core import color, frames, naming
-from proingest.core.models import FrameRate, InOut, MediaInfo, ShotRow, SourceEncodingOrigin
+from proingest.core.models import (
+    CDL,
+    FrameRate,
+    InOut,
+    MediaInfo,
+    ShotRow,
+    SourceEncodingOrigin,
+    Turnover,
+)
 
 CLF_EXTENSION = ".clf"
 
@@ -89,23 +97,6 @@ class AmbiguousClfError(ClfError):
     An error rather than a choice: the session exports one CLF per shot, so two is a
     redelivery that was not cleaned up, and picking either one is picking a grade.
     """
-
-
-@dataclass(frozen=True)
-class CDL:
-    """One event's ASC CDL, as numbers and as the lines it was written on.
-
-    Both forms are delivered. The numbers go into the EXR header as attributes, and the
-    text goes in verbatim because it is what another facility's tool reads and what a
-    human compares against the session. Neither is ever applied: the CLF is.
-    """
-
-    slope: tuple[float, float, float]
-    offset: tuple[float, float, float]
-    power: tuple[float, float, float]
-    saturation: float
-    sop_text: str
-    sat_text: str
 
 
 @dataclass(frozen=True)
@@ -279,28 +270,6 @@ class ColorSession:
             raise AmbiguousClfError(f"{len(found)} CLFs name {shot_code}: {names}")
         return found[0] if found else None
 
-    def shot_color(self, row: ShotRow) -> ShotColor:
-        """What this row's deliverables are rendered through.
-
-        The source encoding comes off the row rather than from a parameter, because the
-        clip's own metadata is what names it (COLOR_AND_FORMAT section 1) and a session
-        has no opinion about it. It is resolved through the input transform table on the
-        way, so what a job carries is a colour space rather than a shooter's typing.
-
-        The CLF comes from the shot code and the CDL from the conform event, which are
-        two different matches on purpose: a row can have an event with no CLF beside it,
-        and the CDL is a record rather than a transform, so a missing one costs the
-        header a line and nothing else. A row with no CLF renders ungraded, which is
-        what QC-009 reports once the rules are wired.
-        """
-        event = self.event_for(row)
-        return ShotColor(
-            source_encoding=resolved_encoding(row),
-            source_encoding_origin=row.source_encoding_origin,
-            clf_path=self.clf_for(row.shot_code) if row.shot_code else None,
-            cdl=event.cdl if event is not None else None,
-        )
-
     def _event_by_reel(self, row: ShotRow) -> ConformEvent | None:
         """Reel plus source timecode, which is OQ-30's fallback.
 
@@ -334,6 +303,89 @@ def load_session(
     events = read_final_edl(edl_path, rate)
     clfs = index_clfs(edl_path.parent, show_pattern)
     return ColorSession(edl_path=edl_path, events=events, clfs=clfs)
+
+
+@dataclass(frozen=True)
+class IngestReport:
+    """What ingesting one turnover's colour session did to its rows.
+
+    Returned rather than logged because every list on it is something a person acts on:
+    an unmatched row will not render, an overwritten trim is work the editor has just
+    lost, and an ambiguous CLF is a redelivery somebody has to clean up. The rules
+    report the same facts at run time (QC-008, QC-009); this reports them at the moment
+    the editor can still do something about them.
+    """
+
+    edl_path: Path
+    events: int
+    matched: list[str] = field(default_factory=list)
+    graded: list[str] = field(default_factory=list)
+    overwritten: list[str] = field(default_factory=list)
+    """Rows whose one-off trim the approved In/Out replaced. PRD section 6 step 4: the
+    session's cut wins and the tool says so, rather than keeping a trim the AD never saw."""
+
+    unmatched: list[str] = field(default_factory=list)
+    ambiguous: list[str] = field(default_factory=list)
+    """Rows whose shot code more than one CLF names. Left ungraded rather than resolved,
+    because picking either one is picking a grade (`AmbiguousClfError`)."""
+
+
+def ingest(turnover: Turnover, rows: list[ShotRow], session: ColorSession) -> IngestReport:
+    """Write what the colour session says onto a turnover and its rows. PRD section 6 step 4.
+
+    **The session is read once, here, and never again.** What it said travels on the
+    model afterwards - the approved In/Out, the CDL and the CLF path - so a batch
+    reopened after the package has been archived plans the same grade, and the planner
+    needs no session at all. The turnover keeps the EDL's location as the record of
+    where the answers came from.
+
+    **The approved cut wins over a trim already made.** Ben and the AD trimmed in the
+    session and that is the cut that was signed off, so `current` is written from
+    `approved` and the rows that lost a trim are named in the report (FR-5). A trim made
+    *after* an ingest is the supported one-off, and QC-045 is what reports it.
+
+    A row the session says nothing about keeps everything it had. Nothing here guesses:
+    an unmatched row is reported, not conformed to its neighbour's event.
+    """
+    report = IngestReport(edl_path=session.edl_path, events=len(session.events))
+    turnover.color_session_edl = session.edl_path
+    for row in rows:
+        event = session.event_for(row)
+        if event is not None:
+            report.matched.append(row.clip_name)
+            approved = approved_in_out(event, row.media) if row.media else None
+            row.cdl = event.cdl
+            if approved is not None:
+                if row.current is not None and row.current != approved:
+                    report.overwritten.append(row.clip_name)
+                row.approved = approved
+                row.current = approved
+        else:
+            report.unmatched.append(row.clip_name)
+        try:
+            row.clf_path = session.clf_for(row.shot_code) if row.shot_code else None
+        except AmbiguousClfError:
+            row.clf_path = None
+            report.ambiguous.append(row.clip_name)
+        if row.clf_path is not None:
+            report.graded.append(row.clip_name)
+    return report
+
+
+def shot_color(row: ShotRow) -> ShotColor:
+    """What this row's deliverables are rendered through, read off the row alone.
+
+    One definition, and the only one since the session is ingested rather than carried:
+    a planned row and a reopened batch resolve their colour the same way, from the four
+    fields ingest filled in. A row nothing was ingested for carries no CLF, which renders
+    through the input transform alone and is QC-009.
+    """
+    return ShotColor(
+        source_encoding=resolved_encoding(row),
+        source_encoding_origin=row.source_encoding_origin,
+        clf_path=row.clf_path,
+        cdl=row.cdl,
+    )
 
 
 def index_clfs(

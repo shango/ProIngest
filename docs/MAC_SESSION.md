@@ -186,6 +186,14 @@ Treat it as a working session with the editor rather than a delivery.
       encodes. On fixture media it is free; on real media nobody has measured it. If it costs
       real minutes across a hundred shots, the answer is a setting, not a silent downgrade to
       the container index the render already checked. PROGRESS.md section 9.
+- [ ] **Press Run on a batch with no colour session ingested and watch what the editor does.**
+      Since M5.7.1 QC-008 holds that turnover back and the run writes nothing, which is the
+      right refusal and may read as a dead button. The Issues dock carries the reason and the
+      status bar names the turnover; whether that is enough, or whether Run should say it
+      itself, is a judgement to make in front of the real window rather than from a test.
+- [ ] **Ingest one real session and read the report.** How many rows matched, how many got a
+      CLF, and the three lists a person acts on: no event, trim overwritten, more than one CLF
+      naming the shot. It is the first time `clf.ingest` meets an EDL it did not write. OQ-31.
 - [ ] A full run end to end, then read the QC log and tracker with the editor. OQ-2 tracker
       columns, OQ-11 camData format.
 - [ ] OQ-21 container alpha, explicitly deferred until a real turnover existed.

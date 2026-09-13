@@ -18,7 +18,14 @@ import PyOpenColorIO as ocio
 import pytest
 
 from proingest.core import clf, color, naming
-from proingest.core.models import FrameRate, MediaInfo, ShotRow, SourceEncodingOrigin
+from proingest.core.models import (
+    FrameRate,
+    InOut,
+    MediaInfo,
+    ShotRow,
+    SourceEncodingOrigin,
+    Turnover,
+)
 
 RATE_24 = FrameRate(24)
 
@@ -546,68 +553,141 @@ class TestShotColor:
         assert pickle.loads(pickle.dumps(shot_color)) == shot_color
 
 
-class TestSessionShotColor:
+def ingested(tmp_path: Path, *rows: ShotRow) -> Turnover:
+    """Ingest the fixture session into a turnover holding `rows`, and hand it back."""
+    turnover = Turnover(turnover_id="turnover001", folder=tmp_path)
+    clf.ingest(turnover, list(rows), clf.load_session(edl(tmp_path), RATE_24))
+    return turnover
+
+
+class TestIngest:
+    """What the session writes onto the model, which is the only thing a run reads."""
+
+    def test_it_records_where_the_session_was(self, tmp_path: Path) -> None:
+        turnover = ingested(tmp_path, row())
+        assert turnover.color_session_edl == edl(tmp_path)
+
+    def test_a_matched_row_takes_the_approved_in_out(self, tmp_path: Path) -> None:
+        scanned = row()
+        ingested(tmp_path, scanned)
+        assert scanned.approved == InOut(8, 223)
+        assert scanned.current == scanned.approved
+
+    def test_the_approved_cut_overwrites_a_trim_and_says_so(self, tmp_path: Path) -> None:
+        """PRD section 6 step 4: the cut the AD signed off wins, and the editor is told."""
+        scanned = row()
+        scanned.current = InOut(10, 200)
+        turnover = Turnover(turnover_id="turnover001", folder=tmp_path)
+        report = clf.ingest(turnover, [scanned], clf.load_session(edl(tmp_path), RATE_24))
+        assert report.overwritten == ["MELT0001_pl01"]
+        assert scanned.current == InOut(8, 223)
+
+    def test_a_trim_that_already_agrees_is_not_reported(self, tmp_path: Path) -> None:
+        scanned = row()
+        scanned.current = InOut(8, 223)
+        turnover = Turnover(turnover_id="turnover001", folder=tmp_path)
+        report = clf.ingest(turnover, [scanned], clf.load_session(edl(tmp_path), RATE_24))
+        assert report.overwritten == []
+
+    def test_a_matched_row_records_the_cdl(self, tmp_path: Path) -> None:
+        scanned = row()
+        ingested(tmp_path, scanned)
+        assert scanned.cdl is not None
+        assert scanned.cdl.saturation == pytest.approx(1.05)
+
+    def test_a_matched_row_records_its_clf(self, tmp_path: Path) -> None:
+        path = plate_clf(tmp_path / "MELT0001_grade.clf")
+        scanned = row()
+        ingested(tmp_path, scanned)
+        assert scanned.clf_path == path
+
+    def test_a_row_the_session_never_heard_of_is_left_alone_and_reported(
+        self, tmp_path: Path
+    ) -> None:
+        """Nothing here conforms a row to its neighbour's event."""
+        scanned = row("MELT0009_pl01")
+        scanned.current = InOut(5, 100)
+        turnover = Turnover(turnover_id="turnover001", folder=tmp_path)
+        report = clf.ingest(turnover, [scanned], clf.load_session(edl(tmp_path), RATE_24))
+        assert report.unmatched == ["MELT0009_pl01"]
+        assert scanned.approved is None
+        assert scanned.current == InOut(5, 100)
+
+    def test_two_clfs_naming_one_shot_leave_the_row_ungraded_and_report_it(
+        self, tmp_path: Path
+    ) -> None:
+        """Picking either is picking a grade, and one bad shot does not stop the ingest."""
+        plate_clf(tmp_path / "MELT0001_v01.clf")
+        plate_clf(tmp_path / "MELT0001_v02.clf")
+        scanned = row()
+        turnover = Turnover(turnover_id="turnover001", folder=tmp_path)
+        report = clf.ingest(turnover, [scanned], clf.load_session(edl(tmp_path), RATE_24))
+        assert report.ambiguous == ["MELT0001_pl01"]
+        assert scanned.clf_path is None
+
+    def test_it_counts_what_it_matched_and_what_it_graded(self, tmp_path: Path) -> None:
+        plate_clf(tmp_path / "MELT0001_grade.clf")
+        turnover = Turnover(turnover_id="turnover001", folder=tmp_path)
+        rows = [row(), row("MELT0009_pl01")]
+        report = clf.ingest(turnover, rows, clf.load_session(edl(tmp_path), RATE_24))
+        assert report.matched == ["MELT0001_pl01"]
+        assert report.graded == ["MELT0001_pl01"]
+        assert report.events == 2
+
+
+class TestShotColorFromRow:
+    """`clf.shot_color` is the one place a row becomes a chain, ingested or not."""
+
     def test_a_row_gets_its_own_clf_and_its_own_cdl(self, tmp_path: Path) -> None:
         path = plate_clf(tmp_path / "MELT0001_grade.clf")
-        session = clf.load_session(edl(tmp_path), RATE_24)
-        shot_color = session.shot_color(row())
+        scanned = row()
+        ingested(tmp_path, scanned)
+        shot_color = clf.shot_color(scanned)
         assert shot_color.clf_path == path
         assert shot_color.cdl is not None
         assert shot_color.cdl.saturation == pytest.approx(1.05)
 
     def test_a_row_with_an_event_but_no_clf_still_records_the_cdl(self, tmp_path: Path) -> None:
         """They are two different matches: a CDL is a record and costs a header line."""
-        session = clf.load_session(edl(tmp_path), RATE_24)
-        shot_color = session.shot_color(row())
+        scanned = row()
+        ingested(tmp_path, scanned)
+        shot_color = clf.shot_color(scanned)
         assert shot_color.clf_path is None
         assert shot_color.cdl is not None
 
     def test_a_row_the_session_never_heard_of_gets_the_ungraded_chain(self, tmp_path: Path) -> None:
-        session = clf.load_session(edl(tmp_path), RATE_24)
-        shot_color = session.shot_color(row("MELT0009_pl01"))
+        scanned = row("MELT0009_pl01")
+        ingested(tmp_path, scanned)
+        shot_color = clf.shot_color(scanned)
         assert shot_color.clf_path is None
         assert shot_color.cdl is None
 
     def test_the_source_encoding_comes_off_the_row(self, tmp_path: Path) -> None:
         """A per clip fact, so the session neither carries it nor is asked for it."""
-        session = clf.load_session(edl(tmp_path), RATE_24)
-        assert session.shot_color(row(source_encoding="ACEScc")).source_encoding == "ACEScc"
+        assert clf.shot_color(row(source_encoding="ACEScc")).source_encoding == "ACEScc"
 
     def test_the_encoding_is_resolved_through_the_table_on_the_way(self, tmp_path: Path) -> None:
         """What the shooter wrote in, a colour space out (M4.6.3)."""
-        session = clf.load_session(edl(tmp_path), RATE_24)
-        shot_color = session.shot_color(row(source_encoding="BM Film"))
+        shot_color = clf.shot_color(row(source_encoding="BM Film"))
         assert shot_color.source_encoding == "BMDFilm WideGamut Gen5"
 
     def test_a_name_the_table_cannot_resolve_is_carried_as_none(self, tmp_path: Path) -> None:
         """QC-047 is where this is reported. A graded row renders regardless."""
-        session = clf.load_session(edl(tmp_path), RATE_24)
-        assert session.shot_color(row(source_encoding="S-Log3")).source_encoding is None
+        assert clf.shot_color(row(source_encoding="S-Log3")).source_encoding is None
 
     def test_the_origin_of_the_name_travels_with_it(self, tmp_path: Path) -> None:
-        """It is the row's, not the session's: the session has no opinion about it."""
-        session = clf.load_session(edl(tmp_path), RATE_24)
         scanned = row(source_encoding="BM Film", source_encoding_origin="container tag")
-        assert session.shot_color(scanned).source_encoding_origin == "container tag"
+        assert clf.shot_color(scanned).source_encoding_origin == "container tag"
 
     def test_a_name_that_resolved_to_nothing_still_says_where_it_came_from(
         self, tmp_path: Path
     ) -> None:
         """Which is the case the origin exists for: QC-047 names a string to correct."""
-        session = clf.load_session(edl(tmp_path), RATE_24)
         scanned = row(source_encoding="S-Log3", source_encoding_origin="clip metadata")
-        shot_color = session.shot_color(scanned)
+        shot_color = clf.shot_color(scanned)
         assert shot_color.source_encoding is None
         assert shot_color.source_encoding_origin == "clip metadata"
 
     def test_a_row_naming_no_encoding_gets_a_chain_that_names_none(self, tmp_path: Path) -> None:
         """Renderable where the CLF is the whole chain, and QC-046 where it is not."""
-        session = clf.load_session(edl(tmp_path), RATE_24)
-        assert session.shot_color(row()).source_encoding is None
-
-    def test_two_clfs_naming_one_shot_raise_rather_than_choose(self, tmp_path: Path) -> None:
-        plate_clf(tmp_path / "MELT0001_v01.clf")
-        plate_clf(tmp_path / "MELT0001_v02.clf")
-        session = clf.load_session(edl(tmp_path), RATE_24)
-        with pytest.raises(clf.AmbiguousClfError):
-            session.shot_color(row())
+        assert clf.shot_color(row()).source_encoding is None

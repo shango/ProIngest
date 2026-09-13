@@ -8,7 +8,8 @@ import OpenEXR
 import pytest
 
 from proingest.__main__ import _ProgressPrinter, main
-from proingest.core import batchfile, color, exr, qc, render
+from proingest.core import batchfile, clf, color, exr, qc, render
+from proingest.core.models import FrameRate
 from tests.fixtures import color as color_fixtures
 from tests.fixtures import media as fixtures
 
@@ -149,13 +150,18 @@ class TestRunCommand:
         assert main(["scan", str(folder), "--rules", str(rules), "--save", str(batch_path)]) == 0
         return batch_path
 
+    def graded(self, tmp_path: Path) -> list[str]:
+        """The flags a run needs to produce anything: QC-008 refuses one without them."""
+        return ["--color-session", str(color_fixtures.make_session(tmp_path / "session"))]
+
     def test_a_dry_run_prints_the_plan_and_writes_nothing(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
         batch_path = self.scanned(tmp_path)
         delivery = tmp_path / "delivery"
 
-        assert main(["run", str(batch_path), "--delivery-root", str(delivery), "--dry-run"]) == 0
+        argv = ["run", str(batch_path), "--delivery-root", str(delivery), "--dry-run"]
+        assert main(argv + self.graded(tmp_path)) == 0
         out = capsys.readouterr().out
         assert "MELT0001_pl01_raw_4k_v01" in out
         assert "deliverables from 1 shots" in out
@@ -168,7 +174,8 @@ class TestRunCommand:
         delivery = tmp_path / "delivery"
 
         # Reference encodes are M3.5, so those jobs fail and the exit code is 1.
-        main(["run", str(batch_path), "--delivery-root", str(delivery), "--jobs", "2"])
+        argv = ["run", str(batch_path), "--delivery-root", str(delivery), "--jobs", "2"]
+        main(argv + self.graded(tmp_path))
         out = capsys.readouterr().out
 
         shot = delivery / "MELT" / "MELT0001"
@@ -181,7 +188,8 @@ class TestRunCommand:
 
     def test_the_run_is_recorded_back_into_the_batch_file(self, tmp_path: Path) -> None:
         batch_path = self.scanned(tmp_path)
-        main(["run", str(batch_path), "--delivery-root", str(tmp_path / "delivery")])
+        argv = ["run", str(batch_path), "--delivery-root", str(tmp_path / "delivery")]
+        main(argv + self.graded(tmp_path))
 
         batch = batchfile.load(batch_path)
         done = [d for row in batch.rows for d in row.deliverables if d.status == "done"]
@@ -295,16 +303,47 @@ class TestColorSession:
         assert "could not read" in capsys.readouterr().err
         assert not delivery.exists()
 
-    def test_a_run_with_no_session_still_delivers_ungraded(self, tmp_path: Path) -> None:
-        """Scanning, review and In/Out all happen before a session exists."""
+    def test_a_run_with_no_session_delivers_nothing_and_says_why(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Rendering waits for colour (COLOR_AND_FORMAT section 1). QC-008 is the refusal.
+
+        Scanning, review and In/Out all still happen without one, because they are about
+        frames rather than pixels. An ungraded plate is not a lesser deliverable here, it
+        is the wrong pixels under the right filename, so nothing is written at all.
+        """
         batch_path = self.scanned(tmp_path)
         delivery = tmp_path / "delivery"
+        assert main(["run", str(batch_path), "--delivery-root", str(delivery)]) == 0
+        out = capsys.readouterr().out
+        assert "QC-008" in out
+        assert "nothing to render" in out
+        assert not (delivery / "MELT").exists()
+
+    def test_a_turnover_with_a_session_renders_while_another_waits(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """QC-008 is turnover scope, and this is what that buys (`qc.blocked_turnovers`)."""
+        folder = tmp_path / FOLDER
+        fixtures.make_turnover(folder, shots=1, frames=4, side_files=True)
+        waiting = tmp_path / "turnover002_02_24_2026_danielluckett"
+        fixtures.make_turnover(waiting, shots=1, frames=4, side_files=True)
+        rules = fixtures.write_rules_file(tmp_path / "rules.json")
+        batch_path = tmp_path / "batch.pibatch"
+        main([
+            "scan", str(folder), str(waiting), "--rules", str(rules), "--save", str(batch_path)
+        ])
+
+        batch = batchfile.load(batch_path)
+        session = clf.load_session(self.session(tmp_path), FrameRate(24))
+        first = batch.turnovers[0]
+        clf.ingest(first, batch.rows_for(first.turnover_id), session)
+        batchfile.save(batch, batch_path)
+
+        delivery = tmp_path / "delivery"
         main(["run", str(batch_path), "--delivery-root", str(delivery)])
-        frame = next((delivery / "MELT" / "MELT0001" / "MELT0001_pl01_raw_4k_v01").iterdir())
-        with OpenEXR.File(str(frame)) as handle:
-            header = dict(handle.header())
-        assert exr.CLF_ATTRIBUTE not in header
-        assert header[exr.COLORSPACE_ATTRIBUTE] == color.PLATE_SPACE
+        assert "holding back" in capsys.readouterr().out
+        assert (delivery / "MELT" / "MELT0001").is_dir()
 
 
 class TestQcCommand:
@@ -317,8 +356,12 @@ class TestQcCommand:
         rules = fixtures.write_rules_file(tmp_path / "rules.json")
         batch_path = tmp_path / "batch.pibatch"
         delivery = tmp_path / "delivery"
+        session = color_fixtures.make_session(tmp_path / "session")
         main(["scan", str(folder), "--rules", str(rules), "--save", str(batch_path)])
-        main(["run", str(batch_path), "--delivery-root", str(delivery), "--jobs", "2"])
+        main([
+            "run", str(batch_path), "--delivery-root", str(delivery), "--jobs", "2",
+            "--color-session", str(session),
+        ])
         return batch_path, delivery
 
     def test_both_sheets_land_in_the_show_s_reports_folder(

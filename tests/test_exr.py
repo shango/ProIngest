@@ -15,6 +15,7 @@ import PyOpenColorIO as ocio
 import pytest
 
 from proingest.core import clf, color, exr, frames
+from proingest.core.models import CDL
 from tests.fixtures import media as fixtures
 
 SOP_TEXT = (
@@ -165,7 +166,7 @@ class TestProvenance:
     def shot_color(self, tmp_path: Path) -> clf.ShotColor:
         return clf.ShotColor(
             clf_path=tmp_path / "MELT0001_grade.clf",
-            cdl=clf.CDL(
+            cdl=CDL(
                 slope=(1.02, 0.99, 1.01),
                 offset=(0.001, -0.002, 0.0),
                 power=(0.98, 1.0, 1.02),

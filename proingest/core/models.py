@@ -278,6 +278,53 @@ class InOut:
         return cls(in_frame=int(data["in_frame"]), out_frame=int(data["out_frame"]))
 
 
+@dataclass(frozen=True)
+class CDL:
+    """One event's ASC CDL, as numbers and as the lines it was written on.
+
+    Both forms are delivered. The numbers go into the EXR header as attributes, and the
+    text goes in verbatim because it is what another facility's tool reads and what a
+    human compares against the session. Neither is ever applied: the CLF is.
+
+    It lives here rather than in `core/clf.py`, where it was written, because since the
+    colour session is ingested onto the rows it has to survive a save: a batch reopened
+    a month later writes the same EXR header without the EDL still being on the disk.
+    """
+
+    slope: tuple[float, float, float]
+    offset: tuple[float, float, float]
+    power: tuple[float, float, float]
+    saturation: float
+    sop_text: str
+    sat_text: str
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "slope": list(self.slope),
+            "offset": list(self.offset),
+            "power": list(self.power),
+            "saturation": self.saturation,
+            "sop_text": self.sop_text,
+            "sat_text": self.sat_text,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> CDL:
+        return cls(
+            slope=_triple(data["slope"]),
+            offset=_triple(data["offset"]),
+            power=_triple(data["power"]),
+            saturation=float(data["saturation"]),
+            sop_text=str(data["sop_text"]),
+            sat_text=str(data["sat_text"]),
+        )
+
+
+def _triple(values: Any) -> tuple[float, float, float]:
+    a, b, c = values
+    return (float(a), float(b), float(c))
+
+
 @dataclass
 class SideFiles:
     """Files found next to the media, matched by shot code and element id."""
@@ -401,6 +448,26 @@ class ShotRow:
     does name, which reads as unknown rather than as either carrier.
     """
 
+    approved: InOut | None = None
+    """The In/Out the colour session's final EDL approved, or None until one is ingested.
+
+    A third range beside `snapshot` and `current`, and the three answer three different
+    questions: what the turnover delivered, what will be rendered, and what Ben and the
+    AD signed off (COLOR_AND_FORMAT section 1). Ingest writes `current` from it, so the
+    two agree until the editor makes a one-off trim, and QC-045 is the gap between them.
+    Additive, so the schema version does not move and a batch saved before this has
+    nothing approved, which is the state a batch with no colour session is in anyway.
+    """
+
+    cdl: CDL | None = None
+    """The CDL on this row's conform event, recorded and never applied.
+
+    It reaches the EXR header as the readable version of the grade (COLOR_AND_FORMAT,
+    EXR metadata). On the row rather than fetched from the EDL at render time so that a
+    reopened batch writes the same header without the session package still being on the
+    disk. Where it and `clf_path` disagree the CLF is what is in the pixels.
+    """
+
     clf_path: Path | None = None
     """The CLF the colour session delivered for this shot, or None when it delivered none.
 
@@ -491,6 +558,8 @@ class ShotRow:
             "audio_clip_count": self.audio_clip_count,
             "source_encoding": self.source_encoding,
             "source_encoding_origin": self.source_encoding_origin,
+            "approved": self.approved.to_dict() if self.approved else None,
+            "cdl": self.cdl.to_dict() if self.cdl else None,
             "clf_path": str(self.clf_path) if self.clf_path else None,
             "side_files": self.side_files.to_dict(),
             "notes": self.notes,
@@ -521,6 +590,8 @@ class ShotRow:
             audio_clip_count=int(data.get("audio_clip_count", 0)),
             source_encoding=data.get("source_encoding"),
             source_encoding_origin=data.get("source_encoding_origin"),
+            approved=InOut.from_dict(data["approved"]) if data.get("approved") else None,
+            cdl=CDL.from_dict(data["cdl"]) if data.get("cdl") else None,
             clf_path=_as_path(data.get("clf_path")),
             side_files=SideFiles.from_dict(data.get("side_files", {})),
             notes=str(data.get("notes", "")),
@@ -579,6 +650,22 @@ class Turnover:
     starting at zero would say anyway.
     """
 
+    color_session_edl: Path | None = None
+    """The final EDL of the colour session ingested for this turnover, or None.
+
+    **Per turnover rather than per batch** (QC-008), because turnovers arrive on
+    different days and the grade for one is finished while the next is still being shot:
+    one turnover can be waiting on colour while another renders. **On the batch rather
+    than in the app settings**, for the reason UI_SPEC section 13 gives for the two
+    roots: it is a record of what this work was rendered from, not a preference, so
+    reopening a `.pibatch` restores it and a second batch does not disturb it.
+
+    It is the location only. What the session said is on the rows, in `approved`, `cdl`
+    and `clf_path`, so a batch reopened after the package has been archived still
+    renders the grade it was ingested with. Additive, so the schema version does not
+    move and a batch saved before this has ingested nothing.
+    """
+
     number: int | None = None
     month: int | None = None
     day: int | None = None
@@ -598,6 +685,7 @@ class Turnover:
             "folder": str(self.folder),
             "timeline_path": str(self.timeline_path) if self.timeline_path else None,
             "timeline_start": self.timeline_start,
+            "color_session_edl": str(self.color_session_edl) if self.color_session_edl else None,
             "number": self.number,
             "month": self.month,
             "day": self.day,
@@ -613,6 +701,7 @@ class Turnover:
             folder=Path(data["folder"]),
             timeline_path=_as_path(data.get("timeline_path")),
             timeline_start=int(data.get("timeline_start", 0)),
+            color_session_edl=_as_path(data.get("color_session_edl")),
             number=data.get("number"),
             month=data.get("month"),
             day=data.get("day"),

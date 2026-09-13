@@ -43,7 +43,7 @@ from proingest.ui.metadata import MIXED, NO_SELECTION, as_text
 from proingest.ui.run_strip import LINK_COLOR, RunStrip
 from proingest.ui.runner import RENDERING
 from proingest.ui.shot_model import IN, NOTES, DisplayMode, RowState
-from tests.fixtures.batches import batch, fail, media, row, warn
+from tests.fixtures.batches import batch, fail, ingested, media, row, turnover, warn
 
 
 class DrivenWindow(MainWindow):
@@ -748,7 +748,7 @@ class TestRunningABatch:
     def test_a_run_plans_the_batch_and_hands_the_jobs_over(
         self, window: DrivenWindow, tmp_path: Path
     ) -> None:
-        window.set_batch(batch(row(), delivery_root=tmp_path))
+        window.set_batch(ingested(batch(row(), delivery_root=tmp_path), tmp_path))
         started = stub_runner(window)
         window.action_run.trigger()
 
@@ -761,7 +761,7 @@ class TestRunningABatch:
         self, window: DrivenWindow, tmp_path: Path
     ) -> None:
         """Section 7: Run opens no dialog if the root is set, and prompts once if not."""
-        window.set_batch(batch(row(), delivery_root=None))
+        window.set_batch(ingested(batch(row(), delivery_root=None), tmp_path))
         started = stub_runner(window)
         window.folder_answer = tmp_path
         window.action_run.trigger()
@@ -793,10 +793,42 @@ class TestRunningABatch:
         assert window.bottom_tabs.currentIndex() == BOTTOM_TABS.index("Issues")
 
     def test_a_row_scope_error_does_not(self, window: DrivenWindow, tmp_path: Path) -> None:
-        window.set_batch(batch(fail(row()), row("MELT0002_pl01"), delivery_root=tmp_path))
+        window.set_batch(ingested(batch(fail(row()), row("MELT0002_pl01"), delivery_root=tmp_path), tmp_path))
         started = stub_runner(window)
         window.action_run.trigger()
         assert started and window.problems == []
+
+    def test_a_turnover_with_no_colour_session_is_held_back(
+        self, window: DrivenWindow, tmp_path: Path
+    ) -> None:
+        """QC-008: an ungraded plate is the wrong pixels, so nothing is handed over."""
+        window.set_batch(batch(row(), delivery_root=tmp_path))
+        started = stub_runner(window)
+        window.action_run.trigger()
+
+        assert started == []
+        assert "QC-008" in [result.rule_id for result in window.batch.turnovers[0].qc]
+
+    def test_the_turnovers_that_are_ready_still_render(
+        self, window: DrivenWindow, tmp_path: Path
+    ) -> None:
+        """What turnover scope buys: one waits on colour while the other delivers."""
+        ready, waiting = turnover("turnover001"), turnover("turnover002")
+        built = batch(
+            row(),
+            row("MELT0002_pl01", turnover_id="turnover002"),
+            turnovers=[ready, waiting],
+            delivery_root=tmp_path,
+        )
+        ingested(built, tmp_path)
+        waiting.color_session_edl = None
+        built.rows[1].clf_path = None
+        window.set_batch(built)
+        started = stub_runner(window)
+        window.action_run.trigger()
+
+        assert started and {job.shot_code for job in started[0]} == {"MELT0001"}
+        assert "held back" in window.statusBar().currentMessage()
 
     def test_a_batch_that_plans_nothing_says_so_rather_than_starting(
         self, window: DrivenWindow, tmp_path: Path
@@ -812,7 +844,7 @@ class TestRunningABatch:
         self, window: DrivenWindow, tmp_path: Path
     ) -> None:
         """New and Open would swap the batch the run is writing into."""
-        window.set_batch(batch(row(), delivery_root=tmp_path))
+        window.set_batch(ingested(batch(row(), delivery_root=tmp_path), tmp_path))
         stub_runner(window, busy=True)
         window.action_run.trigger()
 
@@ -825,7 +857,7 @@ class TestRunningABatch:
     def test_progress_reaches_the_status_bar_and_the_rows(
         self, window: DrivenWindow, tmp_path: Path
     ) -> None:
-        window.set_batch(batch(row(), delivery_root=tmp_path))
+        window.set_batch(ingested(batch(row(), delivery_root=tmp_path), tmp_path))
         started = stub_runner(window, busy=True)
         window.action_run.trigger()
         window._run_progressed(Progress(started[0][0].name, "frame", 112, 224))
@@ -841,7 +873,7 @@ class TestRunningABatch:
         """Section 7.1: the strip's bar for the batch, its line for the step, the
         status bar for the numbers, the Progress column for the shot. One `RunProgress`
         behind all four, so they cannot disagree about how far along the run is."""
-        window.set_batch(batch(row(), delivery_root=tmp_path))
+        window.set_batch(ingested(batch(row(), delivery_root=tmp_path), tmp_path))
         started = stub_runner(window, busy=True)
         window.action_run.trigger()
         window._run_progressed(Progress(started[0][0].name, "started", 0, 100))
@@ -859,7 +891,7 @@ class TestRunningABatch:
     ) -> None:
         """Planning and writing the spreadsheets both block the UI thread, so a run
         that said nothing about them would look like a window that had stopped."""
-        window.set_batch(batch(row(), delivery_root=tmp_path))
+        window.set_batch(ingested(batch(row(), delivery_root=tmp_path), tmp_path))
         said: list[str] = []
         window.run_strip.say = said.append  # type: ignore[assignment]
         started = stub_runner(window)
@@ -895,7 +927,7 @@ class TestRunningABatch:
     def test_stop_asks_the_pool_to_stop_and_then_asks_nothing_else(
         self, window: DrivenWindow, tmp_path: Path
     ) -> None:
-        window.set_batch(batch(row(), delivery_root=tmp_path))
+        window.set_batch(ingested(batch(row(), delivery_root=tmp_path), tmp_path))
         stub_runner(window, busy=True)
         window.action_run.trigger()
         cancelled: list[bool] = []
@@ -907,7 +939,7 @@ class TestRunningABatch:
     def test_what_comes_back_is_written_onto_the_rows(
         self, window: DrivenWindow, tmp_path: Path
     ) -> None:
-        window.set_batch(batch(row(), delivery_root=tmp_path), tmp_batch_path(window))
+        window.set_batch(ingested(batch(row(), delivery_root=tmp_path), tmp_path), tmp_batch_path(window))
         started = stub_runner(window)
         window.action_run.trigger()
         window._run_finished(done(started[0]), False)
@@ -918,7 +950,7 @@ class TestRunningABatch:
     def test_the_banner_says_what_landed_and_where_the_exports_went(
         self, window: DrivenWindow, tmp_path: Path
     ) -> None:
-        window.set_batch(batch(row(), delivery_root=tmp_path))
+        window.set_batch(ingested(batch(row(), delivery_root=tmp_path), tmp_path))
         started = stub_runner(window)
         window.action_run.trigger()
         window._run_finished(done(started[0]), False)
@@ -932,7 +964,7 @@ class TestRunningABatch:
     def test_a_stopped_run_says_so_rather_than_calling_itself_complete(
         self, window: DrivenWindow, tmp_path: Path
     ) -> None:
-        window.set_batch(batch(row(), delivery_root=tmp_path))
+        window.set_batch(ingested(batch(row(), delivery_root=tmp_path), tmp_path))
         started = stub_runner(window)
         window.action_run.trigger()
         window._run_finished(done(started[0], status="skipped"), True)
@@ -945,7 +977,7 @@ class TestRunningABatch:
         """Written into the anchor because nothing else can reach it: a stylesheet
         cannot select an anchor inside a QLabel, and it overrides the palette that
         could. Without it the path is #0000ff on a #1b1e23 band."""
-        window.set_batch(batch(row(), delivery_root=tmp_path))
+        window.set_batch(ingested(batch(row(), delivery_root=tmp_path), tmp_path))
         started = stub_runner(window)
         window.action_run.trigger()
         window._run_finished(done(started[0]), False)
@@ -955,7 +987,7 @@ class TestRunningABatch:
     def test_the_banner_link_opens_the_reports_folder(
         self, window: DrivenWindow, tmp_path: Path
     ) -> None:
-        window.set_batch(batch(row(), delivery_root=tmp_path))
+        window.set_batch(ingested(batch(row(), delivery_root=tmp_path), tmp_path))
         started = stub_runner(window)
         window.action_run.trigger()
         window._run_finished(done(started[0]), False)
@@ -976,7 +1008,7 @@ class TestRunningABatch:
     def test_a_new_batch_clears_the_banner_of_the_last_one(
         self, window: DrivenWindow, tmp_path: Path
     ) -> None:
-        window.set_batch(batch(row(), delivery_root=tmp_path))
+        window.set_batch(ingested(batch(row(), delivery_root=tmp_path), tmp_path))
         started = stub_runner(window)
         window.action_run.trigger()
         window._run_finished(done(started[0]), False)
@@ -1035,7 +1067,7 @@ class TestTheMetadataPane:
     def test_a_finished_run_refreshes_the_pane(self, window: DrivenWindow, tmp_path: Path) -> None:
         """QC-150 and QC-151 are written by `apply_results`, so the QC section is only
         right after it."""
-        window.set_batch(batch(row(), delivery_root=tmp_path))
+        window.set_batch(ingested(batch(row(), delivery_root=tmp_path), tmp_path))
         window.shot_list.select_row(window.batch.rows[0])
         started = stub_runner(window)
         window.action_run.trigger()

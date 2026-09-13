@@ -762,14 +762,14 @@ class TestPreflight:
         batch = Batch(delivery_root=delivery, turnovers=[Turnover("t1", tmp_path)], rows=[row()])
         qc.preflight(batch)
         assert ids(batch.qc) == []
-        assert ids(batch.turnovers[0].qc) == ["QC-054"]
+        assert ids(batch.turnovers[0].qc) == ["QC-054", "QC-008"]
 
     def test_rerunning_does_not_duplicate(self, tmp_path: Path) -> None:
         batch = Batch(turnovers=[Turnover("t1", tmp_path)], rows=[row()])
         qc.preflight(batch)
         qc.preflight(batch)
         assert ids(batch.qc) == ["QC-062"]
-        assert ids(batch.turnovers[0].qc) == ["QC-054"]
+        assert ids(batch.turnovers[0].qc) == ["QC-054", "QC-008"]
 
     def test_model_rules_survive_a_preflight(self, tmp_path: Path) -> None:
         """The two registries own different IDs and must not clear each other."""
@@ -777,6 +777,163 @@ class TestPreflight:
         qc.apply_batch_rules(batch)
         qc.preflight(batch)
         assert "QC-040" in ids(batch.rows[0].qc)
+
+
+def ingested_batch(tmp_path: Path, *rows: ShotRow, edl_name: str = "MELT_FINAL.edl") -> Batch:
+    """A batch whose one turnover has had a colour session ingested into it.
+
+    The EDL is written rather than matched against, because these rules read what the
+    ingest left on the model rather than the package: QC-008's own file check is the
+    one exception and it has its own test.
+    """
+    edl = tmp_path / edl_name
+    edl.touch()
+    turnover = Turnover("t1", tmp_path, color_session_edl=edl)
+    return Batch(delivery_root=tmp_path, turnovers=[turnover], rows=list(rows))
+
+
+class TestColorSessionRule:
+    """QC-008: the turnover has no colour session behind it, so nothing final can run."""
+
+    def test_a_turnover_nothing_was_ingested_into_is_an_error(self, tmp_path: Path) -> None:
+        batch = Batch(delivery_root=tmp_path, turnovers=[Turnover("t1", tmp_path)], rows=[row()])
+        results = qc.check_color_session(batch.turnovers[0], batch.rows)
+        assert ids(results) == ["QC-008"]
+        assert results[0].severity == "error"
+        assert "ingested" in results[0].message
+
+    def test_an_archived_package_is_not_an_error(self, tmp_path: Path) -> None:
+        """Ingest put what the session said on the rows, so nothing reads the EDL again."""
+        graded = row()
+        graded.clf_path = color_fixtures.plate_clf(tmp_path / "MELT0001.clf")
+        batch = ingested_batch(tmp_path, graded)
+        edl = batch.turnovers[0].color_session_edl
+        assert edl is not None
+        edl.unlink()
+        assert qc.check_color_session(batch.turnovers[0], batch.rows) == []
+
+    def test_a_session_that_delivered_no_clf_at_all_is_an_error(self, tmp_path: Path) -> None:
+        """Distinct from QC-009: no row with one is a package that was never exported."""
+        batch = ingested_batch(tmp_path, row())
+        results = qc.check_color_session(batch.turnovers[0], batch.rows)
+        assert ids(results) == ["QC-008"]
+        assert "no CLF for any row" in results[0].message
+
+    def test_one_graded_row_is_enough_to_satisfy_it(self, tmp_path: Path) -> None:
+        graded, ungraded = row(), row(clip_name="MELT0002_pl01")
+        graded.clf_path = color_fixtures.plate_clf(tmp_path / "MELT0001.clf")
+        batch = ingested_batch(tmp_path, graded, ungraded)
+        assert qc.check_color_session(batch.turnovers[0], batch.rows) == []
+
+    def test_it_is_scoped_per_turnover(self, tmp_path: Path) -> None:
+        """One turnover can wait on colour while another renders, which is the point."""
+        graded = row()
+        graded.clf_path = color_fixtures.plate_clf(tmp_path / "MELT0001.clf")
+        batch = ingested_batch(tmp_path, graded)
+        waiting = Turnover("t2", tmp_path)
+        batch.turnovers.append(waiting)
+        batch.rows.append(row(clip_name="MELT0002_pl01"))
+        batch.rows[-1].turnover_id = "t2"
+        qc.preflight(batch)
+        assert "QC-008" not in ids(batch.turnovers[0].qc)
+        assert "QC-008" in ids(batch.turnovers[1].qc)
+
+
+class TestClfRule:
+    """QC-009: this row has no usable CLF, and an ungraded plate is the wrong pixels."""
+
+    def test_a_row_the_session_matched_no_clf_to_is_an_error(self, tmp_path: Path) -> None:
+        results = qc.check_clf(row(), has_session=True)
+        assert ids(results) == ["QC-009"]
+        assert results[0].severity == "error"
+
+    def test_a_clf_that_has_gone_missing_is_an_error(self, tmp_path: Path) -> None:
+        gone = row()
+        gone.clf_path = tmp_path / "MELT0001.clf"
+        results = qc.check_clf(gone, has_session=True)
+        assert ids(results) == ["QC-009"]
+        assert "no longer there" in results[0].message
+
+    def test_it_is_silent_until_a_session_has_been_ingested(self, tmp_path: Path) -> None:
+        """With none the whole turnover is QC-008, and repeating it per row buries it."""
+        assert qc.check_clf(row(), has_session=False) == []
+
+    def test_an_aux_still_owes_no_clf(self, tmp_path: Path) -> None:
+        """It is delivered ungraded by design, so this would fire on every colour chart."""
+        chart = row(clip_name="MELT0001_pl01_colorChart_01")
+        assert qc.check_clf(chart, has_session=True) == []
+
+    def test_a_graded_row_passes(self, tmp_path: Path) -> None:
+        graded = row()
+        graded.clf_path = color_fixtures.plate_clf(tmp_path / "MELT0001.clf")
+        assert qc.check_clf(graded, has_session=True) == []
+
+
+class TestClfLoadsRule:
+    """QC-019 and QC-039: the CLF is there, and it is unusable or it is not linear."""
+
+    def test_a_clf_openciolor_will_not_load_is_an_error(self, tmp_path: Path) -> None:
+        broken = tmp_path / "MELT0001.clf"
+        broken.write_text("this is not a CLF\n")
+        unusable = row()
+        unusable.clf_path = broken
+        assert ids(qc.check_clf_loads(unusable, {})) == ["QC-019"]
+
+    def test_a_clf_with_a_display_rendering_in_it_is_an_error(self, tmp_path: Path) -> None:
+        """The expensive one: it renders fine and the plate claims to be linear."""
+        baked = row()
+        baked.clf_path = color_fixtures.display_clf(tmp_path / "MELT0001.clf")
+        results = qc.check_clf_loads(baked, {})
+        assert ids(results) == ["QC-039"]
+        assert results[0].severity == "error"
+
+    def test_a_session_clf_passes(self, tmp_path: Path) -> None:
+        graded = row()
+        graded.clf_path = color_fixtures.plate_clf(tmp_path / "MELT0001.clf")
+        assert qc.check_clf_loads(graded, {}) == []
+
+    def test_the_elements_of_one_shot_load_their_clf_once(self, tmp_path: Path) -> None:
+        """Loading builds an OCIO processor and probes it; four per shot is a wait."""
+        path = color_fixtures.plate_clf(tmp_path / "MELT0001.clf")
+        cache: dict[Path, list[QCResult]] = {}
+        for clip in ("MELT0001_pl01", "MELT0001_bg01"):
+            graded = row(clip_name=clip)
+            graded.clf_path = path
+            qc.check_clf_loads(graded, cache)
+        assert list(cache) == [path]
+
+    def test_a_missing_clf_is_left_to_qc_009(self, tmp_path: Path) -> None:
+        gone = row()
+        gone.clf_path = tmp_path / "gone.clf"
+        assert qc.check_clf_loads(gone, {}) == []
+
+
+class TestApprovedRule:
+    """QC-045: the row will be delivered at an In/Out the colour session did not approve."""
+
+    def test_a_trim_away_from_the_approved_cut_is_a_warning(self) -> None:
+        trimmed = row(current=InOut(20, 200))
+        trimmed.approved = InOut(8, 223)
+        results = qc.check_approved(trimmed)
+        assert ids(results) == ["QC-045"]
+        assert results[0].severity == "warning"
+        assert "20-200" in results[0].message and "8-223" in results[0].message
+
+    def test_a_row_still_at_the_approved_cut_is_silent(self) -> None:
+        conformed = row(current=InOut(8, 223))
+        conformed.approved = InOut(8, 223)
+        assert qc.check_approved(conformed) == []
+
+    def test_it_is_silent_until_a_session_has_been_ingested(self) -> None:
+        """`approved` is what an ingest writes, and nothing else has an opinion on it."""
+        assert qc.check_approved(row()) == []
+
+    def test_it_re_runs_with_the_row_rules(self) -> None:
+        """A pure function of the model, so it follows an edit rather than a run."""
+        trimmed = row(current=InOut(20, 200))
+        trimmed.approved = InOut(8, 223)
+        qc.apply_row_rules(trimmed, RATE_24)
+        assert "QC-045" in ids(trimmed.qc)
 
 
 def test_a_digest_is_stable_and_content_dependent(tmp_path: Path) -> None:

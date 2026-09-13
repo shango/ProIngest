@@ -21,6 +21,7 @@ from proingest.core.models import (
     SideFiles,
     Turnover,
 )
+from tests.fixtures import color
 
 RATE_24 = FrameRate(24)
 ONE_HOUR = 86400
@@ -130,3 +131,25 @@ def batch(
         turnovers=turnovers if turnovers is not None else [turnover()],
         rows=list(rows),
     )
+
+
+def ingested(built: Batch, tmp_path: Path) -> Batch:
+    """Give a batch the colour session a run needs, in place. QC-008 refuses one without.
+
+    A real CLF per shot, because QC-009 checks the file is there and QC-019 and QC-039
+    load it; the EDL is a location and nothing reads it after an ingest, so it is a path
+    rather than a file. `clf.ingest` is what does this from a real package - this is the
+    same end state, built for the tests that are about the window rather than the
+    session.
+    """
+    session = tmp_path / "session"
+    session.mkdir(parents=True, exist_ok=True)
+    for turnover_ in built.turnovers:
+        turnover_.color_session_edl = session / "MELT_FINAL_v01.edl"
+    for row_ in built.rows:
+        if row_.shot_code is None:
+            continue
+        row_.clf_path = color.plate_clf(session / f"{row_.shot_code}_grade_v01.clf")
+        if row_.current is not None:
+            row_.approved = row_.current
+    return built

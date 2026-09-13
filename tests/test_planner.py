@@ -20,6 +20,7 @@ from proingest.core.models import (
     QCResult,
     ShotRow,
     SideFiles,
+    Turnover,
 )
 
 ROOT = Path("/delivery")
@@ -408,6 +409,12 @@ class TestShotColourOnJobs:
     colour chart destroys the only thing the chart is delivered for.
     """
 
+    def ingest(self, batch: Batch, tmp_path: Path) -> None:
+        """Ingest a session onto the batch's rows, which is what a run does first."""
+        turnover = Turnover(turnover_id="turnover001", folder=tmp_path)
+        batch.turnovers.append(turnover)
+        clf.ingest(turnover, batch.rows, self.session(tmp_path))
+
     def session(self, tmp_path: Path) -> clf.ColorSession:
         edl = tmp_path / "MELT_FINAL.edl"
         edl.write_text(
@@ -423,7 +430,8 @@ class TestShotColourOnJobs:
 
     def test_a_picture_job_carries_the_session_s_clf_and_cdl(self, tmp_path: Path) -> None:
         batch = Batch(name="b", rows=[row()], delivery_root=ROOT)
-        jobs = planner.plan_batch(batch, session=self.session(tmp_path))
+        self.ingest(batch, tmp_path)
+        jobs = planner.plan_batch(batch)
         picture = [job for job in jobs if job.kind in ("raw_dir", "ref_mp4")]
         assert picture
         for job in picture:
@@ -431,20 +439,23 @@ class TestShotColourOnJobs:
             assert job.shot_color.cdl is not None
 
     def test_the_row_records_the_clf_for_the_qc_log(self, tmp_path: Path) -> None:
+        """Ingest is what records it, and planning reads it back off the row."""
         batch = Batch(name="b", rows=[row()], delivery_root=ROOT)
-        planner.plan_batch(batch, session=self.session(tmp_path))
+        self.ingest(batch, tmp_path)
+        planner.plan_batch(batch)
         assert batch.rows[0].clf_path == tmp_path / "MELT0001_grade.clf"
 
     def test_an_aux_still_is_never_given_the_shot_s_grade(self, tmp_path: Path) -> None:
         """It still gets the input transform, so it lands in ACEScg like every EXR."""
         aux = row("MELT0001_pl01_colorChart_01", source_encoding="ACEScc")
         batch = Batch(name="b", rows=[aux], delivery_root=ROOT)
-        jobs = planner.plan_batch(batch, session=self.session(tmp_path))
+        self.ingest(batch, tmp_path)
+        jobs = planner.plan_batch(batch)
         still = next(job for job in jobs if job.kind == "aux_still")
         assert still.shot_color.clf_path is None
         assert still.shot_color.source_encoding == "ACEScc"
 
-    def test_without_a_session_every_job_plans_ungraded(self) -> None:
+    def test_without_an_ingest_every_job_plans_ungraded(self) -> None:
         """The same files in the same places; the CLF is the only difference."""
         batch = Batch(name="b", rows=[row()], delivery_root=ROOT)
         jobs = planner.plan_batch(batch)
@@ -498,8 +509,13 @@ class TestShotColourOnJobs:
         by_shot = {job.shot_code: job.shot_color.source_encoding for job in jobs}
         assert by_shot == {"MELT0001": "ACEScc", "MELT0002": "S-Log3 S-Gamut3.Cine"}
 
-    def test_a_row_that_plans_nothing_records_no_clf(self, tmp_path: Path) -> None:
+    def test_a_row_that_plans_nothing_keeps_the_clf_it_was_ingested_with(
+        self, tmp_path: Path
+    ) -> None:
+        """Planning no longer owns `clf_path`: a skipped row is not un-ingested."""
         skipped = row(skipped=True)
         batch = Batch(name="b", rows=[skipped], delivery_root=ROOT)
-        planner.plan_batch(batch, session=self.session(tmp_path))
-        assert skipped.clf_path is None
+        self.ingest(batch, tmp_path)
+        planner.plan_batch(batch)
+        assert skipped.deliverables == []
+        assert skipped.clf_path == tmp_path / "MELT0001_grade.clf"

@@ -140,6 +140,7 @@ OWNED_ROW_RULES = frozenset(
         "QC-041",
         "QC-043",
         "QC-044",
+        "QC-045",
         "QC-046",
         "QC-047",
         "QC-050",
@@ -444,6 +445,34 @@ def check_edits(row: ShotRow) -> list[QCResult]:
     return results
 
 
+def check_approved(row: ShotRow) -> list[QCResult]:
+    """QC-045: the row will be delivered at an In/Out the colour session did not approve.
+
+    A warning where QC-035 is info, and the difference is what the comparison is
+    against. QC-035 compares with the turnover snapshot, which records what the editor
+    did; this compares with the cut Ben and the AD signed off, so the fact it carries is
+    that **the delivered shot is not the shot that was approved**. Nothing else records
+    that, which is the whole reason the rule exists.
+
+    Silent until a session has been ingested, because `approved` is what an ingest
+    writes and a row with none has nothing to deviate from (QC-008 is that state). An
+    ingest writes `current` from `approved` as well, so this fires on the one-off trim
+    made afterwards, which is a supported thing to do (PRD FR-5) and not an error.
+    """
+    approved, current = row.approved, row.current
+    if approved is None or current is None or approved == current:
+        return []
+    return [
+        QCResult(
+            "QC-045",
+            "warning",
+            "row",
+            f"delivered at {current.in_frame}-{current.out_frame}, but the colour session "
+            f"approved {approved.in_frame}-{approved.out_frame}",
+        )
+    ]
+
+
 # --- audio rules ------------------------------------------------------------------
 
 
@@ -666,6 +695,7 @@ def run_row_rules(
     results.extend(check_range(row))
     results.extend(check_duration(row, settings))
     results.extend(check_edits(row))
+    results.extend(check_approved(row))
     results.extend(check_audio_presence(row))
     results.extend(check_audio_sync(row, project_rate, settings))
     results.extend(check_audio_format(row))
@@ -709,13 +739,142 @@ def apply_batch_rules(batch: Batch, settings: RuleSettings = DEFAULT_SETTINGS) -
 # --- pre-flight: the rules that have to look at the disk ---------------------------
 
 OWNED_PREFLIGHT_RULES = frozenset(
-    {"QC-022", "QC-048", "QC-052", "QC-053", "QC-054", "QC-057", "QC-062", "QC-063"}
+    {
+        "QC-008",
+        "QC-009",
+        "QC-019",
+        "QC-022",
+        "QC-039",
+        "QC-048",
+        "QC-052",
+        "QC-053",
+        "QC-054",
+        "QC-057",
+        "QC-062",
+        "QC-063",
+    }
 )
 """Rule IDs `preflight` produces, cleared before a re-run.
 
 QC-022 is here rather than with the model rules only because the decoder set comes
 from asking ffmpeg. The rule itself is pure; `check_source_codec` takes the set.
 """
+
+
+def check_color_session(turnover: Turnover, rows: list[ShotRow]) -> list[QCResult]:
+    """QC-008: the turnover has no colour session behind it, so nothing final can be rendered.
+
+    **Turnover scope rather than batch scope, and that is the point of it**: turnovers
+    arrive on different days and the grade for one is signed off while the next is still
+    being shot, so one turnover can be waiting on colour while another renders
+    (`Turnover.color_session_edl`).
+
+    Two ways to be in that state and they read differently to the person fixing it: an
+    ingest that never happened, and a session that ingested but delivered no CLF for
+    anything in this turnover. The second is the one worth separating from QC-009: a
+    single row with no CLF is a matching problem, and no row with one is a package that
+    was never exported.
+
+    **The package's own files are not checked here and that is deliberate.** An ingest
+    writes what the session said onto the rows, so nothing reads the EDL again and a
+    package archived after a delivery costs a re-ingest rather than a render. The one
+    file a render still needs is the CLF itself, and QC-009 is what checks that, per row,
+    where the answer differs per row.
+    """
+    edl = turnover.color_session_edl
+    if edl is None:
+        return [
+            QCResult(
+                "QC-008",
+                "error",
+                "turnover",
+                "no colour session has been ingested; nothing final can be rendered "
+                "until the session's final EDL is ingested for this turnover",
+            )
+        ]
+    if not any(row.clf_path is not None for row in rows):
+        return [
+            QCResult(
+                "QC-008",
+                "error",
+                "turnover",
+                f"{edl.name} was ingested but delivered no CLF for any row in this turnover",
+            )
+        ]
+    return []
+
+
+def check_clf(row: ShotRow, has_session: bool) -> list[QCResult]:
+    """QC-009: this row has no usable CLF, and an ungraded plate is the wrong pixels.
+
+    Silent until a session has been ingested for the turnover, because with none the
+    whole turnover is QC-008 and repeating it per row would bury it, and silent on an
+    aux still and a BTS frame, which are delivered ungraded by design and owe no CLF
+    (`is_picture_row`). Two states report the same way because they cost the same thing:
+    the session matched no CLF to this shot (OQ-33), and the CLF it matched is no longer
+    on the disk.
+    """
+    if not has_session or not is_picture_row(row):
+        return []
+    if row.clf_path is None:
+        return [
+            QCResult(
+                "QC-009",
+                "error",
+                "row",
+                "the colour session delivered no CLF for this shot; it would render ungraded",
+            )
+        ]
+    if not row.clf_path.is_file():
+        return [
+            QCResult(
+                "QC-009",
+                "error",
+                "row",
+                f"the CLF this row was ingested with, {row.clf_path}, is no longer there",
+            )
+        ]
+    return []
+
+
+def check_clf_loads(row: ShotRow, cache: dict[Path, list[QCResult]]) -> list[QCResult]:
+    """QC-019 and QC-039: the CLF is there but will not load, or is not scene linear.
+
+    Both are errors and they fail in opposite directions. A CLF that will not load
+    stops a render, which is loud. A CLF with a display rendering in it finishes one,
+    and the result is a display referred EXR claiming to be linear ACEScg, which nothing
+    downstream notices until a comp is wrong (COLOR_AND_FORMAT section 1).
+
+    `cache` is keyed by path because the elements of one shot share its CLF, and loading
+    a CLF builds an OCIO processor and probes it: doing that four times per shot is the
+    difference between a pre-flight that is free and one the editor waits on.
+    """
+    path = row.clf_path
+    if path is None or not path.is_file():
+        return []
+    if path not in cache:
+        cache[path] = _probe_clf(path)
+    return list(cache[path])
+
+
+def _probe_clf(path: Path) -> list[QCResult]:
+    """Load one CLF and say what is wrong with it, or nothing."""
+    try:
+        loaded = clf.load_clf(path)
+    except clf.ClfError as exc:
+        return [QCResult("QC-019", "error", "row", str(exc))]
+    if not loaded.is_scene_linear:
+        return [
+            QCResult(
+                "QC-039",
+                "error",
+                "row",
+                f"{path.name} appears to contain a display rendering: its output at the top "
+                f"of the log range is not scene linear {color.PLATE_SPACE}. A plate rendered "
+                f"through it would be display referred and would claim to be linear",
+            )
+        ]
+    return []
 
 
 def check_color_chain(row: ShotRow) -> list[QCResult]:
@@ -914,6 +1073,26 @@ def check_free_space(batch: Batch) -> list[QCResult]:
     ]
 
 
+def blocked_turnovers(batch: Batch) -> frozenset[str]:
+    """Turnovers carrying a pre-flight error, whose rows must not be rendered.
+
+    The one place turnover scope means something at run time. FR-6's rule is that a
+    batch scope error stops the run and a row scope one does not, and a turnover sits
+    between the two: QC-008 says this turnover's colour session does not exist yet, so
+    its rows would render ungraded, while the turnovers beside it are ready to deliver.
+    Stopping the whole run would make a batch as slow as its least finished turnover;
+    rendering anyway is the ungraded plate QC-008 exists to refuse.
+
+    Read after `preflight` and passed to `plan_batch`, rather than read by the planner,
+    so that planning has one authority and it is not a QC list it cannot see being set.
+    """
+    return frozenset(
+        turnover.turnover_id
+        for turnover in batch.turnovers
+        if any(result.severity == "error" for result in turnover.qc)
+    )
+
+
 def decoders_available() -> frozenset[str]:
     """What this ffmpeg can decode, or nothing when it cannot be asked.
 
@@ -938,14 +1117,23 @@ def preflight(batch: Batch, decoders: frozenset[str] | None = None) -> None:
     batch.qc = [result for result in batch.qc if result.rule_id not in OWNED_PREFLIGHT_RULES]
     batch.qc.extend(check_destination_writable(batch.delivery_root))
     batch.qc.extend(check_free_space(batch))
+    graded: set[str] = set()
     for turnover in batch.turnovers:
         turnover.qc = [
             result for result in turnover.qc if result.rule_id not in OWNED_PREFLIGHT_RULES
         ]
         turnover.qc.extend(check_lens_grid(turnover))
+        turnover.qc.extend(
+            check_color_session(turnover, batch.rows_for(turnover.turnover_id))
+        )
+        if turnover.color_session_edl is not None:
+            graded.add(turnover.turnover_id)
+    clf_cache: dict[Path, list[QCResult]] = {}
     for row in batch.rows:
         row.qc = [result for result in row.qc if result.rule_id not in OWNED_PREFLIGHT_RULES]
         row.qc.extend(check_source_codec(row, decoders))
+        row.qc.extend(check_clf(row, row.turnover_id in graded))
+        row.qc.extend(check_clf_loads(row, clf_cache))
         row.qc.extend(check_color_chain(row))
         row.qc.extend(check_hdri_header(row))
         row.qc.extend(check_camdata(row))
