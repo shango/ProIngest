@@ -14,8 +14,10 @@ rather than guessing here.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from collections.abc import Mapping
+from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 import opentimelineio as otio
 
@@ -58,6 +60,15 @@ class ClipRecord:
     available_start: int | None = None
     media_url: str | None = None
     is_audio: bool = False
+    metadata: dict[str, str] = field(default_factory=dict)
+    """Every string the clip's own metadata carries, keyed by its own name.
+
+    Read because the clip is where the source encoding is named (COLOR_AND_FORMAT
+    section 1, OQ-44) and the scan is the only place the timeline still exists. Kept as
+    a flat dict rather than the nested structure otio hands back: which vendor key
+    Resolve nests a field under is not something the tool can know, and the field's own
+    name is.
+    """
 
     @property
     def record_end(self) -> int:
@@ -184,6 +195,7 @@ def _clip_record(clip: otio.schema.Clip, track: str, is_audio: bool) -> ClipReco
 
     return ClipRecord(
         name=clip.name or "",
+        metadata=flatten_metadata(clip.metadata),
         track=track,
         record_start=round(in_parent.start_time.value),
         duration=round(in_parent.duration.value),
@@ -192,6 +204,29 @@ def _clip_record(clip: otio.schema.Clip, track: str, is_audio: bool) -> ClipReco
         media_url=str(url) if url else None,
         is_audio=is_audio,
     )
+
+
+def flatten_metadata(metadata: Any) -> dict[str, str]:
+    """Every string leaf of an otio metadata tree, keyed by its own name.
+
+    By name rather than by path because Resolve nests what it exports under a vendor key
+    or two and which one is not knowable here (OQ-44). The first spelling of a name wins,
+    so an outer field is not replaced by a nested one further down. Non-strings are
+    dropped: the only thing read from here is a colour space name a person typed.
+    """
+    flat: dict[str, str] = {}
+    _collect_strings(metadata, flat)
+    return flat
+
+
+def _collect_strings(node: Any, into: dict[str, str]) -> None:
+    if not isinstance(node, Mapping):
+        return
+    for key, value in node.items():
+        if isinstance(value, str):
+            into.setdefault(str(key), value)
+    for value in node.values():
+        _collect_strings(value, into)
 
 
 def _timeline_rate(timeline: otio.schema.Timeline) -> FrameRate:

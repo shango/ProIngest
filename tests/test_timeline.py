@@ -54,6 +54,27 @@ class TestClipRecord:
         assert ClipRecord("c", "V1", 0, 240, source_start=30).source_offset() == 30
 
 
+class TestFlattenMetadata:
+    """The walk that finds a named field wherever Resolve nested it (M4.6.4, OQ-44)."""
+
+    def test_a_nested_field_is_found_by_its_own_name(self) -> None:
+        tree = {"Resolve_OTIO": {"Clip Properties": {"Input Color Space": "S-Log3 S-Gamut3"}}}
+        assert timeline.flatten_metadata(tree)["Input Color Space"] == "S-Log3 S-Gamut3"
+
+    def test_the_outer_spelling_of_a_name_wins(self) -> None:
+        """An outer field is the one a person filled in; a nested copy is an export detail."""
+        tree = {"Input Color Space": "C-Log3", "Resolve_OTIO": {"Input Color Space": "BM Film"}}
+        assert timeline.flatten_metadata(tree)["Input Color Space"] == "C-Log3"
+
+    def test_non_strings_are_dropped(self) -> None:
+        """The one thing read from here is a colour space name somebody typed."""
+        flat = timeline.flatten_metadata({"frames": 240, "name": "MELT0001", "ok": True})
+        assert flat == {"name": "MELT0001"}
+
+    def test_nothing_at_all_is_an_empty_dict(self) -> None:
+        assert timeline.flatten_metadata(None) == {}
+
+
 class TestLoad:
     def test_reads_clips(self, tmp_path: Path) -> None:
         path = fixtures.make_otio(tmp_path / "t.otio", [("MELT0001_pl01", URL)])

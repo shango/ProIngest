@@ -121,6 +121,16 @@ class TestMediaInfo:
         media = make_media()
         assert MediaInfo.from_dict(media.to_dict()) == media
 
+    def test_round_trip_with_container_tags(self) -> None:
+        """The tags are a carrier for the source encoding (M4.6.4), so they have to survive."""
+        media = make_media(tags={"Input Color Space": "S-Log3 S-Gamut3.Cine"})
+        assert MediaInfo.from_dict(media.to_dict()).tags == media.tags
+
+    def test_media_saved_before_tags_existed_reads_back_with_none(self) -> None:
+        data = make_media().to_dict()
+        del data["tags"]
+        assert MediaInfo.from_dict(data).tags == {}
+
     def test_round_trip_without_timecode(self) -> None:
         """No embedded timecode is QC-028, and must survive serialization as None."""
         media = make_media(start_timecode=None)

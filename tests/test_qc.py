@@ -77,13 +77,19 @@ def row(
     clip_name: str = "MELT0001_pl01",
     current: InOut | None = CHOSEN,
     side_files: SideFiles | None = None,
+    source_encoding: str | None = "ACEScct",
     **media_kwargs: object,
 ) -> ShotRow:
-    """A plate that passes every default rule, so a test changes only what it is about."""
+    """A plate that passes every default rule, so a test changes only what it is about.
+
+    It names a source encoding because a real clip does: since M4.6.4 a clip that names
+    none is QC-046, so a row without one is not the clean row these tests want.
+    """
     return ShotRow(
         turnover_id="t1",
         clip_name=clip_name,
         identity=naming.parse_clip_name(clip_name),
+        source_encoding=source_encoding,
         media=media(stated, **media_kwargs),  # type: ignore[arg-type]
         snapshot=CHOSEN,
         current=current,
@@ -475,6 +481,84 @@ class TestAuxStill:
 
     def test_a_plate_is_not_an_aux_still(self) -> None:
         assert qc.check_aux_still(row()) == []
+
+
+class TestSourceEncodingRule:
+    """QC-046 and QC-047. COLOR_AND_FORMAT section 1: an error only where the tool converts."""
+
+    def chart(self, **kwargs: object) -> ShotRow:
+        return row(clip_name="MELT0001_pl01_colorChart_01", **kwargs)  # type: ignore[arg-type]
+
+    def test_a_resolvable_encoding_raises_nothing(self) -> None:
+        assert qc.check_source_encoding(row(source_encoding="C-Log3")) == []
+
+    def test_a_plate_that_names_none_is_qc_046_info(self) -> None:
+        """The CLF is the whole chain there, so what is lost is a line of provenance."""
+        results = qc.check_source_encoding(row(source_encoding=None))
+        assert ids(results) == ["QC-046"]
+        assert results[0].severity == "info"
+
+    def test_an_aux_still_that_names_none_is_qc_046_error(self) -> None:
+        """The one picture the tool converts on its own authority, so it cannot be delivered."""
+        results = qc.check_source_encoding(self.chart(source_encoding=None))
+        assert ids(results) == ["QC-046"]
+        assert results[0].severity == "error"
+
+    def test_a_plate_naming_something_unresolvable_is_qc_047_warning(self) -> None:
+        results = qc.check_source_encoding(row(source_encoding="S-Log3"))
+        assert ids(results) == ["QC-047"]
+        assert results[0].severity == "warning"
+
+    def test_an_aux_still_naming_something_unresolvable_is_qc_047_error(self) -> None:
+        results = qc.check_source_encoding(self.chart(source_encoding="Arri LogC9"))
+        assert ids(results) == ["QC-047"]
+        assert results[0].severity == "error"
+
+    def test_the_message_quotes_what_was_written_and_what_it_could_not_be(self) -> None:
+        """The fix is somebody retyping a field, so the message has to name both ends."""
+        message = qc.check_source_encoding(row(source_encoding="S-Log3"))[0].message
+        assert "'S-Log3'" in message
+        assert "S-Log3 S-Gamut3.Cine" in message
+
+    def test_a_bts_still_is_not_blocked(self) -> None:
+        """It is copied byte for byte and never transformed."""
+        bts = row(clip_name="MELT0001_pl01_BTS_01", source_encoding=None)
+        assert qc.check_source_encoding(bts)[0].severity == "info"
+
+
+class TestColorChain:
+    """QC-048: what the row was rendered through, recorded rather than inferred (OQ-46)."""
+
+    def test_a_graded_row_names_its_clf(self) -> None:
+        graded = row(source_encoding="ACEScct")
+        graded.clf_path = Path("/session/MELT0001_grade.clf")
+        results = qc.check_color_chain(graded)
+        assert ids(results) == ["QC-048"]
+        assert results[0].severity == "info"
+        assert "MELT0001_grade.clf alone" in results[0].message
+
+    def test_an_ungraded_row_names_the_input_transform(self) -> None:
+        message = qc.check_color_chain(row(source_encoding="C-Log3"))[0].message
+        assert "no CLF" in message
+        assert "CanonLog3 CinemaGamut D55 to ACEScg" in message
+
+    def test_an_aux_still_says_it_is_never_graded(self) -> None:
+        chart = row(clip_name="MELT0001_pl01_colorChart_01", source_encoding="BM Film")
+        chart.clf_path = Path("/session/MELT0001_grade.clf")
+        message = qc.check_color_chain(chart)[0].message
+        assert "aux still" in message
+        assert "never graded" in message
+        assert "BMDFilm WideGamut Gen5" in message
+
+    def test_a_row_with_neither_says_so(self) -> None:
+        message = qc.check_color_chain(row(source_encoding=None))[0].message
+        assert "no CLF and no source encoding" in message
+
+    def test_it_is_recorded_by_a_preflight(self, tmp_path: Path) -> None:
+        """Here rather than with the model rules: the CLF is resolved by the planner."""
+        batch = Batch(delivery_root=tmp_path, rows=[row(source_encoding="ACEScct")])
+        qc.preflight(batch)
+        assert "QC-048" in ids(batch.rows[0].qc)
 
 
 class TestDuplicateNames:

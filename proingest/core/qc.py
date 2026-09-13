@@ -28,7 +28,7 @@ from typing import Any
 
 import xxhash
 
-from proingest.core import camdata, exr, ffmpeg, media, naming
+from proingest.core import camdata, clf, color, exr, ffmpeg, media, naming
 from proingest.core.models import (
     Batch,
     Deliverable,
@@ -140,6 +140,8 @@ OWNED_ROW_RULES = frozenset(
         "QC-041",
         "QC-043",
         "QC-044",
+        "QC-046",
+        "QC-047",
         "QC-050",
         "QC-051",
         "QC-055",
@@ -160,6 +162,16 @@ def is_picture_row(row: ShotRow) -> bool:
     timecode rules do not apply to them.
     """
     return row.identity is not None and row.identity.aux is None
+
+
+def delivers_aux_still(row: ShotRow) -> bool:
+    """True for a row that delivers a reference still the tool converts on its own.
+
+    The one picture with no CLF in its chain by design (COLOR_AND_FORMAT section 1), so
+    it is the one that cannot be delivered without a source encoding. BTS is excluded:
+    it is copied byte for byte and never transformed.
+    """
+    return row.identity is not None and row.identity.aux is not None and row.identity.aux != "BTS"
 
 
 def is_plate(row: ShotRow) -> bool:
@@ -578,6 +590,42 @@ def check_aux_still(row: ShotRow) -> list[QCResult]:
     ]
 
 
+def check_source_encoding(row: ShotRow) -> list[QCResult]:
+    """QC-046 and QC-047: the clip named no source encoding, or named one that does not resolve.
+
+    **An error only where the tool converts on its own authority**, which is the aux
+    still: a colour chart is delivered ungraded, never gets the CLF, and a mis-converted
+    one still looks exactly like a chart. Everywhere else the CLF is the whole chain
+    (OQ-37), so the string is provenance and blocking a plate over it would be a rule
+    that gets switched off.
+
+    QC-047 quotes what was written and says what it could not be resolved to, because
+    the fix is somebody retyping a field rather than anything in the tool.
+    """
+    blocking = delivers_aux_still(row)
+    if row.source_encoding is None:
+        return [
+            QCResult(
+                "QC-046",
+                "error" if blocking else "info",
+                "row",
+                "the clip's metadata names no source encoding",
+            )
+        ]
+    try:
+        color.resolve_encoding(row.source_encoding)
+    except color.ColorError as exc:
+        return [
+            QCResult(
+                "QC-047",
+                "error" if blocking else "warning",
+                "row",
+                f"source encoding {exc}",
+            )
+        ]
+    return []
+
+
 def check_duplicate_name(row: ShotRow, counts: dict[str, int]) -> list[QCResult]:
     """QC-011: the same clip name twice in one batch.
 
@@ -609,6 +657,7 @@ def run_row_rules(
     """Every row rule that is a pure function of the model, in rule ID order."""
     results: list[QCResult] = []
     results.extend(check_duplicate_name(row, name_counts or {}))
+    results.extend(check_source_encoding(row))
     results.extend(check_source_format(row))
     results.extend(check_source_resolution(row, settings))
     results.extend(check_source_rate(row, project_rate))
@@ -660,13 +709,54 @@ def apply_batch_rules(batch: Batch, settings: RuleSettings = DEFAULT_SETTINGS) -
 # --- pre-flight: the rules that have to look at the disk ---------------------------
 
 OWNED_PREFLIGHT_RULES = frozenset(
-    {"QC-022", "QC-052", "QC-053", "QC-054", "QC-057", "QC-062", "QC-063"}
+    {"QC-022", "QC-048", "QC-052", "QC-053", "QC-054", "QC-057", "QC-062", "QC-063"}
 )
 """Rule IDs `preflight` produces, cleared before a re-run.
 
 QC-022 is here rather than with the model rules only because the decoder set comes
 from asking ffmpeg. The rule itself is pure; `check_source_codec` takes the set.
 """
+
+
+def check_color_chain(row: ShotRow) -> list[QCResult]:
+    """QC-048: which colour chain this row is about to be rendered through.
+
+    **Not a check and deliberately not one** (OQ-46). The tool cannot tell from the
+    pixels whether a session's CLF already contains the conversion from the source
+    encoding, and a rule that guessed would be silently wrong in one direction or the
+    other. What it can do is say what it did, so a delivery that turns out to have been
+    double converted is identifiable afterwards rather than re-derived from a setting
+    nobody wrote down.
+
+    Here rather than with the model rules because the CLF is resolved by the planner,
+    which runs immediately before a render: a row's chain is a fact about the run that
+    is about to happen, not about the batch as it was scanned.
+    """
+    encoding = clf.resolved_encoding(row)
+    if delivers_aux_still(row):
+        chain = (
+            f"{encoding} to {color.PLATE_SPACE}, never graded"
+            if encoding
+            else "nothing: no source encoding resolved"
+        )
+        return [QCResult("QC-048", "info", "row", f"aux still rendered through {chain}")]
+    if row.clf_path is not None:
+        return [
+            QCResult("QC-048", "info", "row", f"rendered through {row.clf_path.name} alone")
+        ]
+    if encoding is not None:
+        return [
+            QCResult(
+                "QC-048",
+                "info",
+                "row",
+                f"no CLF: rendered through the input transform alone, "
+                f"{encoding} to {color.PLATE_SPACE}",
+            )
+        ]
+    return [
+        QCResult("QC-048", "info", "row", "no CLF and no source encoding: nothing to render through")
+    ]
 
 
 def check_hdri_header(row: ShotRow) -> list[QCResult]:
@@ -856,6 +946,7 @@ def preflight(batch: Batch, decoders: frozenset[str] | None = None) -> None:
     for row in batch.rows:
         row.qc = [result for result in row.qc if result.rule_id not in OWNED_PREFLIGHT_RULES]
         row.qc.extend(check_source_codec(row, decoders))
+        row.qc.extend(check_color_chain(row))
         row.qc.extend(check_hdri_header(row))
         row.qc.extend(check_camdata(row))
 

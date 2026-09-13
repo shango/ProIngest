@@ -91,6 +91,7 @@ def ids(results: list[QCResult]) -> list[str]:
     return [result.rule_id for result in results]
 
 
+
 class TestRawSequence:
     def test_a_sequence_lands_with_one_frame_per_source_frame(self, tmp_path: Path) -> None:
         job = raw_job(tmp_path, count=4)
@@ -404,6 +405,30 @@ class TestAuxStill:
         assert deliverable.frame_count == 1
         assert deliverable.checksum == render.file_digest(job.destination)
         assert exr.start_timecode_frames(job.destination, 24.0) == ONE_HOUR + 1
+
+    def test_one_whose_clip_named_no_encoding_is_refused_rather_than_converted(
+        self, tmp_path: Path
+    ) -> None:
+        """QC-046's claim, end to end: the deliverable is blocked rather than approximated.
+
+        A mis-converted colour chart still looks exactly like a chart, so a still with
+        nothing to convert it by is worth failing. Nothing is left behind, like every
+        other failure here.
+        """
+        fixture = fixtures.make_exr_sequence(tmp_path / "src", count=1, first=1001)
+        job = sequence_job(
+            fixture.path_for(1001),
+            tmp_path / "out" / "MELT0001_pl01_colorChart_01_4k_v01.exr",
+            1001,
+            1001,
+            kind="aux_still",
+            shot_color=clf.DEFAULT_SHOT_COLOR,
+        )
+        with pytest.raises(clf.ClfError, match="no source encoding"):
+            render.render_job(job)
+        assert not job.destination.exists()
+        assert not list(job.destination.parent.glob("*.part"))
+        assert ids(render._worker(job).qc) == [render.RENDER_FAILED]
 
 
 class TestAudio:

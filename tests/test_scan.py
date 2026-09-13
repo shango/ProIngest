@@ -182,6 +182,63 @@ class TestScanTurnover:
         assert rows[0].side_files.hdri is None
 
 
+class TestSourceEncoding:
+    """Reading the encoding off the clip. COLOR_AND_FORMAT section 1, OQ-44, M4.6.4."""
+
+    def scanned(self, tmp_path: Path, **turnover: object) -> ShotRow:
+        folder = tmp_path / GOOD_FOLDER
+        fixtures.make_turnover(folder, shots=1, frames=4, **turnover)  # type: ignore[arg-type]
+        settings = scan.ScanSettings(rules=fixtures.SMALL_RULES)
+        return scan.scan_turnover(folder, "t1", settings)[1][0]
+
+    def test_the_clip_s_own_metadata_is_read_verbatim(self, tmp_path: Path) -> None:
+        """Stored as written, because QC-047 has to quote it back at whoever typed it."""
+        row = self.scanned(tmp_path, source_encoding="C-Log3")
+        assert row.source_encoding == "C-Log3"
+
+    def test_a_clip_that_names_none_says_so_rather_than_guessing(self, tmp_path: Path) -> None:
+        row = self.scanned(tmp_path, source_encoding=None)
+        assert row.source_encoding is None
+        assert "QC-046" in rules(row)
+
+    def test_a_row_that_names_one_raises_nothing(self, tmp_path: Path) -> None:
+        row = self.scanned(tmp_path, source_encoding="ACEScct")
+        assert not {"QC-046", "QC-047"} & rules(row)
+
+    def test_a_name_the_table_cannot_resolve_is_qc_047(self, tmp_path: Path) -> None:
+        """A plate renders regardless, so it is a warning here and an error on an aux still."""
+        row = self.scanned(tmp_path, source_encoding="S-Log3")
+        assert row.source_encoding == "S-Log3"
+        assert "QC-047" in rules(row)
+
+    def test_the_container_s_tags_are_the_second_carrier(self, tmp_path: Path) -> None:
+        """The timeline first, the file second: a media file outlives the session (OQ-44)."""
+        clip = fixtures.clip_record("MELT0001_pl01", metadata={})
+        row = ShotRow(turnover_id="t1", clip_name="MELT0001_pl01")
+        row.media = fixtures.media_info_with_tags({scan.SOURCE_ENCODING_KEY: "BM Film"})
+        assert scan._source_encoding(clip, row, scan.SOURCE_ENCODING_KEY) == "BM Film"
+
+    def test_the_clip_wins_over_the_container(self, tmp_path: Path) -> None:
+        clip = fixtures.clip_record(
+            "MELT0001_pl01", metadata={scan.SOURCE_ENCODING_KEY: "C-Log3"}
+        )
+        row = ShotRow(turnover_id="t1", clip_name="MELT0001_pl01")
+        row.media = fixtures.media_info_with_tags({scan.SOURCE_ENCODING_KEY: "BM Film"})
+        assert scan._source_encoding(clip, row, scan.SOURCE_ENCODING_KEY) == "C-Log3"
+
+    def test_a_field_that_is_there_and_empty_is_no_field(self, tmp_path: Path) -> None:
+        """QC-046's own words: the field is absent, or empty."""
+        clip = fixtures.clip_record("MELT0001_pl01", metadata={scan.SOURCE_ENCODING_KEY: "   "})
+        row = ShotRow(turnover_id="t1", clip_name="MELT0001_pl01")
+        assert scan._source_encoding(clip, row, scan.SOURCE_ENCODING_KEY) is None
+
+    def test_the_field_name_is_a_setting(self, tmp_path: Path) -> None:
+        """OQ-44's answer is a different field name and nothing else."""
+        clip = fixtures.clip_record("MELT0001_pl01", metadata={"Camera Log": "C-Log3"})
+        row = ShotRow(turnover_id="t1", clip_name="MELT0001_pl01")
+        assert scan._source_encoding(clip, row, "camera log") == "C-Log3"
+
+
 class TestTurnoverLevelProblems:
     def test_no_timeline_is_qc_001(self, tmp_path: Path) -> None:
         folder = tmp_path / GOOD_FOLDER

@@ -121,6 +121,17 @@ class MediaInfo:
     audio_bit_depth: int = 0
     size: int = 0
     mtime: float = 0.0
+    tags: dict[str, str] = field(default_factory=dict)
+    """The container's own metadata tags, format and stream merged.
+
+    Kept because the source encoding may be written into the file itself rather than
+    into the timeline (OQ-44), and the scan is where both are in front of the tool at
+    once. Nothing else reads it, and it is not a colour tag: COLOR_AND_FORMAT section 2
+    is explicit that a container's colour tags are overridden rather than trusted, and
+    that what is trusted is a named field a person filled in. Additive, so the schema
+    version does not move.
+    """
+
     stated_rate: FrameRate | None = None
     """What the media itself claims, when it can claim anything.
 
@@ -159,6 +170,7 @@ class MediaInfo:
             "frame_count": self.frame_count,
             "start_frame": self.start_frame,
             "start_timecode": self.start_timecode,
+            "tags": dict(self.tags),
             "is_sequence": self.is_sequence,
             "has_audio": self.has_audio,
             "audio_channels": self.audio_channels,
@@ -181,6 +193,7 @@ class MediaInfo:
             frame_count=int(data["frame_count"]),
             start_frame=int(data["start_frame"]),
             start_timecode=data["start_timecode"],
+            tags={str(key): str(value) for key, value in (data.get("tags") or {}).items()},
             is_sequence=bool(data["is_sequence"]),
             has_audio=bool(data["has_audio"]),
             audio_channels=int(data["audio_channels"]),

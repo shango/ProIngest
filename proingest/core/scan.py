@@ -13,6 +13,7 @@ fps, belong to the rule registry in M4 so they can re-run after every edit.
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -35,6 +36,19 @@ TURNOVER_FOLDER_PATTERN = re.compile(
 
 HDRI_FRAGMENT = "hdri"
 HDRI_EXTENSIONS = (".exr",)
+SOURCE_ENCODING_KEY = "Input Color Space"
+"""The metadata field the source encoding is read from. OQ-44, and a default until it answers.
+
+Resolve's own Media Pool column of that name holds the input transform, which is the
+string COLOR_AND_FORMAT section 1 asks the shooters to write verbatim, so it is the
+field most likely to already be filled in rather than a new one somebody has to
+remember. **One named field, never a comment somewhere**: a search would be the tool
+guessing which of a clip's forty strings is a colour space name.
+
+Settable per scan (`ScanSettings.source_encoding_key`) because the answer to OQ-44 is a
+different field name and nothing else.
+"""
+
 CAMDATA_FRAGMENT = "camdata"
 CAMDATA_EXTENSIONS = tuple(f".{ext}" for ext in naming.CAMDATA_EXTENSIONS)
 
@@ -49,6 +63,9 @@ class ScanSettings:
     rules: qc.RuleSettings = field(default_factory=qc.RuleSettings)
     """Thresholds the rule registry compares against, so the scan's first pass of QC
     matches what the Settings page will later re-run with."""
+
+    source_encoding_key: str = SOURCE_ENCODING_KEY
+    """Which metadata field names the clip's source encoding (OQ-44)."""
 
 
 @dataclass(frozen=True)
@@ -196,11 +213,44 @@ def _build_row(
     if item is not None:
         _probe_into(row, item, cache, loaded.rate)
 
+    row.source_encoding = _source_encoding(clip, row, settings.source_encoding_key)
     _derive_ranges(row, clip)
     _attach_audio(row, clip, loaded, index)
     _attach_side_files(row, index)
     qc.apply_row_rules(row, settings.project_rate, settings.rules)
     return row
+
+
+def _source_encoding(clip: timeline.ClipRecord, row: ShotRow, key: str) -> str | None:
+    """What this clip says it is encoded in, verbatim, or None when it says nothing.
+
+    **The clip's own metadata first and the container's tags second** (OQ-44). The
+    timeline is where a person filled the field in; a container tag is the same string
+    travelling in the file instead, and it comes second because a consolidated media
+    file can outlive the session that wrote it. An empty value is no value, which is
+    what QC-046 reports.
+
+    Read here because this is the only moment the timeline and the probe are both in
+    front of the tool, and stored as written rather than resolved: what a shooter typed
+    is what QC-047 has to be able to quote back.
+    """
+    sources: list[Mapping[str, str]] = [clip.metadata]
+    if row.media is not None:
+        sources.append(row.media.tags)
+    for source in sources:
+        value = _named_value(source, key)
+        if value is not None:
+            return value
+    return None
+
+
+def _named_value(fields: Mapping[str, str], key: str) -> str | None:
+    """One named field, matched without case or surrounding space. Empty is absent."""
+    wanted = key.strip().casefold()
+    for name, value in fields.items():
+        if name.strip().casefold() == wanted and value.strip():
+            return value.strip()
+    return None
 
 
 def _resolve_media(

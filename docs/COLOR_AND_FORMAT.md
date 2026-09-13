@@ -115,6 +115,14 @@ Intermediate is not a mode, it is one more input transform**, and a clip encoded
 in its metadata like every other clip. A shooter working from a house template and a shooter
 delivering S-Log3 are the same case with different strings. So:
 
+**Read at scan time since 2026-09-12** (M4.6.4), from one named field: `scan.SOURCE_ENCODING_KEY`,
+`Input Color Space`, which is Resolve's own Media Pool column for the input transform. The
+clip's own metadata is looked at first and the container's tags second, because the timeline is
+where a person filled the field in and a tag is that same string travelling inside the file,
+which can outlive the session that wrote it. An empty field is no field. What is stored on the
+row is **what was written, verbatim**: the table resolves it at plan time, and QC-047 has to be
+able to quote back what somebody typed.
+
 - **One mechanism.** The clip's metadata names the source encoding, always. Nothing in Settings
   overrides it and nothing has to be switched before a turnover is scanned.
 - **`DaVinci Intermediate WideGamut` is a row in the table**, alongside the camera logs, not a

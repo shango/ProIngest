@@ -19,7 +19,8 @@ from pathlib import Path
 import numpy as np
 import OpenEXR
 
-from proingest.core import qc
+from proingest.core import qc, scan, timeline
+from proingest.core.models import FrameRate, MediaInfo
 
 SMALL = (64, 36)
 """Default test resolution: 16:9, tiny, still exercises every code path."""
@@ -192,6 +193,31 @@ def make_still(path: Path, size: tuple[int, int] = SMALL) -> Path:
     return path
 
 
+def clip_record(name: str, metadata: dict[str, str] | None = None) -> timeline.ClipRecord:
+    """One clip record, for the scan helpers that read a clip rather than a timeline."""
+    return timeline.ClipRecord(
+        name=name, track="V1", record_start=0, duration=4, source_start=0,
+        metadata=metadata or {},
+    )
+
+
+def media_info_with_tags(tags: dict[str, str]) -> MediaInfo:
+    """A probe result carrying container tags, which is the second carrier for OQ-44."""
+    return MediaInfo(
+        path=Path(f"/turnover/{next(iter(tags), 'clip')}.mov"),
+        codec="prores", pixel_format="yuv444p12le", width=64, height=36,
+        rate=FrameRate(FPS), frame_count=4, tags=tags,
+    )
+
+
+SOURCE_ENCODING = "ACEScct"
+"""What the fixture turnover's clips say they are encoded in, in their own metadata.
+
+A real clip names this and the scan reads it (M4.6.4, OQ-44). ACEScct because that is
+what these tests rendered through before the encoding became a per clip fact.
+"""
+
+
 def make_otio(
     path: Path,
     clips: list[tuple[str, str]],
@@ -202,6 +228,7 @@ def make_otio(
     available_duration: int = 300,
     global_start: int = 864000,
     audio_clips: list[tuple[str, str]] | None = None,
+    source_encoding: str | None = SOURCE_ENCODING,
 ) -> Path:
     """Build a small OTIO timeline with the otio API, as ARCHITECTURE.md asks.
 
@@ -223,15 +250,18 @@ def make_otio(
                 ot.RationalTime(available_start, fps), ot.RationalTime(available_duration, fps)
             ),
         )
-        video_track.append(
-            otio.schema.Clip(
-                name=name,
-                media_reference=reference,
-                source_range=ot.TimeRange(
-                    ot.RationalTime(source_start, fps), ot.RationalTime(duration, fps)
-                ),
-            )
+        clip = otio.schema.Clip(
+            name=name,
+            media_reference=reference,
+            source_range=ot.TimeRange(
+                ot.RationalTime(source_start, fps), ot.RationalTime(duration, fps)
+            ),
         )
+        if source_encoding is not None:
+            # Nested the way Resolve nests what it exports, so the scan's walk by field
+            # name is exercised rather than a flat dict nothing real would produce.
+            clip.metadata["Resolve_OTIO"] = {scan.SOURCE_ENCODING_KEY: source_encoding}
+        video_track.append(clip)
 
     if audio_clips:
         audio_track = otio.schema.Track(name="A1", kind=otio.schema.TrackKind.Audio)
@@ -266,7 +296,13 @@ def make_side_files(directory: Path, stem: str) -> tuple[Path, Path]:
     return hdri, camdata
 
 
-def make_turnover(root: Path, shots: int = 2, frames: int = 8, side_files: bool = False) -> Path:
+def make_turnover(
+    root: Path,
+    shots: int = 2,
+    frames: int = 8,
+    side_files: bool = False,
+    source_encoding: str | None = SOURCE_ENCODING,
+) -> Path:
     """A turnover folder: an EXR sequence and a wav per shot, plus the .otio.
 
     `side_files` writes the HDRI and camData every plate is supposed to arrive with,
@@ -292,6 +328,7 @@ def make_turnover(root: Path, shots: int = 2, frames: int = 8, side_files: bool 
         available_start=86400,
         available_duration=frames,
         audio_clips=audio,
+        source_encoding=source_encoding,
     )
     return root
 

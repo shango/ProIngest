@@ -337,6 +337,7 @@ def probe(
 
     raw = ffmpeg.probe_raw(target, ffprobe_path)
     stream = _video_stream(raw)
+    tags = _tags_from(raw, stream)
     has_audio, channels, sample_rate, depth = _audio_fields(raw)
 
     if isinstance(item, Sequence):
@@ -368,7 +369,23 @@ def probe(
         size=size,
         mtime=mtime,
         stated_rate=stated,
+        tags=tags,
     )
+
+
+def _tags_from(probe: dict[str, Any], stream: dict[str, Any]) -> dict[str, str]:
+    """The container's own tags, the format's and the video stream's in one dict.
+
+    The stream's win where both name a tag, because a tag written per stream was written
+    about this picture. What reads them is the source encoding lookup (OQ-44); nothing
+    else does, and nothing here decides how to decode a file.
+    """
+    merged: dict[str, str] = {}
+    for source in (probe.get("format", {}).get("tags", {}), stream.get("tags", {})):
+        for key, value in source.items():
+            if isinstance(value, str):
+                merged[str(key)] = value
+    return merged
 
 
 def _exr_stated_rate(first_frame: Path) -> FrameRate | None:
