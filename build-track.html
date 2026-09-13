@@ -277,7 +277,7 @@
   <header class="mast">
     <div class="eyebrow">
       <span>VFX turnover ingest &middot; macOS v01</span>
-      <span class="stamp">Updated <b>12 Sep 2026, 17:20 PDT</b></span>
+      <span class="stamp">Updated <b>12 Sep 2026, 17:05 PDT</b></span>
     </div>
     <h1>ProIngest Build Track</h1>
     <p class="standfirst">
@@ -293,7 +293,7 @@
       <div class="stat-l">Milestones done</div>
     </div>
     <div class="stat">
-      <div class="stat-n good">897</div>
+      <div class="stat-n good">924</div>
       <div class="stat-l">Tests, Linux + macOS</div>
     </div>
     <div class="stat">
@@ -506,7 +506,7 @@
         <div class="ms-body">
           <div class="ms-head">
             <span class="ms-name">Per shot source format</span>
-            <span class="pill part">In progress &middot; 3 of 5</span>
+            <span class="pill part">In progress &middot; 4 of 5</span>
           </div>
           <p class="ms-goal">
             Read each shot's log format from its own clip information, carry a transform for each
@@ -604,6 +604,24 @@
             was set to, and choosing one of the four would be choosing on the shooter's behalf. A
             clip that names it is stopped, and the message names all four so whoever briefs the
             shooters can ask for the fuller name. A fourth camera is one line.
+            <b>The tool now reads the format off the clip, and says what it found.</b> One named
+            field, <i>Input Color Space</i> - Resolve's own column for it, so it is the field most
+            likely to be filled in already rather than one more thing to remember - taken from the
+            timeline first and from the media file second, since a media file can outlive the
+            session that wrote it. Three reports came with it: one when a clip names no format,
+            one when it names something the table cannot resolve, and one that simply records
+            which chain each shot was rendered through, so a delivery that turns out to have been
+            converted twice can be identified afterwards rather than argued about.
+            <b>The first two are errors only on a reference still</b>, which is the one picture
+            the tool converts itself. Elsewhere they are a note and a warning, because the colour
+            file carries the plate and blocking a delivery over a string the plate never uses is
+            a rule that gets switched off. A still with nothing to convert it by fails that one
+            file, with the reason, and writes nothing.
+            <b>The field name is a guess with a reason and one real export settles it.</b> Nothing
+            has yet confirmed that Resolve exports that column into the timeline file. If it does
+            not, the answer is one word in one setting rather than any work - but until somebody
+            checks, a real delivery may scan with a note on every shot, which is loud, harmless
+            and exactly what the note is for.
             <b>This does not hold up the interface</b>, and it made the interface work slightly
             smaller rather than larger: there is no mode, so there is no control for one.
           </div>
@@ -1534,7 +1552,7 @@
   <footer>
     <b>Source of truth</b> &middot; PROGRESS.md, docs/OPEN_QUESTIONS.md, PRD.md section 9<br>
     <b>Verify</b> &middot; pytest &middot; ruff check . &amp;&amp; mypy proingest &middot; python -m proingest scan &lt;folder&gt;<br>
-    <b>Last updated</b> &middot; 12 September 2026, 17:20 PDT. <b>The tool no longer converts anything ahead of the grade.</b> Until today it converted the delivered pixels into a common working format and then applied the shot's colour file, which already contains that conversion - two conversions where one was wanted, which fails nothing and reads as a grade decision. A graded shot is now the colour file and nothing else; the tool's own conversion is one step and is used only where there is no colour file, which is the reference stills and any shot not yet graded. <b>Nothing was ever delivered wrong</b>, because nothing has been rendered against a real grading session yet, and this was the only remaining piece that could have changed a delivered plate. <b>The tests now pin which conversions a chain contains</b>, not only what it does to a pixel - the extra step did nothing measurable under the default format, so every number in the suite had been agreeing with the bug. <b>One check came out of it weaker and is written up rather than quietly patched</b>: white is worth 222 out of the old working format and 14.7 out of Canon's log, so a dark grade on a Canon now lands where a baked-in viewing transform lands and the check cannot separate them. Measured, with a replacement that can, and left for the studio to weigh because it changes what the check means. <b>The format table is built too</b>, as a list rather than a search: the colour engine's own names resolve on their own and the table carries the shorter names the shooters were given, with Sony's deliberately left out because the name alone matches four entries and choosing one would be choosing a colour range on the shooter's behalf. <b>And the format is now a fact about each clip rather than a setting</b>: each shot carries what its own clip information names, the single delivery-wide value is deleted rather than given a better default, and a shot with neither a format nor a colour file is refused rather than converted on a guess. 882 tests green, three chunks of <b>M4.6</b> left and none of them touches a plate. <b>Next: the interface</b>, still not blocked by any of it
+    <b>Last updated</b> &middot; 12 September 2026, 17:05 PDT. <b>The tool no longer converts anything ahead of the grade.</b> Until today it converted the delivered pixels into a common working format and then applied the shot's colour file, which already contains that conversion - two conversions where one was wanted, which fails nothing and reads as a grade decision. A graded shot is now the colour file and nothing else; the tool's own conversion is one step and is used only where there is no colour file, which is the reference stills and any shot not yet graded. <b>Nothing was ever delivered wrong</b>, because nothing has been rendered against a real grading session yet, and this was the only remaining piece that could have changed a delivered plate. <b>The tests now pin which conversions a chain contains</b>, not only what it does to a pixel - the extra step did nothing measurable under the default format, so every number in the suite had been agreeing with the bug. <b>One check came out of it weaker and is written up rather than quietly patched</b>: white is worth 222 out of the old working format and 14.7 out of Canon's log, so a dark grade on a Canon now lands where a baked-in viewing transform lands and the check cannot separate them. Measured, with a replacement that can, and left for the studio to weigh because it changes what the check means. <b>The tool also reads the format off the clip now</b>, from one named field, with reports for a clip that names none, a name that cannot be resolved, and which chain each shot went through - the first two errors only on a reference still, which is the one picture the tool converts itself. <b>The format table is built too</b>, as a list rather than a search: the colour engine's own names resolve on their own and the table carries the shorter names the shooters were given, with Sony's deliberately left out because the name alone matches four entries and choosing one would be choosing a colour range on the shooter's behalf. <b>And the format is now a fact about each clip rather than a setting</b>: each shot carries what its own clip information names, the single delivery-wide value is deleted rather than given a better default, and a shot with neither a format nor a colour file is refused rather than converted on a guess. 924 tests green, one chunk of <b>M4.6</b> left and it touches no pixel: it is the two places the format name is recorded. <b>Next: the interface</b>, still not blocked by any of it
   </footer>
 
 </div>
