@@ -85,8 +85,19 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "qc":
         return _qc(args.batch, args.delivery_root, args.out)
 
-    parser.print_help()
-    return 0
+    return _launch_ui()
+
+
+def _launch_ui() -> int:
+    """No subcommand: the app. Qt is imported here rather than at module scope.
+
+    Every subcommand above runs headless, and importing PySide6 to print a scan table
+    would cost the import and would fail on a machine with no Qt at all. The UI is the
+    one path that needs it, so it is the one path that imports it.
+    """
+    from proingest.ui import app
+
+    return app.run()
 
 
 def _scan(folders: list[Path], save: Path | None, name: str, rules_path: Path | None) -> int:

@@ -103,8 +103,31 @@ class TestScanCommand:
 
 
 class TestTopLevel:
-    def test_no_command_prints_help(self, capsys: pytest.CaptureFixture[str]) -> None:
-        assert main([]) == 0
+    def test_no_command_launches_the_ui(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """M5.1: that is what `proingest` with no subcommand is for.
+
+        The launch is stubbed because the real one hands control to Qt's event loop and
+        does not come back. This test used to assert that no subcommand printed help,
+        and it is what caught the change: an un-stubbed call hangs the suite rather than
+        failing it.
+        """
+        launched: list[str] = []
+
+        def fake_run() -> int:
+            launched.append("ui")
+            return 7
+
+        from proingest.ui import app as ui_app
+
+        monkeypatch.setattr(ui_app, "run", fake_run)
+        assert main([]) == 7
+        assert launched == ["ui"]
+
+    def test_help_is_still_reachable(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """Nothing launches from `--help`, which is how the subcommands are discovered."""
+        with pytest.raises(SystemExit) as exit_info:
+            main(["--help"])
+        assert exit_info.value.code == 0
         assert "usage: proingest" in capsys.readouterr().out
 
     def test_version(self, capsys: pytest.CaptureFixture[str]) -> None:

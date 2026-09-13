@@ -1,0 +1,126 @@
+/* ProIngest dark theme. UI_SPEC preamble: near-black panels, thin 1px separators,
+   muted grey text, one accent for selection and primary actions, amber for warnings,
+   red for errors, green for done. No gradients, no shadows, no rounded cards.
+
+   The palette is stated once here and nowhere else. Qt stylesheets have no variables,
+   so the hex values repeat; the names they stand for are:
+
+     ground  #0e0f12   the window behind everything
+     panel   #15171b   docks, toolbar, status bar
+     raised  #1b1e23   headers, tab bars, controls
+     line    #262a31   every separator
+     text    #ced3db   normal text
+     dim     #868d9a   secondary text
+     accent  #4d8fd6   selection and primary actions
+     warn    #cf9a3a   amber, done    #58a97a  green, error #cf5a52  red
+
+   Row tints and the status dot (UI_SPEC section 3) are painted by the shot list's
+   delegate rather than here, because they vary per row and a stylesheet cannot see a
+   model. The three state colours are listed above so both ends agree on them. */
+
+QMainWindow, QDialog {
+  background: #0e0f12;
+}
+
+QWidget {
+  color: #ced3db;
+  font-size: 13px;
+}
+
+QMenuBar, QToolBar, QStatusBar, QDockWidget {
+  background: #15171b;
+  border: 0;
+}
+
+QToolBar {
+  border-bottom: 1px solid #262a31;
+  padding: 4px 6px;
+  spacing: 4px;
+}
+
+QToolBar::separator {
+  background: #262a31;
+  width: 1px;
+  margin: 4px 8px;
+}
+
+QStatusBar {
+  border-top: 1px solid #262a31;
+  color: #868d9a;
+}
+
+QMenuBar::item:selected, QMenu::item:selected {
+  background: #4d8fd6;
+  color: #0e0f12;
+}
+
+QMenu {
+  background: #1b1e23;
+  border: 1px solid #262a31;
+}
+
+QToolButton, QPushButton {
+  background: #1b1e23;
+  border: 1px solid #262a31;
+  padding: 5px 12px;
+}
+
+QToolButton:hover, QPushButton:hover {
+  border-color: #333944;
+}
+
+QToolButton:pressed, QPushButton:pressed {
+  background: #4d8fd6;
+  color: #0e0f12;
+}
+
+QToolButton:disabled, QPushButton:disabled {
+  color: #5c626d;
+  border-color: #1b1e23;
+}
+
+QDockWidget {
+  titlebar-close-icon: none;
+  titlebar-normal-icon: none;
+}
+
+QDockWidget::title {
+  background: #1b1e23;
+  border-top: 1px solid #262a31;
+  padding: 5px 8px;
+  color: #868d9a;
+}
+
+QTabWidget::pane {
+  border-top: 1px solid #262a31;
+}
+
+QTabBar::tab {
+  background: #15171b;
+  color: #868d9a;
+  border: 0;
+  border-right: 1px solid #262a31;
+  padding: 6px 14px;
+}
+
+QTabBar::tab:selected {
+  color: #ced3db;
+  border-bottom: 2px solid #4d8fd6;
+}
+
+QProgressBar {
+  background: #1b1e23;
+  border: 1px solid #262a31;
+  text-align: center;
+  color: #868d9a;
+  height: 14px;
+}
+
+QProgressBar::chunk {
+  background: #4d8fd6;
+}
+
+#empty_state_text {
+  color: #868d9a;
+  font-size: 16px;
+}

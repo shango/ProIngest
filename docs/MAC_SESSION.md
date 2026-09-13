@@ -74,6 +74,9 @@ Append to this as M5 and M6 are built.
       copy. `UI_SPEC.md` section 12.
 - [ ] Dark theme and font rendering at Retina, including the IBM Plex fallback chain.
 - [ ] Window geometry and dock state persist to `~/Library/Application Support/ProIngest`.
+- [ ] Geometry saved on one display arrangement reopens **on screen** under another. M5.1
+      restores Qt's own blob and Qt clamps it to the current screen; whether that is enough
+      when a laptop is undocked can only be seen on a Mac with a second display.
 - [ ] Logs land in `~/Library/Logs/ProIngest` and rotate.
 - [ ] Stringout burn-ins are legible at 1920x1080. `UI_SPEC.md` section 8.
 - [ ] Installed size against the 300 MB budget in `PRD.md` section 8. PySide6 alone is 422 MB

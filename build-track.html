@@ -277,7 +277,7 @@
   <header class="mast">
     <div class="eyebrow">
       <span>VFX turnover ingest &middot; macOS v01</span>
-      <span class="stamp">Updated <b>12 Sep 2026, 19:33 PDT</b></span>
+      <span class="stamp">Updated <b>12 Sep 2026, 21:10 PDT</b></span>
     </div>
     <h1>ProIngest Build Track</h1>
     <p class="standfirst">
@@ -293,7 +293,7 @@
       <div class="stat-l">Milestones done</div>
     </div>
     <div class="stat">
-      <div class="stat-n good">934</div>
+      <div class="stat-n good">975</div>
       <div class="stat-l">Tests, Linux + macOS</div>
     </div>
     <div class="stat">
@@ -644,7 +644,7 @@
         <div class="ms-body">
           <div class="ms-head">
             <span class="ms-name">User interface</span>
-            <span class="pill now">Next</span>
+            <span class="pill now">In progress &middot; 1 of 8</span>
           </div>
           <p class="ms-goal">
             Main window, shot list with the keyboard model, metadata pane, validation
@@ -674,6 +674,29 @@
             page that morning and removed that evening, so the settings page carries the grading
             session's location and the format table, and nothing about which format a delivery
             is in.
+            <b>The interface has started, and the window exists.</b> Nothing in it operates yet:
+            the shot list, the settings and the run button are the seven chunks after this one.
+            What is built is the frame the rest hangs on - the menu bar with the three entries
+            macOS expects to find in the application menu, the toolbar in its three groups, the
+            tabbed panel across the bottom, the status bar, and the starting state that says
+            "New batch or open one". It remembers its size and layout between launches, in the
+            file Apple's guidelines put it in. <b>Every button that has nothing behind it yet is
+            visibly disabled rather than missing</b>, so the shape of the tool can be looked at
+            and argued with now rather than after it works, and nothing on screen can be mistaken
+            for a feature that quietly does nothing.
+            <b>The interface can be tested on a machine with no screen</b>, which is what makes
+            any of this checkable on the two build machines. That was the real work in this
+            chunk: the tests drive a real window, drawn to nothing, and assert what it is made of
+            and what it remembers rather than what it looks like. How it <i>looks</i> is the one
+            part a person still has to judge, and it is on the Mac checklist.
+            <b>Two faults were caught the day it was written.</b> The application settings were
+            landing one folder deeper than the packaging document says, because the colour
+            engine's toolkit adds both an organisation and an application name to that path and
+            only one was wanted - found by launching the thing for real rather than by a test,
+            and now pinned by two. And an old test that ran the command line tool with no
+            arguments went from printing help to <b>launching the interface</b>, which hung the
+            test run rather than failing it; it now starts the window in effigy and asserts the
+            launch.
             Two older decisions are still unlogged. <b>Frozen left columns</b> have no built-in QTreeView
             support and need the overlaid second-view trick. <b>Progress on the Dock icon</b> has
             no Qt 6 API, so it needs a small <code>NSDockTile</code> shim through PyObjC, isolated
@@ -1563,7 +1586,7 @@
   <footer>
     <b>Source of truth</b> &middot; PROGRESS.md, docs/OPEN_QUESTIONS.md, PRD.md section 9<br>
     <b>Verify</b> &middot; pytest &middot; ruff check . &amp;&amp; mypy proingest &middot; python -m proingest scan &lt;folder&gt;<br>
-    <b>Last updated</b> &middot; 12 September 2026, 19:33 PDT. <b>The tool no longer converts anything ahead of the grade.</b> Until today it converted the delivered pixels into a common working format and then applied the shot's colour file, which already contains that conversion - two conversions where one was wanted, which fails nothing and reads as a grade decision. A graded shot is now the colour file and nothing else; the tool's own conversion is one step and is used only where there is no colour file, which is the reference stills and any shot not yet graded. <b>Nothing was ever delivered wrong</b>, because nothing has been rendered against a real grading session yet, and this was the only remaining piece that could have changed a delivered plate. <b>The tests now pin which conversions a chain contains</b>, not only what it does to a pixel - the extra step did nothing measurable under the default format, so every number in the suite had been agreeing with the bug. <b>One check came out of it weaker and is written up rather than quietly patched</b>: white is worth 222 out of the old working format and 14.7 out of Canon's log, so a dark grade on a Canon now lands where a baked-in viewing transform lands and the check cannot separate them. Measured, with a replacement that can, and left for the studio to weigh because it changes what the check means. <b>The tool also reads the format off the clip now</b>, from one named field, with reports for a clip that names none, a name that cannot be resolved, and which chain each shot went through - the first two errors only on a reference still, which is the one picture the tool converts itself. <b>The format table is built too</b>, as a list rather than a search: the colour engine's own names resolve on their own and the table carries the shorter names the shooters were given, with Sony's deliberately left out because the name alone matches four entries and choosing one would be choosing a colour range on the shooter's behalf. <b>And the format is now a fact about each clip rather than a setting</b>: each shot carries what its own clip information names, the single delivery-wide value is deleted rather than given a better default, and a shot with neither a format nor a colour file is refused rather than converted on a guess. <b>And the last piece of it is recorded, so M4.6 is finished.</b> A delivered plate now says where its format name came from as well as what it was - the clip's own information or the media file it travelled inside, which are written by different people at different times - and the quality report gains a column naming the format exactly as the shooter wrote it, beside the one naming the colour file. The two say different things on purpose: the file names what the pixels went through and the report names what has to be corrected, and neither can be derived from the other. 934 tests green. <b>Next: the interface</b>, the whole of what is left and never blocked by any of this
+    <b>Last updated</b> &middot; 12 September 2026, 21:10 PDT. <b>The tool no longer converts anything ahead of the grade.</b> Until today it converted the delivered pixels into a common working format and then applied the shot's colour file, which already contains that conversion - two conversions where one was wanted, which fails nothing and reads as a grade decision. A graded shot is now the colour file and nothing else; the tool's own conversion is one step and is used only where there is no colour file, which is the reference stills and any shot not yet graded. <b>Nothing was ever delivered wrong</b>, because nothing has been rendered against a real grading session yet, and this was the only remaining piece that could have changed a delivered plate. <b>The tests now pin which conversions a chain contains</b>, not only what it does to a pixel - the extra step did nothing measurable under the default format, so every number in the suite had been agreeing with the bug. <b>One check came out of it weaker and is written up rather than quietly patched</b>: white is worth 222 out of the old working format and 14.7 out of Canon's log, so a dark grade on a Canon now lands where a baked-in viewing transform lands and the check cannot separate them. Measured, with a replacement that can, and left for the studio to weigh because it changes what the check means. <b>The tool also reads the format off the clip now</b>, from one named field, with reports for a clip that names none, a name that cannot be resolved, and which chain each shot went through - the first two errors only on a reference still, which is the one picture the tool converts itself. <b>The format table is built too</b>, as a list rather than a search: the colour engine's own names resolve on their own and the table carries the shorter names the shooters were given, with Sony's deliberately left out because the name alone matches four entries and choosing one would be choosing a colour range on the shooter's behalf. <b>And the format is now a fact about each clip rather than a setting</b>: each shot carries what its own clip information names, the single delivery-wide value is deleted rather than given a better default, and a shot with neither a format nor a colour file is refused rather than converted on a guess. <b>And the last piece of it is recorded, so M4.6 is finished.</b> A delivered plate now says where its format name came from as well as what it was - the clip's own information or the media file it travelled inside, which are written by different people at different times - and the quality report gains a column naming the format exactly as the shooter wrote it, beside the one naming the colour file. The two say different things on purpose: the file names what the pixels went through and the report names what has to be corrected, and neither can be derived from the other. <b>And the interface has started.</b> The window exists and nothing in it operates yet: the shot list, the settings and the run button are the seven chunks after this one, and every button with nothing behind it is visibly disabled rather than missing, so the shape of the tool can be argued with before it works. It carries the menu bar macOS expects, the toolbar, the bottom panel, the status bar and a starting state, and it remembers its size and layout between launches. <b>The interface can now be tested on a machine with no screen</b>, which is what makes it checkable on both build machines at all; how it looks is the one part a person still has to judge, and it is on the Mac checklist. Two faults were caught on the first day: the settings file was landing one folder deeper than the packaging document says, found by launching the thing for real rather than by a test, and an old test that ran the command line with no arguments started <b>launching the interface</b>, hanging the test run rather than failing it. 975 tests green. <b>Next: the shot list itself</b>
   </footer>
 
 </div>

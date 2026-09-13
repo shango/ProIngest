@@ -15,8 +15,9 @@ encoded through the shot's grade and the ACES output transform baked into one cu
 no longer converts ahead of the CLF**, which was the one thing in the code that would have
 delivered a wrong plate against a real session. The source encoding went back to camera native
 log on 2026-09-12 and the tool now reads it per shot, resolves it through a table, records it
-in the QC log and states it and its origin in the delivered header. **M5, the UI, is next and
-nothing sits beside it any more.** 934 tests passing, `ruff` and `mypy --strict` clean.
+in the QC log and states it and its origin in the delivered header. **M5, the UI, has started:
+M5.1, the window shell, is built and the other seven chunks are specified** in section 5.
+975 tests passing, `ruff` and `mypy --strict` clean.
 **M5 is not blocked**: OQ-37 came back the same day and
 answered the expensive half of M4.6. Two questions are open and both are about correctness rather
 than scope, OQ-46 and **OQ-47, which is new and was found by building M4.6.2**.
@@ -447,6 +448,47 @@ should not be re-derived.
   paths that build a `ShotColor`, with a session and without, need the same answer. QC-047 is
   where it is reported, and that is M4.6.4.
 
+### M5.1 is built: the window, and the harness that lets a window be tested at all
+
+Built 2026-09-12, the first chunk of M5. `ui/app.py`, `ui/main_window.py`, `ui/theme.qss`,
+`ui/paths.py` and `core/settings.py`, 41 tests. There is no model in it: what it builds is
+UI_SPEC section 1's frame, the menu bar with its three macOS roles, the toolbar in its three
+groups, the bottom dock's three tabs, the status bar and section 10's empty state. Six things
+in it should not be re-derived.
+
+- **Qt tests run on the `offscreen` platform, and that is what makes the UI testable in CI
+  at all.** `tests/conftest.py` has one session scoped `qt_app` fixture, because Qt allows one
+  `QApplication` per process. Neither runner has a display, so the alternative was a suite that
+  only runs on a developer's desktop. The Linux job gained `libegl1`, `libxkbcommon0` and
+  `libdbus-1-3`: the offscreen **plugin** still has to load even though it draws nothing, and
+  those are what the PySide6 wheel links against. glib is deliberately not named, because its
+  package was renamed in the 64 bit `time_t` transition and either spelling breaks on the
+  other Ubuntu.
+- **`main([])` used to print help and now launches the app, which hung the suite rather than
+  failing it.** `tests/test_cli.py` called it, the call entered Qt's event loop, and the run
+  never came back. The test now stubs `ui.app.run` and asserts the launch; `--help` keeps its
+  own test. **Nothing in the suite may ever call the real one.**
+- **Where the settings file lives is `ui/paths.py`'s answer, never core's.** UI_SPEC section 11
+  says to ask `QStandardPaths`; core imports no Qt, so a core copy would be a second
+  implementation of one path that could not check Qt's. So `core/settings.py` takes a path in
+  every function and guesses nothing, and a test points a window at a temporary file.
+- **A settings file is disposable in a way a batch file is not.** Unreadable is logged and
+  replaced with defaults rather than raised, because refusing to launch over a preferences file
+  is a worse failure than losing a window position. Keys a newer version wrote are kept on save,
+  so a downgrade is not destructive. Written atomically, the same rule as a deliverable.
+- **Every action exists from the first chunk and the ones with nothing behind them are
+  disabled.** A toolbar that grows buttons chunk by chunk hides the shape of the tool from
+  whoever is reviewing it, and a disabled button cannot be mistaken for a feature that does
+  nothing. Each is enabled by the chunk in section 5's table that wires it.
+- **Qt is imported inside `_launch_ui`, not at the top of `__main__.py`.** Every subcommand
+  runs headless and importing PySide6 to print a scan table would cost the import for nothing.
+- **The organisation name is left unset, and that is a fix rather than an omission.** Qt
+  appends the organisation **and** the application to `AppDataLocation`, so setting both put
+  the settings file in `Application Support/ProIngest/ProIngest`, one level deeper than
+  PACKAGING.md specifies. Found by launching the thing with a real event loop rather than by a
+  test, which is the argument for doing that once per UI chunk: nothing would have noticed
+  until somebody went looking for the file on a Mac. Two tests now pin the depth.
+
 ### M4.6.5 is built: the encoding is recorded where it can be read back
 
 Built 2026-09-12, the last chunk of M4.6 and the only one that touches no pixel. 934 tests.
@@ -508,10 +550,12 @@ nothing written. **When M5 wires the colour session into Settings**, the rules w
 tell "no session yet" from "this session had no grade for this row", and that is the moment to
 decide whether QC-046's error widens.
 
-### Next task: M5, the UI
+### Next task: M5.2, the shot list
 
-M4.5 and M4.6 are both finished, so **M5 is the whole of what is next** and nothing in core is
-waiting on anything.
+M4.5 and M4.6 are finished and **M5.1 is built**, so the next thing is the list itself: a model
+over a `Batch`, UI_SPEC section 2's columns, the turnover group headers, the three state In/Out
+display and section 3's status dot and row tints. Read only to begin with; editing is M5.3.
+Section 5's chunk table has the rest of M5 and the order it is meant to be built in.
 
 `docs/UI_SPEC.md` is M5's spec and it was already cut down when the four colour controls and
 the three viewers were dropped. The things M5 owes the colour chain are small and known:
@@ -669,10 +713,13 @@ PDF viewer.
 | `core/exports.py` | the QC log's five sheets and the studio tracker's rows to paste | 378 |
 | `core/render.py` | executing a job and a batch of them: atomic writes, the plate and view branches, pool, progress, cancel | 631 |
 | `core/qc.py` | rule registry: phase A, `RuleSettings`, `preflight`, phase B | 1416 |
-| `__main__.py` | `proingest scan`, `run` and `qc` CLI, `--rules` overrides | 382 |
+| `core/settings.py` | what the app remembers between launches, as JSON. Takes the path; never works out where it is | 98 |
+| `ui/app.py` | the QApplication, its names, the theme, and `run()` | 49 |
+| `ui/main_window.py` | UI_SPEC section 1's frame: menus and their macOS roles, toolbar, bottom dock, status bar, empty state, window state | 238 |
+| `ui/paths.py` | the one place that asks `QStandardPaths` where the app's own files live | 33 |
+| `__main__.py` | `proingest scan`, `run` and `qc` CLI, `--rules` overrides, and the UI when there is no subcommand | 440 |
 
-Not built yet: `core/settings.py`, and
-everything under `proingest/ui/`. **`core/stringout.py` will not be built**: M6 is dropped
+Not built yet: the rest of `proingest/ui/`, which is M5.2 onward. **`core/stringout.py` will not be built**: M6 is dropped
 (PRD FR-9). `naming.stringout_mp4` and `naming.normalize_shooter` are therefore reachable
 from tests only; they are kept deliberately, because the stringout name is now something a
 human types and the tool can still check it, exactly as with the lens grid.
@@ -713,7 +760,7 @@ Entry points worth knowing:
 | M4 | QC: all rules both phases, xlsx exports, `qc` CLI | complete, 175 tests |
 | M4.5 | Colour pipeline, core only. Source log in, CLF applied, ACEScg out, the viewing LUT | complete, 111 tests |
 | M4.6 | Per shot source encoding: read from the clip metadata, the input transform table, the input transform out of the graded chains, QC-046 to QC-048 | complete, all five chunks (OQ-37 answered; OQ-46 wants confirming) |
-| M5 | UI: the list, the FR-14 metadata pane, settings, log. **No viewers** | not started |
+| M5 | UI: the list, the FR-14 metadata pane, settings, log. **No viewers** | **M5.1 done**, M5.2 to M5.8 specified |
 | M6 | ~~Stringout with burn-ins~~ | **dropped 2026-09-11**, the colour session exports it |
 | M7 | Packaging: PyInstaller `.app`, dmg, Gatekeeper | not started, and needs a Mac (OQ-22) |
 | M8 | Polish, performance on a real turnover, docs | not started |
@@ -777,6 +824,25 @@ this note told M5 to carry a source encoding mode control from the start. **Ther
 so there is no control: the Settings Colour group carries the colour session location, the input
 transform table and its overrides, the ACES config version and the output transform, and nothing
 about which encoding a batch is in.
+
+M5 detail, specified 2026-09-12 against `docs/UI_SPEC.md`, which is the spec for every
+row of it. The order is "the window, then the list, then what the list can do, then what a
+batch can do", so each chunk has something a person can look at:
+
+| chunk | scope | state |
+|---|---|---|
+| M5.1 | The shell: `ui/app.py`, `ui/main_window.py`, `ui/theme.qss`, `ui/paths.py`, `core/settings.py`, and the offscreen Qt test harness | **done, 975 tests** |
+| M5.2 | The shot list: a model over a `Batch`, section 2's columns, turnover group headers, the three state In/Out display, the status dot and row tints | not started |
+| M5.3 | Editing: shot code, In, Out and Notes in their cells, section 5's input parsing, Ctrl+K skip, per row revalidation, autosave | not started |
+| M5.4 | Batch lifecycle: New, Open, Save, Add Turnover against the source root, the scan off the UI thread, the Issues dock | not started |
+| M5.5 | Run and progress: the worker pool driven from the window, the Progress column, the status bar, Stop, the completion banner | not started |
+| M5.6 | The metadata pane, FR-14 and UI_SPEC section 12 | not started |
+| M5.7 | The Settings page, PRD FR-12, **including the Colour group**, and with it QC-008, QC-009, QC-019, QC-039 and QC-045 | not started |
+| M5.8 | The Log tab and the rotating log file, FR-13 | not started |
+
+**M5.7 is where the colour work finishes.** Five rules read `core/clf.py` and none of them can
+fire until a batch knows where its colour session is, which is a Settings value. Nothing in
+core has to change for it.
 
 M3 detail:
 

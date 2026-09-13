@@ -24,10 +24,18 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Install ffmpeg
+      - name: Install ffmpeg and Qt's own shared libraries
         # The fixtures shell out to a bare `ffmpeg`, so it has to be on PATH. On Linux
         # the distro build is fine: this job exists to check the logic, not the bundle.
-        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+        # The rest are what the PySide6 wheel's platform plugins link against. The UI
+        # tests run on the `offscreen` platform, so no display is needed, but the plugin
+        # still has to load and a missing libEGL is a plugin that will not. glib is the
+        # fourth thing it links and is already on the runner image, so it is not named
+        # here: its package was renamed for the 64 bit time_t transition and pinning
+        # either spelling breaks on the other Ubuntu.
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg libegl1 libxkbcommon0 libdbus-1-3
 
       # setup-uv publishes no floating major tag (no v10), unlike checkout and cache,
       # so this is pinned to an exact release and has to be bumped by hand.
