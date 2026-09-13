@@ -29,7 +29,7 @@ of it, and follows three signals so it cannot show a value that is merely late. 
 M5 is specified in section 5. **And M5.7.1 and M5.7.2 are done**: the colour session now
 reaches the model, so a run from the window is graded or it is held back and the five
 colour rules fire, and the Settings page exists with four of its six sections live.
-1406 tests passing, `ruff` and `mypy --strict` clean.
+1408 tests passing, `ruff` and `mypy --strict` clean.
 **M5.7.3, ingesting a colour session from the window, is next, and it is the chunk that
 closes the gap M5.7.1 opened.**
 
@@ -1242,7 +1242,7 @@ batch can do", so each chunk has something a person can look at:
 | M5.5 | Run and progress: the worker pool driven from the window, the Progress column, the status bar, Stop, the completion banner | **done, 1249 tests.** `ui/runner.py` is a `QThread` over `render.execute`; one 200 ms timer draws everything a run shows; the run writes both spreadsheets |
 | M5.6 | The metadata pane, FR-14 and UI_SPEC section 12 | **done, 1344 tests.** `ui/metadata.py` is the field list as a value and `ui/metadata_pane.py` draws it; a right dock, three update signals, and a **Colour** section section 12.2 did not have |
 | M5.7.1 | The colour session reaches the model: `clf.ingest`, `Turnover.color_session_edl`, `ShotRow.approved` and `ShotRow.cdl`, and QC-008, QC-009, QC-019, QC-039 and QC-045 | **done, 1377 tests** |
-| M5.7.2 | The Settings page, PRD FR-12, **including the Colour group** | **done, 1406 tests.** `ui/settings_form.py` is the field list as a value and `ui/settings_dialog.py` draws it; Output and Advanced are listed and disabled |
+| M5.7.2 | The Settings page, PRD FR-12, **including the Colour group** | **done, 1408 tests.** `ui/settings_form.py` is the field list as a value and `ui/settings_dialog.py` draws it; Output and Advanced are listed and disabled |
 | M5.7.3 | `Ingest Colour Session` in the window, and what it reports | not started |
 | M5.8 | The Log tab and the rotating log file, FR-13 | not started |
 | M5.9 | The frozen left columns: the overlaid second view sharing the model and the selection | not started |
@@ -1357,11 +1357,11 @@ M3 detail:
 The stringout moved off this table: it is M6 and always was. The M3.5 row said "ref
 mp4 and stringout" and that was a mistake in the row, not a change of plan.
 
-Tests by file: qc 176, naming 115, ui_shell 102, shot_model 92, render 75, planner 66,
-clf 65, frames 55, media 46, shot_list 43, ffmpeg 43, models 42, color 40, timeline 37,
-exr 37, scan 34, cli 31, exports 28, runner 24, issues 18, batchfile 18, resize 16,
-settings 12, camdata 12, scanner 11, autosave 11. 1249 in total, counted rather than
-carried forward.
+Tests by file: qc 195, ui_shell 130, naming 115, shot_model 92, render 75, clf 73,
+planner 66, metadata 57, frames 55, media 46, models 45, shot_list 43, ffmpeg 43,
+color 40, timeline 37, exr 37, scan 36, cli 32, runner 29, settings_page 28, exports 28,
+issues 22, batchfile 18, resize 16, settings 16, camdata 12, scanner 11, autosave 11.
+1408 in total, counted rather than carried forward.
 
 ---
 

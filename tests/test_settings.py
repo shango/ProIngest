@@ -14,6 +14,7 @@ from pathlib import Path
 import pytest
 
 from proingest.core import settings
+from proingest.core.render import DEFAULT_WORKERS
 
 
 class TestRoundTrip:
@@ -50,6 +51,37 @@ class TestRoundTrip:
         path = tmp_path / "settings.json"
         path.write_text(json.dumps({"schema_version": settings.SCHEMA_VERSION}))
         assert settings.load(path).metadata_collapsed == []
+
+    def test_what_the_settings_page_edits_survives(self, tmp_path: Path) -> None:
+        """M5.7.2's five fields, additive, so the schema version does not move."""
+        path = tmp_path / "settings.json"
+        settings.save(
+            settings.AppSettings(
+                workers=9,
+                show_pattern="ABC",
+                path_map={"G:/media": "/Volumes/drive"},
+                rules={"min_duration_frames": 11},
+                color_session_folder="/Volumes/drive/colour",
+            ),
+            path,
+        )
+        loaded = settings.load(path)
+        assert loaded.workers == 9
+        assert loaded.show_pattern == "ABC"
+        assert loaded.path_map == {"G:/media": "/Volumes/drive"}
+        assert loaded.rules == {"min_duration_frames": 11}
+        assert loaded.color_session_folder == "/Volumes/drive/colour"
+
+    def test_a_file_written_before_the_settings_page_existed_reads_back_bare(
+        self, tmp_path: Path
+    ) -> None:
+        """`workers` has to read back as what the tool would have done anyway."""
+        path = tmp_path / "settings.json"
+        path.write_text(json.dumps({"schema_version": settings.SCHEMA_VERSION}))
+        loaded = settings.load(path)
+        assert loaded.workers == DEFAULT_WORKERS
+        assert loaded.show_pattern == ""
+        assert loaded.path_map == {} and loaded.rules == {}
 
     def test_the_schema_version_is_written(self, tmp_path: Path) -> None:
         path = tmp_path / "settings.json"
