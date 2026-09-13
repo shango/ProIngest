@@ -12,12 +12,14 @@ from pathlib import Path
 
 import pytest
 from PySide6.QtGui import QAction, QKeySequence
-from PySide6.QtWidgets import QApplication, QLabel, QPushButton
+from PySide6.QtWidgets import QApplication, QLabel, QPushButton, QWidget
 
 from proingest.core import settings as core_settings
 from proingest.ui import app as ui_app
 from proingest.ui import paths
 from proingest.ui.main_window import BOTTOM_TABS, EMPTY_STATE_TEXT, MainWindow
+from proingest.ui.shot_model import DisplayMode
+from tests.fixtures.batches import batch, row
 
 
 @pytest.fixture
@@ -150,7 +152,9 @@ class TestTheLayout:
 
     def test_its_two_buttons_trigger_the_toolbar_s_own_actions(self, window: MainWindow) -> None:
         """One action per thing the tool can do, whichever surface the user reaches it from."""
-        buttons = [button.text() for button in window.findChildren(QPushButton)]
+        empty_state = window.findChild(QWidget, "empty_state")
+        assert empty_state is not None
+        buttons = [button.text() for button in empty_state.findChildren(QPushButton)]
         assert buttons == ["New batch", "Open batch..."]
 
     def test_they_follow_their_action_when_it_is_enabled(self, window: MainWindow) -> None:
@@ -166,6 +170,55 @@ class TestTheLayout:
 
     def test_the_status_bar_progress_is_hidden_until_a_run(self, window: MainWindow) -> None:
         assert not window.progress.isVisible()
+
+
+class TestOpeningABatch:
+    """M5.2: the list replaces the empty state, and the two list controls come alive."""
+
+    def test_the_empty_state_gives_way_to_the_list(self, window: MainWindow) -> None:
+        assert window.pages.currentIndex() == 0
+        window.set_batch(batch(row()))
+        assert window.pages.currentIndex() == 1
+
+    def test_the_batch_bar_names_the_batch(self, window: MainWindow) -> None:
+        window.set_batch(batch(row(), name="melt turnover 12"))
+        assert window.batch_bar.name_label.text() == "melt turnover 12"
+
+    def test_the_rows_reach_the_list(self, window: MainWindow) -> None:
+        window.set_batch(batch(row(), row("MELT0002_pl01")))
+        assert window.shot_list.proxy.rowCount(window.shot_list.proxy.index(0, 0)) == 2
+
+    def test_the_list_controls_are_dead_until_there_is_a_list(self, window: MainWindow) -> None:
+        assert not window.action_cycle_display.isEnabled()
+        assert not window.action_find.isEnabled()
+        window.set_batch(batch(row()))
+        assert window.action_cycle_display.isEnabled()
+        assert window.action_find.isEnabled()
+
+    def test_ctrl_t_cycles_the_display_and_the_buttons_follow(self, window: MainWindow) -> None:
+        """One place changes the mode, whichever surface asked (UI_SPEC section 4)."""
+        window.set_batch(batch(row()))
+        window.action_cycle_display.trigger()
+        assert window.shot_model.display_mode is DisplayMode.SOURCE_TC
+        checked = [b.text() for b in window.batch_bar.mode_buttons.buttons() if b.isChecked()]
+        assert checked == [DisplayMode.SOURCE_TC.value]
+
+    def test_picking_a_mode_on_the_bar_reaches_the_model(self, window: MainWindow) -> None:
+        window.set_batch(batch(row()))
+        window.batch_bar.display_mode_picked.emit(DisplayMode.RECORD_TC)
+        assert window.shot_model.display_mode is DisplayMode.RECORD_TC
+
+    def test_typing_in_the_search_box_filters_the_list(self, window: MainWindow) -> None:
+        window.set_batch(batch(row(), row("MELT0002_pl01")))
+        window.batch_bar.search.setText("MELT0002")
+        assert window.shot_list.proxy.rowCount(window.shot_list.proxy.index(0, 0)) == 1
+
+    def test_ctrl_f_puts_the_cursor_in_the_search_box(self, window: MainWindow) -> None:
+        """`focusWidget` rather than `hasFocus`: the offscreen platform activates no window,
+        so the second asks whether the desktop gave this process focus, which it cannot."""
+        window.set_batch(batch(row()))
+        window.action_find.trigger()
+        assert window.focusWidget() is window.batch_bar.search
 
 
 class TestWhatTheWindowRemembers:

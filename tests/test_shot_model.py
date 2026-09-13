@@ -1,0 +1,407 @@
+"""The shot list's model. `ui/shot_model.py`, M5.2.
+
+UI_SPEC section 2 for the columns and section 3 for the colouring. These ask what a cell
+says rather than what it looks like: the model is the half of the list that can be
+checked without a screen, and it is where every fact in the list comes from.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Any
+
+import pytest
+from PySide6.QtCore import QModelIndex, Qt
+from PySide6.QtWidgets import QApplication
+
+from proingest.core.models import Deliverable, InOut, QCResult
+from proingest.ui import shot_model
+from proingest.ui.shot_model import (
+    AUDIO,
+    COLUMNS,
+    DURATION,
+    ELEM,
+    FPS,
+    IN,
+    MAX_AVAIL,
+    NOTES,
+    OUT,
+    PROGRESS,
+    RES,
+    SECONDARY_ROLE,
+    SHOT,
+    SIDE_FILES,
+    SOURCE,
+    STATUS,
+    VERSION,
+    DisplayMode,
+    RowState,
+    ShotListModel,
+    row_state,
+    turnover_state,
+)
+from tests.fixtures import batches
+from tests.fixtures.batches import batch, delivered, fail, row, turnover, warn, with_sides
+
+
+@pytest.fixture
+def model(qt_app: QApplication) -> ShotListModel:
+    built = ShotListModel()
+    built.set_batch(batch(with_sides(row()), row("MELT0002_pl01", record_in=224)))
+    return built
+
+
+def text(model: ShotListModel, row_index: int, column: int, turnover_index: int = 0) -> str:
+    parent = model.index(turnover_index, 0, QModelIndex())
+    return str(model.index(row_index, column, parent).data(Qt.ItemDataRole.DisplayRole) or "")
+
+
+def cell(model: ShotListModel, row_index: int, column: int, role: int, turnover_index: int = 0) -> Any:
+    parent = model.index(turnover_index, 0, QModelIndex())
+    return model.index(row_index, column, parent).data(role)
+
+
+class TestTheTree:
+    """Two levels and no more: a turnover, then its rows in timeline order."""
+
+    def test_the_top_level_is_one_row_per_turnover(self, model: ShotListModel) -> None:
+        assert model.rowCount(QModelIndex()) == 1
+
+    def test_the_children_are_that_turnover_s_rows(self, model: ShotListModel) -> None:
+        parent = model.index(0, 0, QModelIndex())
+        assert model.rowCount(parent) == 2
+
+    def test_a_shot_row_has_no_children_of_its_own(self, model: ShotListModel) -> None:
+        parent = model.index(0, 0, QModelIndex())
+        assert model.rowCount(model.index(0, 0, parent)) == 0
+
+    def test_a_child_index_finds_its_way_back_to_its_turnover(self, model: ShotListModel) -> None:
+        parent = model.index(0, 0, QModelIndex())
+        child = model.index(1, SHOT, parent)
+        assert model.parent(child) == parent
+
+    def test_a_turnover_has_no_parent(self, model: ShotListModel) -> None:
+        assert not model.parent(model.index(0, 0, QModelIndex())).isValid()
+
+    def test_the_columns_are_the_ones_section_2_lists(self, model: ShotListModel) -> None:
+        assert model.columnCount(QModelIndex()) == len(COLUMNS)
+        titles = [
+            model.headerData(i, Qt.Orientation.Horizontal, Qt.ItemDataRole.DisplayRole)
+            for i in range(len(COLUMNS))
+        ]
+        assert titles[SHOT : ELEM + 1] == ["Shot", "Elem"]
+        assert titles[IN], titles[OUT]
+
+    def test_rows_belong_to_their_own_turnover(self, qt_app: QApplication) -> None:
+        """Two turnovers, and neither shows the other's shots."""
+        built = ShotListModel()
+        built.set_batch(
+            batch(
+                row(),
+                row("MELT0009_pl01", turnover_id="turnover002"),
+                turnovers=[turnover(), turnover("turnover002")],
+            )
+        )
+        assert [built.rowCount(built.index(i, 0, QModelIndex())) for i in (0, 1)] == [1, 1]
+        assert text(built, 0, SHOT, turnover_index=1) == "MELT0009"
+
+    def test_what_is_behind_an_index(self, model: ShotListModel) -> None:
+        parent = model.index(0, 0, QModelIndex())
+        assert model.row_at(model.index(0, 0, parent)) is model.batch.rows[0]
+        assert model.row_at(parent) is None
+        assert model.turnover_at(parent) is model.batch.turnovers[0]
+
+
+class TestWhatACellSays:
+    def test_the_columns_that_read_straight_off_the_row(self, model: ShotListModel) -> None:
+        assert text(model, 0, SHOT) == "MELT0001"
+        assert text(model, 0, ELEM) == "pl01"
+        assert text(model, 0, SOURCE) == "MELT0001_pl01.mov"
+        assert text(model, 0, RES) == "3840x2160"
+        assert text(model, 0, FPS) == "24"
+        assert text(model, 0, DURATION) == "224"
+        assert text(model, 0, MAX_AVAIL) == "239"
+
+    def test_audio_and_side_files(self, model: ShotListModel) -> None:
+        assert text(model, 0, AUDIO) == "1"
+        assert text(model, 0, SIDE_FILES) == "HDRI, camData"
+
+    def test_a_row_with_neither_says_nothing_rather_than_a_dash(self, model: ShotListModel) -> None:
+        assert text(model, 1, AUDIO) == ""
+        assert text(model, 1, SIDE_FILES) == ""
+
+    def test_more_than_one_audio_clip_says_how_many(self, qt_app: QApplication) -> None:
+        """QC-041 is the rule; the column is where the editor sees it without opening it."""
+        built = ShotListModel()
+        built.set_batch(batch(row(audio_path=Path("/a.wav"), audio_clip_count=3)))
+        assert text(built, 0, AUDIO) == "3"
+
+    def test_an_unparsed_clip_name_still_names_the_row(self, qt_app: QApplication) -> None:
+        """QC-010 leaves no shot code, and a blank row cannot be found in the list."""
+        built = ShotListModel()
+        built.set_batch(batch(row("garbage name", identity=None)))
+        assert text(built, 0, SHOT) == "garbage name"
+
+    def test_a_row_with_no_media_leaves_the_media_columns_empty(self, qt_app: QApplication) -> None:
+        built = ShotListModel()
+        built.set_batch(batch(row(media=None, snapshot=None, current=None)))
+        assert [text(built, 0, c) for c in (SOURCE, RES, FPS, IN, OUT)] == ["", "", "", "", ""]
+
+    def test_version_and_progress_come_from_the_deliverables(self, qt_app: QApplication) -> None:
+        built = ShotListModel()
+        built.set_batch(batch(delivered(row(), version=3)))
+        assert text(built, 0, VERSION) == "v03"
+        assert text(built, 0, PROGRESS) == "2/2"
+
+    def test_a_row_nothing_has_been_planned_for_says_nothing(self, model: ShotListModel) -> None:
+        assert text(model, 0, VERSION) == ""
+        assert text(model, 0, PROGRESS) == ""
+
+    def test_progress_counts_what_has_landed(self, qt_app: QApplication) -> None:
+        built = ShotListModel()
+        planned = delivered(row(), status="planned")
+        planned.deliverables[0].status = "done"
+        built.set_batch(batch(planned))
+        assert text(built, 0, PROGRESS) == "1/2"
+
+    def test_notes_are_shown_and_are_the_editor_s_own_words(self, qt_app: QApplication) -> None:
+        built = ShotListModel()
+        built.set_batch(batch(row(notes="watch the flare")))
+        assert text(built, 0, NOTES) == "watch the flare"
+
+
+class TestTheInOutDisplay:
+    """Section 2's three state toggle. Frames is the default and it is not arbitrary."""
+
+    def test_frames_is_what_it_opens_on(self, model: ShotListModel) -> None:
+        assert model.display_mode is DisplayMode.FRAMES
+        assert (text(model, 0, IN), text(model, 0, OUT)) == ("8", "231")
+
+    def test_under_frames_the_second_line_is_source_timecode(self, model: ShotListModel) -> None:
+        assert cell(model, 0, IN, SECONDARY_ROLE) == "01:00:00:08"
+
+    def test_source_tc_promotes_the_timecode_and_demotes_the_frame(self, model: ShotListModel) -> None:
+        model.set_display_mode(DisplayMode.SOURCE_TC)
+        assert text(model, 0, IN) == "01:00:00:08"
+        assert cell(model, 0, IN, SECONDARY_ROLE) == "8"
+
+    def test_record_tc_is_read_against_the_timeline_s_own_start(self, model: ShotListModel) -> None:
+        """The clip sits at the top of an edit starting at an hour, so its In is that hour.
+
+        Source TC and record TC differ by eight frames here on purpose: the turnover
+        trimmed eight frames of handle off the head, and only the source side counts them.
+        """
+        model.set_display_mode(DisplayMode.RECORD_TC)
+        assert text(model, 0, IN) == "01:00:00:00"
+        assert text(model, 0, OUT) == "01:00:09:07"
+
+    def test_the_second_clip_sits_after_the_first_in_record(self, model: ShotListModel) -> None:
+        model.set_display_mode(DisplayMode.RECORD_TC)
+        assert text(model, 1, IN) == "01:00:09:08"
+
+    def test_a_timeline_starting_at_zero_says_so(self, qt_app: QApplication) -> None:
+        """A batch saved before turnovers remembered their start reads back as zero."""
+        built = ShotListModel()
+        built.set_batch(batch(row(), turnovers=[turnover(timeline_start=0)]))
+        built.set_display_mode(DisplayMode.RECORD_TC)
+        assert text(built, 0, IN) == "00:00:00:00"
+
+    def test_the_toggle_cycles_and_comes_round(self) -> None:
+        mode = DisplayMode.FRAMES
+        seen = [mode]
+        for _ in range(3):
+            mode = mode.next()
+            seen.append(mode)
+        assert seen == [
+            DisplayMode.FRAMES,
+            DisplayMode.SOURCE_TC,
+            DisplayMode.RECORD_TC,
+            DisplayMode.FRAMES,
+        ]
+
+    def test_changing_it_repaints_in_and_out_and_nothing_else(self, model: ShotListModel) -> None:
+        """Fifteen columns of a hundred shot list is a redraw worth not asking for."""
+        changed: list[tuple[int, int]] = []
+        model.dataChanged.connect(
+            lambda top, bottom, roles: changed.append((top.column(), bottom.column()))
+        )
+        model.set_display_mode(DisplayMode.SOURCE_TC)
+        assert changed == [(IN, OUT)]
+
+    def test_setting_the_mode_it_is_already_in_changes_nothing(self, model: ShotListModel) -> None:
+        changed: list[object] = []
+        model.dataChanged.connect(lambda *args: changed.append(args))
+        model.set_display_mode(DisplayMode.FRAMES)
+        assert changed == []
+
+
+class TestRowState:
+    """Section 3's table, and the order it is read in when a row is several at once."""
+
+    def test_a_plain_row_is_ok(self) -> None:
+        assert row_state(row()) is RowState.OK
+
+    def test_a_warning_and_an_error(self) -> None:
+        assert row_state(warn(row())) is RowState.WARNING
+        assert row_state(fail(row())) is RowState.ERROR
+
+    def test_an_error_outranks_a_warning(self) -> None:
+        assert row_state(fail(warn(row()))) is RowState.ERROR
+
+    def test_skipped_outranks_everything_because_the_editor_chose_it(self) -> None:
+        assert row_state(fail(row(skipped=True))) is RowState.SKIPPED
+
+    def test_a_failed_render_outranks_the_rules(self) -> None:
+        assert row_state(delivered(warn(row()), status="failed")) is RowState.FAILED
+
+    def test_rendering_outranks_a_failure_because_it_is_still_happening(self) -> None:
+        rendering = delivered(row(), status="failed")
+        rendering.deliverables[0].status = "rendering"
+        assert row_state(rendering) is RowState.RENDERING
+
+    def test_everything_written_is_done(self) -> None:
+        assert row_state(delivered(row())) is RowState.DONE
+
+    def test_a_file_that_was_already_there_still_counts_as_done(self) -> None:
+        assert row_state(delivered(row(), status="exists")) is RowState.DONE
+
+    def test_a_warning_on_a_delivered_row_still_shows_as_delivered(self) -> None:
+        """The rules ran before the render; a warning that did not stop it is history."""
+        assert row_state(delivered(warn(row()))) is RowState.WARNING
+
+
+class TestTheGroupHeader:
+    def test_it_names_the_folder_and_counts_what_is_under_it(self, model: ShotListModel) -> None:
+        header = str(model.index(0, 0, QModelIndex()).data(Qt.ItemDataRole.DisplayRole))
+        assert "turnover001_02_23_2026_danielluckett" in header
+        assert "2 shots" in header
+
+    def test_it_counts_errors_and_warnings(self, qt_app: QApplication) -> None:
+        built = ShotListModel()
+        built.set_batch(batch(fail(row()), warn(row("MELT0002_pl01"))))
+        header = str(built.index(0, 0, QModelIndex()).data(Qt.ItemDataRole.DisplayRole))
+        assert "1 error" in header and "1 warning" in header
+
+    def test_one_shot_is_not_one_shots(self, qt_app: QApplication) -> None:
+        built = ShotListModel()
+        built.set_batch(batch(row()))
+        assert "1 shot," in str(
+            built.index(0, 0, QModelIndex()).data(Qt.ItemDataRole.DisplayRole)
+        ) or "1 shot" in str(built.index(0, 0, QModelIndex()).data(Qt.ItemDataRole.DisplayRole))
+
+    def test_its_state_is_the_worst_thing_under_it(self) -> None:
+        assert turnover_state(turnover(), [warn(row()), fail(row())]) is RowState.ERROR
+        assert turnover_state(turnover(), [row(), warn(row())]) is RowState.WARNING
+        assert turnover_state(turnover(), [row(), row()]) is RowState.OK
+
+    def test_a_turnover_that_failed_to_parse_carries_its_own_colour(self) -> None:
+        """QC-001 and QC-002 leave no rows at all, so nothing else could carry it."""
+        broken = turnover()
+        broken.qc.append(QCResult("QC-002", "error", "turnover", "failed to parse"))
+        assert turnover_state(broken, []) is RowState.ERROR
+
+    def test_an_empty_turnover_with_nothing_wrong_is_ok(self) -> None:
+        assert turnover_state(turnover(), []) is RowState.OK
+
+
+class TestHowARowIsPainted:
+    def test_every_row_carries_a_status_dot(self, model: ShotListModel) -> None:
+        dot = cell(model, 0, STATUS, Qt.ItemDataRole.DecorationRole)
+        assert dot is not None and not dot.isNull()
+
+    def test_the_dot_is_cached_per_state_rather_than_drawn_per_cell(
+        self, model: ShotListModel
+    ) -> None:
+        first = cell(model, 0, STATUS, Qt.ItemDataRole.DecorationRole)
+        second = cell(model, 1, STATUS, Qt.ItemDataRole.DecorationRole)
+        # Qt hands back a new Python wrapper each time; the cache key is what says
+        # whether it drew a second pixmap, and a hundred shot list asks per repaint.
+        assert first.cacheKey() == second.cacheKey()
+
+    def test_a_warning_row_is_tinted_and_a_plain_one_is_not(self, qt_app: QApplication) -> None:
+        built = ShotListModel()
+        built.set_batch(batch(warn(row()), row("MELT0002_pl01")))
+        assert cell(built, 0, SHOT, Qt.ItemDataRole.BackgroundRole) is not None
+        assert cell(built, 1, SHOT, Qt.ItemDataRole.BackgroundRole) is None
+
+    def test_a_skipped_row_is_dimmed_rather_than_tinted(self, qt_app: QApplication) -> None:
+        built = ShotListModel()
+        built.set_batch(batch(row(skipped=True, skip_reason="blocked")))
+        assert cell(built, 0, SHOT, Qt.ItemDataRole.ForegroundRole) is not None
+        assert cell(built, 0, SHOT, Qt.ItemDataRole.BackgroundRole) is None
+
+    def test_the_frame_columns_are_right_aligned(self, model: ShotListModel) -> None:
+        """Numbers that do not line up are numbers nobody scans down a column of."""
+        alignment = cell(model, 0, IN, Qt.ItemDataRole.TextAlignmentRole)
+        assert alignment is not None and int(alignment) & int(Qt.AlignmentFlag.AlignRight)
+
+
+class TestTooltips:
+    def test_the_dot_lists_the_rules_that_fired(self, qt_app: QApplication) -> None:
+        """Section 3: hovering the dot names the rule IDs and their messages."""
+        built = ShotListModel()
+        built.set_batch(batch(fail(warn(row()))))
+        tip = str(cell(built, 0, STATUS, Qt.ItemDataRole.ToolTipRole))
+        assert "QC-030" in tip and "QC-011" in tip
+
+    def test_a_row_with_nothing_wrong_has_no_dot_tooltip(self, model: ShotListModel) -> None:
+        assert cell(model, 0, STATUS, Qt.ItemDataRole.ToolTipRole) is None
+
+    def test_the_shot_cell_always_names_the_clip_it_came_from(self, model: ShotListModel) -> None:
+        assert cell(model, 0, SHOT, Qt.ItemDataRole.ToolTipRole) == "MELT0001_pl01"
+
+    def test_the_source_cell_carries_the_whole_path(self, model: ShotListModel) -> None:
+        assert cell(model, 0, SOURCE, Qt.ItemDataRole.ToolTipRole) == "/turnover/MELT0001_pl01.mov"
+
+    def test_the_group_header_falls_back_to_its_folder(self, model: ShotListModel) -> None:
+        tip = model.index(0, 0, QModelIndex()).data(Qt.ItemDataRole.ToolTipRole)
+        assert str(tip).startswith("/source/")
+
+
+class TestReplacingTheBatch:
+    def test_the_model_resets_rather_than_patching(self, model: ShotListModel) -> None:
+        resets: list[int] = []
+        model.modelReset.connect(lambda: resets.append(1))
+        model.set_batch(batch(row()))
+        assert resets == [1]
+        assert model.rowCount(model.index(0, 0, QModelIndex())) == 1
+
+    def test_an_empty_batch_shows_nothing_and_does_not_raise(self, qt_app: QApplication) -> None:
+        built = ShotListModel()
+        assert built.rowCount(QModelIndex()) == 0
+        assert built.data(QModelIndex(), Qt.ItemDataRole.DisplayRole) is None
+
+
+class TestTheFrozenColumnCount:
+    def test_status_shot_and_elem_are_the_ones_that_stay(self) -> None:
+        """Section 2's frozen left. The view that does it is a later chunk; the count
+        lives here so the two cannot disagree about which columns it means."""
+        assert shot_model.FROZEN_COLUMNS == 3
+        assert (STATUS, SHOT, ELEM) == (0, 1, 2)
+
+
+class TestEditContext:
+    """`ShotRow.edit_context` is core's, and it is what both the display and, later,
+    the typed edit read. Its record anchor is the pairing the turnover arrived with."""
+
+    def test_the_record_anchor_does_not_slide_when_the_editor_trims(self) -> None:
+        trimmed = row()
+        context = trimmed.edit_context(batches.RATE_24, batches.ONE_HOUR, "record")
+        trimmed.current = InOut(0, 231)
+        after = trimmed.edit_context(batches.RATE_24, batches.ONE_HOUR, "record")
+        assert context.timecode_origin() == after.timecode_origin()
+
+    def test_a_row_with_no_media_still_produces_one(self) -> None:
+        """QC-011 rows appear in the list, so nothing may raise on the way to a cell."""
+        context = row(media=None, snapshot=None, current=None).edit_context(batches.RATE_24)
+        assert context.fps == 24.0
+
+
+def test_no_deliverable_status_is_unaccounted_for() -> None:
+    """Every status a deliverable can hold has to land in a state, or a row goes blank."""
+    for status in ("planned", "rendering", "done", "failed", "exists", "skipped"):
+        built = row()
+        built.deliverables = [
+            Deliverable(kind="raw_dir", name="n", path=Path("/d/n"), version=1, status=status)
+        ]
+        assert isinstance(row_state(built), RowState)

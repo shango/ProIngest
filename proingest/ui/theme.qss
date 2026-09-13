@@ -124,3 +124,67 @@ QProgressBar::chunk {
   color: #868d9a;
   font-size: 16px;
 }
+
+/* ---- the shot list (UI_SPEC section 2) ---- */
+
+QTreeView {
+  background: #0e0f12;
+  alternate-background-color: #0e0f12;
+  border: 0;
+  outline: 0;
+  selection-background-color: #1f3c5c;
+  selection-color: #eef1f5;
+}
+
+QTreeView::item {
+  border-bottom: 1px solid #15171b;
+  padding: 2px 4px;
+}
+
+QTreeView::item:selected {
+  background: #1f3c5c;
+  color: #eef1f5;
+}
+
+QHeaderView::section {
+  background: #1b1e23;
+  color: #868d9a;
+  border: 0;
+  border-right: 1px solid #262a31;
+  border-bottom: 1px solid #262a31;
+  padding: 5px 6px;
+}
+
+/* ---- the batch bar ---- */
+
+#batch_bar {
+  background: #15171b;
+  border-bottom: 1px solid #262a31;
+}
+
+#batch_name {
+  color: #ced3db;
+  font-weight: 600;
+}
+
+#batch_bar QPushButton {
+  padding: 3px 10px;
+}
+
+#batch_bar QPushButton:checked {
+  background: #1f3c5c;
+  border-color: #4d8fd6;
+  color: #eef1f5;
+}
+
+QLineEdit {
+  background: #1b1e23;
+  border: 1px solid #262a31;
+  padding: 4px 8px;
+  color: #ced3db;
+  selection-background-color: #4d8fd6;
+}
+
+QLineEdit:focus {
+  border-color: #4d8fd6;
+}

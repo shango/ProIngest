@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QProgressBar,
     QPushButton,
+    QStackedWidget,
     QTabWidget,
     QToolBar,
     QVBoxLayout,
@@ -33,6 +34,10 @@ from PySide6.QtWidgets import (
 
 from proingest import __version__
 from proingest.core import settings as core_settings
+from proingest.core.models import Batch
+from proingest.ui.batch_bar import BatchBar
+from proingest.ui.shot_list import ShotListView
+from proingest.ui.shot_model import DisplayMode, ShotListModel
 
 WINDOW_TITLE = "ProIngest"
 
@@ -87,6 +92,10 @@ class MainWindow(QMainWindow):
         self.action_run = self._action("Run", QKeySequence("Ctrl+R"))
         self.action_stop = self._action("Stop", QKeySequence("Ctrl+."))
         self.action_export = self._action("Export")
+        self.action_cycle_display = self._action("Cycle In/Out display", QKeySequence("Ctrl+T"))
+        self.action_cycle_display.triggered.connect(self._cycle_display_mode)
+        self.action_find = self._action("Find", QKeySequence.StandardKey.Find)
+        self.action_find.triggered.connect(lambda: self.batch_bar.focus_search())
         self.action_settings = self._action("Settings", QKeySequence.StandardKey.Preferences)
         self.action_settings.setMenuRole(QAction.MenuRole.PreferencesRole)
 
@@ -139,6 +148,10 @@ class MainWindow(QMainWindow):
         batch_menu.addAction(self.action_run)
         batch_menu.addAction(self.action_stop)
 
+        view_menu = menus.addMenu("View")
+        view_menu.addAction(self.action_cycle_display)
+        view_menu.addAction(self.action_find)
+
     def _build_toolbar(self) -> None:
         """Section 1's toolbar, in its three groups, separated as it is drawn there."""
         toolbar = QToolBar("Main", self)
@@ -157,7 +170,49 @@ class MainWindow(QMainWindow):
         self.toolbar = toolbar
 
     def _build_central(self) -> None:
-        """The empty state, which is all the centre holds until the list arrives."""
+        """Two pages: the empty state, and the batch. `set_batch` swaps between them.
+
+        A stack rather than a rebuilt central widget, because the list and its model
+        outlive one batch: `ShotListModel.set_batch` is a reset, and the selection
+        model, the column widths and the filter all survive it.
+        """
+        self.shot_model = ShotListModel(self)
+        self.shot_list = ShotListView(self.shot_model, self)
+        self.batch_bar = BatchBar(self)
+        self.batch_bar.display_mode_picked.connect(self.set_display_mode)
+        self.batch_bar.search_changed.connect(self.shot_list.filter_by)
+
+        batch_page = QWidget(self)
+        batch_layout = QVBoxLayout(batch_page)
+        batch_layout.setContentsMargins(0, 0, 0, 0)
+        batch_layout.setSpacing(0)
+        batch_layout.addWidget(self.batch_bar)
+        batch_layout.addWidget(self.shot_list)
+
+        self.pages = QStackedWidget(self)
+        self.pages.addWidget(self._empty_state())
+        self.pages.addWidget(batch_page)
+        self.setCentralWidget(self.pages)
+
+    def set_batch(self, batch: Batch) -> None:
+        """Show a batch. Until something can open one, this is how a batch gets here."""
+        self.shot_model.set_batch(batch)
+        self.batch_bar.set_batch_name(batch.name)
+        self.pages.setCurrentIndex(1)
+        for action in (self.action_cycle_display, self.action_find):
+            action.setEnabled(True)
+
+    def set_display_mode(self, mode: DisplayMode) -> None:
+        """The one place the display mode changes, whichever surface asked for it."""
+        self.shot_model.set_display_mode(mode)
+        self.batch_bar.show_display_mode(mode)
+
+    def _cycle_display_mode(self) -> None:
+        """Ctrl+T: Frames to Source TC to Record TC and round again (section 4)."""
+        self.set_display_mode(self.shot_model.display_mode.next())
+
+    def _empty_state(self) -> QWidget:
+        """UI_SPEC section 10, and all the centre holds until a batch is open."""
         central = QWidget(self)
         central.setObjectName("empty_state")
         layout = QVBoxLayout(central)
@@ -181,8 +236,7 @@ class MainWindow(QMainWindow):
             action.changed.connect(lambda a=action, b=button: b.setEnabled(a.isEnabled()))
             button_row.addWidget(button)
         layout.addWidget(buttons, alignment=Qt.AlignmentFlag.AlignCenter)
-
-        self.setCentralWidget(central)
+        return central
 
     def _build_bottom_dock(self) -> None:
         """Issues, Log and Deliverables, empty until each has something to report."""

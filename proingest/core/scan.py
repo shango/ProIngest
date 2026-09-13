@@ -150,6 +150,10 @@ def scan_turnover(
         turnover.qc.append(QCResult("QC-002", "error", "turnover", str(exc)))
         return turnover, []
 
+    turnover.timeline_start = loaded.global_start
+    """Kept because record timecode is read against it and the timeline is gone by the
+    time anyone asks (UI_SPEC section 2's Record TC display)."""
+
     turnover.qc.extend(qc.check_timeline_rate(turnover, loaded.rate, settings.project_rate))
 
     if loaded.is_edl:

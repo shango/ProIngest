@@ -70,6 +70,13 @@ Append to this as M5 and M6 are built.
       built, the status bar carries the same information. `UI_SPEC.md` section 11.
 - [ ] Frozen left columns hold together at 2x Retina. The overlaid second-view trick is the
       known-awkward part. `UI_SPEC.md` section 2, `PROGRESS.md` section 9.
+- [ ] **The two line In/Out cell is legible at 2x Retina.** The demoted line is drawn at 85% of
+      the cell font (M5.2) and that number was picked against a Linux font stack at 1x. If it
+      reads as noise rather than as a second value, the number is one constant in
+      `ui/shot_list.py`. `UI_SPEC.md` section 2.
+- [ ] **The status dot reads at a glance in all seven states.** Nine pixels, filled or hollow,
+      against the row tint behind it (M5.2, `UI_SPEC.md` section 3). Amber on faint amber is
+      the pair to look at.
 - [ ] Metadata pane: width and section states persist, long paths elide in the middle, values
       copy. `UI_SPEC.md` section 12.
 - [ ] Dark theme and font rendering at Retina, including the IBM Plex fallback chain.

@@ -16,8 +16,8 @@ no longer converts ahead of the CLF**, which was the one thing in the code that 
 delivered a wrong plate against a real session. The source encoding went back to camera native
 log on 2026-09-12 and the tool now reads it per shot, resolves it through a table, records it
 in the QC log and states it and its origin in the delivered header. **M5, the UI, has started:
-M5.1, the window shell, is built and the other seven chunks are specified** in section 5.
-975 tests passing, `ruff` and `mypy --strict` clean.
+M5.1 and M5.2 are built, so the window shows a batch** and the rest of M5 is specified in
+section 5. 1061 tests passing, `ruff` and `mypy --strict` clean.
 **M5 is not blocked**: OQ-37 came back the same day and
 answered the expensive half of M4.6. Two questions are open and both are about correctness rather
 than scope, OQ-46 and **OQ-47, which is new and was found by building M4.6.2**.
@@ -448,6 +448,49 @@ should not be re-derived.
   paths that build a `ShotColor`, with a session and without, need the same answer. QC-047 is
   where it is reported, and that is M4.6.4.
 
+### M5.2 is built: the list shows a batch
+
+Built 2026-09-12. `ui/shot_model.py`, `ui/shot_list.py` and `ui/batch_bar.py`, 86 tests.
+UI_SPEC section 2's columns over a two level tree, section 3's dot and tints, the three state
+In/Out display and the search box. **Read only**: editing is M5.3, so nothing here writes to a
+row and nothing here can disagree with the rules about what a row now says. Seven things in it
+should not be re-derived.
+
+- **Record timecode needed a fact the batch was not keeping.** `ShotRow.record_in` is measured
+  from the timeline's own zero, and an edit that starts at `01:00:00:00` is the normal case, so
+  a row shown without the timeline's start reads an hour early. `Turnover.timeline_start` is
+  new, additive, and filled by the scan from `Timeline.global_start`, which was already parsed
+  and then thrown away. A batch saved before it reads back zero, which is what a timeline
+  starting at zero would say anyway.
+- **`ShotRow.edit_context` is core's, and there is one of it.** The list renders a frame as
+  timecode through it and M5.3's typed edit will read a timecode back through the same object.
+  Two of them is how a display and its editor come to disagree about which frame an hour is.
+  Its **record anchor is the clip's record start paired with the snapshot's In**, which does
+  not move when the editor trims: that is what keeps the mapping linear instead of sliding
+  with every edit.
+- **What a cell says and what colour it is are both the model's answers.** A delegate that had
+  to work either out would be reading the model twice, and a stylesheet cannot see a model at
+  all, which is why the dot and the tints are painted from `shot_model.py` against the palette
+  `theme.qss` states at its top.
+- **`RowState` is an ordered enum and the order is the precedence.** A row is often several
+  states at once: skipped beats everything because the editor chose it, a render that is still
+  happening beats one that failed, and a failure beats the rules that were checked before it.
+  `turnover_state` is the same order applied to a group, including the turnover's own rules,
+  since QC-001 and QC-002 leave it with no rows to carry the colour.
+- **The two line cell is one delegate on every column, not on In and Out alone.** The row has
+  to be tall enough for two lines whatever the cell holds, and a delegate that only some
+  columns used would leave the rest centred against a different height.
+- **The status dot is drawn once per state and cached.** Fifteen columns of a hundred shot list
+  repaint often; a pixmap per cell is a pixmap per repaint. A test compares `cacheKey`, because
+  Qt hands back a new Python wrapper each time and identity would pass for the wrong reason.
+- **The frozen left columns are deliberately not here. They are M5.9**, and section 5 says why:
+  QTreeView has no such feature, the overlaid second view has to keep working through editing,
+  filtering and selection, and those are the next two chunks.
+
+**One thing is a stand-in.** Section 2 wants icons in the Audio and Side files columns and the
+tool ships no icon set at all, toolbar included. The columns carry the count and the names
+instead, which is honest and searchable, and the icons can replace them whenever there are any.
+
 ### M5.1 is built: the window, and the harness that lets a window be tested at all
 
 Built 2026-09-12, the first chunk of M5. `ui/app.py`, `ui/main_window.py`, `ui/theme.qss`,
@@ -550,12 +593,16 @@ nothing written. **When M5 wires the colour session into Settings**, the rules w
 tell "no session yet" from "this session had no grade for this row", and that is the moment to
 decide whether QC-046's error widens.
 
-### Next task: M5.2, the shot list
+### Next task: M5.3, editing in the list
 
-M4.5 and M4.6 are finished and **M5.1 is built**, so the next thing is the list itself: a model
-over a `Batch`, UI_SPEC section 2's columns, the turnover group headers, the three state In/Out
-display and section 3's status dot and row tints. Read only to begin with; editing is M5.3.
-Section 5's chunk table has the rest of M5 and the order it is meant to be built in.
+The list shows a batch and nothing in it can be changed yet. M5.3 is the editable cells the
+list owns and nothing else does (FR-5): shot code, In, Out and Notes, `frames.parse_in_out`
+behind them, Ctrl+K skip with its reason, the row's rules re-run on commit, and autosave.
+`ShotRow.edit_context` is already what a typed timecode is read against.
+
+**The one thing to decide first** is what a commit re-runs. `qc.apply_row_rules` is per row and
+cheap, which is what UI_SPEC section 5 asks for; what it cannot see is the batch level rules.
+Re-running everything on every keystroke is the thing not to do.
 
 `docs/UI_SPEC.md` is M5's spec and it was already cut down when the four colour controls and
 the three viewers were dropped. The things M5 owes the colour chain are small and known:
@@ -698,7 +745,7 @@ PDF viewer.
 |---|---|---|
 | `core/naming.py` | every output name, both directions; `next_version`; clip and shot code parsing | 324 |
 | `core/frames.py` | integer frame math, timecode, In/Out input grammar | 179 |
-| `core/models.py` | Batch, Turnover, ShotRow, Deliverable, MediaInfo, AudioInfo, FrameRate, QCResult | 583 |
+| `core/models.py` | Batch, Turnover, ShotRow, Deliverable, MediaInfo, AudioInfo, FrameRate, QCResult, and a row's frame math context | 673 |
 | `core/ffmpeg.py` | the only place anything shells out; tool lookup, ffprobe, decode, audio extract, reference encode through the viewing LUT | 608 |
 | `core/media.py` | DirectoryIndex, sequence detection, path remap, probe cache | 465 |
 | `core/exr.py` | EXR header and pixel reading, delivery frame writing, and the provenance a graded plate carries | 299 |
@@ -706,7 +753,7 @@ PDF viewer.
 | `core/color.py` | the pinned OCIO config, every leg of the chain but the CLF, composing and applying them, and the view branch baked to a `.cube` | 209 |
 | `core/timeline.py` | OTIO and EDL loading, audio association | 233 |
 | `core/clf.py` | the colour session package: the final EDL as the conform, the CDL, the CLF matched per row, loaded, hashed and probed, and `ShotColor`, which is what rides on a job | 489 |
-| `core/scan.py` | turnover folder -> Turnover + ShotRows | 388 |
+| `core/scan.py` | turnover folder -> Turnover + ShotRows | 459 |
 | `core/planner.py` | type table, deliverable jobs, version resolution, the shot's colour attached to each job | 485 |
 | `core/batchfile.py` | `.pibatch` save/load, backup, filesystem reconciliation | 86 |
 | `core/camdata.py` | key/value pairs out of a camData `.txt` or `.rtf`, RTF stripped pragmatically | 62 |
@@ -715,7 +762,10 @@ PDF viewer.
 | `core/qc.py` | rule registry: phase A, `RuleSettings`, `preflight`, phase B | 1416 |
 | `core/settings.py` | what the app remembers between launches, as JSON. Takes the path; never works out where it is | 98 |
 | `ui/app.py` | the QApplication, its names, the theme, and `run()` | 49 |
-| `ui/main_window.py` | UI_SPEC section 1's frame: menus and their macOS roles, toolbar, bottom dock, status bar, empty state, window state | 238 |
+| `ui/main_window.py` | UI_SPEC section 1's frame: menus and their macOS roles, toolbar, bottom dock, status bar, the empty state and the batch page, window state | 295 |
+| `ui/shot_model.py` | the batch as a two level tree: section 2's columns, section 3's dot and tints, the In/Out display mode | 475 |
+| `ui/shot_list.py` | the view, the two line cell and the search filter | 168 |
+| `ui/batch_bar.py` | the batch name, the three state In/Out toggle and the search box | 80 |
 | `ui/paths.py` | the one place that asks `QStandardPaths` where the app's own files live | 33 |
 | `__main__.py` | `proingest scan`, `run` and `qc` CLI, `--rules` overrides, and the UI when there is no subcommand | 440 |
 
@@ -760,7 +810,7 @@ Entry points worth knowing:
 | M4 | QC: all rules both phases, xlsx exports, `qc` CLI | complete, 175 tests |
 | M4.5 | Colour pipeline, core only. Source log in, CLF applied, ACEScg out, the viewing LUT | complete, 111 tests |
 | M4.6 | Per shot source encoding: read from the clip metadata, the input transform table, the input transform out of the graded chains, QC-046 to QC-048 | complete, all five chunks (OQ-37 answered; OQ-46 wants confirming) |
-| M5 | UI: the list, the FR-14 metadata pane, settings, log. **No viewers** | **M5.1 done**, M5.2 to M5.8 specified |
+| M5 | UI: the list, the FR-14 metadata pane, settings, log. **No viewers** | **M5.1 and M5.2 done**, M5.3 to M5.9 specified |
 | M6 | ~~Stringout with burn-ins~~ | **dropped 2026-09-11**, the colour session exports it |
 | M7 | Packaging: PyInstaller `.app`, dmg, Gatekeeper | not started, and needs a Mac (OQ-22) |
 | M8 | Polish, performance on a real turnover, docs | not started |
@@ -832,13 +882,21 @@ batch can do", so each chunk has something a person can look at:
 | chunk | scope | state |
 |---|---|---|
 | M5.1 | The shell: `ui/app.py`, `ui/main_window.py`, `ui/theme.qss`, `ui/paths.py`, `core/settings.py`, and the offscreen Qt test harness | **done, 975 tests** |
-| M5.2 | The shot list: a model over a `Batch`, section 2's columns, turnover group headers, the three state In/Out display, the status dot and row tints | not started |
+| M5.2 | The shot list: a model over a `Batch`, section 2's columns, turnover group headers, the three state In/Out display, the status dot and row tints, the search box | **done, 1061 tests.** Read only, and **without the frozen columns**, which are M5.9 |
 | M5.3 | Editing: shot code, In, Out and Notes in their cells, section 5's input parsing, Ctrl+K skip, per row revalidation, autosave | not started |
 | M5.4 | Batch lifecycle: New, Open, Save, Add Turnover against the source root, the scan off the UI thread, the Issues dock | not started |
 | M5.5 | Run and progress: the worker pool driven from the window, the Progress column, the status bar, Stop, the completion banner | not started |
 | M5.6 | The metadata pane, FR-14 and UI_SPEC section 12 | not started |
 | M5.7 | The Settings page, PRD FR-12, **including the Colour group**, and with it QC-008, QC-009, QC-019, QC-039 and QC-045 | not started |
 | M5.8 | The Log tab and the rotating log file, FR-13 | not started |
+| M5.9 | The frozen left columns: the overlaid second view sharing the model and the selection | not started |
+
+**M5.9 is last on purpose.** UI_SPEC section 2 freezes Status, Shot and Elem while the rest
+scrolls, and QTreeView has no such thing: it takes a second view overlaid on the first, sharing
+the model, the selection and the scroll. It is the known awkward part (section 9), it has to
+keep working through editing, filtering and selection, and all three of those are M5.3 and
+M5.4. Building it before them means building it twice. `shot_model.FROZEN_COLUMNS` already
+names the count so the two views cannot disagree about which columns it means.
 
 **M5.7 is where the colour work finishes.** Five rules read `core/clf.py` and none of them can
 fire until a batch knows where its colour session is, which is a Settings value. Nothing in

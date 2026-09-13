@@ -437,6 +437,37 @@ class ShotRow:
         """True when the editor moved In or Out away from the turnover snapshot (QC-035)."""
         return self.snapshot is not None and self.current is not None and self.snapshot != self.current
 
+    def edit_context(
+        self,
+        project_rate: FrameRate,
+        timeline_start: int = 0,
+        mode: frames.TimecodeMode = "source",
+    ) -> frames.EditContext:
+        """What this row's In and Out need to become timecode, and back again.
+
+        One definition because two things read it: the list renders a frame as timecode
+        with it (UI_SPEC section 2) and a typed timecode becomes a frame through it
+        (section 5). Building it in two places is how a display and its editor come to
+        disagree about which frame an hour is.
+
+        `timeline_start` belongs to the turnover rather than the row, because it is a
+        fact about one timeline, so it is passed in. The record anchor is the clip's
+        record start paired with **the snapshot's** In: that pairing is where the
+        turnover put this clip, and it does not move when the editor trims, which is
+        what keeps the mapping linear rather than sliding with every edit.
+        """
+        media, snapshot = self.media, self.snapshot
+        rate = media.rate if media else project_rate
+        source_start = media.start_frame if media else 0
+        return frames.EditContext(
+            fps=rate.as_float(),
+            source_start=source_start,
+            source_start_timecode=media.start_timecode if media and media.start_timecode else 0,
+            record_start_timecode=timeline_start + self.record_in,
+            record_start_source_frame=snapshot.in_frame if snapshot else source_start,
+            mode=mode,
+        )
+
     def errors(self) -> list[QCResult]:
         return [result for result in self.qc if result.severity == "error"]
 
@@ -537,6 +568,17 @@ class Turnover:
     turnover_id: str
     folder: Path
     timeline_path: Path | None = None
+    timeline_start: int = 0
+    """The timeline's own start, in frames. `01:00:00:00` at 24 is 86400.
+
+    Record timecode is only meaningful against it: `ShotRow.record_in` is measured from
+    the timeline's zero, and an edit that starts at an hour is the normal case, so a row
+    shown without this reads an hour early. Kept on the turnover because it is a fact
+    about one timeline and a batch holds several. Additive, so the schema version does
+    not move and a batch saved before this reads back as zero, which is what a timeline
+    starting at zero would say anyway.
+    """
+
     number: int | None = None
     month: int | None = None
     day: int | None = None
@@ -555,6 +597,7 @@ class Turnover:
             "turnover_id": self.turnover_id,
             "folder": str(self.folder),
             "timeline_path": str(self.timeline_path) if self.timeline_path else None,
+            "timeline_start": self.timeline_start,
             "number": self.number,
             "month": self.month,
             "day": self.day,
@@ -569,6 +612,7 @@ class Turnover:
             turnover_id=str(data["turnover_id"]),
             folder=Path(data["folder"]),
             timeline_path=_as_path(data.get("timeline_path")),
+            timeline_start=int(data.get("timeline_start", 0)),
             number=data.get("number"),
             month=data.get("month"),
             day=data.get("day"),
