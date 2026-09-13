@@ -1120,6 +1120,14 @@ UI_SPEC section 1, and the section was written up with it. **Five things settled
   found by printing the real window's tooltips rather than by any test, which is the fifth time
   that has caught something - so the test now pins the width rather than the sentence.
 
+**The arm64 runner caught two tests that had spelled a shortcut out.** `QKeySequence.toString()`
+gives the portable `Ctrl+R` everywhere, but the tooltip asks for **native** text on purpose, so
+macOS draws `⌘R` and Linux draws `Ctrl+R`. Both tests passed here and failed there. The code was
+right and the tests were Linux-shaped; they now read the shortcut off the action the same way the
+tooltip does. This is the second time CI has caught a difference the dev machine cannot see, and
+it is the cheap kind: `Ctrl+R` is the longer of the two, so the width limit is still measured
+against the worst case.
+
 **`Ingest Colour Session` now has the tooltip that would let it read `Ingest`**, which is the
 argument docs/MAC_SESSION.md asks to settle in front of the real window. The label is
 deliberately **not** changed here: that judgement is about width on a real toolbar.

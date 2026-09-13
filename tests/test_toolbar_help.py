@@ -15,6 +15,7 @@ from itertools import product
 from pathlib import Path
 
 import pytest
+from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import QApplication
 
 from proingest.ui import toolbar_help as help_
@@ -23,6 +24,17 @@ from tests.fixtures.batches import batch, row
 from tests.test_ui_shell import DrivenWindow
 
 KEYS = tuple(help_.WHAT_IT_DOES)
+
+
+def native(action: QAction) -> str:
+    """The shortcut as the tooltip spells it, which is not how a test would spell it.
+
+    `toString()` gives the portable `Ctrl+R` on every platform; the tooltip asks for
+    native text, so macOS draws `\u2318R` and Linux draws `Ctrl+R`. A test that wrote
+    either one out passed here and failed on the arm64 runner, which is what that runner
+    is for.
+    """
+    return action.shortcut().toString(QKeySequence.SequenceFormat.NativeText)
 
 
 def every_state() -> list[ToolbarState]:
@@ -197,7 +209,8 @@ class TestTheWindowSaysTheRightOne:
         window.set_batch(batch(row()))
         window.batch.turnovers[0].color_session_edl = tmp_path / "final.edl"
         window._update_state()
-        assert window.action_run.toolTip() == help_.WHAT_IT_DOES[help_.RUN] + "  Ctrl+R"
+        expected = f"{help_.WHAT_IT_DOES[help_.RUN]}  {native(window.action_run)}"
+        assert window.action_run.toolTip() == expected
 
     def test_scan_explains_itself_once_every_turnover_has_shots(
         self, window: DrivenWindow
@@ -217,5 +230,5 @@ class TestTheWindowSaysTheRightOne:
         self, window: DrivenWindow
     ) -> None:
         """Native text, so it reads as Cmd on the Mac without a platform branch here."""
-        assert window.action_run.shortcut().toString() in window.action_run.toolTip()
+        assert native(window.action_run) in window.action_run.toolTip()
         assert not window.action_add_turnover.toolTip().split("\n")[0].endswith(" ")
