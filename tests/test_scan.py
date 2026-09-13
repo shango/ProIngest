@@ -62,6 +62,29 @@ class TestScanTurnover:
         assert row.duration == 6
         assert row.audio_path is not None
 
+    def test_the_path_map_reaches_the_audio_as_well_as_the_picture(self, tmp_path: Path) -> None:
+        """QC-016 rewrites the picture URL onto the local mount; the audio URL came from
+        the same machine and has to go through the same map."""
+        folder = tmp_path / GOOD_FOLDER
+        fixtures.make_turnover(folder, shots=1, frames=6)
+        media_dir = folder / "media"
+        foreign = "file:///G:/turnover/media"
+        fixtures.make_otio(
+            folder / "turnover001.otio",
+            [("MELT0001_pl01", f"{foreign}/MELT0001_pl01.1001.exr")],
+            duration=6,
+            source_start=86400,
+            available_start=86400,
+            available_duration=6,
+            audio_clips=[("MELT0001_pl01_audio", f"{foreign}/MELT0001_pl01.wav")],
+        )
+        settings = scan.ScanSettings(path_map={"G:/turnover/media": str(media_dir)})
+        _, rows = scan.scan_turnover(folder, "t1", settings)
+
+        assert rows[0].media is not None, "the picture was remapped"
+        assert rows[0].audio_path == media_dir / "MELT0001_pl01.wav"
+        assert rows[0].audio is not None, "and so was the audio"
+
     def test_snapshot_matches_the_timeline_range(self, tmp_path: Path) -> None:
         """The snapshot is what the turnover arrived with; QC-035 compares against it."""
         folder = tmp_path / GOOD_FOLDER

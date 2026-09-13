@@ -222,7 +222,7 @@ def _build_row(
         clip, row, settings.source_encoding_key
     )
     _derive_ranges(row, clip)
-    _attach_audio(row, clip, loaded, index)
+    _attach_audio(row, clip, loaded, index, settings)
     _attach_side_files(row, index)
     qc.apply_row_rules(row, settings.project_rate, settings.rules)
     return row
@@ -392,6 +392,7 @@ def _attach_audio(
     clip: timeline.ClipRecord,
     loaded: timeline.Timeline,
     index: media_module.DirectoryIndex,
+    settings: ScanSettings,
 ) -> None:
     """Associate audio from the timeline, or by name when the source was an EDL.
 
@@ -401,7 +402,10 @@ def _attach_audio(
     associated = loaded.audio_for(clip)
     row.audio_clip_count = len(associated)
     if associated and associated[0].media_url:
-        row.audio_path = media_module.url_to_path(associated[0].media_url)
+        # Through the same path map as the picture: the audio URL came from the same
+        # machine, so it needs the same rewrite onto the local mount.
+        referenced = media_module.url_to_path(associated[0].media_url)
+        row.audio_path = media_module.remap(referenced, settings.path_map)
     elif loaded.is_edl:
         # FR-1: an EDL cannot associate audio, so fall back to a same-name search.
         by_name = index.audio_matching(clip.name)
