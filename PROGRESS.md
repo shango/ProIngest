@@ -35,10 +35,12 @@ closed the gap M5.7.1 opened between a check that refuses to render without a se
 and a window with no way to say there is one. **And M5.8.1 is done**: there is a rotating
 log file, and every ffmpeg command line a *render* runs now actually reaches it, which it
 did not before - a spawned worker's root logger has no handlers, so FR-13's one named
-requirement was quietly false for the commands most worth reproducing. 1443 tests passing,
-`ruff` and `mypy --strict` clean.
-**M5.8.2, the Log tab itself, is next**, then M5.8.3, the Advanced settings section, with
-M5.11, the toolbar tooltips, still small and still loose in the order beside them.
+requirement was quietly false for the commands most worth reproducing. **And M5.8.2 is
+done**: the Log tab reads that log inside the window, filtered by level, by text and by the
+selected row, with the command lines copyable verbatim. 1467 tests passing, `ruff` and
+`mypy --strict` clean.
+**M5.8.3, the Advanced settings section, is next** and finishes M5.8, with M5.11, the
+toolbar tooltips, still small and still loose in the order beside it.
 
 **Two of the three things added to the plan on 2026-09-12 are still unbuilt**: tooltips on the
 toolbar (M5.11) and a user guide with screenshots (PRD FR-17, the new M9). The third was the
@@ -1039,20 +1041,51 @@ decisions live.
 `~` into the source, and answers `logs` beside `settings.json` everywhere else. Both halves are
 tested, because neither runner exercises both.
 
-### Next task: M5.8.2, the Log tab
+### M5.8.2 is built: the Log tab
 
-The third of the bottom dock's three tabs, present and empty since M5.1. The records are
-already arriving in the right process - that is what M5.8.1 was - so this is a widget and a
-handler that appends to it, plus the filters FR-13 names. Things to settle when building it:
-**it must be bounded** (a run emits a record per ffmpeg call and a hundred shot batch is
-thousands), the handler runs on the **listener's thread** for anything from a worker so the
-hand-off into Qt has to be queued the way `ui/runner.py` does it, and "filter by row" reads
-`logsetup.shot_of`, which is empty for everything the window itself logs.
+The second of the bottom dock's three tabs, present and empty since M5.1, now a table of
+time, level, shot and message over a filter bar. UI_SPEC section 6.1 is the spec, written
+with it. **Four things settled.**
 
-Then **M5.8.3**, the Advanced section: the log level calls `logsetup.set_level`, and the ffmpeg
-path override has the same problem the Output section has - it is read inside a worker, by
-`ffmpeg.resolve_tool` - except that M5.8.1 has now built the channel it can travel on, which is
-`_worker_init`'s initargs.
+- **A `logging.Handler` cannot touch a widget**, so the module is two halves: `LogBuffer` is a
+  plain locked ring buffer that any thread may append to, and the view drains it on a 250 ms
+  timer. Records genuinely arrive on three threads - a run's command lines on
+  `logsetup`'s listener thread, the scan's on its own `QThread`, everything else on the UI
+  thread. A queued signal per record would also have worked and is what was rejected: a run
+  emits a record per ffmpeg call, and `ui/runner.py` already folds progress for exactly that
+  reason.
+- **A record is turned into a `Line` the moment it arrives**, on whichever thread made it. A
+  `LogRecord` holds `args` and an `exc_info` that can be any live object, and five thousand of
+  them is a panel keeping a whole run's memory alive.
+- **The bound is the table, not the filter.** A hidden line still ages out, so no filter can be
+  the thing that makes the window grow. The complete record is the file; the panel is its tail.
+- **"Selected row only" unticks itself when the selection goes.** The alternative is a box that
+  is ticked while filtering nothing, which is a control saying something untrue about the table.
+  It is unavailable for a selection spanning two shots for the same reason.
+
+**One Qt trap that cost a test run and would have shipped silently**: `setHidden` on a
+`QTreeWidgetItem` that has not been added to a tree yet does nothing. Filtering was applied
+before `addTopLevelItem`, so every line arriving while a filter was on came in visible. It
+looks like a filter that ignores new lines and nothing about it raises.
+
+### Next task: M5.8.3, the Advanced settings section
+
+The last of M5.8. Two fields, and they are not the same size:
+
+- **The log level** is easy and is what M5.7.2 was waiting for: an `AppSettings.log_level`, and
+  Apply calls `logsetup.set_level`. Note that a level changed mid-run does not reach the pool,
+  by design (M5.8.1): the parent's level travels to a worker at process creation.
+- **The ffmpeg path override** has the Output section's problem - `ffmpeg.resolve_tool` is
+  called inside a worker - except that M5.8.1 built the channel it can travel on, which is
+  `_worker_init`'s initargs. `resolve_tool` already takes an override argument and seven call
+  sites pass none, so the shape is a module level default in `core/ffmpeg.py` set at worker init
+  and at startup, rather than an argument threaded through seven signatures.
+
+**The Advanced section's note should also name the log file's path**, which is the one thing a
+person looking at that page will want and cannot otherwise find.
+
+After that, **M5.11, the toolbar tooltips**, and **M5.9, the frozen columns**, which is last on
+purpose (section 5).
 
 - **M5.11, the toolbar tooltips**, is still small and still loose in the order, and it is
   worth a little more with every chunk: the answer to "why is Run doing nothing" is QC-008,
@@ -1351,7 +1384,7 @@ requirement is three things and the first one is not a UI task at all:
 | chunk | scope | state |
 |---|---|---|
 | M5.8.1 | `core/logsetup.py`, the rotating file, and the bridge that gets a **worker process**'s ffmpeg command lines into it | **done, 1443 tests.** `ui/paths.log_dir()`, and `execute` owns a log queue per run |
-| M5.8.2 | The Log tab itself: the third tab of the bottom dock, filtered by level, by text and by the selected row | not started |
+| M5.8.2 | The Log tab itself: the second tab of the bottom dock, filtered by level, by text and by the selected row | **done, 1467 tests.** `ui/log_view.py`, a locked ring buffer between the handler and the widget, drained on a timer |
 | M5.8.3 | The Settings page's **Advanced** section: the log level, and the ffmpeg path override travelling to a worker on the same init channel | not started |
 
 **M5.4 settled four things that should not be re-derived.**

@@ -58,6 +58,7 @@ from proingest.ui import metadata, settings_form
 from proingest.ui.autosave import AutoSaver
 from proingest.ui.batch_bar import BatchBar
 from proingest.ui.issues import IssuesDock
+from proingest.ui.log_view import LogView
 from proingest.ui.metadata_pane import MetadataPane
 from proingest.ui.run_strip import LINK_COLOR, RunStrip
 from proingest.ui.runner import Runner, RunProgress
@@ -1203,7 +1204,7 @@ class MainWindow(QMainWindow):
         self.refresh_metadata()
 
     def _build_bottom_dock(self) -> None:
-        """Issues (M5.4), then Log and Deliverables, empty until each has something."""
+        """Issues (M5.4) and Log (M5.8.2), then Deliverables, still to come."""
         dock = QDockWidget("Details", self)
         dock.setObjectName("bottom_dock")
         dock.setAllowedAreas(Qt.DockWidgetArea.BottomDockWidgetArea)
@@ -1212,9 +1213,12 @@ class MainWindow(QMainWindow):
         tabs.setObjectName("bottom_tabs")
         self.issues = IssuesDock(tabs)
         self.issues.row_activated.connect(self.shot_list.select_row)
+        self.log_view = LogView(tabs)
+        built = {"Issues": self.issues, "Log": self.log_view}
         for name in BOTTOM_TABS:
-            if name == "Issues":
-                tabs.addTab(self.issues, name)
+            widget = built.get(name)
+            if widget is not None:
+                tabs.addTab(widget, name)
                 continue
             placeholder = QLabel(f"No {name.lower()} yet", tabs)
             placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -1224,6 +1228,24 @@ class MainWindow(QMainWindow):
         self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, dock)
         self.bottom_dock = dock
         self.bottom_tabs = tabs
+
+        # The same two signals the metadata pane follows, minus the one about QC: what
+        # the Log tab needs from the list is a shot code, and only a selection and an
+        # edit can change it.
+        self.shot_list.selectionModel().selectionChanged.connect(
+            lambda *_: self._refresh_log_filter()
+        )
+        self.shot_model.row_edited.connect(lambda _row: self._refresh_log_filter())
+
+    def _refresh_log_filter(self) -> None:
+        """Tell the Log tab which shot "selected row only" means (FR-13).
+
+        One shot or none. A selection spanning two shots has no single row to filter by,
+        and so does a row with no shot code yet; both read as no selection rather than as
+        a filter that matches nothing.
+        """
+        codes = {row.shot_code or "" for row in self.shot_list.selected_rows()}
+        self.log_view.set_selected_shot(codes.pop() if len(codes) == 1 else "")
 
     def _build_status_bar(self) -> None:
         """Section 7's progress, hidden until a run has something to report."""
@@ -1271,5 +1293,6 @@ class MainWindow(QMainWindow):
             return
         self.scanner.shutdown()
         self.runner.shutdown()
+        self.log_view.detach()
         self.save_window_state()
         super().closeEvent(event)

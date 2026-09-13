@@ -111,6 +111,15 @@ After commit, Duration and Max Avail recompute, validation reruns for the row on
 
 Table: row, rule ID, severity, message, "Fix" hint where applicable (e.g. "Rename shot code", "Locate media" opens a file picker and writes a path override into the batch). Double-click selects the row in the list.
 
+## 6.1 Log tab
+
+The second tab of the same dock, built in M5.8.2 against PRD FR-13. Table: time, level, shot, message, over a filter bar of a minimum level, a search box and a "Selected row only" tick.
+
+- **The message is never abbreviated and never re-wrapped**, and Ctrl+C copies the selected lines. CLAUDE.md logs every ffmpeg command verbatim *so the user can reproduce a render*, and a command the editor cannot get out of the window has only half kept that promise.
+- **"Selected row only" is FR-13's filter by row.** Only a line a render worker stamped carries a shot, so it hides what the window itself logged too: it answers "what happened to this shot", not "what happened while this shot was selected". It is unavailable with no selection and with a selection spanning two shots, and a selection going away unticks it rather than leaving a tick that filters nothing.
+- **The panel is bounded and the file is not.** It keeps the last `MAX_LINES`; the complete record is the rotating file in `~/Library/Logs/ProIngest` (PACKAGING.md). A hidden line ages out with the rest, so a filter can never be the thing that makes the window grow.
+- **It follows the tail only when it is already at the tail.** Somebody who has scrolled up is reading something.
+
 ## 7. Run and progress
 
 - Run opens no dialog if the delivery root is set; otherwise it prompts once.

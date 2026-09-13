@@ -221,3 +221,8 @@ Treat it as a working session with the editor rather than a delivery.
       Linux here: both runners and this machine take the other branch, and the test that covers
       the macOS half fakes `sys.platform`. Also read one real run's log and judge whether an
       ffmpeg command line per deliverable is the right density, or whether it wants DEBUG.
+- [ ] **Read the Log tab during a real run and judge its density and its width.** Drawn and
+      checked offscreen on Linux only. Four columns over a bottom dock is tight, and an ffmpeg
+      command line is two hundred characters: watch whether the Message column wants the dock
+      taller, whether the table wants a monospace font for command lines, and whether Ctrl+C
+      out of it pastes into a terminal cleanly. UI_SPEC section 6.1.

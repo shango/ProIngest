@@ -8,6 +8,7 @@ theme, and the theme is the one part of this a person has to judge (docs/MAC_SES
 
 from __future__ import annotations
 
+import sys
 from collections.abc import Callable, Sequence
 from pathlib import Path
 
@@ -180,7 +181,7 @@ class TestTheApplication:
         Asserted here rather than left to a Mac session, because the branch is the whole
         of the decision and neither runner exercises both halves of it.
         """
-        monkeypatch.setattr(paths.sys, "platform", paths.MACOS_LOGS)
+        monkeypatch.setattr(sys, "platform", paths.MACOS_LOGS)
         folder = paths.log_dir()
         assert folder.name == paths.APPLICATION_NAME
         assert folder.parent.name == "Logs"
@@ -306,6 +307,13 @@ class TestTheLayout:
     def test_the_bottom_dock_has_its_three_tabs(self, window: DrivenWindow) -> None:
         names = [window.bottom_tabs.tabText(i) for i in range(window.bottom_tabs.count())]
         assert names == list(BOTTOM_TABS)
+
+    def test_the_log_tab_is_the_log_panel_rather_than_a_placeholder(
+        self, window: DrivenWindow
+    ) -> None:
+        """M5.8.2. Deliverables is still the placeholder and is the tab left to build."""
+        assert window.bottom_tabs.widget(BOTTOM_TABS.index("Log")) is window.log_view
+        assert isinstance(window.bottom_tabs.widget(BOTTOM_TABS.index("Deliverables")), QLabel)
 
     def test_the_status_bar_progress_is_hidden_until_a_run(self, window: DrivenWindow) -> None:
         assert not window.progress.isVisible()
@@ -1371,6 +1379,21 @@ class TestTheMetadataPane:
     def test_ctrl_i_is_what_toggles_it(self, window: DrivenWindow) -> None:
         assert window.action_metadata.shortcut() == QKeySequence("Ctrl+I")
         assert window.action_metadata.isCheckable()
+
+    def test_the_log_tab_follows_the_same_selection(self, window: DrivenWindow) -> None:
+        """FR-13's filter by row needs a shot code, which only the list knows (M5.8.2)."""
+        window.set_batch(batch(row(), row("MELT0002_pl01", record_in=224)))
+        window.shot_list.select_row(window.batch.rows[1])
+        assert window.log_view.selected_only.isEnabled()
+        assert window.log_view.selected_only.toolTip().endswith("MELT0002")
+
+    def test_a_selection_spanning_two_shots_leaves_the_log_filter_unavailable(
+        self, window: DrivenWindow
+    ) -> None:
+        """There is no one row to filter by, so the box says there is none."""
+        window.set_batch(batch(row(), row("MELT0002_pl01", record_in=224)))
+        window.shot_list.selectAll()
+        assert not window.log_view.selected_only.isEnabled()
 
     def test_the_pane_is_not_movable_out_of_its_place(self, window: DrivenWindow) -> None:
         """Section 1 calls it a fixed width reading surface, not a second workspace."""
