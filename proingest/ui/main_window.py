@@ -16,11 +16,14 @@ than a failed assertion.
 
 from __future__ import annotations
 
+import re
 from base64 import b64decode, b64encode
+from collections import Counter
+from collections.abc import Sequence
 from pathlib import Path
 
-from PySide6.QtCore import QByteArray, Qt
-from PySide6.QtGui import QAction, QCloseEvent, QKeySequence
+from PySide6.QtCore import QByteArray, Qt, QTimer, QUrl
+from PySide6.QtGui import QAction, QCloseEvent, QDesktopServices, QKeySequence
 from PySide6.QtWidgets import (
     QDockWidget,
     QFileDialog,
@@ -37,12 +40,20 @@ from PySide6.QtWidgets import (
 )
 
 from proingest import __version__
-from proingest.core import batchfile, qc, scan
+from proingest.core import batchfile, clf, exports, planner, qc, render, scan
 from proingest.core import settings as core_settings
-from proingest.core.models import DEFAULT_BATCH_NAME, Batch, MediaInfo, ShotRow, Turnover
+from proingest.core.models import (
+    DEFAULT_BATCH_NAME,
+    Batch,
+    Deliverable,
+    MediaInfo,
+    ShotRow,
+    Turnover,
+)
 from proingest.ui.autosave import AutoSaver
 from proingest.ui.batch_bar import BatchBar
 from proingest.ui.issues import IssuesDock
+from proingest.ui.runner import Runner, RunProgress
 from proingest.ui.scanner import Scanner
 from proingest.ui.shot_list import ShotListView
 from proingest.ui.shot_model import DisplayMode, ShotListModel
@@ -64,6 +75,37 @@ ISSUES_LINK = "See the Issues dock"
 BATCH_FILTER = "ProIngest batch (*.pibatch)"
 
 BOTTOM_TABS = ("Issues", "Log", "Deliverables")
+
+NOTHING_TO_RENDER = "Nothing to render: no row produced a deliverable"
+
+RUN_REFRESH_MS = 200
+"""How often the status bar and the row bars are redrawn while a run is going.
+
+Five times a second reads as live and costs nothing. The alternative, repainting per
+progress message, is a message per frame per worker: on a fast copy job that is
+thousands a second, all of them saying something the eye cannot see."""
+
+
+def banner_text(
+    written: Sequence[Deliverable], reports: Path | None, cancelled: bool
+) -> str:
+    """UI_SPEC section 7's banner, with the path as the thing that can be clicked.
+
+    The wording is the spec's, except that a stopped run says so: the counts alone would
+    read as a batch that finished with most of it skipped, which is the one thing an
+    editor who pressed Stop already knows and the one thing somebody who did not needs
+    telling. The exports sentence is dropped rather than faked when nothing was written.
+    """
+    counts = Counter(item.status for item in written)
+    head = "Run stopped" if cancelled else "Batch complete"
+    text = (
+        f"{head}: {counts['done']} done, {counts['failed']} failed, "
+        f"{counts['skipped']} skipped."
+    )
+    if reports is None:
+        return f"{text} No exports were written."
+    return f'{text} Exports written to <a href="#reports">{reports}</a>'
+
 
 
 class MainWindow(QMainWindow):
@@ -112,7 +154,9 @@ class MainWindow(QMainWindow):
         self.action_scan = self._action("Scan")
         self.action_scan.triggered.connect(self.scan_unscanned)
         self.action_run = self._action("Run", QKeySequence("Ctrl+R"))
+        self.action_run.triggered.connect(self.run_batch)
         self.action_stop = self._action("Stop", QKeySequence("Ctrl+."))
+        self.action_stop.triggered.connect(self.stop_run)
         self.action_toggle_skip = self._action("Skip Shot", QKeySequence("Ctrl+K"))
         self.action_toggle_skip.triggered.connect(lambda: self.shot_list.toggle_skip())
         self.action_export = self._action("Export")
@@ -224,6 +268,16 @@ class MainWindow(QMainWindow):
         self.scanner.started_folder.connect(self._say_scanning)
         self.scanner.finished.connect(self._scan_finished)
 
+        self.runner = Runner(self)
+        self.runner.progressed.connect(self._run_progressed)
+        self.runner.finished.connect(self._run_finished)
+        self.runner.failed.connect(lambda text: self.report_problem("The run failed", text))
+        self._run_progress: RunProgress | None = None
+        self._reports_folder: Path | None = None
+        self._run_timer = QTimer(self)
+        self._run_timer.setInterval(RUN_REFRESH_MS)
+        self._run_timer.timeout.connect(self._show_run_progress)
+
         self.list_pages = QStackedWidget(self)
         self.list_pages.addWidget(self.shot_list)
         self.list_pages.addWidget(self._list_empty_state())
@@ -233,6 +287,7 @@ class MainWindow(QMainWindow):
         batch_layout.setContentsMargins(0, 0, 0, 0)
         batch_layout.setSpacing(0)
         batch_layout.addWidget(self.batch_bar)
+        batch_layout.addWidget(self._build_banner())
         batch_layout.addWidget(self.list_pages)
 
         self.pages = QStackedWidget(self)
@@ -253,6 +308,8 @@ class MainWindow(QMainWindow):
         than written, and the window is what asks about them before it closes.
         """
         self.shot_model.set_batch(batch)
+        self.shot_model.set_run(None)
+        self.banner.setVisible(False)
         self.autosave.watch(batch, path)
         self._batch_path = path
         self._batch_open = True
@@ -472,6 +529,164 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(f"{len(self.batch.rows)} shots")
         self._update_state()
 
+    # --- the run ----------------------------------------------------------------------
+
+    def run_batch(self) -> None:
+        """Plan the batch and render it. UI_SPEC section 7, and PRD FR-6 and FR-7.
+
+        Three things happen before a job reaches a worker, and all three are on this
+        thread because all three write to the batch: pre-flight, which reads the disk
+        and records what it found on the rows; planning, which resolves one version per
+        shot from what is already in the delivery folder and replaces every row's
+        deliverables with the plan; and the check that anything came out of it. The
+        pool gets the jobs and nothing else (`ui/runner.py`).
+
+        **A batch scope error stops the run and a row scope one does not** (FR-6): a
+        turnover with no lens grid is a warning the editor reads, and a delivery root
+        that cannot be written to is not.
+
+        **The run carries no colour session yet.** Settings is where the session package
+        lives (PRD FR-12) and that is M5.7, so every row plans ungraded exactly as the
+        CLI does without `--color-session`: the same files in the same places, without
+        the CLF in them. QC-008 is the rule that refuses a run in that state and it
+        lands with the Settings page that can answer it.
+        """
+        if not self._batch_open or self.runner.busy or self.scanner.busy:
+            return
+        batch = self.batch
+        if batch.delivery_root is None:
+            # Section 7: prompted once, here, rather than by a dialog every run opens.
+            self.choose_delivery_root()
+            if batch.delivery_root is None:
+                return
+
+        self.banner.setVisible(False)
+        qc.preflight(batch)
+        blocking = [result for result in batch.qc if result.severity == "error"]
+        self.issues.show_batch(batch)
+        self.shot_model.refresh_rows()
+        if blocking:
+            self.report_problem(
+                "The batch cannot run",
+                "\n".join(f"{result.rule_id}: {result.message}" for result in blocking),
+            )
+            self._show_issues()
+            return
+
+        try:
+            jobs = planner.plan_batch(batch, batch.delivery_root)
+        except (ValueError, clf.ClfError) as exc:
+            self.report_problem("The batch cannot be planned", str(exc))
+            return
+        self.shot_model.refresh_rows()
+        if not jobs:
+            self.statusBar().showMessage(NOTHING_TO_RENDER)
+            return
+
+        self._run_progress = RunProgress(jobs)
+        self.shot_model.set_run(self._run_progress)
+        self.progress.setRange(0, 100)
+        self.progress.setValue(0)
+        self.progress.setVisible(True)
+        self._run_timer.start()
+        self._update_state()
+        self.runner.start(jobs)
+
+    def stop_run(self) -> None:
+        """Stop: no new jobs, in-flight ones stop at their next frame boundary.
+
+        What is already written stays written and what was part way through discards
+        its `.part`, so a stopped run leaves the delivery folder holding finished files
+        only (UI_SPEC section 7). The results still come back and are still applied,
+        because a job that finished before Stop was pressed is a real deliverable.
+        """
+        if not self.runner.busy:
+            return
+        self.runner.cancel()
+        self.statusBar().showMessage("Stopping after the frames in flight...")
+        self._update_state()
+
+    def _run_progressed(self, message: render.Progress) -> None:
+        """One message from a worker. Folded in and drawn on the timer, never here."""
+        if self._run_progress is not None:
+            self._run_progress.update(message)
+
+    def _show_run_progress(self) -> None:
+        """The status bar and the row bars, five times a second while a run is going."""
+        if self._run_progress is None:
+            return
+        self.progress.setValue(self._run_progress.percent)
+        self.statusBar().showMessage(self._run_progress.summary())
+        self.shot_model.refresh_rows()
+
+    def _run_finished(self, written: list[Deliverable], cancelled: bool) -> None:
+        """The records, back on the UI thread, written onto the rows they were planned from.
+
+        `apply_results` is what re-runs QC-150 and QC-151, the two phase B rules a worker
+        cannot answer, so the Issues dock is only right after it. The exports come next
+        because they report what the QC just decided, and the banner last because it
+        says where they went.
+        """
+        self._run_timer.stop()
+        self._run_progress = None
+        self.shot_model.set_run(None)
+        self.progress.setVisible(False)
+
+        batch = self.batch
+        render.apply_results(batch, written)
+        self.shot_model.refresh_rows()
+        self.issues.show_batch(batch)
+        self.autosave.schedule()
+
+        reports = self._write_reports(batch)
+        text = banner_text(written, reports, cancelled)
+        self.banner.setText(text)
+        self.banner.setVisible(True)
+        self._reports_folder = reports
+        # The same sentence without its link, because the banner is above the list and
+        # the status bar is where the eye already is when a long run ends.
+        self.statusBar().showMessage(re.sub(r"<[^>]+>", "", text))
+        self._update_state()
+
+    def _write_reports(self, batch: Batch) -> Path | None:
+        """The two spreadsheets, into the delivery root (FR-10). None when they could not go.
+
+        Written by the run rather than by a button, because section 7's banner says
+        where they are and PRD section 7 puts them at the end of a delivery. A batch
+        whose rows have no shot code has no show to file them under, which is a
+        `ValueError` from `report_paths` rather than a crash, and the banner then says
+        nothing was written instead of naming a folder that does not exist.
+        """
+        if batch.delivery_root is None:
+            return None
+        try:
+            log_path, tracker_path = exports.report_paths(batch, batch.delivery_root)
+            exports.write_qc_log(batch, log_path)
+            exports.write_shot_tracker(batch, tracker_path)
+        except (ValueError, OSError) as exc:
+            self.report_problem("The exports could not be written", str(exc))
+            return None
+        return log_path.parent
+
+    def _build_banner(self) -> QLabel:
+        """Section 7's non-modal banner, above the list and hidden until a run ends."""
+        banner = QLabel("", self)
+        banner.setObjectName("run_banner")
+        banner.setVisible(False)
+        banner.setTextFormat(Qt.TextFormat.RichText)
+        banner.linkActivated.connect(self._open_reports)
+        self.banner = banner
+        return banner
+
+    def _open_reports(self) -> None:
+        """The banner's link: the folder the two spreadsheets went into."""
+        if self._reports_folder is not None:
+            self.open_folder(self._reports_folder)
+
+    def open_folder(self, folder: Path) -> None:
+        """Show a folder in the Finder. Its own method so a test can answer it."""
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(folder)))
+
     # --- what is enabled, and what the centre shows -----------------------------------
 
     def _update_state(self) -> None:
@@ -483,11 +698,18 @@ class MainWindow(QMainWindow):
         """
         open_batch = self._batch_open
         scanning = self.scanner.busy
+        running = self.runner.busy
+        busy = scanning or running
         for action in (self.action_cycle_display, self.action_find, self.action_toggle_skip):
             action.setEnabled(open_batch)
         self.action_save.setEnabled(open_batch)
-        self.action_add_turnover.setEnabled(open_batch and not scanning)
-        self.action_scan.setEnabled(open_batch and not scanning and bool(self._unscanned()))
+        self.action_add_turnover.setEnabled(open_batch and not busy)
+        self.action_scan.setEnabled(open_batch and not busy and bool(self._unscanned()))
+        # New and Open swap the batch the run is writing into, so they go with it.
+        self.action_new.setEnabled(not running)
+        self.action_open.setEnabled(not running)
+        self.action_run.setEnabled(open_batch and not busy and bool(self.batch.rows))
+        self.action_stop.setEnabled(running and not self.runner.cancelled)
 
         if not open_batch:
             return
@@ -674,12 +896,14 @@ class MainWindow(QMainWindow):
         one the editor expects to lose, and what is still pending after it is a batch
         that has never been saved: the one case the editor has to answer for.
 
-        The scan thread is stopped last and it is waited on, because a `QThread` still
-        running when its owner is collected is a crash on the way out.
+        The scan and the run are stopped last and both are waited on, because a `QThread`
+        still running when its owner is collected is a crash on the way out. The run's
+        wait is the long one: it is waiting for in-flight jobs to reach a frame boundary.
         """
         if not self._may_abandon_current():
             event.ignore()
             return
         self.scanner.shutdown()
+        self.runner.shutdown()
         self.save_window_state()
         super().closeEvent(event)

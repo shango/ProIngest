@@ -99,6 +99,24 @@ Append to this as M5 and M6 are built.
 - [ ] **The delivery root in the batch bar shows a whole Drive path.** It is a flat button with
       the full path on it (M5.4, `UI_SPEC.md` section 13), and a Google Drive path on a Mac is
       long enough that this is a layout question rather than a styling one.
+- [ ] **A real render from the window, watched from start to banner.** Run, the row bars
+      filling, the status bar's percent, throughput and ETA, Stop part way through a second
+      run, and the banner above the list (M5.5, `UI_SPEC.md` section 7). This is the first
+      chunk whose whole point is watching something move, and five repaints a second was
+      chosen against a Linux compositor.
+- [ ] **The banner's link opens the `_reports` folder in the Finder.** `QDesktopServices`
+      on a Drive mount path (M5.5), which is the one thing in that banner Linux cannot
+      answer. Check the whole sentence fits at the window's default width, since a Drive
+      path is long.
+- [ ] **The slim progress bar in the Progress column reads as a bar at 2x Retina.** Four
+      pixels tall on the demoted line (M5.5, `ui/shot_list.py`), under a `3/5` count. If it
+      disappears into the row separator, the height is one constant.
+- [ ] **The rendering dot is not animated and section 3 asks for it to be.** Look at a run in
+      progress and decide whether the static accent dot plus a moving bar is enough, before
+      anybody builds a repaint timer for it (`PROGRESS.md` section 9).
+- [ ] **Closing the window mid-run waits for the jobs in flight and says nothing.** Up to two
+      minutes if a reference encode is going (M5.5). Decide whether that wants a sheet
+      explaining itself, or a prompt before the close.
 - [ ] Metadata pane: width and section states persist, long paths elide in the middle, values
       copy. `UI_SPEC.md` section 12.
 - [ ] Dark theme and font rendering at Retina, including the IBM Plex fallback chain.

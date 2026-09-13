@@ -39,7 +39,8 @@ from PySide6.QtCore import (
 from PySide6.QtGui import QBrush, QColor, QPainter, QPixmap
 
 from proingest.core import frames, qc
-from proingest.core.models import Batch, InOut, ShotRow, Turnover
+from proingest.core.models import Batch, Deliverable, InOut, ShotRow, Turnover
+from proingest.ui.runner import RunProgress
 
 ModelIndex = QModelIndex | QPersistentModelIndex
 
@@ -133,6 +134,17 @@ decides what it says, because the model is what knows the display mode.
 
 ROW_ROLE = Qt.ItemDataRole.UserRole + 2
 """The `ShotRow` behind an index, for the metadata pane and the Issues dock."""
+
+PROGRESS_ROLE = Qt.ItemDataRole.UserRole + 3
+"""How far this row's deliverables have got, 0.0 to 1.0, for the bar section 7 asks for.
+
+A float rather than the "3/5" text, because the bar and the text are two readings of the
+same fact and the delegate should not have to parse one to draw the other.
+"""
+
+DELIVERED = frozenset({"done", "exists"})
+"""The two statuses that mean the file is there. `exists` is a deliverable the planner
+found already written at the current version, which is done as far as a bar is concerned."""
 
 
 @dataclass(frozen=True)
@@ -238,12 +250,43 @@ def _version(row: ShotRow) -> str:
     return f"v{max(versions):02d}" if versions else ""
 
 
-def _progress(row: ShotRow) -> str:
-    """Done out of planned. The slim bar section 7 asks for arrives with the run."""
+def _delivered(item: Deliverable, run: RunProgress | None) -> bool:
+    """Whether this one output is written.
+
+    **A live run outranks the recorded status**, because the statuses on the row are not
+    written back until the run finishes (`render.apply_results`): during a run the row
+    still says `planned` and the only thing that knows better is the run itself.
+    """
+    if run is not None and run.knows(item.name):
+        return run.is_done(item.name)
+    return item.status in DELIVERED
+
+
+def _item_fraction(item: Deliverable, run: RunProgress | None) -> float:
+    """How far one output has got. Frames within a job, while the job is running."""
+    if run is not None and run.knows(item.name):
+        return run.fraction(item.name)
+    return 1.0 if item.status in DELIVERED else 0.0
+
+
+def _progress(row: ShotRow, run: RunProgress | None = None) -> str:
+    """Done out of planned, the job count section 7 asks for beside the bar."""
     if not row.deliverables:
         return ""
-    done = sum(1 for item in row.deliverables if item.status in ("done", "exists"))
+    done = sum(1 for item in row.deliverables if _delivered(item, run))
     return f"{done}/{len(row.deliverables)}"
+
+
+def _progress_fraction(row: ShotRow, run: RunProgress | None = None) -> float:
+    """The whole row, 0.0 to 1.0: every deliverable counted equally.
+
+    Equally rather than weighted by frames, because the bar is 90 pixels wide and what
+    it is read for is "is this row moving", not how many frames a reference has next to
+    a plate.
+    """
+    if not row.deliverables:
+        return 0.0
+    return sum(_item_fraction(item, run) for item in row.deliverables) / len(row.deliverables)
 
 
 def _side_files(row: ShotRow) -> str:
@@ -282,6 +325,7 @@ class ShotListModel(QAbstractItemModel):
         self._dots: dict[tuple[RowState, bool], QPixmap] = {}
         self._rules = qc.DEFAULT_SETTINGS
         self._name_counts: dict[str, int] = {}
+        self._run: RunProgress | None = None
 
     # --- what it is showing ----------------------------------------------------------
 
@@ -315,6 +359,43 @@ class ShotListModel(QAbstractItemModel):
                     self.index(0, IN, parent),
                     self.index(count - 1, OUT, parent),
                     [Qt.ItemDataRole.DisplayRole, SECONDARY_ROLE],
+                )
+
+    def set_run(self, progress: RunProgress | None) -> None:
+        """Show what a run is doing, or go back to reading the rows' own statuses.
+
+        The window hands the same `RunProgress` it shows in the status bar, so the bar
+        in a row and the percentage at the bottom cannot disagree. None ends the run,
+        which is what `render.apply_results` having written the statuses back means.
+        """
+        self._run = progress
+        self.refresh_rows()
+
+    def refresh_rows(self) -> None:
+        """Repaint every row in place: the status dot, the tints, and every cell but Notes.
+
+        A repaint rather than a reset, because a reset loses the selection, the scroll
+        position and which turnovers are collapsed, and what changes under a run or a
+        pre-flight is what a cell says rather than which rows there are.
+
+        Called on a timer while a run is going rather than per progress message. A
+        hundred shot run emits a message per frame per worker, and Qt would coalesce
+        none of it: five repaints a second is a bar an editor reads as live and a UI
+        thread that still has time to do something else.
+        """
+        for parent_row in range(len(self._batch.turnovers)):
+            parent = self.index(parent_row, 0, NO_PARENT)
+            count = self.rowCount(parent)
+            if count:
+                self.dataChanged.emit(
+                    self.index(0, STATUS, parent),
+                    self.index(count - 1, PROGRESS, parent),
+                    [
+                        Qt.ItemDataRole.DisplayRole,
+                        Qt.ItemDataRole.DecorationRole,
+                        Qt.ItemDataRole.BackgroundRole,
+                        PROGRESS_ROLE,
+                    ],
                 )
 
     def row_at(self, index: ModelIndex) -> ShotRow | None:
@@ -408,15 +489,31 @@ class ShotListModel(QAbstractItemModel):
             return QBrush(TINTS[state]) if state in TINTS else None
         return None
 
+    def state_for(self, row: ShotRow) -> RowState:
+        """Section 3's state for one row, which is `row_state` plus whatever a run knows.
+
+        `row_state` reads the deliverables' statuses, and those are only written back
+        when the run finishes, so **rendering is a state only a live run can report**.
+        Skipped still wins: it is the one state the editor chose rather than the tool.
+        """
+        state = row_state(row)
+        if state is RowState.SKIPPED or self._run is None:
+            return state
+        if any(self._run.is_running(item.name) for item in row.deliverables):
+            return RowState.RENDERING
+        return state
+
     def _row_data(self, row: ShotRow, index: ModelIndex, role: int) -> Any:
         column = index.column()
-        state = row_state(row)
+        state = self.state_for(row)
         if role == Qt.ItemDataRole.DisplayRole:
             return self._text(row, column)
         if role == Qt.ItemDataRole.EditRole:
             return self._edit_text(row, column)
         if role == SECONDARY_ROLE and column in (IN, OUT):
             return self._secondary(row, column)
+        if role == PROGRESS_ROLE and column == PROGRESS:
+            return _progress_fraction(row, self._run)
         if role == ROW_ROLE:
             return row
         if role == Qt.ItemDataRole.DecorationRole and column == STATUS:
@@ -454,7 +551,7 @@ class ShotListModel(QAbstractItemModel):
             AUDIO: lambda: _audio(row),
             SIDE_FILES: lambda: _side_files(row),
             VERSION: lambda: _version(row),
-            PROGRESS: lambda: _progress(row),
+            PROGRESS: lambda: _progress(row, self._run),
             NOTES: lambda: row.notes,
         }
         return texts[column]()

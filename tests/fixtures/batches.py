@@ -113,11 +113,20 @@ def turnover(turnover_id: str = "turnover001", **kwargs: object) -> Turnover:
     return built
 
 
-def batch(*rows: ShotRow, turnovers: list[Turnover] | None = None, name: str = "melt") -> Batch:
-    """A batch holding the rows given, with one turnover unless told otherwise."""
+def batch(
+    *rows: ShotRow,
+    turnovers: list[Turnover] | None = None,
+    name: str = "melt",
+    delivery_root: Path | None = Path("/delivery"),
+) -> Batch:
+    """A batch holding the rows given, with one turnover unless told otherwise.
+
+    `delivery_root` is a real folder for anything that plans or renders, and the
+    unwritable placeholder for everything that only reads the model.
+    """
     return Batch(
         name=name,
-        delivery_root=Path("/delivery"),
+        delivery_root=delivery_root,
         turnovers=turnovers if turnovers is not None else [turnover()],
         rows=list(rows),
     )

@@ -29,6 +29,13 @@ for why it cannot start on the current dev machine.
   editor's, and the v02 Windows build will have to revisit `BUNDLED_PLATFORM` regardless.
 - Distribution as a `.dmg` built with `create-dmg`, background image and an Applications
   symlink. A plain zip of the `.app` is the fallback and is honestly fine for one user.
+- **The entry point must call `multiprocessing.freeze_support()` before anything else.**
+  The render pool uses the spawn context on every platform (`core/render.py`), and a spawned
+  worker in a frozen bundle re-launches the bundle rather than re-importing a module. Without
+  that call, pressing Run in the packaged app opens four more copies of the window instead of
+  rendering. It costs one line, it does nothing when running from source, and it is the kind
+  of thing that is found by a person on a Mac watching windows multiply. Since M5.5 the UI
+  starts a pool of its own, so this is no longer only the CLI's problem.
 - `build/build.py` runs both steps and writes to `dist/`.
 - Version comes from `pyproject.toml` and is stamped into `Info.plist`, the dmg name, the
   About box, and every QC log.

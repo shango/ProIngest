@@ -15,12 +15,14 @@ encoded through the shot's grade and the ACES output transform baked into one cu
 no longer converts ahead of the CLF**, which was the one thing in the code that would have
 delivered a wrong plate against a real session. The source encoding went back to camera native
 log on 2026-09-12 and the tool now reads it per shot, resolves it through a table, records it
-in the QC log and states it and its origin in the delivered header. **M5, the UI, is four
+in the QC log and states it and its origin in the delivered header. **M5, the UI, is five
 chunks in of nine.** A batch can be made, opened, saved and filled with turnovers; the window
-shows it as a list; the list can be typed into; the turnover scan runs off the UI thread; and
-every QC result is readable in the Issues dock and clickable back to its shot. The rest of M5
-is specified in section 5. 1199 tests passing, `ruff` and `mypy --strict` clean.
-**M5.5, the run and its progress, is next.**
+shows it as a list; the list can be typed into; the turnover scan runs off the UI thread;
+every QC result is readable in the Issues dock and clickable back to its shot; and **the tool
+now renders from the window**: Run plans the batch and drives the pool, the rows fill in as
+they go, Stop reaches a job mid flight, and a finished run writes both spreadsheets and says
+where they went. The rest of M5 is specified in section 5. 1249 tests passing, `ruff` and
+`mypy --strict` clean. **M5.6, the metadata pane, is next.**
 
 **M5 is not blocked**: OQ-37 came back the same day and
 answered the expensive half of M4.6. Two questions are open and both are about correctness rather
@@ -452,6 +454,65 @@ should not be re-derived.
   paths that build a `ShotColor`, with a session and without, need the same answer. QC-047 is
   where it is reported, and that is M4.6.4.
 
+### M5.5 is built: the run reaches the window
+
+Built 2026-09-12. `ui/runner.py` is new, the window gains Run, Stop, the status bar line, the
+exports and the banner, and the Progress column finally has a bar in it. 50 tests, 1249 in
+total. **Driven end to end on a real two shot turnover before it was committed**: ten
+deliverables, both spreadsheets, the banner naming `_reports`, and every row at 5/5.
+
+- **The pool goes on a `QThread` and nothing else changed about it.** `render.execute`
+  already takes an `on_progress` callable and a `multiprocessing.Event`, and it already
+  calls back in the calling process rather than in a worker, so this chunk is wiring and
+  not a mechanism. The shape is `ui/scanner.py`'s, deliberately: a worker `QObject` moved
+  onto a thread that lives only as long as the work. **The jobs cross and the batch does
+  not**, which is the same rule the scan obeys and is easy here because a `DeliverableJob`
+  is self contained already: it crosses a process boundary every run.
+- **Progress arrives on a third thread and that is fine.** `execute` drains its queue on a
+  plain Python thread, so `on_progress` runs there; the receiver lives on the UI thread, so
+  Qt queues the signal and the message arrives where it can be drawn. Nothing shares state
+  across the boundary: `Progress` is frozen, and it is the only thing that crosses.
+- **Nothing repaints per message.** A hundred shot run emits a message per frame per worker,
+  and Qt coalesces none of it. The messages are folded into `RunProgress` and a 200 ms timer
+  draws the status bar and the rows, which is one mechanism for both and is why the message
+  rate cannot become a frame rate problem. `RunProgress` has no Qt in it, so the percentage,
+  the throughput and the ETA are testable against a fake clock.
+- **The percentage is counted in frames and the row bars in deliverables.** Jobs are wildly
+  uneven - a 240 frame plate and a camData copy are one job each - so a job counter jumps.
+  A run made only of copies has no frames at all and falls back to counting jobs. Within one
+  row the four deliverables count equally, because that bar is 90 pixels wide and answers
+  "is this row moving" rather than how many frames a reference has beside a plate.
+- **Rendering is a state only a live run can report.** `row_state` reads the deliverables'
+  statuses and `render.apply_results` does not write those back until the run ends, so a row
+  in flight would otherwise look untouched for the whole run. `ShotListModel.state_for` is
+  `row_state` plus what the run knows, and **skipped still wins**: it is the one state the
+  editor chose rather than the tool.
+- **A live run outranks the recorded status in the Progress cell too**, for the same reason,
+  and a deliverable this run never planned keeps whatever a previous run wrote on it.
+- **The run writes the two spreadsheets and the banner says where.** UI_SPEC section 7's
+  banner names them, PRD section 7 puts them at the end of a delivery, and doing it here is
+  what makes the sentence true. A batch whose rows have no shot code has no show to file them
+  under, which `exports.report_paths` refuses; the banner then says nothing was written
+  rather than naming a folder that does not exist.
+- **A stopped run says "Run stopped" rather than calling itself complete.** The spec gives
+  the wording for a finished batch only, and the counts alone would read as a batch that
+  finished with most of it skipped.
+- **`Runner.shutdown` quits the thread before it waits, and that was a real bug.**
+  The thread normally ends when `_collect` runs - on the UI thread, which is the thread
+  `shutdown` is about to block. Waiting without quitting first was a deadlock that lasted
+  until the 120 second timeout, which a test caught by taking exactly that long.
+
+**What M5.5 does not do, and where each lands.** The run carries **no colour session**, so
+every row plans ungraded exactly as the CLI does without `--color-session`: the session's
+location is a Settings value and that is M5.7, which is also where QC-008 refuses a run in
+this state. The concurrency is `render.DEFAULT_WORKERS` until Settings can set it (FR-12).
+The rendering dot is the accent colour but **is not animated**, which section 3 asks for and
+which wants a repaint timer of its own. Pre-flight and planning run on the UI thread, which
+is the one thing in this chunk worth measuring on a real turnover (section 9). And the
+toolbar's **Export button is still disabled**: the run writes both spreadsheets, so what that
+button is for is writing them again without rendering, which no chunk in section 5 owns. It
+is a handful of lines against `_write_reports`, and it wants asking for before it is built.
+
 ### M5.3 is built: the list can be typed into
 
 Built 2026-09-12. `ui/shot_model.py` gains `flags`, `setData`, `parse_frame` and
@@ -647,19 +708,25 @@ nothing written. **When M5 wires the colour session into Settings**, the rules w
 tell "no session yet" from "this session had no grade for this row", and that is the moment to
 decide whether QC-046's error widens.
 
-### Next task: M5.4, the batch lifecycle
+### Next task: M5.6, the metadata pane
 
-The list shows a batch and can be typed into, and nothing yet can make one or open one:
-every batch reaches the window through `MainWindow.set_batch`, which only a test calls.
-M5.4 is New, Open, Save and Add Turnover against the source root, the scan off the UI
-thread, and the Issues dock. It is also what finally gives autosave somewhere to write:
-`set_batch` already takes the path and `ui/autosave.py` holds the edits until it gets one.
+Everything the list can do, it can now do: a batch is made, filled, edited, run and
+exported from the window. What is missing beside the list is the reading surface UI_SPEC
+section 12 specifies, and it is the smallest chunk left in M5: **read only, never takes
+focus, collapses to nothing, and deliberately does not repeat the list's columns**. The
+field list is section 12.2 and it was taken from what `core/models.py` actually holds
+rather than invented, so nothing in core has to change for it. `ShotListView.selected_rows`
+already hands back what is selected and section 12.3 says what a multiple selection shows:
+the fields the rows agree on, and a count where they do not.
 
-**The one thing to decide first** is where the scan runs. It is the only long operation in
-M5 that is not the render pool, it walks a network mount, and CLAUDE.md forbids it on the
-UI thread. The pool in `core/render.py` is a process pool driven by queues and this is one
-call that returns a `Turnover`; a `QThread` with a signal is probably the honest answer,
-but it has to leave core Qt-free, which is the rule the pool already obeys.
+**The thing to decide first** is where the pane gets its updates from. The list emits
+`row_edited` on a commit and the model repaints whole rows on `refresh_rows`; a pane that
+listens to the selection alone will show a stale value the moment a cell is edited or a
+run finishes. Following one signal too few is the failure mode, and it looks like a field
+that is simply wrong rather than one that is late.
+
+Which fields earn their place is OQ-26 and it wants a real review session; build section
+12.2's list, and let the pane be the thing that gets argued about in front of the user.
 
 `docs/UI_SPEC.md` is M5's spec, and the things M5 still owes the colour chain are small,
 known, and all in M5.7:
@@ -672,6 +739,9 @@ known, and all in M5.7:
 - **Wiring QC-008, QC-009, QC-019, QC-039 and QC-045**, which all read `core/clf.py` and
   none of which can fire until a batch knows where its colour session is. QC-008 is the one
   that refuses a run: a batch cannot produce final deliverables until its session exists.
+  **Since M5.5 the window can render**, so until M5.7 a run from the UI plans every row
+  ungraded, exactly as the CLI does without `--color-session`. That is the state QC-008
+  exists to refuse, and it is the strongest reason M5.7 should not slip far.
 - **The QC log's CLF column is already written** and so is `ShotRow.clf_path`, so the UI has
   something to show per row without any new plumbing.
 
@@ -817,17 +887,18 @@ PDF viewer.
 | `core/qc.py` | rule registry: phase A, `RuleSettings`, `preflight`, phase B | 1416 |
 | `core/settings.py` | what the app remembers between launches, as JSON. Takes the path; never works out where it is | 111 |
 | `ui/app.py` | the QApplication, its names, the theme, and `run()` | 49 |
-| `ui/main_window.py` | UI_SPEC section 1's frame: menus and their macOS roles, toolbar, bottom dock, status bar, the three empty states and the batch page, window state, the autosaver, and the batch lifecycle: New, Open, Save, the two roots, Add Turnover and Scan | 679 |
-| `ui/shot_model.py` | the batch as a two level tree: section 2's columns, section 3's dot and tints, the In/Out display mode, what the four editable cells commit, and where a given row sits | 663 |
-| `ui/shot_list.py` | the view, the two line cell, the search filter, the cell editor, Tab across the editable columns, the skip prompt and selecting a row somebody pointed at from the Issues dock | 340 |
+| `ui/main_window.py` | UI_SPEC section 1's frame: menus and their macOS roles, toolbar, bottom dock, status bar, the three empty states and the batch page, window state, the autosaver, the batch lifecycle (New, Open, Save, the two roots, Add Turnover and Scan) and the run (pre-flight, planning, Stop, the exports and section 7's banner) | 909 |
+| `ui/shot_model.py` | the batch as a two level tree: section 2's columns, section 3's dot and tints, the In/Out display mode, what the four editable cells commit, where a given row sits, and how far a live run has got with it | 760 |
+| `ui/shot_list.py` | the view, the two line cell, the Progress column's slim bar, the search filter, the cell editor, Tab across the editable columns, the skip prompt and selecting a row somebody pointed at from the Issues dock | 394 |
 | `ui/batch_bar.py` | the batch name, the delivery root button, the three state In/Out toggle and the search box | 104 |
 | `ui/paths.py` | the one place that asks `QStandardPaths` where the app's own files live | 33 |
 | `ui/autosave.py` | the debounced write of an edited batch, and what it does with one that has no file yet | 97 |
 | `ui/scanner.py` | `core/scan.py` on a `QThread`: one result per folder, a copied probe cache, cancel between folders, and a shutdown that waits | 184 |
+| `ui/runner.py` | `core/render.py`'s pool on a `QThread`: the jobs over, the records back, progress forwarded onto the UI thread, a `RunProgress` that turns it into a percentage, a throughput and an ETA, and a shutdown that waits | 350 |
 | `ui/issues.py` | UI_SPEC section 6: every QC result in the batch as a table, with the rule ID in its own column and a double-click that selects the shot | 155 |
 | `__main__.py` | `proingest scan`, `run` and `qc` CLI, `--rules` overrides, and the UI when there is no subcommand | 440 |
 
-Not built yet: the rest of `proingest/ui/`, which is M5.5 onward. **`core/stringout.py` will not be built**: M6 is dropped
+Not built yet: the rest of `proingest/ui/`, which is M5.6 onward. **`core/stringout.py` will not be built**: M6 is dropped
 (PRD FR-9). `naming.stringout_mp4` and `naming.normalize_shooter` are therefore reachable
 from tests only; they are kept deliberately, because the stringout name is now something a
 human types and the tool can still check it, exactly as with the lens grid.
@@ -868,7 +939,7 @@ Entry points worth knowing:
 | M4 | QC: all rules both phases, xlsx exports, `qc` CLI | complete, 175 tests |
 | M4.5 | Colour pipeline, core only. Source log in, CLF applied, ACEScg out, the viewing LUT | complete, 111 tests |
 | M4.6 | Per shot source encoding: read from the clip metadata, the input transform table, the input transform out of the graded chains, QC-046 to QC-048 | complete, all five chunks (OQ-37 answered; OQ-46 wants confirming) |
-| M5 | UI: the list, the FR-14 metadata pane, settings, log. **No viewers** | **M5.1 to M5.4 done**, M5.5 to M5.9 specified |
+| M5 | UI: the list, the FR-14 metadata pane, settings, log. **No viewers** | **M5.1 to M5.5 done**, M5.6 to M5.9 specified |
 | M6 | ~~Stringout with burn-ins~~ | **dropped 2026-09-11**, the colour session exports it |
 | M7 | Packaging: PyInstaller `.app`, dmg, Gatekeeper | not started, and needs a Mac (OQ-22) |
 | M8 | Polish, performance on a real turnover, docs | not started |
@@ -943,7 +1014,7 @@ batch can do", so each chunk has something a person can look at:
 | M5.2 | The shot list: a model over a `Batch`, section 2's columns, turnover group headers, the three state In/Out display, the status dot and row tints, the search box | **done, 1061 tests.** Read only until M5.3, and **without the frozen columns**, which are M5.9 |
 | M5.3 | Editing: shot code, In, Out and Notes in their cells, section 5's input parsing, Ctrl+K skip, per row revalidation, autosave | **done, 1125 tests.** A commit re-runs the row's rules only, and `ui/autosave.py` holds the edits of a batch that has no file yet |
 | M5.4 | Batch lifecycle: New, Open, Save, Add Turnover against the source root, the scan off the UI thread, the Issues dock | **done, 1199 tests.** The scan is a `QThread` with a copied probe cache; `Scan` re-tries only the turnovers with no rows (OQ-48) |
-| M5.5 | Run and progress: the worker pool driven from the window, the Progress column, the status bar, Stop, the completion banner | not started |
+| M5.5 | Run and progress: the worker pool driven from the window, the Progress column, the status bar, Stop, the completion banner | **done, 1249 tests.** `ui/runner.py` is a `QThread` over `render.execute`; one 200 ms timer draws everything a run shows; the run writes both spreadsheets |
 | M5.6 | The metadata pane, FR-14 and UI_SPEC section 12 | not started |
 | M5.7 | The Settings page, PRD FR-12, **including the Colour group**, and with it QC-008, QC-009, QC-019, QC-039 and QC-045 | not started |
 | M5.8 | The Log tab and the rotating log file, FR-13 | not started |
@@ -984,6 +1055,24 @@ hung suite rather than a failed assertion, so a test that forgot to stub one wou
 fail, it would stop - which is exactly what happened the first time a test opened a batch
 whose delivery root did not exist.
 
+**M5.5 settled four more, and they are about where a run's state lives.**
+
+- **The pool is driven from a `QThread` and the jobs are what cross it.** Same shape as
+  the scan, same rule: core stays Qt-free and the batch never goes near the worker.
+  Pre-flight, planning and `apply_results` all write to the batch, so all three stay on
+  the UI thread; `execute` gets a list of `DeliverableJob` and hands back a list of
+  `Deliverable`.
+- **One 200 ms timer draws everything a run shows.** Progress messages only update a
+  `RunProgress`; the status bar, the row bars and the status dots are repainted on the
+  timer. A repaint per message is a message per frame per worker.
+- **Rendering is a state only a live run can report**, because the statuses on a row are
+  not written back until the run ends. `ShotListModel.state_for` is where the run's
+  answer and the row's meet, and a live run outranks the recorded status in the Progress
+  cell for the same reason.
+- **The run writes the two spreadsheets.** Section 7's banner says where they went, so
+  the run is what has to put them there. No show to file them under is a refusal, not a
+  guess: the banner says nothing was written.
+
 **M5.9 is last on purpose.** UI_SPEC section 2 freezes Status, Shot and Elem while the rest
 scrolls, and QTreeView has no such thing: it takes a second view overlaid on the first, sharing
 the model, the selection and the scroll. It is the known awkward part (section 9), it has to
@@ -1010,10 +1099,11 @@ M3 detail:
 The stringout moved off this table: it is M6 and always was. The M3.5 row said "ref
 mp4 and stringout" and that was a mistake in the row, not a change of plan.
 
-Tests by file: qc 176, naming 115, shot_model 85, ui_shell 86, render 75, planner 66,
-clf 65, frames 55, media 46, ffmpeg 43, models 42, shot_list 40, color 40, timeline 37,
-exr 37, scan 34, cli 31, exports 28, issues 18, batchfile 18, resize 16, settings 12,
-camdata 12, scanner 11, autosave 11. 1199 in total, counted rather than carried forward.
+Tests by file: qc 176, naming 115, ui_shell 102, shot_model 92, render 75, planner 66,
+clf 65, frames 55, media 46, shot_list 43, ffmpeg 43, models 42, color 40, timeline 37,
+exr 37, scan 34, cli 31, exports 28, runner 24, issues 18, batchfile 18, resize 16,
+settings 12, camdata 12, scanner 11, autosave 11. 1249 in total, counted rather than
+carried forward.
 
 ---
 
@@ -1631,12 +1721,34 @@ is useful rather than not, but a test asserting "one stream" will fail on it.
 
 Nothing blocks the next task. These are live, in rough priority order:
 
-- **Autosave works and has nowhere to write until M5.4.** Every edit is committed to the
-  batch in memory and `ui/autosave.py` holds it pending, because the path comes from New,
-  Open or Save and none of them exists yet (`MainWindow.set_batch` already takes it, and the
-  tests pass one). Closing the window flushes, so nothing is lost that had a path; a batch
-  that never had one is only ever in memory, which is the same state a never-saved batch is
-  in the moment before its first Save. M5.4 closes this by existing.
+- **A run from the window renders every row ungraded, and will until M5.7.** The colour
+  session's location is a Settings value and Settings is M5.7, so `MainWindow.run_batch`
+  plans with no session, exactly as `proingest run` does without `--color-session`: the
+  same files in the same places, without the CLF in them. QC-008 is the rule that refuses
+  a run in that state and it lands with the page that can answer it. Nothing is silently
+  wrong - QC-048 records per row which chain was used - but a delivery made from the UI
+  before M5.7 would be an ungraded one.
+
+- **Pre-flight and planning run on the UI thread, and nobody has measured them on a real
+  turnover.** Both write to the batch, which is why they are not on the worker thread, and
+  both touch the disk: pre-flight stats the delivery root and asks ffmpeg for its decoders
+  once, and planning lists one delivery folder per shot code to resolve the version. On
+  fixtures it is instant; on a hundred shot batch over a Drive mount it is a window that
+  does not paint for as long as those listings take. Measure it in M8 with the rest of the
+  network mount work, and if it has to move, what moves is a copy of what planning needs
+  rather than the batch (the M5.5 note in section 1 has the shape).
+
+- **Closing the window during a run waits for the jobs in flight.** `closeEvent` cancels
+  the pool and then waits up to two minutes, because a `QThread` still running when its
+  owner is collected is a crash on the way out. A cancelled job stops at its next frame
+  boundary, so the wait is usually a frame; the exception is a reference encode, which
+  cannot be interrupted at all and can be a whole 4k encode per worker. Nothing asks the
+  editor first, which is worth a sheet on the Mac pass rather than a guess from here.
+
+- **The rendering dot is not animated.** UI_SPEC section 3 asks for an accent dot that
+  moves; the dots are drawn once per state and cached, which is what keeps a hundred shot
+  repaint cheap, and an animated one needs a repaint timer and a cache key that carries a
+  phase. The state is live and the colour is right; only the movement is missing.
 
 - **QC-039's probe cannot separate a dark C-Log3 grade from a display rendering (OQ-47).**
   New 2026-09-12, found while building M4.6.2, and the most important open item because it is
@@ -1709,6 +1821,13 @@ Nothing blocks the next task. These are live, in rough priority order:
   metadata list and are not written; the colour provenance and the `timeCode` attribute are.
   They are cheap, they need only what the job already carries, and nothing has asked for them,
   so the doc now says "not yet written" rather than describing them as built.
+
+- **A frozen `.app` needs `multiprocessing.freeze_support()` and there is no entry point
+  to put it in yet.** The pool spawns on every platform, and a spawned worker inside a
+  PyInstaller bundle re-launches the bundle rather than importing a module, so Run in the
+  packaged app would open four more windows instead of rendering. It is one line in
+  whatever `build/build.py` makes the entry point, it does nothing when running from
+  source, and M7 is where it lands. `docs/PACKAGING.md` now says so under Build.
 
 - **QC-024, a letterboxed source, is the one phase A rule that cannot be a model
   function.** QC-023 now catches a source that is not 3840x2160, but a source that *is*

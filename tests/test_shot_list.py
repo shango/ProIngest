@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 from PySide6.QtCore import QModelIndex, QRect, Qt
-from PySide6.QtGui import QPainter, QPixmap
+from PySide6.QtGui import QImage, QPainter, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
@@ -17,9 +17,19 @@ from PySide6.QtWidgets import (
     QStyleOptionViewItem,
 )
 
-from proingest.ui.shot_list import ERROR_COLOR, ShotListView, TwoLineDelegate
-from proingest.ui.shot_model import IN, NOTES, OUT, SHOT, DisplayMode, ShotListModel
-from tests.fixtures.batches import batch, row, turnover
+from proingest.ui.shot_list import BAR_HEIGHT, ERROR_COLOR, ShotListView, TwoLineDelegate
+from proingest.ui.shot_model import (
+    DOT_COLORS,
+    IN,
+    NOTES,
+    OUT,
+    PROGRESS,
+    SHOT,
+    DisplayMode,
+    RowState,
+    ShotListModel,
+)
+from tests.fixtures.batches import batch, delivered, row, turnover
 
 
 @pytest.fixture
@@ -163,6 +173,62 @@ class TestTheTwoLineCell:
         from proingest.ui.shot_model import SECONDARY_ROLE
 
         assert self.index_of(view, IN).data(SECONDARY_ROLE) == "8"
+
+
+class TestTheProgressCell:
+    """Section 7: a slim bar with the job count, in the Progress column.
+
+    Drawn to a pixmap, so what is asserted is the pixels: an offscreen view paints
+    nothing by itself, and "it did not raise" would pass with the bar left out.
+    """
+
+    def option(self, view: ShotListView) -> QStyleOptionViewItem:
+        option = QStyleOptionViewItem()
+        option.initFrom(view)
+        option.rect = QRect(0, 0, 90, 40)
+        return option
+
+    def painted(self, view: ShotListView, row_index: int = 0) -> QImage:
+        pixmap = QPixmap(90, 40)
+        pixmap.fill(Qt.GlobalColor.black)
+        painter = QPainter(pixmap)
+        index = view.proxy.index(row_index, PROGRESS, view.proxy.index(0, 0))
+        TwoLineDelegate(view).paint(painter, self.option(view), index)
+        painter.end()
+        return pixmap.toImage()
+
+    def bar_width(self, image: QImage) -> int:
+        """How far the filled part of the bar reaches along its own line."""
+        line = image.height() - 3
+        accent = DOT_COLORS[RowState.RENDERING].rgb()
+        done = DOT_COLORS[RowState.DONE].rgb()
+        return sum(1 for x in range(image.width()) if image.pixel(x, line) in (accent, done))
+
+    def test_a_row_half_rendered_draws_a_bar_about_half_way(
+        self, qt_app: QApplication
+    ) -> None:
+        model = ShotListModel()
+        planned = delivered(row(), status="planned")
+        planned.deliverables[0].status = "done"
+        model.set_batch(batch(planned))
+        view = ShotListView(model)
+
+        width = self.bar_width(self.painted(view))
+        assert 0 < width < 90
+        assert abs(width - 42) <= 4, "half of the cell, less its padding"
+
+    def test_a_row_with_nothing_planned_has_no_bar_at_all(self, view: ShotListView) -> None:
+        """An empty track would read as a job that has not started rather than none."""
+        assert self.bar_width(self.painted(view)) == 0
+
+    def test_the_bar_is_slim_rather_than_a_filled_cell(self, qt_app: QApplication) -> None:
+        model = ShotListModel()
+        model.set_batch(batch(delivered(row())))
+        view = ShotListView(model)
+        image = self.painted(view)
+        done = DOT_COLORS[RowState.DONE].rgb()
+        column = sum(1 for y in range(image.height()) if image.pixel(4, y) == done)
+        assert column == BAR_HEIGHT
 
 
 class TestTheCellEditor:

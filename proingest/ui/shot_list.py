@@ -21,7 +21,14 @@ from __future__ import annotations
 
 from typing import cast
 
-from PySide6.QtCore import QModelIndex, QPersistentModelIndex, QSize, QSortFilterProxyModel, Qt
+from PySide6.QtCore import (
+    QModelIndex,
+    QPersistentModelIndex,
+    QRect,
+    QSize,
+    QSortFilterProxyModel,
+    Qt,
+)
 from PySide6.QtGui import QColor, QPainter
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -40,11 +47,15 @@ from proingest.core.models import ShotRow
 from proingest.ui import shot_model
 from proingest.ui.shot_model import (
     COLUMNS,
+    DOT_COLORS,
     EDITABLE_COLUMNS,
     IN,
     OUT,
+    PROGRESS,
+    PROGRESS_ROLE,
     SECONDARY_ROLE,
     SHOT,
+    RowState,
     ShotListModel,
 )
 
@@ -55,6 +66,11 @@ SECONDARY_SCALE = 0.85
 ERROR_COLOR = QColor("#cf5a52")
 """What an unrecognized In or Out turns while the editor is still open (section 5).
 The same red as the error dot, because it is the same thing being said."""
+
+BAR_HEIGHT = 4
+BAR_TRACK = QColor("#2b2f36")
+"""The slim bar in the Progress column (section 7). Four pixels: it sits where the
+demoted second line sits in every other column, and it is a glance, not a readout."""
 
 SKIP_PROMPT_TITLE = "Skip shot"
 SKIP_PROMPT_LABEL = "Reason for skipping this shot:"
@@ -118,6 +134,9 @@ class TwoLineDelegate(QStyledItemDelegate):
         return size
 
     def paint(self, painter: QPainter, option: QStyleOptionViewItem, index: ModelIndex) -> None:
+        if index.column() == PROGRESS and index.data(PROGRESS_ROLE) is not None:
+            self._paint_progress(painter, option, index)
+            return
         secondary = index.data(SECONDARY_ROLE)
         if not secondary:
             super().paint(painter, option, index)
@@ -143,6 +162,41 @@ class TwoLineDelegate(QStyledItemDelegate):
         painter.setFont(small)
         painter.setPen(SECONDARY_COLOR)
         painter.drawText(rect, int(align | Qt.AlignmentFlag.AlignBottom), str(secondary))
+        painter.restore()
+
+    def _paint_progress(
+        self, painter: QPainter, option: QStyleOptionViewItem, index: ModelIndex
+    ) -> None:
+        """The job count, and under it the slim bar (UI_SPEC section 7).
+
+        Under rather than beside: the row is already two lines high for the In and Out
+        cells, and the bar in the demoted line means the count stays where every other
+        column's value is. A row with nothing planned has no bar at all rather than an
+        empty track, because an empty track reads as a job that has not started.
+        """
+        styled = QStyleOptionViewItem(option)
+        self.initStyleOption(styled, index)
+        count = styled.text
+        styled.text = ""
+        widget = styled.widget
+        style = widget.style() if widget else QApplication.style()
+        style.drawControl(QStyle.ControlElement.CE_ItemViewItem, styled, painter, widget)
+
+        rect = styled.rect.adjusted(3, 2, -3, -2)
+        line = option.fontMetrics.height()
+        painter.save()
+        painter.setPen(styled.palette.text().color())
+        painter.drawText(
+            rect.adjusted(0, 0, 0, -line), int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop), count
+        )
+        if count:
+            fraction = float(index.data(PROGRESS_ROLE))
+            track = rect.adjusted(0, rect.height() - BAR_HEIGHT, 0, 0)
+            painter.fillRect(track, BAR_TRACK)
+            filled = QRect(track)
+            filled.setWidth(int(track.width() * max(0.0, min(1.0, fraction))))
+            done = fraction >= 1.0
+            painter.fillRect(filled, DOT_COLORS[RowState.DONE if done else RowState.RENDERING])
         painter.restore()
 
 

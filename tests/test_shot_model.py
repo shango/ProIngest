@@ -14,8 +14,11 @@ import pytest
 from PySide6.QtCore import QModelIndex, Qt
 from PySide6.QtWidgets import QApplication
 
-from proingest.core.models import Deliverable, InOut, QCResult
+from proingest.core.models import Deliverable, FrameRate, InOut, QCResult
+from proingest.core.planner import DeliverableJob
+from proingest.core.render import Progress
 from proingest.ui import shot_model
+from proingest.ui.runner import RunProgress
 from proingest.ui.shot_model import (
     AUDIO,
     COLUMNS,
@@ -27,6 +30,7 @@ from proingest.ui.shot_model import (
     NOTES,
     OUT,
     PROGRESS,
+    PROGRESS_ROLE,
     RES,
     SECONDARY_ROLE,
     SHOT,
@@ -168,6 +172,120 @@ class TestWhatACellSays:
         built = ShotListModel()
         built.set_batch(batch(row(notes="watch the flare")))
         assert text(built, 0, NOTES) == "watch the flare"
+
+
+def run_of(*names: str, frames: int = 10) -> RunProgress:
+    """A `RunProgress` over jobs named after deliverables the fixtures make."""
+    return RunProgress(
+        [
+            DeliverableJob(
+                kind="raw_dir",
+                source=Path("/turnover/MELT0001_pl01.mov"),
+                destination=Path("/delivery") / name,
+                version=1,
+                shot_code="MELT0001",
+                elem="pl01",
+                in_frame=0,
+                out_frame=frames - 1,
+                rate=FrameRate(24),
+            )
+            for name in names
+        ]
+    )
+
+
+class TestTheProgressColumnDuringARun:
+    """The run is the only thing that knows where a row has got to.
+
+    `render.apply_results` does not write the statuses back onto the rows until the run
+    finishes, so during one the row still says `planned` and the count and the bar would
+    both sit at zero if the model read only the row.
+    """
+
+    def test_a_live_run_outranks_the_recorded_statuses(self, qt_app: QApplication) -> None:
+        built = ShotListModel()
+        planned = delivered(row(), status="planned")
+        built.set_batch(batch(planned))
+        names = [item.name for item in planned.deliverables]
+        progress = run_of(*names)
+        progress.update(Progress(names[0], "done", 10, 10))
+        built.set_run(progress)
+
+        assert text(built, 0, PROGRESS) == "1/2"
+
+    def test_the_bar_follows_the_frames_of_the_job_in_flight(self, qt_app: QApplication) -> None:
+        built = ShotListModel()
+        planned = delivered(row(), status="planned")
+        built.set_batch(batch(planned))
+        names = [item.name for item in planned.deliverables]
+        progress = run_of(*names)
+        progress.update(Progress(names[0], "done", 10, 10))
+        progress.update(Progress(names[1], "frame", 5, 10))
+        built.set_run(progress)
+
+        # One finished and one half way: three quarters of the row.
+        assert cell(built, 0, PROGRESS, PROGRESS_ROLE) == pytest.approx(0.75)
+
+    def test_a_row_in_flight_is_rendering(self, qt_app: QApplication) -> None:
+        built = ShotListModel()
+        planned = delivered(row(), status="planned")
+        built.set_batch(batch(planned))
+        progress = run_of(*[item.name for item in planned.deliverables])
+        progress.update(Progress(planned.deliverables[0].name, "started", 0, 10))
+        built.set_run(progress)
+
+        assert shot_model.row_state(planned) is RowState.OK, "the row itself cannot know"
+        assert built.state_for(planned) is RowState.RENDERING
+
+    def test_a_skipped_row_stays_skipped(self, qt_app: QApplication) -> None:
+        """Skipped is the one state the editor chose rather than the tool."""
+        built = ShotListModel()
+        planned = delivered(row(skipped=True, skip_reason="not needed"), status="planned")
+        built.set_batch(batch(planned))
+        progress = run_of(*[item.name for item in planned.deliverables])
+        progress.update(Progress(planned.deliverables[0].name, "started", 0, 10))
+        built.set_run(progress)
+
+        assert built.state_for(planned) is RowState.SKIPPED
+
+    def test_a_deliverable_this_run_never_planned_keeps_its_own_status(
+        self, qt_app: QApplication
+    ) -> None:
+        """A row left out of a run still shows what a previous run wrote."""
+        built = ShotListModel()
+        old = delivered(row(), status="done")
+        built.set_batch(batch(old))
+        built.set_run(run_of("something_else_v01"))
+
+        assert text(built, 0, PROGRESS) == "2/2"
+        assert cell(built, 0, PROGRESS, PROGRESS_ROLE) == pytest.approx(1.0)
+
+    def test_ending_the_run_goes_back_to_the_rows(self, qt_app: QApplication) -> None:
+        built = ShotListModel()
+        planned = delivered(row(), status="planned")
+        built.set_batch(batch(planned))
+        names = [item.name for item in planned.deliverables]
+        progress = run_of(*names)
+        progress.update(Progress(names[0], "done", 10, 10))
+        built.set_run(progress)
+        built.set_run(None)
+
+        assert text(built, 0, PROGRESS) == "0/2"
+
+    def test_a_repaint_touches_every_column_but_leaves_the_rows_alone(
+        self, model: ShotListModel
+    ) -> None:
+        """A reset would lose the selection, the scroll and which turnovers are open."""
+        changed: list[tuple[int, int]] = []
+        model.dataChanged.connect(
+            lambda top, bottom, roles: changed.append((top.column(), bottom.column()))
+        )
+        resets: list[int] = []
+        model.modelReset.connect(lambda: resets.append(1))
+        model.refresh_rows()
+
+        assert changed == [(STATUS, PROGRESS)]
+        assert resets == []
 
 
 class TestTheInOutDisplay:

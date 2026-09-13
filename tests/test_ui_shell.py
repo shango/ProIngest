@@ -15,9 +15,11 @@ from PySide6.QtCore import Qt, QThread
 from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import QApplication, QLabel, QMessageBox, QPushButton, QWidget
 
-from proingest.core import batchfile
+from proingest.core import batchfile, naming
 from proingest.core import settings as core_settings
-from proingest.core.models import Batch, Turnover
+from proingest.core.models import Batch, Deliverable, Turnover
+from proingest.core.planner import DeliverableJob
+from proingest.core.render import Progress
 from proingest.ui import app as ui_app
 from proingest.ui import paths
 from proingest.ui.main_window import (
@@ -25,10 +27,11 @@ from proingest.ui.main_window import (
     EMPTY_STATE_TEXT,
     NO_ROWS_TEXT,
     NO_TURNOVERS_TEXT,
+    NOTHING_TO_RENDER,
     MainWindow,
 )
-from proingest.ui.shot_model import IN, NOTES, DisplayMode
-from tests.fixtures.batches import batch, media, row, warn
+from proingest.ui.shot_model import IN, NOTES, DisplayMode, RowState
+from tests.fixtures.batches import batch, fail, media, row, warn
 
 
 class DrivenWindow(MainWindow):
@@ -49,6 +52,7 @@ class DrivenWindow(MainWindow):
         self.save_answer: Path | None = None
         self.save_asked: list[str] = []
         self.unsaved_answer = QMessageBox.StandardButton.Discard
+        self.opened_folders: list[Path] = []
 
     def report_problem(self, title: str, text: str) -> None:
         self.problems.append((title, text))
@@ -65,6 +69,9 @@ class DrivenWindow(MainWindow):
 
     def ask_unsaved(self) -> QMessageBox.StandardButton:
         return self.unsaved_answer
+
+    def open_folder(self, folder: Path) -> None:
+        self.opened_folders.append(folder)
 
 
 @pytest.fixture
@@ -710,6 +717,192 @@ class TestClosingWithWorkInHand:
         assert window.batch.name == "first"
 
 
+class TestRunningABatch:
+    """M5.5: what the window does before a job reaches a worker, and after one comes back.
+
+    The pool has its own tests (`tests/test_runner.py`); `stub_runner` catches the jobs
+    instead, because what these are about is the planning, the blocking and the banner.
+    """
+
+    def test_run_is_off_until_there_is_something_to_render(
+        self, window: DrivenWindow
+    ) -> None:
+        assert not window.action_run.isEnabled()
+        window.set_batch(Batch())
+        assert not window.action_run.isEnabled()
+        window.set_batch(batch(row()))
+        assert window.action_run.isEnabled()
+
+    def test_a_run_plans_the_batch_and_hands_the_jobs_over(
+        self, window: DrivenWindow, tmp_path: Path
+    ) -> None:
+        window.set_batch(batch(row(), delivery_root=tmp_path))
+        started = stub_runner(window)
+        window.action_run.trigger()
+
+        assert started and [job.shot_code for job in started[0]] == ["MELT0001"] * 4
+        assert [item.name for item in window.batch.rows[0].deliverables] == [
+            job.name for job in started[0]
+        ]
+
+    def test_a_batch_with_no_delivery_root_is_asked_once(
+        self, window: DrivenWindow, tmp_path: Path
+    ) -> None:
+        """Section 7: Run opens no dialog if the root is set, and prompts once if not."""
+        window.set_batch(batch(row(), delivery_root=None))
+        started = stub_runner(window)
+        window.folder_answer = tmp_path
+        window.action_run.trigger()
+
+        assert window.batch.delivery_root == tmp_path
+        assert len(started) == 1
+
+    def test_refusing_to_name_a_delivery_root_renders_nothing(
+        self, window: DrivenWindow
+    ) -> None:
+        window.set_batch(batch(row(), delivery_root=None))
+        started = stub_runner(window)
+        window.action_run.trigger()
+        assert started == []
+
+    def test_a_batch_scope_error_stops_the_run_and_says_so(
+        self, window: DrivenWindow, tmp_path: Path
+    ) -> None:
+        """FR-6: an error about the batch blocks it, and one about a row does not."""
+        # A delivery root that is a file: QC-062 refuses it and nothing can be written.
+        blocked = tmp_path / "not-a-folder"
+        blocked.write_text("")
+        window.set_batch(batch(fail(row()), delivery_root=blocked))
+        started = stub_runner(window)
+        window.action_run.trigger()
+
+        assert started == []
+        assert window.problems and "QC-0" in window.problems[0][1]
+        assert window.bottom_tabs.currentIndex() == BOTTOM_TABS.index("Issues")
+
+    def test_a_row_scope_error_does_not(self, window: DrivenWindow, tmp_path: Path) -> None:
+        window.set_batch(batch(fail(row()), row("MELT0002_pl01"), delivery_root=tmp_path))
+        started = stub_runner(window)
+        window.action_run.trigger()
+        assert started and window.problems == []
+
+    def test_a_batch_that_plans_nothing_says_so_rather_than_starting(
+        self, window: DrivenWindow, tmp_path: Path
+    ) -> None:
+        window.set_batch(batch(row(skipped=True, skip_reason="not needed"), delivery_root=tmp_path))
+        started = stub_runner(window)
+        window.action_run.trigger()
+
+        assert started == []
+        assert window.statusBar().currentMessage() == NOTHING_TO_RENDER
+
+    def test_nothing_else_can_touch_the_batch_while_it_runs(
+        self, window: DrivenWindow, tmp_path: Path
+    ) -> None:
+        """New and Open would swap the batch the run is writing into."""
+        window.set_batch(batch(row(), delivery_root=tmp_path))
+        stub_runner(window, busy=True)
+        window.action_run.trigger()
+
+        assert not window.action_run.isEnabled()
+        assert not window.action_new.isEnabled()
+        assert not window.action_open.isEnabled()
+        assert not window.action_add_turnover.isEnabled()
+        assert window.action_stop.isEnabled()
+
+    def test_progress_reaches_the_status_bar_and_the_rows(
+        self, window: DrivenWindow, tmp_path: Path
+    ) -> None:
+        window.set_batch(batch(row(), delivery_root=tmp_path))
+        started = stub_runner(window, busy=True)
+        window.action_run.trigger()
+        window._run_progressed(Progress(started[0][0].name, "frame", 112, 224))
+        window._show_run_progress()
+
+        assert "%" in window.statusBar().currentMessage()
+        assert window.progress.isVisible() or window.progress.value() > 0
+        assert window.shot_model.state_for(window.batch.rows[0]) is RowState.RENDERING
+
+    def test_stop_asks_the_pool_to_stop_and_then_asks_nothing_else(
+        self, window: DrivenWindow, tmp_path: Path
+    ) -> None:
+        window.set_batch(batch(row(), delivery_root=tmp_path))
+        stub_runner(window, busy=True)
+        window.action_run.trigger()
+        cancelled: list[bool] = []
+        window.runner.cancel = lambda: cancelled.append(True)  # type: ignore[method-assign]
+        window.action_stop.trigger()
+
+        assert cancelled == [True]
+
+    def test_what_comes_back_is_written_onto_the_rows(
+        self, window: DrivenWindow, tmp_path: Path
+    ) -> None:
+        window.set_batch(batch(row(), delivery_root=tmp_path), tmp_batch_path(window))
+        started = stub_runner(window)
+        window.action_run.trigger()
+        window._run_finished(done(started[0]), False)
+
+        assert {item.status for item in window.batch.rows[0].deliverables} == {"done"}
+        assert window.shot_model.state_for(window.batch.rows[0]) is RowState.DONE
+
+    def test_the_banner_says_what_landed_and_where_the_exports_went(
+        self, window: DrivenWindow, tmp_path: Path
+    ) -> None:
+        window.set_batch(batch(row(), delivery_root=tmp_path))
+        started = stub_runner(window)
+        window.action_run.trigger()
+        window._run_finished(done(started[0]), False)
+
+        assert not window.banner.isHidden()
+        assert "Batch complete: 4 done, 0 failed, 0 skipped." in window.banner.text()
+        reports = naming.reports_dir(tmp_path, "MELT")
+        assert str(reports) in window.banner.text()
+        assert sorted(path.name.split("_")[0] for path in reports.iterdir()) == ["qc", "shot"]
+
+    def test_a_stopped_run_says_so_rather_than_calling_itself_complete(
+        self, window: DrivenWindow, tmp_path: Path
+    ) -> None:
+        window.set_batch(batch(row(), delivery_root=tmp_path))
+        started = stub_runner(window)
+        window.action_run.trigger()
+        window._run_finished(done(started[0], status="skipped"), True)
+
+        assert window.banner.text().startswith("Run stopped: 0 done, 0 failed, 4 skipped.")
+
+    def test_the_banner_link_opens_the_reports_folder(
+        self, window: DrivenWindow, tmp_path: Path
+    ) -> None:
+        window.set_batch(batch(row(), delivery_root=tmp_path))
+        started = stub_runner(window)
+        window.action_run.trigger()
+        window._run_finished(done(started[0]), False)
+        window._open_reports()
+
+        assert window.opened_folders == [naming.reports_dir(tmp_path, "MELT")]
+
+    def test_exports_that_cannot_be_written_are_reported_rather_than_faked(
+        self, window: DrivenWindow, tmp_path: Path
+    ) -> None:
+        """A batch whose rows have no shot code has no show to file the reports under."""
+        window.set_batch(batch(row("not_a_shot_name"), delivery_root=tmp_path))
+        window._run_finished([], False)
+
+        assert window.problems and "show" in window.problems[0][1]
+        assert "No exports were written." in window.banner.text()
+
+    def test_a_new_batch_clears_the_banner_of_the_last_one(
+        self, window: DrivenWindow, tmp_path: Path
+    ) -> None:
+        window.set_batch(batch(row(), delivery_root=tmp_path))
+        started = stub_runner(window)
+        window.action_run.trigger()
+        window._run_finished(done(started[0]), False)
+        window.set_batch(Batch())
+
+        assert not window.banner.isVisible()
+
+
 def stub_scanner(window: DrivenWindow, busy: bool = False) -> list[list[tuple[Path, str]]]:
     """Catch what would have been handed to the worker thread, and say whether it is busy.
 
@@ -723,6 +916,38 @@ def stub_scanner(window: DrivenWindow, busy: bool = False) -> list[list[tuple[Pa
         # smallest honest way to say so, and it goes out with the window.
         window.scanner._thread = QThread(window.scanner)
     return started
+
+
+def stub_runner(window: DrivenWindow, busy: bool = False) -> list[list[DeliverableJob]]:
+    """Catch what would have been handed to the pool, and say whether it is running.
+
+    The runner has its own tests; what these are about is what the window planned and
+    what it does with the answer, neither of which a process pool helps establish.
+    """
+    started: list[list[DeliverableJob]] = []
+
+    def start(jobs: list[DeliverableJob], workers: int = 4) -> None:
+        started.append(jobs)
+        if busy:
+            # `busy` is "there is a thread", so a thread that was never started is the
+            # smallest honest way to say so, and it goes out with the window. Set from
+            # inside `start` because a runner already busy would refuse the run.
+            window.runner._thread = QThread(window.runner)
+            window._update_state()
+
+    window.runner.start = start  # type: ignore[method-assign]
+    return started
+
+
+def done(jobs: list[DeliverableJob], status: str = "done") -> list[Deliverable]:
+    """What the pool hands back for jobs that all ended the same way."""
+    written = []
+    for job in jobs:
+        deliverable = job.to_deliverable()
+        deliverable.status = status  # type: ignore[assignment]
+        deliverable.frame_count = job.frame_count
+        written.append(deliverable)
+    return written
 
 
 def rules_shown(window: DrivenWindow) -> set[str]:

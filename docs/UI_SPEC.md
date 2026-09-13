@@ -106,6 +106,21 @@ Table: row, rule ID, severity, message, "Fix" hint where applicable (e.g. "Renam
 - Stop finishes in-flight frames, discards `.part` outputs, and leaves rows in their previous state.
 - On completion a non-modal banner above the list reads "Batch complete: 27 done, 1 failed, 2 skipped. Exports written to ...". Click opens the folder.
 
+**Two things about a stopped run that this list said too simply** (M5.5, 2026-09-12). The
+records of a stopped run **are** applied to the rows, because a job that finished before Stop
+was pressed wrote a real file and a row that did not record it would be wrong about the
+delivery folder. What follows is that a stopped row is not literally in "its previous state":
+its unfinished deliverables read `skipped` and QC-150 says how many did not land. That is the
+honest record of a run that was stopped part way, and the alternative - rows still claiming a
+plan nothing fulfilled - is the state QC-150 exists to refuse. The banner on a stopped run
+reads "Run stopped: ..." rather than "Batch complete: ...", because the counts alone read as a
+batch that finished with most of it skipped.
+
+**The run writes the two spreadsheets** (FR-10), which is what makes the banner's second
+sentence true, and the path in it is the link: clicking it opens `_reports` in the Finder. A
+batch whose rows have no shot code has no show to file reports under, and the banner then says
+no exports were written rather than naming a folder that does not exist.
+
 ## 8. Stringout burn-ins: dropped
 
 **The tool no longer builds a stringout** (PRD FR-9, decided 2026-09-11), so there are no

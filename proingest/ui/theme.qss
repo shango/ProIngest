@@ -188,3 +188,12 @@ QLineEdit {
 QLineEdit:focus {
   border-color: #4d8fd6;
 }
+
+/* ---- the completion banner (UI_SPEC section 7) ---- */
+
+#run_banner {
+  background: #1b1e23;
+  border-bottom: 1px solid #262a31;
+  color: #ced3db;
+  padding: 7px 10px;
+}
