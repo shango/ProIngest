@@ -15,12 +15,11 @@ encoded through the shot's grade and the ACES output transform baked into one cu
 no longer converts ahead of the CLF**, which was the one thing in the code that would have
 delivered a wrong plate against a real session. The source encoding went back to camera native
 log on 2026-09-12 and the tool now reads it per shot, resolves it through a table, records it
-in the QC log and states it and its origin in the delivered header. **M5, the UI, has started:
-M5.1, M5.2 and M5.3 are built, so the window shows a batch and the batch can be typed into**,
-and **M5.4 is done, so a batch can be made, opened, saved and filled with turnovers**,
-scanned off the UI thread, with every QC result readable in the Issues dock and
-clickable back to its shot. The rest of M5 is specified in section 5. 1199 tests
-passing, `ruff` and `mypy --strict` clean.
+in the QC log and states it and its origin in the delivered header. **M5, the UI, is four
+chunks in of nine.** A batch can be made, opened, saved and filled with turnovers; the window
+shows it as a list; the list can be typed into; the turnover scan runs off the UI thread; and
+every QC result is readable in the Issues dock and clickable back to its shot. The rest of M5
+is specified in section 5. 1199 tests passing, `ruff` and `mypy --strict` clean.
 **M5.5, the run and its progress, is next.**
 
 **M5 is not blocked**: OQ-37 came back the same day and
