@@ -5,9 +5,16 @@ rather than in the view, because what a cell says is a fact about the batch and 
 looks like is one colour per state: a delegate that had to work either out would be
 reading the model twice.
 
-**The model is read only in this chunk.** Editing is M5.3 and arrives as `setData` plus
-the input grammar `core/frames.py` already implements. Nothing here writes to a row, so
-nothing here can disagree with the rules about what a row now says.
+Editing (M5.3) is here too, because the cell that writes has to write to the row the
+cell that reads read. Four columns are editable (FR-5) and `core/frames.py` is the input
+grammar behind In and Out.
+
+**A commit re-runs the row's rules and nothing else.** `qc.apply_row_rules` is per row
+and cheap, which is what UI_SPEC section 5 asks for, and the only batch level input the
+row rules take is the clip name counts QC-011 needs - which no editable cell can change,
+since `clip_name` is the name the turnover arrived with and is not one of the four. The
+rules that read the disk belong to pre-flight and to the run, and neither is a
+keystroke's job.
 
 Two levels and no more: a turnover, then its rows in timeline order. Sorting is fixed
 (section 2), so there is no sort implementation to get wrong, and the search box filters
@@ -21,11 +28,18 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any
 
-from PySide6.QtCore import QAbstractItemModel, QModelIndex, QObject, QPersistentModelIndex, Qt
+from PySide6.QtCore import (
+    QAbstractItemModel,
+    QModelIndex,
+    QObject,
+    QPersistentModelIndex,
+    Qt,
+    Signal,
+)
 from PySide6.QtGui import QBrush, QColor, QPainter, QPixmap
 
-from proingest.core import frames
-from proingest.core.models import Batch, ShotRow, Turnover
+from proingest.core import frames, qc
+from proingest.core.models import Batch, InOut, ShotRow, Turnover
 
 ModelIndex = QModelIndex | QPersistentModelIndex
 
@@ -150,6 +164,14 @@ COLUMNS = (
 STATUS, SHOT, ELEM, SOURCE, RES, FPS, IN, OUT, DURATION, MAX_AVAIL = range(10)
 AUDIO, SIDE_FILES, VERSION, PROGRESS, NOTES = range(10, 15)
 
+EDITABLE_COLUMNS = (SHOT, IN, OUT, NOTES)
+"""The cells the list owns and nothing else does (FR-5), in Tab order.
+
+Everything else in the row is either read off the media, derived from these, or written
+by a run. A tuple rather than a set because section 4 tabs through them in this order,
+and there are four of them.
+"""
+
 FROZEN_COLUMNS = 3
 """Status, Shot and Elem stay put while the rest scrolls (section 2). The overlaid
 second view that does it is its own chunk; this constant is where it will read the
@@ -245,12 +267,21 @@ class ShotListModel(QAbstractItemModel):
     visible row, and `Batch.rows_for` is a scan of the whole list each time.
     """
 
+    row_edited = Signal(object)
+    """One `ShotRow`, after a commit changed it. What autosave listens to.
+
+    The row rather than the index, because what is saved is the batch and what the
+    listener wants to know is which row moved, not where it was on screen.
+    """
+
     def __init__(self, parent: QObject | None = None) -> None:
         super().__init__(parent)
         self._batch = Batch()
         self._rows: dict[str, list[ShotRow]] = {}
         self._mode = DisplayMode.FRAMES
         self._dots: dict[tuple[RowState, bool], QPixmap] = {}
+        self._rules = qc.DEFAULT_SETTINGS
+        self._name_counts: dict[str, int] = {}
 
     # --- what it is showing ----------------------------------------------------------
 
@@ -259,6 +290,8 @@ class ShotListModel(QAbstractItemModel):
         self.beginResetModel()
         self._batch = batch
         self._rows = {t.turnover_id: batch.rows_for(t.turnover_id) for t in batch.turnovers}
+        self._rules = qc.settings_for(batch)
+        self._name_counts = qc.clip_name_counts(batch)
         self.endResetModel()
 
     @property
@@ -366,6 +399,8 @@ class ShotListModel(QAbstractItemModel):
         state = row_state(row)
         if role == Qt.ItemDataRole.DisplayRole:
             return self._text(row, column)
+        if role == Qt.ItemDataRole.EditRole:
+            return self._edit_text(row, column)
         if role == SECONDARY_ROLE and column in (IN, OUT):
             return self._secondary(row, column)
         if role == ROW_ROLE:
@@ -409,6 +444,19 @@ class ShotListModel(QAbstractItemModel):
             NOTES: lambda: row.notes,
         }
         return texts[column]()
+
+    def _edit_text(self, row: ShotRow, column: int) -> str | None:
+        """What an editor opens on, which is the displayed value with one exception.
+
+        Shot opens on the shot code alone, never on the clip name the cell falls back to
+        when there is no identity: an editor prefilled with the clip name commits the
+        clip name as an override the moment somebody presses Enter on it.
+        """
+        if column == SHOT:
+            return row.shot_code or ""
+        if column in (IN, OUT, NOTES):
+            return self._text(row, column)
+        return None
 
     def _frame_text(self, row: ShotRow, frame: int) -> str:
         """The primary representation of one frame, per the display mode."""
@@ -473,3 +521,129 @@ class ShotListModel(QAbstractItemModel):
             painter.end()
             self._dots[key] = pixmap
         return self._dots[key]
+
+    # --- what a cell can be changed to ------------------------------------------------
+
+    def flags(self, index: ModelIndex) -> Qt.ItemFlag:
+        """Section 2's four editable columns, on shot rows that have something to edit.
+
+        In and Out are not editable on a row with no range at all: a row whose media was
+        never found has nothing for a typed offset to be relative to, and QC-020 is
+        already saying so.
+        """
+        base = super().flags(index)
+        row = self.row_at(index)
+        if row is None or index.column() not in EDITABLE_COLUMNS:
+            return base
+        if index.column() in (IN, OUT) and row.current is None:
+            return base
+        return base | Qt.ItemFlag.ItemIsEditable
+
+    def parse_frame(self, index: ModelIndex, text: str) -> frames.ParsedInput:
+        """Read a typed In or Out against this row, by UI_SPEC section 5's grammar.
+
+        Public because the cell shows its error inline while the editor is still open
+        (section 5) and the commit has to reach the same answer: a second parser is how
+        a cell comes to reject what it has just shown as valid.
+        """
+        row = self.row_at(index)
+        current = row.current if row else None
+        if row is None or current is None:
+            return frames.ParsedInput(None, "no range to edit")
+        held = current.in_frame if index.column() == IN else current.out_frame
+        return frames.parse_in_out(text, held, self._context(row))
+
+    def setData(self, index: ModelIndex, value: Any, role: int = Qt.ItemDataRole.EditRole) -> bool:
+        """Commit one cell. False means nothing was written and the cell keeps what it had.
+
+        An unparseable In or Out is the ordinary case of False here, and it is not an
+        error the model reports anywhere: the editor has already shown it inline, and a
+        QC result for a value that was never stored would outlive the typing that caused it.
+        """
+        if role != Qt.ItemDataRole.EditRole:
+            return False
+        row = self.row_at(index)
+        if row is None or index.column() not in EDITABLE_COLUMNS:
+            return False
+        text = str(value)
+        if index.column() == SHOT:
+            changed = self._set_shot_code(row, text)
+        elif index.column() == NOTES:
+            changed = self._set_notes(row, text)
+        else:
+            changed = self._set_frame(row, index, text)
+        if changed:
+            self._committed(row, index)
+        return changed
+
+    def set_skipped(self, index: ModelIndex, skipped: bool, reason: str | None = None) -> bool:
+        """Ctrl+K (section 4). The reason is asked for by the view, which owns the prompt.
+
+        Un-skipping keeps the reason rather than clearing it, so a row toggled off and on
+        again is not a second interrogation about a decision already explained.
+        """
+        row = self.row_at(index)
+        if row is None or row.skipped == skipped:
+            return False
+        row.skipped = skipped
+        if skipped:
+            row.skip_reason = reason or row.skip_reason
+        self._committed(row, index)
+        return True
+
+    def _set_shot_code(self, row: ShotRow, text: str) -> bool:
+        """An override, or none at all when the cell is emptied.
+
+        Emptying it puts the parsed code back rather than leaving the row nameless: the
+        override is a correction of what `naming.parse_clip_name` read, and withdrawing a
+        correction means the original stands.
+        """
+        override = text.strip() or None
+        if override == row.shot_code_override:
+            return False
+        row.shot_code_override = override
+        return True
+
+    def _set_notes(self, row: ShotRow, text: str) -> bool:
+        if text == row.notes:
+            return False
+        row.notes = text
+        return True
+
+    def _set_frame(self, row: ShotRow, index: ModelIndex, text: str) -> bool:
+        """In or Out, through section 5's grammar.
+
+        A range the media cannot satisfy is stored and then reported, not refused:
+        QC-031 and QC-032 are what say so, they say it about the row rather than about
+        the keystroke, and an editor who types Out before In on the way to a valid range
+        should not be stopped halfway.
+        """
+        parsed = self.parse_frame(index, text)
+        current = row.current
+        if parsed.frame is None or current is None:
+            return False
+        moved = (
+            InOut(parsed.frame, current.out_frame)
+            if index.column() == IN
+            else InOut(current.in_frame, parsed.frame)
+        )
+        if moved == current:
+            return False
+        row.current = moved
+        return True
+
+    def _committed(self, row: ShotRow, index: ModelIndex) -> None:
+        """Re-run the row's rules, repaint what could have changed, and say so.
+
+        The whole row repaints rather than the one cell, because an In moves Duration,
+        Max Avail, the dot and the tint; and the turnover header with it, since its
+        summary counts the errors and warnings that just changed.
+        """
+        qc.apply_row_rules(row, self._batch.project_rate, self._rules, self._name_counts)
+        parent = index.parent()
+        self.dataChanged.emit(
+            self.index(index.row(), 0, parent), self.index(index.row(), len(COLUMNS) - 1, parent)
+        )
+        if parent.isValid():
+            self.dataChanged.emit(parent, parent)
+        self.row_edited.emit(row)

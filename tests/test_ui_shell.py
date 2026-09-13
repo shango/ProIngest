@@ -11,14 +11,16 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from PySide6.QtCore import Qt
 from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import QApplication, QLabel, QPushButton, QWidget
 
+from proingest.core import batchfile
 from proingest.core import settings as core_settings
 from proingest.ui import app as ui_app
 from proingest.ui import paths
 from proingest.ui.main_window import BOTTOM_TABS, EMPTY_STATE_TEXT, MainWindow
-from proingest.ui.shot_model import DisplayMode
+from proingest.ui.shot_model import NOTES, DisplayMode
 from tests.fixtures.batches import batch, row
 
 
@@ -256,3 +258,62 @@ class TestWhatTheWindowRemembers:
             core_settings.AppSettings(window_geometry="bm90IHF0", window_state="bm90IHF0"), path
         )
         assert MainWindow(path).size().toTuple() != (0, 0)
+
+
+class TestEditingFromTheWindow:
+    """M5.3: the two pieces of editing the window owns, the skip action and autosave."""
+
+    def test_skip_is_dead_until_there_is_a_row_to_skip(self, window: MainWindow) -> None:
+        assert not window.action_toggle_skip.isEnabled()
+        window.set_batch(batch(row()))
+        assert window.action_toggle_skip.isEnabled()
+
+    def test_ctrl_k_is_what_it_answers_to(self, window: MainWindow) -> None:
+        assert window.action_toggle_skip.shortcut() == QKeySequence("Ctrl+K")
+
+    def test_it_skips_the_current_row(self, window: MainWindow) -> None:
+        window.set_batch(batch(row()))
+        window.shot_list.ask_skip_reason = lambda row: "reshoot"  # type: ignore[method-assign]
+        proxy = window.shot_list.proxy
+        window.shot_list.setCurrentIndex(proxy.index(0, 1, proxy.index(0, 0)))
+        window.action_toggle_skip.trigger()
+        assert window.shot_model.batch.rows[0].skipped
+
+    def test_an_edit_schedules_a_save(self, window: MainWindow) -> None:
+        window.set_batch(batch(row()), tmp_batch_path(window))
+        edit(window, "checked against the EDL")
+        assert window.autosave.pending
+
+    def test_and_closing_the_window_writes_it(self, window: MainWindow) -> None:
+        path = tmp_batch_path(window)
+        window.set_batch(batch(row()), path)
+        edit(window, "checked against the EDL")
+        window.close()
+        assert batchfile.load(path, reconcile=False).rows[0].notes == "checked against the EDL"
+
+    def test_a_batch_with_no_file_is_not_a_crash_on_the_way_out(
+        self, window: MainWindow
+    ) -> None:
+        """New and Open are M5.4; until then a batch reaches the window without a path."""
+        window.set_batch(batch(row()))
+        edit(window, "checked")
+        window.close()
+        assert window.autosave.pending
+
+    def test_a_save_says_so_in_the_status_bar(self, window: MainWindow) -> None:
+        window.set_batch(batch(row()), tmp_batch_path(window))
+        edit(window, "checked")
+        window.autosave.flush()
+        assert "melt.pibatch" in window.statusBar().currentMessage()
+
+
+def tmp_batch_path(window: MainWindow) -> Path:
+    """Beside the window's temporary settings file, which is already in `tmp_path`."""
+    return window._settings_path.with_name("melt.pibatch")
+
+
+def edit(window: MainWindow, notes: str) -> None:
+    """Commit a Notes cell the way the delegate does, through the proxy."""
+    proxy = window.shot_list.proxy
+    index = proxy.index(0, NOTES, proxy.index(0, 0))
+    assert proxy.setData(index, notes, Qt.ItemDataRole.EditRole)

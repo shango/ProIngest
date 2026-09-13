@@ -10,10 +10,15 @@ from __future__ import annotations
 import pytest
 from PySide6.QtCore import QModelIndex, QRect, Qt
 from PySide6.QtGui import QPainter, QPixmap
-from PySide6.QtWidgets import QApplication, QStyleOptionViewItem
+from PySide6.QtWidgets import (
+    QAbstractItemView,
+    QApplication,
+    QLineEdit,
+    QStyleOptionViewItem,
+)
 
-from proingest.ui.shot_list import ShotListView, TwoLineDelegate
-from proingest.ui.shot_model import IN, SHOT, DisplayMode, ShotListModel
+from proingest.ui.shot_list import ERROR_COLOR, ShotListView, TwoLineDelegate
+from proingest.ui.shot_model import IN, NOTES, OUT, SHOT, DisplayMode, ShotListModel
 from tests.fixtures.batches import batch, row, turnover
 
 
@@ -158,3 +163,155 @@ class TestTheTwoLineCell:
         from proingest.ui.shot_model import SECONDARY_ROLE
 
         assert self.index_of(view, IN).data(SECONDARY_ROLE) == "8"
+
+
+class TestTheCellEditor:
+    """Section 5: what the editor shows while it is open, and what it hands back."""
+
+    def index_of(self, view: ShotListView, column: int) -> QModelIndex:
+        return view.proxy.index(0, column, view.proxy.index(0, 0))
+
+    def editor(self, view: ShotListView, column: int) -> QLineEdit:
+        delegate = TwoLineDelegate(view)
+        option = QStyleOptionViewItem()
+        option.initFrom(view)
+        widget = delegate.createEditor(view, option, self.index_of(view, column))
+        assert isinstance(widget, QLineEdit)
+        return widget
+
+    def test_a_cell_edits_as_a_line_edit(self, view: ShotListView) -> None:
+        assert self.editor(view, SHOT).text() == ""
+
+    def test_an_unrecognized_in_goes_red_while_it_is_still_being_typed(
+        self, view: ShotListView
+    ) -> None:
+        editor = self.editor(view, IN)
+        editor.setText("sometime tuesday")
+        assert ERROR_COLOR.name() in editor.styleSheet()
+        assert editor.toolTip() == "unrecognized"
+
+    def test_and_goes_back_when_it_parses(self, view: ShotListView) -> None:
+        editor = self.editor(view, IN)
+        editor.setText("nope")
+        editor.setText("+12")
+        assert editor.styleSheet() == ""
+        assert editor.toolTip() == ""
+
+    def test_it_is_read_against_the_row_it_is_editing(self, view: ShotListView) -> None:
+        """A timecode the media does hold parses; the same one is nonsense elsewhere."""
+        editor = self.editor(view, IN)
+        editor.setText("01:00:00:12")
+        assert editor.styleSheet() == ""
+
+    def test_a_cell_that_cannot_be_wrong_is_not_policed(self, view: ShotListView) -> None:
+        editor = self.editor(view, NOTES)
+        editor.setText("anything at all")
+        assert editor.styleSheet() == ""
+
+    def test_typing_starts_an_edit_without_f2(self, view: ShotListView) -> None:
+        """Section 4. The trigger rather than the keystroke, because an offscreen view
+        has no focus to type into."""
+        assert view.editTriggers() & QAbstractItemView.EditTrigger.AnyKeyPressed
+
+
+class TestTabbingBetweenCells:
+    """Section 4: Tab moves between editable cells, wrapping to the next row's first."""
+
+    def cell(self, view: ShotListView, shot: int, column: int, group: int = 0) -> QModelIndex:
+        return view.proxy.index(shot, column, view.proxy.index(group, 0))
+
+    def tab(self, view: ShotListView, forward: bool = True) -> QModelIndex:
+        action = (
+            QAbstractItemView.CursorAction.MoveNext
+            if forward
+            else QAbstractItemView.CursorAction.MovePrevious
+        )
+        return view.moveCursor(action, Qt.KeyboardModifier.NoModifier)
+
+    def test_tab_reaches_the_list_at_all(self, view: ShotListView) -> None:
+        """QTreeView ships with this off and QTableView ships with it on. With it off,
+        Tab moves focus out of the list and `moveCursor` is never asked."""
+        assert view.tabKeyNavigation()
+
+    def test_it_steps_from_shot_to_in_rather_than_to_elem(self, view: ShotListView) -> None:
+        view.setCurrentIndex(self.cell(view, 0, SHOT))
+        assert self.tab(view) == self.cell(view, 0, IN)
+
+    def test_it_steps_over_the_columns_nobody_can_edit(self, view: ShotListView) -> None:
+        view.setCurrentIndex(self.cell(view, 0, OUT))
+        assert self.tab(view) == self.cell(view, 0, NOTES)
+
+    def test_the_end_of_a_row_wraps_to_the_next_row_s_first_cell(
+        self, view: ShotListView
+    ) -> None:
+        view.setCurrentIndex(self.cell(view, 0, NOTES))
+        assert self.tab(view) == self.cell(view, 1, SHOT)
+
+    def test_the_end_of_a_turnover_wraps_into_the_next_one(self, view: ShotListView) -> None:
+        view.setCurrentIndex(self.cell(view, 1, NOTES))
+        assert self.tab(view) == self.cell(view, 0, SHOT, group=1)
+
+    def test_the_end_of_the_list_wraps_round_to_the_start(self, view: ShotListView) -> None:
+        view.setCurrentIndex(self.cell(view, 0, NOTES, group=1))
+        assert self.tab(view) == self.cell(view, 0, SHOT)
+
+    def test_shift_tab_goes_back(self, view: ShotListView) -> None:
+        view.setCurrentIndex(self.cell(view, 0, IN))
+        assert self.tab(view, forward=False) == self.cell(view, 0, SHOT)
+
+    def test_it_only_offers_what_the_filter_is_showing(self, view: ShotListView) -> None:
+        """A hidden row is not one Tab can put the cursor into."""
+        view.filter_by("MELT0002")
+        view.setCurrentIndex(self.cell(view, 0, NOTES))
+        assert self.tab(view) == self.cell(view, 0, SHOT)
+
+    def test_from_a_turnover_header_it_starts_at_the_first_editable_cell(
+        self, view: ShotListView
+    ) -> None:
+        view.setCurrentIndex(view.proxy.index(0, 0))
+        assert self.tab(view) == self.cell(view, 0, SHOT)
+
+    def test_an_empty_list_leaves_qt_to_it(self, qt_app: QApplication) -> None:
+        empty = ShotListView(ShotListModel())
+        assert not self.tab(empty).isValid()
+
+
+class TestSkippingFromTheList:
+    """Ctrl+K. The prompt is the view's, because a dialog cannot live in a model."""
+
+    def first_row(self, view: ShotListView) -> None:
+        view.setCurrentIndex(view.proxy.index(0, SHOT, view.proxy.index(0, 0)))
+
+    def test_it_asks_for_a_reason_and_records_it(self, view: ShotListView) -> None:
+        view.ask_skip_reason = lambda row: "reshoot on friday"  # type: ignore[method-assign]
+        self.first_row(view)
+        view.toggle_skip()
+        skipped = view.shot_model.batch.rows[0]
+        assert skipped.skipped and skipped.skip_reason == "reshoot on friday"
+
+    def test_escape_at_the_prompt_cancels_the_skip(self, view: ShotListView) -> None:
+        view.ask_skip_reason = lambda row: None  # type: ignore[method-assign]
+        self.first_row(view)
+        view.toggle_skip()
+        assert not view.shot_model.batch.rows[0].skipped
+
+    def test_toggling_back_on_does_not_ask_again(self, view: ShotListView) -> None:
+        asked: list[object] = []
+
+        def ask(row: object) -> str:
+            asked.append(row)
+            return "reshoot"
+
+        view.ask_skip_reason = ask  # type: ignore[method-assign]
+        self.first_row(view)
+        view.toggle_skip()
+        view.toggle_skip()
+        view.toggle_skip()
+        assert len(asked) == 1
+        assert view.shot_model.batch.rows[0].skipped
+
+    def test_a_turnover_header_is_not_a_row_to_skip(self, view: ShotListView) -> None:
+        view.ask_skip_reason = lambda row: "reshoot"  # type: ignore[method-assign]
+        view.setCurrentIndex(view.proxy.index(0, 0))
+        view.toggle_skip()
+        assert not any(shot.skipped for shot in view.shot_model.batch.rows)

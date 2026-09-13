@@ -16,8 +16,9 @@ no longer converts ahead of the CLF**, which was the one thing in the code that 
 delivered a wrong plate against a real session. The source encoding went back to camera native
 log on 2026-09-12 and the tool now reads it per shot, resolves it through a table, records it
 in the QC log and states it and its origin in the delivered header. **M5, the UI, has started:
-M5.1 and M5.2 are built, so the window shows a batch** and the rest of M5 is specified in
-section 5. 1061 tests passing, `ruff` and `mypy --strict` clean.
+M5.1, M5.2 and M5.3 are built, so the window shows a batch and the batch can be typed into**,
+and the rest of M5 is specified in section 5. 1125 tests passing, `ruff` and `mypy --strict`
+clean.
 **M5 is not blocked**: OQ-37 came back the same day and
 answered the expensive half of M4.6. Two questions are open and both are about correctness rather
 than scope, OQ-46 and **OQ-47, which is new and was found by building M4.6.2**.
@@ -448,6 +449,56 @@ should not be re-derived.
   paths that build a `ShotColor`, with a session and without, need the same answer. QC-047 is
   where it is reported, and that is M4.6.4.
 
+### M5.3 is built: the list can be typed into
+
+Built 2026-09-12. `ui/shot_model.py` gains `flags`, `setData`, `parse_frame` and
+`set_skipped`, `ui/shot_list.py` the cell editor, Tab and the skip prompt, and
+`ui/autosave.py` is new. 64 tests, 1125 in total. Section 5's grammar, section 4's Tab and
+Ctrl+K, and the save that follows a commit. Six things in it should not be re-derived.
+
+- **A commit re-runs the row's rules and nothing else, and that was the question to
+  settle first.** `qc.apply_row_rules` is per row and cheap, which is what UI_SPEC
+  section 5 asks for. The only batch level input the row rules take is the clip name
+  counts QC-011 needs, and **no editable cell can change them**: `clip_name` is the name
+  the turnover arrived with, and the four editable cells are Shot, In, Out and Notes. So
+  a batch wide re-run on every keystroke would recompute the same answers. The rule
+  settings and the counts are cached at `set_batch` rather than rebuilt per commit.
+- **A range the media cannot satisfy is stored and then reported, never refused.**
+  QC-031 and QC-032 already say it, they say it about the row, and an editor typing Out
+  before In on the way to a valid range would otherwise be stopped halfway. The cell
+  refuses only what it cannot parse at all, and that refusal leaves no trace: a QC result
+  about a value that was never committed would outlive the typing that caused it.
+- **The editor opens on the shot code, never on the clip name the cell falls back to.**
+  A row with no identity shows its clip name in the Shot column, and an editor prefilled
+  with it commits the clip name as an override the moment somebody presses Enter. Every
+  other editable cell opens on exactly what it displays, In and Out included, so what is
+  typed is read against what was shown.
+- **`QTreeView` ships with tab key navigation off and `QTableView` ships with it on.**
+  With it off, Tab moved focus out of the list entirely unless a cell editor happened to
+  be open, and `moveCursor` - where the walk across the four editable columns lives - was
+  never asked. **Found by driving a real window, not by a test**, which is the second
+  time that has paid for itself in two chunks. One line turns it on and one test pins it.
+- **Qt commits an editor on a queued connection, not when the key is pressed.**
+  `QAbstractItemDelegate` posts `_q_commitDataAndCloseEditor` so the editor can validate
+  first, so the row still holds its old value for the rest of that event loop turn.
+  Nothing in the suite is affected, because the tests commit through `setData` the way
+  the delegate does; it is written down because a test that sends Return and asserts
+  immediately would fail for a reason that has nothing to do with the code.
+- **Autosave is debounced, and a batch with no file keeps its edits pending.** Tabbing
+  along a row is four commits in a second and a batch file is the whole batch serialized,
+  so the write happens 1.5 seconds after the last one. New, Open and Save are M5.4, so
+  until one of them names a file there is nowhere to write: the pending state is kept
+  rather than dropped, the first `watch` with a path writes it, and closing the window
+  flushes. A write that fails is logged and stays pending, because the batch can be on the
+  same network mount as everything else and a mount that blinked is not a reason to lose
+  an edit.
+
+**The prompt is the view's and the facts are the model's.** Ctrl+K asks for a reason
+through `QInputDialog` in `ui/shot_list.py`, because a dialog cannot live in a model, and
+`ask_skip_reason` is its own method so a test can answer it: an offscreen modal is a hung
+suite rather than a failed assertion. Un-skipping keeps the reason, so a row toggled off
+and on is not a second interrogation about a decision already explained.
+
 ### M5.2 is built: the list shows a batch
 
 Built 2026-09-12. `ui/shot_model.py`, `ui/shot_list.py` and `ui/batch_bar.py`, 86 tests.
@@ -593,41 +644,42 @@ nothing written. **When M5 wires the colour session into Settings**, the rules w
 tell "no session yet" from "this session had no grade for this row", and that is the moment to
 decide whether QC-046's error widens.
 
-### Next task: M5.3, editing in the list
+### Next task: M5.4, the batch lifecycle
 
-The list shows a batch and nothing in it can be changed yet. M5.3 is the editable cells the
-list owns and nothing else does (FR-5): shot code, In, Out and Notes, `frames.parse_in_out`
-behind them, Ctrl+K skip with its reason, the row's rules re-run on commit, and autosave.
-`ShotRow.edit_context` is already what a typed timecode is read against.
+The list shows a batch and can be typed into, and nothing yet can make one or open one:
+every batch reaches the window through `MainWindow.set_batch`, which only a test calls.
+M5.4 is New, Open, Save and Add Turnover against the source root, the scan off the UI
+thread, and the Issues dock. It is also what finally gives autosave somewhere to write:
+`set_batch` already takes the path and `ui/autosave.py` holds the edits until it gets one.
 
-**The one thing to decide first** is what a commit re-runs. `qc.apply_row_rules` is per row and
-cheap, which is what UI_SPEC section 5 asks for; what it cannot see is the batch level rules.
-Re-running everything on every keystroke is the thing not to do.
+**The one thing to decide first** is where the scan runs. It is the only long operation in
+M5 that is not the render pool, it walks a network mount, and CLAUDE.md forbids it on the
+UI thread. The pool in `core/render.py` is a process pool driven by queues and this is one
+call that returns a `Turnover`; a `QThread` with a signal is probably the honest answer,
+but it has to leave core Qt-free, which is the rule the pool already obeys.
 
-`docs/UI_SPEC.md` is M5's spec and it was already cut down when the four colour controls and
-the three viewers were dropped. The things M5 owes the colour chain are small and known:
+`docs/UI_SPEC.md` is M5's spec, and the things M5 still owes the colour chain are small,
+known, and all in M5.7:
 
 - **The Colour settings group**, which is where `--color-session` stops being a flag: the
-  session's EDL path, the **input transform table** and its overrides, the ACES config version
-  and the output transform, all remembered (PRD section 7 FR-12). **Not a source encoding
-  value and not a mode**: the encoding is a per clip fact read from the metadata, and a
-  batch-wide setting for it was specified and removed on 2026-09-12.
-- **Wiring QC-008, QC-009, QC-019, QC-039 and QC-045**, which all read `core/clf.py` and none of
-  which can fire until a batch knows where its colour session is. QC-008 is the one that refuses
-  a run: a batch cannot produce final deliverables until its session exists.
+  session's EDL path, the **input transform table** and its overrides, the ACES config
+  version and the output transform, all remembered (PRD section 7 FR-12). **Not a source
+  encoding value and not a mode**: the encoding is a per clip fact read from the metadata,
+  and a batch-wide setting for it was specified and removed on 2026-09-12.
+- **Wiring QC-008, QC-009, QC-019, QC-039 and QC-045**, which all read `core/clf.py` and
+  none of which can fire until a batch knows where its colour session is. QC-008 is the one
+  that refuses a run: a batch cannot produce final deliverables until its session exists.
 - **The QC log's CLF column is already written** and so is `ShotRow.clf_path`, so the UI has
-  something to show per row without any new plumbing. A source encoding column beside it is
-  M4.6.4 and wants `ShotRow.source_encoding` first.
+  something to show per row without any new plumbing.
 
-**OQ-37 is answered and the code now matches it**: the colourist starts the CLF from whatever
-the clip is encoded in, so the tool applies no input transform on a graded plate and ACEScct has
-left the chain. **And there is no source encoding mode** to build a control for. Two things are
-still worth asking and neither is a build task. Ask
-**whoever briefs the shooters** which metadata field carries the log name and exactly what
-string goes in it (OQ-44), remembering that "S-Log3" names four colour spaces in the pinned
-config. And confirm **OQ-46** against one real export, because the difference between a CLF
-that contains the conversion and one that does not is two plausible looking images and no
-error.
+**OQ-37 is answered and the code matches it**: the colourist starts the CLF from whatever
+the clip is encoded in, so the tool applies no input transform on a graded plate and ACEScct
+has left the chain. **And there is no source encoding mode** to build a control for. Two
+things are still worth asking and neither is a build task. Ask **whoever briefs the
+shooters** which metadata field carries the log name and exactly what string goes in it
+(OQ-44), remembering that "S-Log3" names four colour spaces in the pinned config. And
+confirm **OQ-46** against one real export, because the difference between a CLF that
+contains the conversion and one that does not is two plausible looking images and no error.
 
 ### Two M3 decisions to revisit rather than rediscover
 
@@ -762,14 +814,15 @@ PDF viewer.
 | `core/qc.py` | rule registry: phase A, `RuleSettings`, `preflight`, phase B | 1416 |
 | `core/settings.py` | what the app remembers between launches, as JSON. Takes the path; never works out where it is | 98 |
 | `ui/app.py` | the QApplication, its names, the theme, and `run()` | 49 |
-| `ui/main_window.py` | UI_SPEC section 1's frame: menus and their macOS roles, toolbar, bottom dock, status bar, the empty state and the batch page, window state | 295 |
-| `ui/shot_model.py` | the batch as a two level tree: section 2's columns, section 3's dot and tints, the In/Out display mode | 475 |
-| `ui/shot_list.py` | the view, the two line cell and the search filter | 168 |
+| `ui/main_window.py` | UI_SPEC section 1's frame: menus and their macOS roles, toolbar, bottom dock, status bar, the empty state and the batch page, window state, the autosaver | 312 |
+| `ui/shot_model.py` | the batch as a two level tree: section 2's columns, section 3's dot and tints, the In/Out display mode, and what the four editable cells commit | 649 |
+| `ui/shot_list.py` | the view, the two line cell, the search filter, the cell editor, Tab across the editable columns and the skip prompt | 322 |
 | `ui/batch_bar.py` | the batch name, the three state In/Out toggle and the search box | 80 |
 | `ui/paths.py` | the one place that asks `QStandardPaths` where the app's own files live | 33 |
+| `ui/autosave.py` | the debounced write of an edited batch, and what it does with one that has no file yet | 86 |
 | `__main__.py` | `proingest scan`, `run` and `qc` CLI, `--rules` overrides, and the UI when there is no subcommand | 440 |
 
-Not built yet: the rest of `proingest/ui/`, which is M5.2 onward. **`core/stringout.py` will not be built**: M6 is dropped
+Not built yet: the rest of `proingest/ui/`, which is M5.4 onward. **`core/stringout.py` will not be built**: M6 is dropped
 (PRD FR-9). `naming.stringout_mp4` and `naming.normalize_shooter` are therefore reachable
 from tests only; they are kept deliberately, because the stringout name is now something a
 human types and the tool can still check it, exactly as with the lens grid.
@@ -810,7 +863,7 @@ Entry points worth knowing:
 | M4 | QC: all rules both phases, xlsx exports, `qc` CLI | complete, 175 tests |
 | M4.5 | Colour pipeline, core only. Source log in, CLF applied, ACEScg out, the viewing LUT | complete, 111 tests |
 | M4.6 | Per shot source encoding: read from the clip metadata, the input transform table, the input transform out of the graded chains, QC-046 to QC-048 | complete, all five chunks (OQ-37 answered; OQ-46 wants confirming) |
-| M5 | UI: the list, the FR-14 metadata pane, settings, log. **No viewers** | **M5.1 and M5.2 done**, M5.3 to M5.9 specified |
+| M5 | UI: the list, the FR-14 metadata pane, settings, log. **No viewers** | **M5.1, M5.2 and M5.3 done**, M5.4 to M5.9 specified |
 | M6 | ~~Stringout with burn-ins~~ | **dropped 2026-09-11**, the colour session exports it |
 | M7 | Packaging: PyInstaller `.app`, dmg, Gatekeeper | not started, and needs a Mac (OQ-22) |
 | M8 | Polish, performance on a real turnover, docs | not started |
@@ -882,8 +935,8 @@ batch can do", so each chunk has something a person can look at:
 | chunk | scope | state |
 |---|---|---|
 | M5.1 | The shell: `ui/app.py`, `ui/main_window.py`, `ui/theme.qss`, `ui/paths.py`, `core/settings.py`, and the offscreen Qt test harness | **done, 975 tests** |
-| M5.2 | The shot list: a model over a `Batch`, section 2's columns, turnover group headers, the three state In/Out display, the status dot and row tints, the search box | **done, 1061 tests.** Read only, and **without the frozen columns**, which are M5.9 |
-| M5.3 | Editing: shot code, In, Out and Notes in their cells, section 5's input parsing, Ctrl+K skip, per row revalidation, autosave | not started |
+| M5.2 | The shot list: a model over a `Batch`, section 2's columns, turnover group headers, the three state In/Out display, the status dot and row tints, the search box | **done, 1061 tests.** Read only until M5.3, and **without the frozen columns**, which are M5.9 |
+| M5.3 | Editing: shot code, In, Out and Notes in their cells, section 5's input parsing, Ctrl+K skip, per row revalidation, autosave | **done, 1125 tests.** A commit re-runs the row's rules only, and `ui/autosave.py` holds the edits of a batch that has no file yet |
 | M5.4 | Batch lifecycle: New, Open, Save, Add Turnover against the source root, the scan off the UI thread, the Issues dock | not started |
 | M5.5 | Run and progress: the worker pool driven from the window, the Progress column, the status bar, Stop, the completion banner | not started |
 | M5.6 | The metadata pane, FR-14 and UI_SPEC section 12 | not started |
@@ -894,9 +947,11 @@ batch can do", so each chunk has something a person can look at:
 **M5.9 is last on purpose.** UI_SPEC section 2 freezes Status, Shot and Elem while the rest
 scrolls, and QTreeView has no such thing: it takes a second view overlaid on the first, sharing
 the model, the selection and the scroll. It is the known awkward part (section 9), it has to
-keep working through editing, filtering and selection, and all three of those are M5.3 and
-M5.4. Building it before them means building it twice. `shot_model.FROZEN_COLUMNS` already
-names the count so the two views cannot disagree about which columns it means.
+keep working through editing, filtering and selection. Editing is built as of M5.3 and the
+rest is M5.4, so the thing it has to survive is nearly all there. `shot_model.FROZEN_COLUMNS`
+already names the count so the two views cannot disagree about which columns it means, and
+`ShotListView.moveCursor` is what a second view has to keep agreeing with about where Tab
+goes next.
 
 **M5.7 is where the colour work finishes.** Five rules read `core/clf.py` and none of them can
 fire until a batch knows where its colour session is, which is a Settings value. Nothing in
@@ -915,9 +970,10 @@ M3 detail:
 The stringout moved off this table: it is M6 and always was. The M3.5 row said "ref
 mp4 and stringout" and that was a mistake in the row, not a change of plan.
 
-Tests by file: qc 176, naming 115, render 75, planner 64, clf 63, frames 55, media 46,
-ffmpeg 43, models 40, color 40, timeline 37, exr 35, scan 33, cli 30, exports 26,
-batchfile 18, resize 16, camdata 12. 924 in total, counted rather than carried forward.
+Tests by file: qc 176, naming 115, shot_model 85, render 75, planner 66, clf 65,
+frames 55, media 46, ui_shell 45, ffmpeg 43, models 41, shot_list 40, color 40, timeline 37,
+exr 37, scan 34, cli 31, exports 28, batchfile 18, resize 16, camdata 12, settings 10,
+autosave 10. 1125 in total, counted rather than carried forward.
 
 ---
 
@@ -1480,6 +1536,22 @@ is useful rather than not, but a test asserting "one stream" will fail on it.
   converting. The scan now filters to the extensions NAMING_SPEC section 2 states
   (`*HDRI*.exr`, `*camData*.txt|rtf`).
 
+**Qt, two defaults that do not do what the spec assumes.**
+
+- **`QTreeView` ships with tab key navigation off; `QTableView` ships with it on.** With
+  it off, Tab moves focus out of the view entirely and `moveCursor` is never asked, so
+  UI_SPEC section 4's walk across the editable cells only worked while a cell editor
+  happened to be open (the delegate asks for the next item itself). `ShotListView` turns
+  it on and a test pins it. Found by driving a real window, which is the second finding
+  in two chunks that no test would have produced.
+- **An editor commits on a queued connection, not when Return is pressed.**
+  `QAbstractItemDelegate` posts `_q_commitDataAndCloseEditor` so the editor can validate
+  its own contents first, so the model still holds the old value for the rest of that
+  event loop turn. Nothing in the suite depends on it, because the tests commit through
+  `setData` the way the delegate does; it is written down so that a test which sends
+  Return and asserts immediately is recognised as testing Qt's scheduling rather than
+  the code.
+
 ---
 
 ## 8. Repo conventions and session-specific facts
@@ -1518,6 +1590,13 @@ is useful rather than not, but a test asserting "one stream" will fail on it.
 ## 9. Open items
 
 Nothing blocks the next task. These are live, in rough priority order:
+
+- **Autosave works and has nowhere to write until M5.4.** Every edit is committed to the
+  batch in memory and `ui/autosave.py` holds it pending, because the path comes from New,
+  Open or Save and none of them exists yet (`MainWindow.set_batch` already takes it, and the
+  tests pass one). Closing the window flushes, so nothing is lost that had a path; a batch
+  that never had one is only ever in memory, which is the same state a never-saved batch is
+  in the moment before its first Save. M5.4 closes this by existing.
 
 - **QC-039's probe cannot separate a dark C-Log3 grade from a display rendering (OQ-47).**
   New 2026-09-12, found while building M4.6.2, and the most important open item because it is

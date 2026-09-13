@@ -35,6 +35,7 @@ from PySide6.QtWidgets import (
 from proingest import __version__
 from proingest.core import settings as core_settings
 from proingest.core.models import Batch
+from proingest.ui.autosave import AutoSaver
 from proingest.ui.batch_bar import BatchBar
 from proingest.ui.shot_list import ShotListView
 from proingest.ui.shot_model import DisplayMode, ShotListModel
@@ -91,6 +92,8 @@ class MainWindow(QMainWindow):
         self.action_scan = self._action("Scan")
         self.action_run = self._action("Run", QKeySequence("Ctrl+R"))
         self.action_stop = self._action("Stop", QKeySequence("Ctrl+."))
+        self.action_toggle_skip = self._action("Skip Shot", QKeySequence("Ctrl+K"))
+        self.action_toggle_skip.triggered.connect(lambda: self.shot_list.toggle_skip())
         self.action_export = self._action("Export")
         self.action_cycle_display = self._action("Cycle In/Out display", QKeySequence("Ctrl+T"))
         self.action_cycle_display.triggered.connect(self._cycle_display_mode)
@@ -144,6 +147,7 @@ class MainWindow(QMainWindow):
         batch_menu = menus.addMenu("Batch")
         batch_menu.addAction(self.action_add_turnover)
         batch_menu.addAction(self.action_scan)
+        batch_menu.addAction(self.action_toggle_skip)
         batch_menu.addSeparator()
         batch_menu.addAction(self.action_run)
         batch_menu.addAction(self.action_stop)
@@ -178,6 +182,9 @@ class MainWindow(QMainWindow):
         """
         self.shot_model = ShotListModel(self)
         self.shot_list = ShotListView(self.shot_model, self)
+        self.autosave = AutoSaver(self)
+        self.shot_model.row_edited.connect(lambda _row: self.autosave.schedule())
+        self.autosave.saved.connect(lambda path: self.statusBar().showMessage(f"Saved {path.name}"))
         self.batch_bar = BatchBar(self)
         self.batch_bar.display_mode_picked.connect(self.set_display_mode)
         self.batch_bar.search_changed.connect(self.shot_list.filter_by)
@@ -194,12 +201,19 @@ class MainWindow(QMainWindow):
         self.pages.addWidget(batch_page)
         self.setCentralWidget(self.pages)
 
-    def set_batch(self, batch: Batch) -> None:
-        """Show a batch. Until something can open one, this is how a batch gets here."""
+    def set_batch(self, batch: Batch, path: Path | None = None) -> None:
+        """Show a batch, and autosave it to `path` when it is edited.
+
+        `path` is where the batch file lives, and there is nothing to supply it until
+        New and Open land in M5.4. Until then an edited batch simply has its edits held
+        by the autosaver rather than written, which is the same state a never-saved
+        batch is in the moment before its first Save.
+        """
         self.shot_model.set_batch(batch)
+        self.autosave.watch(batch, path)
         self.batch_bar.set_batch_name(batch.name)
         self.pages.setCurrentIndex(1)
-        for action in (self.action_cycle_display, self.action_find):
+        for action in (self.action_cycle_display, self.action_find, self.action_toggle_skip):
             action.setEnabled(True)
 
     def set_display_mode(self, mode: DisplayMode) -> None:
@@ -289,7 +303,10 @@ class MainWindow(QMainWindow):
         """Save the window state on the way out.
 
         Nothing here can refuse the close yet. Once a batch can be dirty this is where
-        the unsaved changes prompt goes, which is why the override exists now.
+        the unsaved changes prompt goes, which is why the override exists now. What it
+        does do is stop waiting: an edit made a second before the window closed is not
+        one the editor expects to lose.
         """
+        self.autosave.flush()
         self.save_window_state()
         super().closeEvent(event)

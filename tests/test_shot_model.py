@@ -405,3 +405,194 @@ def test_no_deliverable_status_is_unaccounted_for() -> None:
             Deliverable(kind="raw_dir", name="n", path=Path("/d/n"), version=1, status=status)
         ]
         assert isinstance(row_state(built), RowState)
+
+
+class TestWhichCellsCanBeEdited:
+    """Section 2 marks four of them editable and FR-5 says why: they are the ones the
+    list owns. Everything else is read off the media, derived, or written by a run."""
+
+    def index_of(self, model: ShotListModel, column: int, row_index: int = 0) -> QModelIndex:
+        return model.index(row_index, column, model.index(0, 0, QModelIndex()))
+
+    def test_shot_in_out_and_notes_are_the_editable_ones(self, model: ShotListModel) -> None:
+        editable = [
+            column
+            for column in range(len(COLUMNS))
+            if self.index_of(model, column).flags() & Qt.ItemFlag.ItemIsEditable
+        ]
+        assert editable == [SHOT, IN, OUT, NOTES]
+
+    def test_a_turnover_header_is_not_editable(self, model: ShotListModel) -> None:
+        header = model.index(0, SHOT, QModelIndex())
+        assert not header.flags() & Qt.ItemFlag.ItemIsEditable
+
+    def test_a_row_with_no_range_cannot_have_one_typed_into_it(
+        self, qt_app: QApplication
+    ) -> None:
+        """QC-020 rows appear in the list; a relative offset has nothing to be relative to."""
+        built = ShotListModel()
+        built.set_batch(batch(row(media=None, snapshot=None, current=None)))
+        assert not self.index_of(built, IN).flags() & Qt.ItemFlag.ItemIsEditable
+        assert built.index(0, NOTES, built.index(0, 0, QModelIndex())).flags() & Qt.ItemFlag.ItemIsEditable
+
+    def test_an_editor_opens_on_the_shot_code_and_not_on_the_clip_name(
+        self, qt_app: QApplication
+    ) -> None:
+        """Prefilled with the clip name, Enter commits the clip name as an override."""
+        built = ShotListModel()
+        built.set_batch(batch(row("not a shot name")))
+        assert built.index(0, SHOT, built.index(0, 0, QModelIndex())).data(
+            Qt.ItemDataRole.DisplayRole
+        ) == "not a shot name"
+        assert self.index_of(built, SHOT).data(Qt.ItemDataRole.EditRole) == ""
+
+    def test_an_editor_opens_on_what_the_cell_is_showing(self, model: ShotListModel) -> None:
+        model.set_display_mode(DisplayMode.SOURCE_TC)
+        assert self.index_of(model, IN).data(Qt.ItemDataRole.EditRole) == "01:00:00:08"
+
+
+class TestCommittingAnEdit:
+    """Section 5: what a typed value does to the row behind the cell."""
+
+    def index_of(self, model: ShotListModel, column: int, row_index: int = 0) -> QModelIndex:
+        return model.index(row_index, column, model.index(0, 0, QModelIndex()))
+
+    def commit(self, model: ShotListModel, column: int, text: str, row_index: int = 0) -> bool:
+        index = self.index_of(model, column, row_index)
+        return bool(model.setData(index, text, Qt.ItemDataRole.EditRole))
+
+    def test_a_shot_code_becomes_an_override(self, model: ShotListModel) -> None:
+        assert self.commit(model, SHOT, "MELT0009")
+        assert model.batch.rows[0].shot_code_override == "MELT0009"
+        assert text(model, 0, SHOT) == "MELT0009"
+
+    def test_emptying_the_shot_code_puts_the_parsed_one_back(self, model: ShotListModel) -> None:
+        """Withdrawing a correction means the original stands, not that the row is nameless."""
+        self.commit(model, SHOT, "MELT0009")
+        assert self.commit(model, SHOT, "   ")
+        assert model.batch.rows[0].shot_code_override is None
+        assert text(model, 0, SHOT) == "MELT0001"
+
+    def test_notes_are_free_text(self, model: ShotListModel) -> None:
+        assert self.commit(model, NOTES, "lens grid missing, asked Ben")
+        assert model.batch.rows[0].notes == "lens grid missing, asked Ben"
+
+    def test_an_absolute_frame_moves_in(self, model: ShotListModel) -> None:
+        assert self.commit(model, IN, "20")
+        assert model.batch.rows[0].current == InOut(20, 231)
+
+    def test_a_relative_offset_moves_out_from_where_it_was(self, model: ShotListModel) -> None:
+        assert self.commit(model, OUT, "-6")
+        assert model.batch.rows[0].current == InOut(8, 225)
+
+    def test_a_timecode_is_read_against_the_source_by_default(self, model: ShotListModel) -> None:
+        assert self.commit(model, IN, "01:00:00:12")
+        assert model.batch.rows[0].current == InOut(12, 231)
+
+    def test_a_timecode_is_read_against_the_record_when_that_is_what_is_shown(
+        self, model: ShotListModel
+    ) -> None:
+        """Section 2: the toggle sets how a typed timecode is interpreted, not only what
+        is shown. The second row sits 224 frames into the timeline, so its own frame 8
+        is record 01:00:09:08 and four frames later is frame 12."""
+        model.set_display_mode(DisplayMode.RECORD_TC)
+        assert self.commit(model, IN, "01:00:09:12", row_index=1)
+        assert model.batch.rows[1].current == InOut(12, 231)
+
+    def test_an_unrecognized_value_writes_nothing(self, model: ShotListModel) -> None:
+        assert not self.commit(model, IN, "sometime tuesday")
+        assert model.batch.rows[0].current == InOut(8, 231)
+
+    def test_drop_frame_is_refused_where_it_is_typed_too(self, model: ShotListModel) -> None:
+        """QC-027 is the rule; this is the cell saying the same thing before it is one."""
+        assert not self.commit(model, IN, "01:00:00;12")
+        assert model.batch.rows[0].current == InOut(8, 231)
+
+    def test_the_same_value_again_is_not_a_change(self, model: ShotListModel) -> None:
+        """False here means nothing was written, so nothing repaints and nothing saves."""
+        assert not self.commit(model, IN, "8")
+        assert not self.commit(model, NOTES, "")
+
+    def test_a_range_the_media_cannot_satisfy_is_stored_and_then_reported(
+        self, model: ShotListModel
+    ) -> None:
+        """QC-031 says it about the row. Refusing the keystroke would stop an editor who
+        is typing Out before In on the way to a range that is fine."""
+        assert self.commit(model, OUT, "900")
+        assert [result.rule_id for result in model.batch.rows[0].errors()] == ["QC-031"]
+
+    def test_the_row_s_rules_re_run_on_commit(self, model: ShotListModel) -> None:
+        assert not model.batch.rows[0].qc
+        self.commit(model, IN, "40")
+        assert "QC-035" in [result.rule_id for result in model.batch.rows[0].qc]
+
+    def test_a_rule_that_no_longer_holds_goes_away_again(self, model: ShotListModel) -> None:
+        """`apply_row_rules` replaces its own results rather than appending to them."""
+        self.commit(model, OUT, "900")
+        self.commit(model, OUT, "231")
+        assert not model.batch.rows[0].errors()
+
+    def test_the_whole_row_repaints_because_more_than_one_cell_moved(
+        self, model: ShotListModel
+    ) -> None:
+        """An In moves Duration, Max Avail, the dot and the tint."""
+        seen: list[tuple[int, int]] = []
+        model.dataChanged.connect(
+            lambda first, last, roles=None: seen.append((first.column(), last.column()))
+        )
+        self.commit(model, IN, "40")
+        assert (0, len(COLUMNS) - 1) in seen
+        assert text(model, 0, DURATION) == "192"
+
+    def test_the_turnover_header_repaints_too(self, model: ShotListModel) -> None:
+        """Its summary counts the errors and warnings that just changed."""
+        self.commit(model, OUT, "900")
+        header = model.index(0, 0, QModelIndex()).data(Qt.ItemDataRole.DisplayRole)
+        assert "1 error" in str(header)
+
+    def test_a_commit_says_so_once(self, model: ShotListModel) -> None:
+        """What autosave listens to. The row rather than the index, because what gets
+        written is the batch."""
+        edited: list[object] = []
+        model.row_edited.connect(edited.append)
+        self.commit(model, NOTES, "checked")
+        assert edited == [model.batch.rows[0]]
+
+    def test_nothing_but_the_edit_role_writes(self, model: ShotListModel) -> None:
+        index = self.index_of(model, NOTES)
+        assert not model.setData(index, "x", Qt.ItemDataRole.DisplayRole)
+        assert model.batch.rows[0].notes == ""
+
+
+class TestSkipping:
+    """Ctrl+K, section 4. The reason is the view's to ask for; this is what it does."""
+
+    def index_of(self, model: ShotListModel, column: int = SHOT) -> QModelIndex:
+        return model.index(0, column, model.index(0, 0, QModelIndex()))
+
+    def test_a_skipped_row_says_so_and_shows_it(self, model: ShotListModel) -> None:
+        assert model.set_skipped(self.index_of(model), True, "reshoot")
+        assert model.batch.rows[0].skipped
+        assert model.batch.rows[0].skip_reason == "reshoot"
+        assert row_state(model.batch.rows[0]) is RowState.SKIPPED
+
+    def test_un_skipping_keeps_the_reason_it_was_given(self, model: ShotListModel) -> None:
+        """A row toggled off and on again is not a second interrogation."""
+        model.set_skipped(self.index_of(model), True, "reshoot")
+        model.set_skipped(self.index_of(model), False)
+        assert not model.batch.rows[0].skipped
+        assert model.batch.rows[0].skip_reason == "reshoot"
+
+    def test_skipping_a_skipped_row_changes_nothing(self, model: ShotListModel) -> None:
+        model.set_skipped(self.index_of(model), True, "reshoot")
+        assert not model.set_skipped(self.index_of(model), True, "something else")
+        assert model.batch.rows[0].skip_reason == "reshoot"
+
+    def test_it_saves_like_any_other_edit(self, model: ShotListModel) -> None:
+        edited: list[object] = []
+        model.row_edited.connect(edited.append)
+        model.set_skipped(self.index_of(model), True, "reshoot")
+        assert edited == [model.batch.rows[0]]
+
+    def test_a_turnover_header_cannot_be_skipped(self, model: ShotListModel) -> None:
+        assert not model.set_skipped(model.index(0, 0, QModelIndex()), True, "no")

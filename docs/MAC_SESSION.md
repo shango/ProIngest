@@ -77,6 +77,17 @@ Append to this as M5 and M6 are built.
 - [ ] **The status dot reads at a glance in all seven states.** Nine pixels, filled or hollow,
       against the row tint behind it (M5.2, `UI_SPEC.md` section 3). Amber on faint amber is
       the pair to look at.
+- [ ] **The inline red on a mistyped In or Out is legible against the editor's own background.**
+      The cell editor colours what was typed rather than replacing it (M5.3, `UI_SPEC.md`
+      section 5), and the red is the same `#cf5a52` as the error dot, chosen against the list's
+      dark rows rather than against a macOS line edit, which draws itself in the system palette.
+- [ ] **Tab across the editable cells does what an editor expects on a Mac.** Shot, In, Out and
+      Notes, wrapping to the next row (M5.3, `UI_SPEC.md` section 4). `QTreeView` ships with tab
+      key navigation off and the list turns it on, which means **Tab can no longer move focus out
+      of the list**; whether that is right or maddening is a judgement to make while using it.
+- [ ] **Ctrl+K's reason prompt is a `QInputDialog` and it has not been looked at.** It should be
+      a sheet on the window rather than a free-floating box, and its Cancel should read as
+      cancelling the skip rather than cancelling the reason. `UI_SPEC.md` section 4.
 - [ ] Metadata pane: width and section states persist, long paths elide in the middle, values
       copy. `UI_SPEC.md` section 12.
 - [ ] Dark theme and font rendering at Retina, including the IBM Plex fallback chain.
