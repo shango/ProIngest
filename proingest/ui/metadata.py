@@ -374,7 +374,7 @@ def _side_file_fields(row: ShotRow, camdata_for: CamDataLookup) -> list[Field]:
     return fields
 
 
-def turnover_fields(turnover: Turnover) -> list[Field]:
+def turnover_fields(turnover: Turnover, rate: FrameRate) -> list[Field]:
     """Section 12.2's Turnover block. Shown alone when a group header is selected."""
     fields: list[Field] = []
     if turnover.number is not None:
@@ -388,7 +388,7 @@ def turnover_fields(turnover: Turnover) -> list[Field]:
     if turnover.timeline_path is not None:
         fields.append(Field("Timeline", str(turnover.timeline_path), is_path=True))
     if turnover.timeline_start:
-        started = frames.frames_to_timecode(turnover.timeline_start, 24.0)
+        started = frames.frames_to_timecode(turnover.timeline_start, rate.as_float())
         fields.append(Field("Timeline start", f"{turnover.timeline_start} ({started})"))
     return fields
 
@@ -438,7 +438,7 @@ def describe_row(
         Section(COLOUR, tuple(_colour_fields(row))),
         Section(AUDIO, tuple(_audio_fields(row, batch))),
         Section(SIDE_FILES, tuple(_side_file_fields(row, camdata_for))),
-        Section(TURNOVER, tuple(turnover_fields(turnover)) if turnover else ()),
+        Section(TURNOVER, tuple(turnover_fields(turnover, batch.project_rate)) if turnover else ()),
         Section(QC, tuple(_qc_fields([row]))),
     ]
 
@@ -505,7 +505,7 @@ def describe(
     return [section for section in sections if section.fields]
 
 
-def describe_turnover(turnover: Turnover) -> list[Section]:
+def describe_turnover(turnover: Turnover, rate: FrameRate) -> list[Section]:
     """A group header's selection: **the Turnover section alone** (section 12.3).
 
     Alone, so the turnover's own results go in it as fields rather than in a QC section
@@ -515,7 +515,7 @@ def describe_turnover(turnover: Turnover) -> list[Section]:
     Issues dock lists every one.
     """
     fields = [
-        *turnover_fields(turnover),
+        *turnover_fields(turnover, rate),
         *(Field(result.rule_id, result.message, rule_id=result.rule_id) for result in turnover.qc),
     ]
     return [Section(TURNOVER, tuple(fields))]

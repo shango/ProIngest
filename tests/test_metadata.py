@@ -32,7 +32,7 @@ from proingest.ui.metadata import (
     selection_summary,
 )
 from proingest.ui.metadata_pane import COPY, ElidedLabel, MetadataPane, SectionBox
-from tests.fixtures.batches import batch, fail, row, turnover, warn, with_sides
+from tests.fixtures.batches import RATE_24, batch, fail, row, turnover, warn, with_sides
 
 
 def section(sections: list[Section], title: str) -> Section:
@@ -231,17 +231,23 @@ class TestTheEdgeStates:
 
     def test_a_turnover_header_shows_the_turnover_alone(self) -> None:
         held = turnover(number=1, month=2, day=23, year=2026, shooter="danielluckett")
-        sections = describe_turnover(held)
+        sections = describe_turnover(held, RATE_24)
         assert titles(sections) == ["Turnover"]
         assert value(sections, "Turnover", "Date") == "02_23_2026"
         assert value(sections, "Turnover", "Shooter") == "danielluckett"
+
+    def test_the_timeline_start_is_read_at_the_project_rate(self) -> None:
+        """90000 frames is an hour at 25 and an hour two and a half minutes at 24."""
+        held = turnover(timeline_start=90000)
+        sections = describe_turnover(held, FrameRate(25))
+        assert "(01:00:00:00)" in value(sections, "Turnover", "Timeline start")
 
     def test_a_turnover_s_own_results_go_in_that_one_section(self) -> None:
         """Alone means alone: a QC section beside it would be a second section, and the
         rows' results are already counted on the group header and listed in the dock."""
         held = turnover()
         held.qc.append(QCResult("QC-054", "warning", "turnover", "no lens grid folder"))
-        sections = describe_turnover(held)
+        sections = describe_turnover(held, RATE_24)
         assert titles(sections) == ["Turnover"]
         assert value(sections, "Turnover", "QC-054") == "no lens grid folder"
 

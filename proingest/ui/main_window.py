@@ -1216,7 +1216,7 @@ class MainWindow(QMainWindow):
             return
         turnover = self.shot_list.selected_turnover()
         if turnover is not None:
-            self.metadata.show_sections(metadata.describe_turnover(turnover))
+            self.metadata.show_sections(metadata.describe_turnover(turnover, self.batch.project_rate))
             return
         self.metadata.clear()
 
