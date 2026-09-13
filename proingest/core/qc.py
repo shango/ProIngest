@@ -208,7 +208,30 @@ def check_timeline_rate(
 
 _DEPTH_PATTERN = re.compile(r"(\d+)(?:le|be)?$")
 
-_EIGHT_BIT_NAMES = frozenset({"rgb24", "bgr24", "rgba", "bgra", "argb", "abgr", "gray"})
+_EIGHT_BIT_NAMES = frozenset(
+    {
+        "rgb24",
+        "bgr24",
+        "rgba",
+        "bgra",
+        "argb",
+        "abgr",
+        "gray",
+        # Packed and semi-planar names bake a layout number into the name, not a depth:
+        # `nv12` is 8 bit 4:2:0, `uyvy422` is 8 bit 4:2:2, `rgb0` is 8 bit with a pad byte.
+        "nv12",
+        "nv21",
+        "nv16",
+        "nv24",
+        "yuyv422",
+        "uyvy422",
+        "yvyu422",
+        "rgb0",
+        "bgr0",
+        "0rgb",
+        "0bgr",
+    }
+)
 
 
 def _is_float_format(pixel_format: str) -> bool:

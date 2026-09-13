@@ -261,6 +261,13 @@ class TestSourceFormat:
             ("yuv422p10le", 10),
             ("gbrp12le", 12),
             ("gbrpf32le", 32),
+            # The number in a packed or semi-planar name is a layout, not a depth.
+            ("nv12", 8),
+            ("nv21", 8),
+            ("uyvy422", 8),
+            ("yuyv422", 8),
+            ("rgb0", 8),
+            ("bgr0", 8),
         ],
     )
     def test_bit_depth_reads_ffmpeg_names(self, pixel_format: str, depth: int) -> None:
