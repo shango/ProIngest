@@ -79,6 +79,11 @@ class TestFrameRate:
         assert FrameRate(24) == FrameRate(24)
         assert FrameRate(24) != FrameRate(24000, 1001)
 
+    def test_from_float_recognises_every_ntsc_rate_it_lists(self) -> None:
+        """119.88 is 1.2e-4 off 120000/1001, further than the other three are off theirs."""
+        assert FrameRate.from_float(119.88) == FrameRate(120000, 1001)
+        assert FrameRate.from_float(59.94) == FrameRate(60000, 1001)
+
     def test_from_float_whole(self) -> None:
         assert FrameRate.from_float(24.0) == FrameRate(24)
 

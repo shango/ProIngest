@@ -154,9 +154,14 @@ def load(path: Path, project_rate: FrameRate | None = None) -> Timeline:
     if not video and not audio:
         raise TimelineError(f"{path} contains no clips at all")
 
+    try:
+        rate = _timeline_rate(timeline)
+    except ValueError as exc:
+        raise TimelineError(f"{path} is at a rate the tool does not support: {exc}") from exc
+
     return Timeline(
         path=path,
-        rate=_timeline_rate(timeline),
+        rate=rate,
         video=video,
         audio=audio,
         global_start=_global_start(timeline),

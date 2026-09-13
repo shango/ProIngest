@@ -131,6 +131,27 @@ class TestLoad:
         with pytest.raises(TimelineError):
             timeline.load(bad)
 
+    def test_a_rate_the_tool_does_not_support_is_a_timeline_error(self, tmp_path: Path) -> None:
+        """QC-002 catches TimelineError; a bare ValueError from the rate would escape it."""
+        import opentimelineio as otio
+        from opentimelineio import opentime as ot
+
+        built = otio.schema.Timeline(name="odd")
+        built.global_start_time = ot.RationalTime(0, 47.952)
+        track = otio.schema.Track(name="V1", kind=otio.schema.TrackKind.Video)
+        built.tracks.append(track)
+        track.append(
+            otio.schema.Clip(
+                name="a",
+                media_reference=otio.schema.ExternalReference(target_url=URL),
+                source_range=ot.TimeRange(ot.RationalTime(0, 47.952), ot.RationalTime(10, 47.952)),
+            )
+        )
+        path = tmp_path / "odd.otio"
+        otio.adapters.write_to_file(built, str(path))
+        with pytest.raises(TimelineError, match="rate"):
+            timeline.load(path)
+
     def test_drop_frame_defaults_to_false(self, tmp_path: Path) -> None:
         path = fixtures.make_otio(tmp_path / "t.otio", [("a", URL)])
         assert not timeline.load(path).is_drop_frame

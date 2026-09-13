@@ -59,7 +59,9 @@ class FrameRate:
     def from_float(cls, value: float) -> FrameRate:
         """Recognise the NTSC rates exactly; treat everything else as a whole number."""
         for whole in (24, 30, 60, 120):
-            if abs(value - (whole * 1000 / 1001)) < 1e-4:
+            # 1e-3 rather than tighter: 119.88 is 1.2e-4 off 120000/1001, and the nearest
+            # whole number is 0.12 away, so nothing else can fall inside it.
+            if abs(value - (whole * 1000 / 1001)) < 1e-3:
                 return cls(whole * 1000, 1001)
         if abs(value - round(value)) < 1e-6:
             return cls(round(value))
