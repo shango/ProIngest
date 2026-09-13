@@ -9,7 +9,7 @@ import pytest
 
 from proingest.__main__ import _ProgressPrinter, main
 from proingest.core import batchfile, clf, color, exr, qc, render
-from proingest.core.models import FrameRate
+from proingest.core.models import Batch, FrameRate, QCResult
 from tests.fixtures import color as color_fixtures
 from tests.fixtures import media as fixtures
 
@@ -216,6 +216,21 @@ class TestRunCommand:
         batch_path = self.scanned(tmp_path)
         main(["run", str(batch_path), "--delivery-root", str(tmp_path / "delivery"), "--dry-run"])
         assert "QC-054" in capsys.readouterr().out
+
+    def test_a_row_error_from_the_preflight_is_printed_too(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A row with an error is dropped from the plan, so the shot count is short and
+        this line is the only thing that says why."""
+        batch_path = self.scanned(tmp_path)
+
+        def flag_a_row(batch: Batch) -> None:
+            batch.rows[0].qc.append(QCResult("QC-019", "error", "row", "the HDRI will not open"))
+
+        monkeypatch.setattr(qc, "preflight", flag_a_row)
+        main(["run", str(batch_path), "--delivery-root", str(tmp_path / "delivery"), "--dry-run"])
+        out = capsys.readouterr().out
+        assert "QC-019" in out and "MELT0001" in out
 
     def test_an_unwritable_delivery_root_stops_the_run(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]

@@ -140,6 +140,14 @@ def _print_preflight(batch: Batch) -> bool:
     results = list(batch.qc) + [result for turnover in batch.turnovers for result in turnover.qc]
     for result in results:
         print(f"  {result.severity.upper():7} {result.rule_id}  {result.message}")
+    # A row-scope error drops that row from the plan (`planner.plannable_identity`), so
+    # it is the one kind of row result worth printing here: without it the shot count
+    # below is short and nothing says why.
+    for row in batch.rows:
+        for result in row.qc:
+            if result.severity == "error":
+                code = row.shot_code or row.clip_name
+                print(f"  {result.severity.upper():7} {result.rule_id}  {code}: {result.message}")
     blocking = [result for result in batch.qc if result.severity == "error"]
     for result in blocking:
         print(f"error: {result.rule_id}: {result.message}", file=sys.stderr)
