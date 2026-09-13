@@ -10,9 +10,17 @@ commit.
 
 **State at 2026-09-13. Every feature milestone is built.** M1 to M4 complete, M4.5 all four
 chunks, M4.6 all five, and **M5 is all eleven**: M5.9, the frozen left columns, went in last
-as planned. 1536 tests passing, `ruff` and `mypy --strict` clean. What is left is **M7
-packaging** (needs a Mac), **M8 polish** (needs a real turnover and a real colour session)
-and **M9 the user guide**.
+as planned. 1584 tests passing, `ruff`, `ruff format` and `mypy --strict` clean. What is left
+is **M7 packaging** (needs a Mac), **M8 polish** (needs a real turnover and a real colour
+session) and **M9 the user guide**.
+
+**A code quality review went in on 2026-09-13, on the branch `review/quality-fixes`.**
+`REVIEW.md` at the repo root is the record: 27 bugs fixed with a test each, five structural
+findings and the stale docs with them, `uv.lock` committed and installed in CI, and
+`ruff format` enforced. The two that changed behaviour a person would notice: closing the
+window mid-run now waits for the run's results instead of dropping them, and OTIO clip times
+are rescaled to the timeline rate (OQ-51). What the review deferred, and why, is in
+`REVIEW.md`'s last section; the largest is the `MainWindow` split.
 
 **What the tool does today, end to end.** A batch is made, opened, saved and filled with
 turnover folders; the scan runs off the UI thread; the list shows it grouped by turnover and

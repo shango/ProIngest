@@ -406,3 +406,73 @@ is ignored and untracked.
 
 Decisions needed from you before phase 2: the em dash in the tracker export, H1 and H2, and
 whether B3 and B6 are in scope.
+
+---
+
+# Phase 2, 2026-09-13: what was fixed
+
+Branch `review/quality-fixes`, 33 commits on top of `main`, one finding or one theme per
+commit, each named after the finding IDs above. Every bug fix carries a test that was run
+without the fix and seen to fail. No public interface changed except where a finding was about
+it (`render.apply_results` gained a `show_pattern` parameter with the old default;
+`metadata.turnover_fields` and `describe_turnover` take the rate; `AutoSaver.flush` returns a
+bool; `DEFAULT_WORKERS` is imported from `models`).
+
+## Final state
+
+| check | result |
+|---|---|
+| `pytest tests/ -q` | **1584 passed** (48 new tests) |
+| `ruff check .` | clean |
+| `ruff format --check .` | clean, now enforced in CI |
+| `mypy --strict proingest tests` | clean |
+| dependencies | pinned in `uv.lock`, installed with `uv sync --frozen` in CI |
+
+## Fixed
+
+**All 27 bugs.** B1 to B27, including the two medium-risk ones you approved: B3 (the window
+now stops the run and closes when the results have been applied, with the same bounded wait
+as before) and B6 (every OTIO time is rescaled to the timeline rate, which is now read off the
+global start first; recorded as OQ-51 in `docs/OPEN_QUESTIONS.md`).
+
+**Structural:** S3, S5, S6, S7, S8. **Smells:** C5, C7, plus the B26 items. **Docs:** every
+stale docstring, comment and README line listed in section 4; QC-018 is now named as unbuilt in
+the qc module docstring. **Dead code:** `display_mode_of` removed. **Tests:** the eight
+tautological tests in section 5 now assert what their names say, and the window fixture detaches
+its log handler. **Hygiene:** H1 and H2 as you asked.
+
+## Deferred, and why
+
+- **The em dash in the tracker export** (section 4). Kept at your instruction: it mirrors the
+  studio sheet.
+- **S1, `MainWindow` as a god class.** A large move for no behaviour change; the tests would
+  survive it but the diff would be most of the file. Worth its own session if wanted.
+- **S2, blocked-run and turnover-numbering logic in the UI.** Small, but it moves policy between
+  layers and the CLI and window agree today. Left for the S1 session, where it belongs.
+- **S4, the stat storms.** `find_lens_grid_folder` walks every frame because a test pins "found
+  at any depth", and `index_directory`'s double stat is the docstring being wrong rather than the
+  code. Both are performance on a mount this machine cannot measure; deferred to M8, which has the
+  real turnover.
+- **S9**, acknowledged UI-thread I/O; not a defect.
+- **C1, the phase A result scaffolding in `qc.py`.** About 120 lines across 35 sites for
+  readability only. The brief says not to rewrite for its own sake, and the sites are stable.
+- **C2, C3, C4, C6, C8.** Micro-smells, each a few lines, none affecting behaviour. C6 (the 24 fps
+  fallback in `_write_frame`) and the `skipped` question were the two where intent was unclear;
+  C6 is untouched and the `skipped` one was resolved as B26 because it showed a green dot beside
+  0/2.
+- **H3, H4.** Tracked source documents are a documented choice; the adapter import check is a
+  nicety.
+- **Section 5's remaining test gaps** that were not tied to a bug (`timecode_frames_for`,
+  `decode_frames` timeout, `execute` with a dying worker, the `OWNED_*_RULES` pin). Good
+  additions, but each is a test of code that was not changed here.
+
+## Things worth knowing that the fixes turned up
+
+- The `OpenEXR.File` header dict is only readable while the file is open. B8's first attempt
+  read fields after the `with` block and 105 tests failed; every field is now copied out inside
+  it. If `read_header` is ever touched again, that is the trap.
+- `EditContext` has no `record_start` field; the pipeline reviewer's reproduction of B4 used the
+  wrong kwargs and was re-done against the real signature before the fix was written.
+- A `uv.lock` appeared untracked in the working tree partway through phase 1 (11:41, not written
+  by any commit here). It was regenerated with `uv lock` rather than trusted, and resolved to the
+  same versions the venv already held.
