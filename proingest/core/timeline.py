@@ -269,17 +269,32 @@ def _global_start(timeline: otio.schema.Timeline, rate: FrameRate) -> int:
 _DROP_FRAME_TIMECODE = re.compile(r"\d{2}:\d{2}:\d{2};\d{2}")
 
 
+_RATE_MISMATCH_MESSAGES = ("timecode", "duration don't match", "overlapping record")
+"""What otio and the CMX adapter say when an EDL's numbers do not add up at the rate
+it was read at: otio's own `Frame rate mismatch. Timecode ...`, and the adapter's two
+duration checks. Every other `EDLParseError` is malformed syntax."""
+
+
 def _looks_like_timecode_mismatch(exc: BaseException) -> bool:
     """Whether an adapter failure is about timecode rather than malformed syntax."""
-    return "timecode" in str(exc).lower() or type(exc).__name__ == "EDLParseError"
+    text = str(exc).lower()
+    return any(fragment in text for fragment in _RATE_MISMATCH_MESSAGES)
+
+
+_DROP_FRAME_DECLARATION = re.compile(r"^FCM:\s*DROP", re.IGNORECASE | re.MULTILINE)
 
 
 def _edl_is_drop_frame(path: Path) -> bool:
-    """An EDL says so plainly: a `;` frame divider instead of `:`."""
+    """An EDL says so plainly: `FCM: DROP FRAME`, or a `;` frame divider instead of `:`.
+
+    Both are read because the adapter ignores `FCM:` lines: an EDL that declares drop
+    frame over colon timecodes would otherwise be read as non-drop and pass.
+    """
     try:
-        return bool(_DROP_FRAME_TIMECODE.search(path.read_text(errors="ignore")))
+        text = path.read_text(encoding="utf-8", errors="ignore")
     except OSError:
         return False
+    return bool(_DROP_FRAME_DECLARATION.search(text) or _DROP_FRAME_TIMECODE.search(text))
 
 
 def _otio_is_drop_frame(timeline: otio.schema.Timeline) -> bool:

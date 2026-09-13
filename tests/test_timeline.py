@@ -307,6 +307,29 @@ FCM: NON-DROP FRAME
         with pytest.raises(timeline.DropFrameError, match="QC-027"):
             timeline.load(path)
 
+    def test_a_drop_frame_declaration_counts_even_over_colon_timecodes(self, tmp_path: Path) -> None:
+        """The adapter ignores FCM lines, so this is the only place the line is read."""
+        path = tmp_path / "df.edl"
+        path.write_text(self.EDL.replace("FCM: NON-DROP FRAME", "FCM: DROP FRAME"))
+        with pytest.raises(timeline.DropFrameError, match="QC-027"):
+            timeline.load(path)
+
+    def test_timecode_that_does_not_add_up_at_the_rate_is_the_specific_error(
+        self, tmp_path: Path
+    ) -> None:
+        path = tmp_path / "t25.edl"
+        path.write_text(self.EDL.replace("10:00:10:00", "10:00:10:24"))
+        with pytest.raises(timeline.EdlTimecodeError, match="different rate"):
+            timeline.load(path)
+
+    def test_malformed_syntax_is_not_blamed_on_the_rate(self, tmp_path: Path) -> None:
+        """Every adapter failure used to read as a rate mismatch, by class name."""
+        path = tmp_path / "bad.edl"
+        path.write_text(self.EDL.replace("V     C", "V     Q"))
+        with pytest.raises(TimelineError) as caught:
+            timeline.load(path)
+        assert not isinstance(caught.value, timeline.EdlTimecodeError)
+
     def test_drop_frame_error_is_a_timeline_error(self, tmp_path: Path) -> None:
         """Callers that only care that loading failed still catch it."""
         path = tmp_path / "df.edl"
