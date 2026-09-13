@@ -196,7 +196,11 @@ def load(path: Path) -> AppSettings:
     if not isinstance(data, dict):
         log.warning("settings at %s are not an object; using defaults", path)
         return AppSettings()
-    return AppSettings.from_dict(data)
+    try:
+        return AppSettings.from_dict(data)
+    except (TypeError, ValueError) as exc:
+        log.warning("settings at %s hold a value of the wrong type (%s); using defaults", path, exc)
+        return AppSettings()
 
 
 def save(settings: AppSettings, path: Path) -> None:

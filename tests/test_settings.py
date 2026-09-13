@@ -135,6 +135,15 @@ class TestAFileThatCannotBeUsed:
         path.write_text("[1, 2, 3]")
         assert settings.load(path) == settings.AppSettings()
 
+    @pytest.mark.parametrize(
+        "content",
+        ['{"workers": "lots"}', '{"workers": null}', '{"path_map": [1, 2]}', '{"metadata_collapsed": 5}'],
+    )
+    def test_a_value_of_the_wrong_type_falls_back(self, tmp_path: Path, content: str) -> None:
+        path = tmp_path / "settings.json"
+        path.write_text(content)
+        assert settings.load(path) == settings.AppSettings()
+
     def test_a_missing_key_takes_its_default(self, tmp_path: Path) -> None:
         path = tmp_path / "settings.json"
         path.write_text(json.dumps({"schema_version": 1}))
