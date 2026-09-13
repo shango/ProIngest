@@ -184,7 +184,10 @@ def count_frames(path: Path, ffprobe: Path | None = None) -> int:
     result = run(command, timeout=600)
     if result.returncode != 0:
         raise FFprobeError(f"frame count failed on {path}: {result.stderr.strip()}")
-    streams = json.loads(result.stdout).get("streams", [])
+    try:
+        streams = json.loads(result.stdout).get("streams", [])
+    except json.JSONDecodeError as exc:
+        raise FFprobeError(f"ffprobe returned unreadable JSON for {path}: {exc}") from exc
     if not streams:
         raise FFprobeError(f"no video stream in {path}")
     return int(streams[0]["nb_read_frames"])

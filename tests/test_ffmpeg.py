@@ -12,6 +12,7 @@ to prevent.
 
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 
 import numpy as np
@@ -376,6 +377,18 @@ class TestEncodeCommand:
             audio=Path("a.wav"),
         )
         assert "-ss" not in command
+
+
+class TestCountFrames:
+    def test_unreadable_json_is_an_ffprobe_error(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        def garbage(command: list[str], timeout: int = 0) -> subprocess.CompletedProcess[str]:
+            return subprocess.CompletedProcess(command, 0, stdout="not json", stderr="")
+
+        monkeypatch.setattr(ffmpeg, "run", garbage)
+        with pytest.raises(ffmpeg.FFprobeError, match="unreadable JSON"):
+            ffmpeg.count_frames(tmp_path / "x.mov", ffprobe=Path("ffprobe"))
 
 
 class TestAvailableDecoders:
