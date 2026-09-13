@@ -108,6 +108,22 @@ def test_a_write_that_fails_keeps_the_edits_rather_than_raising(
     assert saver.pending
 
 
+def test_switching_batches_over_a_failed_write_says_the_edits_are_gone(
+    saver: AutoSaver, tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """`watch` flushes the old batch first; when that write fails the edits go with
+    the batch, and a log line is the least that can be said about it."""
+    blocked = tmp_path / "file.txt"
+    blocked.write_text("not a folder")
+    saver.watch(batch(row()), blocked / "melt.pibatch")
+    saver.schedule()
+    assert not saver.flush()
+    with caplog.at_level("WARNING"):
+        saver.watch(batch(row()), None)
+    assert "discarded" in caplog.text
+    assert not saver.pending
+
+
 def test_it_says_what_it_wrote(saver: AutoSaver, tmp_path: Path) -> None:
     written: list[object] = []
     saver.saved.connect(written.append)

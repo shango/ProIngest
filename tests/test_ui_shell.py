@@ -43,6 +43,8 @@ from proingest.ui.main_window import (
     WRITING_REPORTS,
     MainWindow,
     ingest_text,
+    turnover_labels,
+    unsaved_question,
 )
 from proingest.ui.metadata import MIXED, NO_SELECTION, as_text
 from proingest.ui.run_strip import LINK_COLOR, RunStrip
@@ -984,6 +986,7 @@ class TestTheIssuesDock:
         window.issues.itemDoubleClicked.emit(window.issues.topLevelItem(0), 0)
 
         assert window.shot_list.current_shot_row() is wanted
+        assert window.batch_bar.search.text() == "", "the box says what the list shows"
 
     def test_the_empty_state_link_brings_the_dock_up(self, window: DrivenWindow) -> None:
         """Section 10: no clips found, plus a link to the Issues dock."""
@@ -993,6 +996,27 @@ class TestTheIssuesDock:
         window.list_empty_text.linkActivated.emit("#issues")
 
         assert window.bottom_tabs.currentWidget() is window.issues
+
+
+class TestTurnoverLabels:
+    def test_folder_names_alone_when_they_differ(self) -> None:
+        held = [turnover(folder=Path("/a/t1")), turnover(folder=Path("/a/t2"))]
+        assert turnover_labels(held) == ["t1", "t2"]
+
+    def test_the_parent_tells_two_of_the_same_name_apart(self) -> None:
+        """`names.index(chosen)` would otherwise hand back the first of the two."""
+        held = [turnover(folder=Path("/day1/t1")), turnover(folder=Path("/day2/t1"))]
+        assert turnover_labels(held) == ["day1/t1", "day2/t1"]
+
+
+class TestTheUnsavedQuestion:
+    def test_a_batch_with_no_file_is_never_saved(self) -> None:
+        assert "never been saved" in unsaved_question(None)
+
+    def test_a_batch_whose_write_failed_says_so_instead(self) -> None:
+        """`pending` is also true after a failed write to a file that exists, and
+        "never been saved" would send the editor looking for the wrong problem."""
+        assert "melt.pibatch" in unsaved_question(Path("/x/melt.pibatch"))
 
 
 class TestClosingWithWorkInHand:
@@ -1058,6 +1082,22 @@ class TestClosingWithWorkInHand:
 
         assert not window.close()
         assert pump_until(lambda: core_settings.load(window._settings_path).window_geometry != "")
+
+    def test_a_backup_that_fails_stops_the_open_and_says_so(
+        self, window: DrivenWindow, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Without the copy, the next autosave overwrites the only one there is."""
+        saved = batchfile.save(batch(row(), name="on disk"), tmp_path / "m.pibatch")
+
+        def refuse(path: Path) -> Path | None:
+            raise PermissionError("read only")
+
+        monkeypatch.setattr(batchfile, "backup", refuse)
+        window.open_answer = saved
+        window.action_open.trigger()
+
+        assert window.problems and "Could not back up" in window.problems[0][0]
+        assert not window._batch_open
 
     def test_opening_another_batch_asks_about_this_one_first(self, window: DrivenWindow) -> None:
         window.set_batch(batch(row(), name="first"))

@@ -455,6 +455,11 @@ class TestHowARowIsPainted:
 
 
 class TestTooltips:
+    def test_a_row_stop_skipped_is_not_done(self) -> None:
+        """`skipped` is what Stop writes on a job it reached; the Progress cell reads
+        0/2 beside it and the dot must not say otherwise."""
+        assert row_state(delivered(row(), status="skipped")) is not RowState.DONE
+
     def test_the_dot_lists_the_rules_that_fired(self, qt_app: QApplication) -> None:
         """Section 3: hovering the dot names the rule IDs and their messages."""
         built = ShotListModel()

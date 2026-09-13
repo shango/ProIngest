@@ -203,7 +203,7 @@ def row_state(row: ShotRow) -> RowState:
         return RowState.ERROR
     if row.warnings():
         return RowState.WARNING
-    if statuses and statuses <= {"done", "exists", "skipped"}:
+    if statuses and statuses <= DELIVERED:
         return RowState.DONE
     return RowState.OK
 

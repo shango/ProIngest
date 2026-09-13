@@ -136,6 +136,22 @@ progress message, is a message per frame per worker: on a fast copy job that is
 thousands a second, all of them saying something the eye cannot see."""
 
 
+def turnover_labels(turnovers: Sequence[Turnover]) -> list[str]:
+    """Folder names, with the parent folder added where two turnovers share one."""
+    names = [turnover.folder.name for turnover in turnovers]
+    return [
+        f"{turnover.folder.parent.name}/{name}" if names.count(name) > 1 else name
+        for turnover, name in zip(turnovers, names, strict=True)
+    ]
+
+
+def unsaved_question(path: Path | None) -> str:
+    """What to ask about pending edits: no file yet, or a file the last write missed."""
+    if path is None:
+        return "This batch has never been saved. Save it before closing?"
+    return f"The last save to {path.name} failed and the edits are still unsaved. Save it before closing?"
+
+
 def banner_text(
     written: Sequence[Deliverable], reports: Path | None, cancelled: bool
 ) -> str:
@@ -371,6 +387,7 @@ class MainWindow(QMainWindow):
         self.batch_bar = BatchBar(self)
         self.batch_bar.display_mode_picked.connect(self.set_display_mode)
         self.batch_bar.search_changed.connect(self.shot_list.filter_by)
+        self.shot_list.filter_cleared.connect(self.batch_bar.search.clear)
         self.batch_bar.delivery_root_clicked.connect(self.choose_delivery_root)
 
         self.scanner = Scanner(self)
@@ -478,7 +495,12 @@ class MainWindow(QMainWindow):
             return
         # The copy is taken on open rather than on save, so the file being backed up is
         # the last one the editor saw whole rather than the one a bad save just wrote.
-        batchfile.backup(path)
+        # Without it the next autosave overwrites the only copy, so the open waits.
+        try:
+            batchfile.backup(path)
+        except OSError as exc:
+            self.report_problem("Could not back up batch", f"{path.name} was not opened: {exc}")
+            return
         self.set_batch(loaded, path)
         self._check_roots(loaded)
 
@@ -1140,7 +1162,7 @@ class MainWindow(QMainWindow):
         The folder is what the editor picked in Add Turnover and what the session was
         exported for; `turnover001` is the tool's own handle for it.
         """
-        names = [turnover.folder.name for turnover in turnovers]
+        names = turnover_labels(turnovers)
         chosen, accepted = QInputDialog.getItem(
             self, "Ingest Colour Session", WHICH_TURNOVER, names, 0, False
         )
@@ -1158,11 +1180,11 @@ class MainWindow(QMainWindow):
         QMessageBox.information(self, INGEST_TITLE, text)
 
     def ask_unsaved(self) -> QMessageBox.StandardButton:
-        """Save, Discard or Cancel, for a batch with edits and no file yet."""
+        """Save, Discard or Cancel, for edits that could not be written."""
         return QMessageBox.warning(
             self,
             "Unsaved batch",
-            "This batch has never been saved. Save it before closing?",
+            unsaved_question(self.autosave.path),
             QMessageBox.StandardButton.Save
             | QMessageBox.StandardButton.Discard
             | QMessageBox.StandardButton.Cancel,

@@ -27,6 +27,7 @@ from PySide6.QtCore import (
     QSize,
     QSortFilterProxyModel,
     Qt,
+    Signal,
 )
 from PySide6.QtGui import QColor, QPainter, QResizeEvent
 from PySide6.QtWidgets import (
@@ -332,6 +333,9 @@ class FrozenColumns(QTreeView):
 
 
 class ShotListView(QTreeView):
+    filter_cleared = Signal()
+    """`select_row` emptied the filter to reach a hidden row; the search box should follow."""
+
     """The list. Two levels, always expanded, fixed order, one row per shot."""
 
     def __init__(self, model: ShotListModel, parent: QWidget | None = None) -> None:
@@ -496,6 +500,7 @@ class ShotListView(QTreeView):
         index = self.proxy.mapFromSource(source)
         if not index.isValid():
             self.filter_by("")
+            self.filter_cleared.emit()
             index = self.proxy.mapFromSource(source)
         self.setCurrentIndex(index)
         self.scrollTo(index)

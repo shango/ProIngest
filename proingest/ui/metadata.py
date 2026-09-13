@@ -465,7 +465,7 @@ def _merge(described: Sequence[list[Section]]) -> list[Section]:
             fields.append(
                 Field(
                     label,
-                    value or MIXED,
+                    value,
                     is_path=template.is_path if template else False,
                     rule_id=template.rule_id if template else None,
                 )

@@ -262,6 +262,11 @@ class TestMoreThanOneRow:
         sections = describe(rows, batch(*rows))
         assert value(sections, "Source media", "Resolution") == "3840x2160"
 
+    def test_a_field_they_agree_is_empty_is_not_mixed(self) -> None:
+        """`mixed` is for disagreement; two rows with no track name agree."""
+        rows = [row(track=""), row("MELT0002_pl01", track="")]
+        assert value(describe(rows, batch(*rows)), "Identity", "Track") == ""
+
     def test_a_field_they_differ_on_reads_mixed(self) -> None:
         rows = [row(), row("MELT0002_pl01")]
         assert value(describe(rows, batch(*rows)), "Identity", "Clip name") == MIXED
