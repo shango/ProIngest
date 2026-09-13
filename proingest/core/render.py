@@ -236,7 +236,10 @@ def _render_sequence(
     graded = _plate_branch(job)
     stream = _source_pixels(job)
     try:
-        for output_frame, pixels in zip(job.output_frames(), stream, strict=False):
+        # The stream is first so that it is asked for one frame past the plan and gets
+        # to finish: a decode that ends on its own checks ffmpeg's exit code, one that
+        # is closed part way through is killed and its exit code is never read.
+        for pixels, output_frame in zip(stream, job.output_frames(), strict=False):
             path = job.frame_path(output_frame, temp=True)
             _write_frame(job, path, graded.apply(pixels), output_frame, graded)
             deliverable.frame_checksums.append(file_digest(path))

@@ -13,6 +13,7 @@ point it is verified.
 from __future__ import annotations
 
 import multiprocessing
+from collections.abc import Generator
 from dataclasses import replace
 from pathlib import Path
 
@@ -93,6 +94,22 @@ def ids(results: list[QCResult]) -> list[str]:
 
 
 class TestRawSequence:
+    def test_the_source_stream_is_run_to_its_end(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A decode that finishes checks ffmpeg's exit code; one closed a frame early
+        is killed and a late failure is never read."""
+        real = render._source_pixels
+        ran_to_the_end: list[bool] = []
+
+        def tracked(job: DeliverableJob) -> Generator[npt.NDArray[np.float32], None, None]:
+            yield from real(job)
+            ran_to_the_end.append(True)
+
+        monkeypatch.setattr(render, "_source_pixels", tracked)
+        render.render_job(raw_job(tmp_path, count=2))
+        assert ran_to_the_end == [True]
+
     def test_a_sequence_lands_with_one_frame_per_source_frame(self, tmp_path: Path) -> None:
         job = raw_job(tmp_path, count=4)
         deliverable = render.render_job(job)
