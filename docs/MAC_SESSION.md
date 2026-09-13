@@ -186,6 +186,10 @@ Treat it as a working session with the editor rather than a delivery.
       encodes. On fixture media it is free; on real media nobody has measured it. If it costs
       real minutes across a hundred shots, the answer is a setting, not a silent downgrade to
       the container index the render already checked. PROGRESS.md section 9.
+- [ ] **Look at the Settings page in the real style.** Drawn and checked offscreen on
+      Linux, where the spin box arrows do not render at all and the form's label alignment
+      against the multi-line path map block is a guess. Cmd+, has to open it, and it has to
+      arrive in the application menu rather than a window menu (section 11's roles).
 - [ ] **Press Run on a batch with no colour session ingested and watch what the editor does.**
       Since M5.7.1 QC-008 holds that turnover back and the run writes nothing, which is the
       right refusal and may read as a dead button. The Issues dock carries the reason and the

@@ -287,3 +287,76 @@ QLineEdit:focus {
   color: #5c626d;
   padding: 0 4px;
 }
+
+/* ---- the Settings page (UI_SPEC section 9) ---- */
+
+/* The section list is the page's spine, so it takes the panel ground rather than the
+   raised one every other control has: it is a place in the window, not a control. */
+#settings_sections {
+  background: #15171b;
+  border: 0;
+  border-right: 1px solid #262a31;
+  outline: 0;
+  padding: 6px 0;
+}
+
+#settings_sections::item {
+  padding: 6px 12px;
+}
+
+#settings_sections::item:selected {
+  background: #1b1e23;
+  border-left: 2px solid #4d8fd6;
+  color: #ced3db;
+}
+
+/* Help lines sit under the field they explain, so they are quieter than a label and
+   never the same weight as a value. */
+#settings_note {
+  color: #5c626d;
+}
+
+/* A value the tool states rather than takes. Monospaced because two of the three are
+   library names that get pasted into a message, and a name read wrong is worse than a
+   name read slowly. */
+#settings_readonly {
+  color: #868d9a;
+  font-family: "SF Mono", Menlo, monospace;
+  font-size: 12px;
+}
+
+QSpinBox, QPlainTextEdit {
+  background: #1b1e23;
+  border: 1px solid #262a31;
+  padding: 3px 6px;
+  color: #ced3db;
+  selection-background-color: #4d8fd6;
+}
+
+QSpinBox:focus, QPlainTextEdit:focus {
+  border-color: #4d8fd6;
+}
+
+/* Qt draws an unstyled checkbox in the platform's own colours, which on the near-black
+   ground is a white square that reads as the brightest thing on the page. */
+QCheckBox::indicator {
+  background: #1b1e23;
+  border: 1px solid #333944;
+  height: 12px;
+  width: 12px;
+}
+
+QCheckBox::indicator:checked {
+  background: #4d8fd6;
+  border-color: #4d8fd6;
+}
+
+QSpinBox::up-button, QSpinBox::down-button {
+  background: #262a31;
+  border: 0;
+  width: 14px;
+}
+
+QSpinBox::up-button:hover, QSpinBox::down-button:hover {
+  background: #333944;
+}

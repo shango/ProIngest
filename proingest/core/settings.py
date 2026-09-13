@@ -22,6 +22,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from proingest.core.render import DEFAULT_WORKERS
+
 log = logging.getLogger(__name__)
 
 SCHEMA_VERSION = 1
@@ -54,6 +56,49 @@ class AppSettings:
     empty and reads as the folder being wrong.
     """
 
+    workers: int = DEFAULT_WORKERS
+    """How many render processes a run uses (PRD FR-12, General).
+
+    Per user rather than per batch: it is a fact about this machine's cores and this
+    person's patience, not about the work. `render.DEFAULT_WORKERS` is the default
+    rather than a number repeated here, because a settings file written before this
+    field existed has to read back as whatever the tool would have done anyway.
+    """
+
+    show_pattern: str = ""
+    """The show prefix pattern every name is parsed and built with (FR-12, Naming).
+
+    **Empty means the default**, `naming.DEFAULT_SHOW_PATTERN`, rather than a copy of it
+    stored on first save: a settings file that froze today's pattern would keep an old
+    one after the default moved, and nothing would say why names stopped parsing.
+    """
+
+    path_map: dict[str, str] = field(default_factory=dict)
+    """Media path prefixes to rewrite, FR-2. A Windows shooter's `G:\\...` for the
+    editor's own mount. Per user, because it describes this machine's view of the
+    world; `scan._resolve_media`'s filename search is what covers the case where it
+    is empty, which is why it is a belt rather than a requirement."""
+
+    rules: dict[str, Any] = field(default_factory=dict)
+    """Rule thresholds a **new** batch starts from (FR-12, Rules).
+
+    Stored as the same plain dict a batch carries in `settings_overrides`, so the two
+    cannot disagree about the shape and this module needs no import from `core/qc.py`.
+    **A batch keeps its own copy** from the moment it is created, for the reason
+    UI_SPEC section 13 gives for the two roots: what a delivery was checked against is a
+    record of that work, so changing the defaults later must not silently re-judge a
+    batch that shipped.
+    """
+
+    color_session_folder: str = ""
+    """Where the Ingest chooser opens (FR-12, Colour).
+
+    The folder, not the package: which session a turnover was ingested from lives on
+    the turnover (OQ-50). This is the same kind of thing as `last_folder` - a starting
+    point for a dialog - kept separately because a colour session and a turnover live
+    nowhere near each other on the mount.
+    """
+
     metadata_collapsed: list[str] = field(default_factory=list)
     """Which sections of the metadata pane the editor has shut (UI_SPEC section 12.1).
 
@@ -73,6 +118,11 @@ class AppSettings:
             "window_geometry": self.window_geometry,
             "window_state": self.window_state,
             "last_folder": self.last_folder,
+            "workers": self.workers,
+            "show_pattern": self.show_pattern,
+            "path_map": dict(self.path_map),
+            "rules": dict(self.rules),
+            "color_session_folder": self.color_session_folder,
             "metadata_collapsed": list(self.metadata_collapsed),
         }
 
@@ -83,12 +133,22 @@ class AppSettings:
             "window_geometry",
             "window_state",
             "last_folder",
+            "workers",
+            "show_pattern",
+            "path_map",
+            "rules",
+            "color_session_folder",
             "metadata_collapsed",
         }
         return cls(
             window_geometry=str(data.get("window_geometry", "")),
             window_state=str(data.get("window_state", "")),
             last_folder=str(data.get("last_folder", "")),
+            workers=int(data.get("workers", DEFAULT_WORKERS)),
+            show_pattern=str(data.get("show_pattern", "")),
+            path_map={str(k): str(v) for k, v in dict(data.get("path_map", {})).items()},
+            rules=dict(data.get("rules", {})),
+            color_session_folder=str(data.get("color_session_folder", "")),
             metadata_collapsed=[str(item) for item in data.get("metadata_collapsed", [])],
             unknown={key: value for key, value in data.items() if key not in known},
         )

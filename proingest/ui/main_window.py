@@ -16,6 +16,7 @@ than a failed assertion.
 
 from __future__ import annotations
 
+import logging
 import re
 from base64 import b64decode, b64encode
 from collections import Counter
@@ -25,6 +26,7 @@ from pathlib import Path
 from PySide6.QtCore import QByteArray, Qt, QTimer, QUrl
 from PySide6.QtGui import QAction, QCloseEvent, QDesktopServices, QKeySequence
 from PySide6.QtWidgets import (
+    QDialog,
     QDockWidget,
     QFileDialog,
     QLabel,
@@ -50,7 +52,7 @@ from proingest.core.models import (
     ShotRow,
     Turnover,
 )
-from proingest.ui import metadata
+from proingest.ui import metadata, settings_form
 from proingest.ui.autosave import AutoSaver
 from proingest.ui.batch_bar import BatchBar
 from proingest.ui.issues import IssuesDock
@@ -58,8 +60,11 @@ from proingest.ui.metadata_pane import MetadataPane
 from proingest.ui.run_strip import LINK_COLOR, RunStrip
 from proingest.ui.runner import Runner, RunProgress
 from proingest.ui.scanner import Scanner
+from proingest.ui.settings_dialog import SettingsDialog
 from proingest.ui.shot_list import ShotListView
 from proingest.ui.shot_model import DisplayMode, ShotListModel
+
+log = logging.getLogger(__name__)
 
 WINDOW_TITLE = "ProIngest"
 
@@ -80,6 +85,7 @@ BATCH_FILTER = "ProIngest batch (*.pibatch)"
 BOTTOM_TABS = ("Issues", "Log", "Deliverables")
 
 NOTHING_TO_RENDER = "Nothing to render: no row produced a deliverable"
+SETTINGS_APPLIED = "Settings applied; the batch has been re-checked"
 
 HELD_BACK = "{count} turnovers are held back by an error; see the Issues dock"
 HELD_BACK_ONE = "{name} is held back by an error; see the Issues dock"
@@ -196,6 +202,8 @@ class MainWindow(QMainWindow):
         self.action_find.triggered.connect(lambda: self.batch_bar.focus_search())
         self.action_settings = self._action("Settings", QKeySequence.StandardKey.Preferences)
         self.action_settings.setMenuRole(QAction.MenuRole.PreferencesRole)
+        self.action_settings.triggered.connect(self.open_settings)
+        self.action_settings.setEnabled(True)
 
         self.action_about = QAction(f"About {WINDOW_TITLE}", self)
         self.action_about.setMenuRole(QAction.MenuRole.AboutRole)
@@ -365,10 +373,19 @@ class MainWindow(QMainWindow):
         return self._batch_path
 
     def new_batch(self) -> None:
-        """An empty batch with no file, waiting for a turnover (section 10)."""
+        """An empty batch with no file, waiting for a turnover (section 10).
+
+        It takes a **copy** of the rule thresholds in Settings rather than reading them
+        as it goes, for the reason UI_SPEC section 13 gives for the two roots: what a
+        delivery was checked against is a record of that work, so changing the defaults
+        next month must not silently re-judge a batch that shipped last week.
+        """
         if not self._may_abandon_current():
             return
-        self.set_batch(Batch())
+        batch = Batch()
+        if self._settings.rules:
+            batch.settings_overrides[qc.RULES_OVERRIDE_KEY] = dict(self._settings.rules)
+        self.set_batch(batch)
 
     def open_batch(self) -> None:
         """Read a `.pibatch`, back it up, and check that its two roots are still there."""
@@ -415,6 +432,48 @@ class MainWindow(QMainWindow):
         self.autosave.adopt(written)
         self.statusBar().showMessage(f"Saved {written.name}")
         return True
+
+    def open_settings(self) -> None:
+        """The Settings page, and what an Apply reaches. UI_SPEC section 9, PRD FR-12.
+
+        The dialog edits values and nothing else; writing them is here, because this is
+        what owns the batch. Apply does three things and each is a different lifetime:
+        the per user settings go to disk, the thresholds are written onto the open batch
+        as its own copy, and the checks re-run so the list and the Issues dock describe
+        the batch under the numbers that are now in force.
+        """
+        dialog = self.settings_dialog()
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        self._settings, rules = dialog.result_settings()
+        core_settings.save(self._settings, self._settings_path)
+        if not self._batch_open:
+            return
+        batch = self.batch
+        batch.settings_overrides[qc.RULES_OVERRIDE_KEY] = rules.to_dict()
+        qc.apply_batch_rules(batch, rules)
+        self.shot_model.refresh_rows()
+        self._show_results()
+        self.autosave.schedule()
+        self.statusBar().showMessage(SETTINGS_APPLIED)
+
+    def settings_dialog(self) -> SettingsDialog:
+        """Built here so a test can hand back one it has already answered."""
+        rules = qc.settings_for(self.batch) if self._batch_open else self._app_rules()
+        return SettingsDialog(self._settings, rules, self)
+
+    def _app_rules(self) -> qc.RuleSettings:
+        """The thresholds a new batch would start from, or the defaults.
+
+        A settings file written by hand can hold a key the rules do not know, which
+        `RuleSettings.from_dict` refuses rather than shrugging at. Refusing to open the
+        page over it would leave no way to fix it, so it falls back and says so.
+        """
+        try:
+            return qc.RuleSettings.from_dict(self._settings.rules)
+        except (TypeError, ValueError) as exc:
+            log.warning("rule defaults in the settings file are unusable (%s)", exc)
+            return qc.RuleSettings()
 
     def choose_delivery_root(self) -> None:
         """The batch bar's path, click to change (UI_SPEC section 13)."""
@@ -516,6 +575,8 @@ class MainWindow(QMainWindow):
         if not folders:
             return
         settings = scan.ScanSettings(
+            show_pattern=settings_form.show_pattern_of(self._settings),
+            path_map=dict(self._settings.path_map),
             project_rate=self.batch.project_rate,
             rules=qc.settings_for(self.batch),
         )
@@ -616,7 +677,12 @@ class MainWindow(QMainWindow):
 
         self.run_strip.say(PLANNING.format(count=len(batch.rows)))
         try:
-            jobs = planner.plan_batch(batch, batch.delivery_root, skip_turnovers=held_back)
+            jobs = planner.plan_batch(
+                batch,
+                batch.delivery_root,
+                settings_form.show_pattern_of(self._settings),
+                skip_turnovers=held_back,
+            )
         except (ValueError, clf.ClfError) as exc:
             self.run_strip.clear()
             self.report_problem("The batch cannot be planned", str(exc))
@@ -634,7 +700,7 @@ class MainWindow(QMainWindow):
         self.progress.setVisible(True)
         self._run_timer.start()
         self._update_state()
-        self.runner.start(jobs)
+        self.runner.start(jobs, self._settings.workers)
 
     def _held_back_text(self, held_back: frozenset[str]) -> str:
         """What the status bar says about the turnovers this run will not touch."""

@@ -8,6 +8,7 @@ theme, and the theme is the one part of this a person has to judge (docs/MAC_SES
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
@@ -15,6 +16,7 @@ from PySide6.QtCore import Qt, QThread
 from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import (
     QApplication,
+    QDialog,
     QDockWidget,
     QLabel,
     QMessageBox,
@@ -42,6 +44,7 @@ from proingest.ui.main_window import (
 from proingest.ui.metadata import MIXED, NO_SELECTION, as_text
 from proingest.ui.run_strip import LINK_COLOR, RunStrip
 from proingest.ui.runner import RENDERING
+from proingest.ui.settings_dialog import SettingsDialog
 from proingest.ui.shot_model import IN, NOTES, DisplayMode, RowState
 from tests.fixtures.batches import batch, fail, ingested, media, row, turnover, warn
 
@@ -65,6 +68,16 @@ class DrivenWindow(MainWindow):
         self.save_asked: list[str] = []
         self.unsaved_answer = QMessageBox.StandardButton.Discard
         self.opened_folders: list[Path] = []
+        self.settings_answer = QDialog.DialogCode.Rejected
+        self.settings_edit: Callable[[SettingsDialog], None] = lambda dialog: None
+        """What a person does on the Settings page before pressing Apply. The default
+        changes nothing, so a test that only wanted the page open gets a Cancel."""
+
+    def settings_dialog(self) -> SettingsDialog:
+        dialog = super().settings_dialog()
+        self.settings_edit(dialog)
+        dialog.exec = lambda: int(self.settings_answer)  # type: ignore[method-assign]
+        return dialog
 
     def report_problem(self, title: str, text: str) -> None:
         self.problems.append((title, text))
@@ -159,11 +172,16 @@ class TestTheToolbarAndMenus:
     def test_nothing_with_no_feature_behind_it_is_enabled(self, window: DrivenWindow) -> None:
         """Disabled rather than absent, and never a live-looking button that does nothing.
 
-        Shorter with every chunk. New and Open came alive in M5.4, and the four left are
-        the run (M5.5), the exports and the Settings page (M5.7).
+        Shorter with every chunk. New and Open came alive in M5.4, the run in M5.5 and
+        Settings in M5.7.2, which leaves the exports, and Run and Stop, which wait for a
+        batch rather than for a chunk.
         """
-        for name in ("Run", "Stop", "Export", "Settings"):
+        for name in ("Run", "Stop", "Export"):
             assert not actions(window)[name].isEnabled(), name
+
+    def test_settings_opens_without_a_batch(self, window: DrivenWindow) -> None:
+        """It is where the defaults a new batch starts from are set, so it cannot wait."""
+        assert actions(window)["Settings"].isEnabled()
 
     def test_what_needs_a_batch_waits_for_one(self, window: DrivenWindow) -> None:
         for name in ("Save", "Add Turnover", "Scan"):
