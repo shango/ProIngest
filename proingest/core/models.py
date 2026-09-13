@@ -11,7 +11,7 @@ field name is a migration, not an edit.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import MISSING, asdict, dataclass, field, fields
 from fractions import Fraction
 from pathlib import Path
 from typing import Any, Literal
@@ -20,6 +20,15 @@ from proingest.core import frames
 from proingest.core.naming import ShotIdentity
 
 SCHEMA_VERSION = 1
+
+DEFAULT_WORKERS = 4
+"""Capped rather than one per core on purpose.
+
+Each worker may run its own ffmpeg, and ffmpeg is already multi-threaded, so more
+workers than this mostly buys contention. It is a parameter because the right number
+depends on the machine and on whether the source is on a network mount; measuring it
+against a real turnover is M8.
+"""
 
 Severity = Literal["error", "warning", "info"]
 Scope = Literal["batch", "turnover", "row", "deliverable"]
@@ -606,29 +615,22 @@ class ShotRow:
 
 
 def _identity_to_dict(identity: ShotIdentity | None) -> dict[str, Any] | None:
-    if identity is None:
-        return None
-    return {
-        "show": identity.show,
-        "shot": identity.shot,
-        "elem_type": identity.elem_type,
-        "elem_index": identity.elem_index,
-        "aux": identity.aux,
-        "aux_index": identity.aux_index,
-    }
+    return None if identity is None else asdict(identity)
 
 
 def _identity_from_dict(data: dict[str, Any] | None) -> ShotIdentity | None:
+    """Field by field off the dataclass, so a field added to `ShotIdentity` round trips.
+
+    Required fields are read with `[]` so a missing one is the KeyError `batchfile.load`
+    reports; optional ones default the way the class does.
+    """
     if data is None:
         return None
-    return ShotIdentity(
-        show=str(data["show"]),
-        shot=str(data["shot"]),
-        elem_type=str(data["elem_type"]),
-        elem_index=str(data["elem_index"]),
-        aux=data.get("aux"),
-        aux_index=data.get("aux_index"),
-    )
+    values: dict[str, Any] = {
+        f.name: str(data[f.name]) if f.default is MISSING else data.get(f.name)
+        for f in fields(ShotIdentity)
+    }
+    return ShotIdentity(**values)
 
 
 @dataclass

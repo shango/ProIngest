@@ -50,7 +50,7 @@ import numpy.typing as npt
 import PyOpenColorIO as ocio
 
 from proingest.core import batchfile, clf, color, exr, ffmpeg, logsetup, media, naming, qc, resize
-from proingest.core.models import Batch, Deliverable, QCResult
+from proingest.core.models import DEFAULT_WORKERS, Batch, Deliverable, QCResult
 from proingest.core.planner import DeliverableJob
 
 log = logging.getLogger(__name__)
@@ -470,14 +470,6 @@ ProgressState = Literal["started", "frame", "done", "failed", "cancelled"]
 RENDER_FAILED = qc.RENDER_FAILED
 """The render did not complete. Every other QC-1xx is NA when this one fails."""
 
-DEFAULT_WORKERS = 4
-"""Capped rather than one per core on purpose.
-
-Each worker may run its own ffmpeg, and ffmpeg is already multi-threaded, so more
-workers than this mostly buys contention. It is a parameter because the right number
-depends on the machine and on whether the source is on a network mount; measuring it
-against a real turnover is M8.
-"""
 
 _DRAIN_TIMEOUT = 5.0
 

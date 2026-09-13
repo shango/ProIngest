@@ -18,12 +18,12 @@ from __future__ import annotations
 
 import json
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 from pathlib import Path
 from typing import Any
 
 from proingest.core import logsetup
-from proingest.core.render import DEFAULT_WORKERS
+from proingest.core.models import DEFAULT_WORKERS
 
 log = logging.getLogger(__name__)
 
@@ -61,7 +61,7 @@ class AppSettings:
     """How many render processes a run uses (PRD FR-12, General).
 
     Per user rather than per batch: it is a fact about this machine's cores and this
-    person's patience, not about the work. `render.DEFAULT_WORKERS` is the default
+    person's patience, not about the work. `models.DEFAULT_WORKERS` is the default
     rather than a number repeated here, because a settings file written before this
     field existed has to read back as whatever the tool would have done anyway.
     """
@@ -149,20 +149,7 @@ class AppSettings:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> AppSettings:
-        known = {
-            "schema_version",
-            "window_geometry",
-            "window_state",
-            "last_folder",
-            "workers",
-            "show_pattern",
-            "path_map",
-            "rules",
-            "color_session_folder",
-            "log_level",
-            "ffmpeg_path",
-            "metadata_collapsed",
-        }
+        known = {f.name for f in fields(cls)} - {"unknown"} | {"schema_version"}
         return cls(
             window_geometry=str(data.get("window_geometry", "")),
             window_state=str(data.get("window_state", "")),

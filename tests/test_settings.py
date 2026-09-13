@@ -14,7 +14,7 @@ from pathlib import Path
 import pytest
 
 from proingest.core import logsetup, settings
-from proingest.core.render import DEFAULT_WORKERS
+from proingest.core.models import DEFAULT_WORKERS
 
 
 class TestRoundTrip:
@@ -30,8 +30,8 @@ class TestRoundTrip:
         settings.save(settings.AppSettings(), path)
         assert path.is_file()
 
-    def test_the_write_is_atomic(self, tmp_path: Path) -> None:
-        """Same rule as a deliverable: a crash mid-write leaves the previous file."""
+    def test_a_rewrite_leaves_no_temp_file_behind(self, tmp_path: Path) -> None:
+        """Written to a temp name and renamed, the same rule as a deliverable."""
         path = tmp_path / "settings.json"
         settings.save(settings.AppSettings(window_geometry="first"), path)
         settings.save(settings.AppSettings(window_geometry="second"), path)

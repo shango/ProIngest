@@ -17,7 +17,7 @@ from typing import Any
 
 from proingest import __version__
 from proingest.core import batchfile, clf, color, exports, logsetup, planner, qc, render, scan
-from proingest.core.models import Batch, Deliverable, ShotRow, Turnover
+from proingest.core.models import DEFAULT_WORKERS, Batch, Deliverable, ShotRow, Turnover
 
 COLUMNS = ("STATUS", "SHOT", "ELEM", "SOURCE", "RES", "FPS", "IN", "OUT", "DUR", "MAX", "AUDIO")
 
@@ -49,8 +49,8 @@ def main(argv: list[str] | None = None) -> int:
     run_parser.add_argument(
         "--jobs",
         type=int,
-        default=render.DEFAULT_WORKERS,
-        help=f"worker processes (default {render.DEFAULT_WORKERS})",
+        default=DEFAULT_WORKERS,
+        help=f"worker processes (default {DEFAULT_WORKERS})",
     )
     run_parser.add_argument(
         "--dry-run", action="store_true", help="print the plan and write nothing"
