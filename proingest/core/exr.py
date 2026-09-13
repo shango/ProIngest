@@ -134,31 +134,40 @@ def _channel_names(part: Any) -> tuple[str, ...]:
 
 
 def read_header(path: Path) -> ExrHeader:
-    """Read one EXR header. Raises ExrError when the file will not open."""
+    """Read one EXR header. Raises ExrError when the file will not open.
+
+    Everything is copied out inside the `with`: the header dict the binding hands
+    back is only readable while the file is open, and the file is closed here rather
+    than left to the collector because opening it decoded the whole frame with it.
+    """
     try:
-        handle = OpenEXR.File(str(path))
-        header = handle.header()
-        part = handle.parts[0]
+        with OpenEXR.File(str(path)) as handle:
+            header = handle.header()
+            part = handle.parts[0]
+            data_window = _window(header["dataWindow"])
+            display_window = _window(header["displayWindow"])
+            compression = str(header["compression"]).rsplit(".", 1)[-1]
+            channels = _channel_names(part)
+            pixel_type = str(next(iter(part.channels.values())).pixels.dtype)
+            timecode = header.get("timeCode")
+            rate = header.get("framesPerSecond")
+            timecode_text = _format_timecode(timecode) if timecode is not None else None
+            is_drop_frame = bool(getattr(timecode, "dropFrame", False)) if timecode is not None else False
+            fps = (int(rate.numerator), int(rate.denominator)) if rate is not None else None
     except Exception as exc:  # the bindings raise several unrelated types
         raise ExrError(f"could not read EXR header from {path}: {exc}") from exc
 
-    data_window = _window(header["dataWindow"])
-    display_window = _window(header["displayWindow"])
-    pixels = next(iter(part.channels.values())).pixels
-
-    timecode = header.get("timeCode")
-    rate = header.get("framesPerSecond")
     return ExrHeader(
         width=display_window[2] - display_window[0] + 1,
         height=display_window[3] - display_window[1] + 1,
         data_window=data_window,
         display_window=display_window,
-        compression=str(header["compression"]).rsplit(".", 1)[-1],
-        channels=_channel_names(part),
-        pixel_type=str(pixels.dtype),
-        timecode=_format_timecode(timecode) if timecode is not None else None,
-        is_drop_frame=bool(getattr(timecode, "dropFrame", False)) if timecode is not None else False,
-        frames_per_second=(int(rate.numerator), int(rate.denominator)) if rate is not None else None,
+        compression=compression,
+        channels=channels,
+        pixel_type=pixel_type,
+        timecode=timecode_text,
+        is_drop_frame=is_drop_frame,
+        frames_per_second=fps,
     )
 
 
@@ -172,11 +181,15 @@ def start_timecode_frames(path: Path, fps: float) -> int | None:
     A drop-frame header is refused rather than silently miscounted; the caller
     reports that as QC-027.
     """
-    header = read_header(path)
+    return header_timecode_frames(read_header(path), fps)
+
+
+def header_timecode_frames(header: ExrHeader, fps: float) -> int | None:
+    """`start_timecode_frames` for a header already in hand, so a probe reads it once."""
     if header.timecode is None:
         return None
     if header.is_drop_frame:
-        raise ExrError(f"{path} carries drop-frame timecode (QC-027)")
+        raise ExrError("EXR header carries drop-frame timecode (QC-027)")
     return frames.timecode_to_frames(header.timecode, fps)
 
 

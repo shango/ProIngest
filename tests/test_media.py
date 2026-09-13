@@ -169,6 +169,24 @@ class TestProbe:
         sequence = media.index_directory(tmp_path).sequences[0]
         assert media.probe(sequence).rate == RATE_24
 
+    def test_an_exr_header_is_read_once_per_probe(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Reading the header decodes the frame in the pinned binding, over the mount."""
+        from proingest.core import exr
+
+        reads: list[Path] = []
+        real = exr.read_header
+
+        def counted(path: Path) -> exr.ExrHeader:
+            reads.append(path)
+            return real(path)
+
+        monkeypatch.setattr(exr, "read_header", counted)
+        fixtures.make_exr_sequence(tmp_path / "seq", count=2)
+        media.probe(media.index_directory(tmp_path / "seq").sequences[0])
+        assert len(reads) == 1
+
     def test_exr_timecode_comes_from_the_header(self, tmp_path: Path) -> None:
         """COLOR_AND_FORMAT section 5: source TC may come from the EXR header."""
         fixtures.make_exr_sequence(tmp_path, count=3, timecode="01:00:00:00")
