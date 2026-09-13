@@ -5,76 +5,74 @@ is written to be picked up cold. This is a note about what one session did, kept
 is being cleared. Delete it once it has been read. **If it disagrees with `PROGRESS.md` or the
 docs, they win.**
 
-It replaces the previous session's file of the same name, which closed on M4.6.4.
+It replaces the previous session's file of the same name, which closed on M5.2.
 
 ## The one paragraph version
 
-**M4.6 is finished and M5 has started.** Three chunks landed: M4.6.5 recorded the source
-encoding where it can be read back, M5.1 built the window, and M5.2 put the shot list in it, so
-**the tool now shows a batch on screen for the first time**. 1061 tests, `ruff` and
-`mypy --strict` clean, everything committed and pushed. **M5.3, editing in the list, is next**,
-and section 5 of `PROGRESS.md` has the seven chunks of M5 that follow it.
+**M5.3 is built: the shot list can now be typed into.** Shot code, In, Out and Notes are
+editable in their cells, Ctrl+K skips a row with a reason, every commit re-runs that row's
+rules, and an edit saves itself a second and a half later. 1125 tests, `ruff` and
+`mypy --strict` clean, committed. **M5.4, the batch lifecycle, is next**, and section 5 of
+`PROGRESS.md` has the six chunks of M5 that follow it.
 
-## What each chunk did, in one line
+## What this chunk did, in one line
 
-| chunk | what changed |
+| file | what changed |
 |---|---|
-| M4.6.5 | `ShotRow.source_encoding_origin`, `proingest/source_encoding_origin` in the EXR header, and the Source encoding column in the QC log |
-| M5.1 | `ui/app.py`, `ui/main_window.py`, `ui/theme.qss`, `ui/paths.py`, `core/settings.py`, and the offscreen Qt test harness |
-| M5.2 | `ui/shot_model.py`, `ui/shot_list.py`, `ui/batch_bar.py`, plus `Turnover.timeline_start` and `ShotRow.edit_context` in core |
+| `ui/shot_model.py` | `EDITABLE_COLUMNS`, `flags`, the edit role, `setData`, `parse_frame`, `set_skipped`, `row_edited` |
+| `ui/shot_list.py` | the cell editor and its inline error, tab key navigation and `moveCursor`, `toggle_skip` and `ask_skip_reason` |
+| `ui/autosave.py` | new: the debounced write, and what it does with a batch that has no file yet |
+| `ui/main_window.py` | `action_toggle_skip`, the autosaver, `set_batch(batch, path)`, flush on close |
 
 ## The decisions worth knowing about
 
-- **The header and the QC log record different strings on purpose** (M4.6.5). The header names
-  the **resolved colour space**, because that is what the pixels went through; the log names
-  **what the clip said, verbatim**, because that is the string QC-047 asks somebody to correct.
-  Neither is derivable from the other: four names resolve to one Sony space and one resolves to
-  nothing.
-- **Qt tests run on the `offscreen` platform**, through one session scoped `QApplication`
-  fixture in `tests/conftest.py`. That is the whole reason the UI is checkable on either CI
-  runner. The Linux job needed `libegl1`, `libxkbcommon0` and `libdbus-1-3` added: the platform
-  plugin has to load even though it draws nothing.
-- **Where the settings file lives is `ui/paths.py`'s answer, through `QStandardPaths`.**
-  `core/settings.py` takes a path in every function and works out nothing, because core imports
-  no Qt and a core copy of that path could never check Qt's.
-- **Every toolbar action exists from M5.1 and the ones with nothing behind them are disabled**,
-  each noting the chunk that wires it. The shape of the tool is reviewable before it works, and
-  no button is a live-looking no-op.
-- **`ShotRow.edit_context` is core's and there is exactly one of it.** The list renders a frame
-  as timecode through it and M5.3's typed edit reads a timecode back through the same object.
-  Two of them is how a display and its editor come to disagree about which frame an hour is.
-- **The frozen left columns were deferred to M5.9, deliberately.** QTreeView has no such
-  feature; it takes a second view overlaid on the first sharing model, selection and scroll, and
-  it has to survive editing and filtering, which are M5.3 and M5.4. Building it first means
-  building it twice.
+- **The question the last handoff said to settle first is settled: a commit re-runs that
+  row's rules and nothing else.** The only batch level input the row rules take is the clip
+  name counts QC-011 needs, and no editable cell can change them, because `clip_name` is the
+  name the turnover arrived with. So a batch wide re-run would recompute the same answers. The
+  rule settings and the counts are cached at `set_batch`.
+- **A range the media cannot satisfy is stored and then reported.** QC-031 and QC-032 already
+  say it, and they say it about the row rather than the keystroke. The cell refuses only what
+  it cannot parse, and that refusal leaves no trace anywhere: a QC result about a value that was
+  never committed would outlive the typing that caused it.
+- **The Shot editor opens on the shot code, not on the clip name the cell falls back to.**
+  Otherwise the first Enter on a row with no identity commits the clip name as an override.
+- **Un-skipping keeps the reason**, so a row toggled off and on is not asked twice about a
+  decision already explained. The prompt itself is the view's (`ask_skip_reason`), because a
+  dialog cannot live in a model, and it is its own method so a test can answer it: an offscreen
+  modal is a hung suite rather than a failed assertion.
+- **Autosave holds the edits of a batch with no file.** New, Open and Save are M5.4;
+  `MainWindow.set_batch` already takes the path and the tests pass one.
 
-## Three things that would have passed unnoticed
+## Two Qt defaults, both found by driving a real window
 
-- **The settings file was landing one folder too deep.** Qt appends the organisation **and** the
-  application to `AppDataLocation`, so setting both gave
-  `Application Support/ProIngest/ProIngest` where PACKAGING.md specifies one level. The
-  organisation name is now left unset and two tests pin the depth. **It was found by launching
-  the window with a real event loop, not by a test**, which is the argument for doing that once
-  per UI chunk.
-- **`main([])` went from printing help to launching the app, which hung the suite rather than
-  failing it.** An existing CLI test called it and the run never came back. It now stubs
-  `ui.app.run` and asserts the launch. **Nothing in the suite may ever call the real one.**
-- **Record timecode needed a fact the batch was not keeping.** `ShotRow.record_in` is measured
-  from the timeline's own zero and edits start at an hour, so every row would have read an hour
-  early. `Turnover.timeline_start` is new and additive, filled by the scan from
-  `Timeline.global_start`, which was already being parsed and then thrown away.
+- **`QTreeView` ships with tab key navigation off and `QTableView` ships with it on.** With it
+  off, Tab moved focus out of the list entirely unless a cell editor happened to be open, so
+  UI_SPEC section 4's walk across the editable cells only half worked and `moveCursor` was
+  never called. One line turns it on; one test pins it. **This is the second chunk running in
+  which launching the app caught something no test would have**, which is the argument for
+  doing it once per UI chunk.
+- **An editor commits on a queued connection, not when Return is pressed.** Qt posts
+  `_q_commitDataAndCloseEditor` so the editor can validate first, so the model still holds the
+  old value for the rest of that event loop turn. Nothing in the suite depends on it; it is
+  written down so nobody reads it as a bug, and so no test is written that sends Return and
+  asserts immediately.
 
 ## Next task
 
-**M5.3, editing in the list**: the cells the list owns and nothing else does (FR-5) - shot code,
-In, Out and Notes - with `frames.parse_in_out` behind them, Ctrl+K skip and its reason, the
-row's rules re-run on commit, and autosave.
+**M5.4, the batch lifecycle**: New, Open, Save and Add Turnover against the source root, the
+scan off the UI thread, and the Issues dock. It is also what gives autosave somewhere to write.
 
-**The one thing to decide first** is what a commit re-runs. `qc.apply_row_rules` is per row and
-cheap, which is what UI_SPEC section 5 asks for; what it cannot see is the batch level rules.
-Re-running everything on every keystroke is the thing not to do.
+**The one thing to decide first** is where the scan runs. It is the only long operation in M5
+that is not the render pool, it walks a network mount, and CLAUDE.md forbids it on the UI
+thread. A `QThread` with a signal is probably the honest answer, but it has to leave core
+Qt-free, which is the rule the pool already obeys.
 
 **Nothing is blocked.** OQ-46 still wants one real export before a delivery depends on it, and
 OQ-44's field name is a line on `docs/MAC_SESSION.md` rather than a question holding anything
-up. The Mac checklist gained three lines this session: geometry restored under a different
-display arrangement, the two line In/Out cell at 2x, and the status dot against its row tint.
+up. The Mac checklist gained three lines this session: the inline red against a macOS line
+edit, Tab no longer being able to leave the list, and the skip prompt, which should be a sheet.
+
+**One thing to know about the build track.** Its two timestamps had drifted ahead of the clock
+(the header read 22:40 PDT while the repo's last commit that day was 20:12), so both were set
+to the real time of this session, 20:45 PDT, which reads as earlier than the version before it.
