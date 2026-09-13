@@ -8,11 +8,11 @@ commit.
 
 ## 1. Resume here
 
-**State at 2026-09-13. Everything is built except one chunk of the UI.** M1 to M4 complete,
-M4.5 all four chunks, M4.6 all five, and **M5 is ten chunks of eleven** - only M5.9, the
-frozen left columns, is left, and it is last on purpose. 1509 tests passing, `ruff` and
-`mypy --strict` clean. After M5 the plan is M7 packaging (needs a Mac), M8 polish (needs a
-real turnover and a real colour session) and M9 the user guide.
+**State at 2026-09-13. Every feature milestone is built.** M1 to M4 complete, M4.5 all four
+chunks, M4.6 all five, and **M5 is all eleven**: M5.9, the frozen left columns, went in last
+as planned. 1536 tests passing, `ruff` and `mypy --strict` clean. What is left is **M7
+packaging** (needs a Mac), **M8 polish** (needs a real turnover and a real colour session)
+and **M9 the user guide**.
 
 **What the tool does today, end to end.** A batch is made, opened, saved and filled with
 turnover folders; the scan runs off the UI thread; the list shows it grouped by turnover and
@@ -34,9 +34,11 @@ against a real session. The source encoding is camera native log as of 2026-09-1
 shot, resolved through a table, recorded in the QC log and stated with its origin in the
 delivered header.
 
-**M5.9 is next, and nothing is blocking it.** Two questions are open and both are about
-correctness rather than scope: OQ-46, and **OQ-47, which was found by building M4.6.2**. Every
-chunk has its own note further down saying what it settled.
+**Nothing in the plan is next that can be built on this machine alone.** M7 wants a Mac, M8
+wants a real turnover and a real colour session, and M9 wants both plus the screenshots. Two
+questions are open and both are about correctness rather than scope: OQ-46, and **OQ-47, which
+was found by building M4.6.2**. Every chunk has its own note further down saying what it
+settled.
 
 **One of the three things added to the plan on 2026-09-12 is still unbuilt**: the user guide
 with screenshots (PRD FR-17, the new M9). The other two are done - the run's strip, built
@@ -751,9 +753,9 @@ should not be re-derived.
 - **The status dot is drawn once per state and cached.** Fifteen columns of a hundred shot list
   repaint often; a pixmap per cell is a pixmap per repaint. A test compares `cacheKey`, because
   Qt hands back a new Python wrapper each time and identity would pass for the wrong reason.
-- **The frozen left columns are deliberately not here. They are M5.9**, and section 5 says why:
-  QTreeView has no such feature, the overlaid second view has to keep working through editing,
-  filtering and selection, and those are the next two chunks.
+- **The frozen left columns are deliberately not here. They are M5.9**, built last for the
+  reason section 5 gave: QTreeView has no such feature, and the overlaid second view has to
+  keep working through editing, filtering and selection, which were the next two chunks.
 
 **One thing is a stand-in.** Section 2 wants icons in the Audio and Side files columns and the
 tool ships no icon set at all, toolbar included. The columns carry the count and the names
@@ -1132,23 +1134,65 @@ against the worst case.
 argument docs/MAC_SESSION.md asks to settle in front of the real window. The label is
 deliberately **not** changed here: that judgement is about width on a real toolbar.
 
-### Next task: M5.9, the frozen left columns
+### M5.9 is built: the frozen left columns, and M5 with them
 
-The last of M5, and last on purpose (section 5): it is a second view overlaid on the first,
-sharing the model, the selection and the vertical scroll, and it has to keep working through
-editing, filtering and selection - which is why it is built after all three rather than twice.
-`QTreeView` has no feature for it.
+UI_SPEC section 2, `FrozenColumns` in `ui/shot_list.py`, 27 tests and 1536 in the suite. The
+overlay is a second `QTreeView` sitting on the list, showing the same rows through the same
+proxy, sharing the owner's selection model outright, and hiding every column past
+`FROZEN_COLUMNS`. The list keeps all fifteen columns and lets its first three scroll away
+underneath, where the overlay covers them. **Seven things in it should not be re-derived.**
 
-After that M5 is done, and what is left in the plan is **M7 packaging** (needs a Mac, OQ-22 and
-OQ-9), **M8 polish** (needs a real turnover and a real colour session) and **M9 the user guide**
-(FR-17, whose button reference should read `ui/toolbar_help.py` rather than restate it).
+- **One model and one selection between the two views is the whole trick.** Everything that
+  went wrong in the building was one of the things Qt keeps *per view* - scroll position, which
+  turnovers are open, the spans on the group header rows, the three column widths - and all
+  four are wired both ways in `_wire_frozen`, because either view can be the one the mouse is
+  over. None of those loops runs away: Qt emits none of those signals when the value it is
+  being set to is the one it already has.
+- **The edit is routed, not the focus followed, and the focus follower was built first and
+  deleted.** It moved the focus across the seam when the cursor did, and it was wrong twice
+  over: it only fires when the current index actually *changes*, so a cursor already sitting on
+  Shot got nothing, and the guarantee is needed whichever view the keystroke reached anyway.
+  `ShotListView.edit` and `FrozenColumns.edit` hand a cell to whichever of the two can show it,
+  so an editor can no longer open underneath the overlay however the edit was started. A test
+  drives the whole seam with a real Tab key event: the overlay commits the shot code and the
+  list opens the In editor.
+- **Each view gets its own delegate instance.** One `TwoLineDelegate` set on both reports every
+  commit to both views, one of which does not own the editor and says so on the console:
+  `QAbstractItemView::commitData called with an editor that does not belong to this view`. The
+  delegate is stateless, so a second instance costs nothing and the two draw identically.
+- **The turnover line is drawn twice and has to land in the same place.** The group header row
+  is spanned, so Qt hands the list a rectangle starting wherever column 0 has scrolled to while
+  the overlay's copy never moves. `TwoLineDelegate._paint_group_header` puts the rectangle back
+  where an unscrolled view would have it, reading the offset off `option.widget`, and turns
+  eliding off. Without the first, the sentence reads as garbage from the seam rightwards the
+  moment the list is scrolled; without the second, the overlay stamps an ellipsis 250 pixels in,
+  in the middle of a sentence the list is still drawing the rest of - `dani...ckett - 13 shots`.
+  **Both were found by looking at a grab of the real window rather than by any test**, and both
+  now have one that fails without the fix.
+- **`scrollTo` keeps the horizontal position for a frozen column.** Qt's answer to "make this
+  Shot cell visible" is to scroll the list back to the left edge, throwing away where the editor
+  was reading in order to reveal a cell the overlay was showing all along. It still scrolls
+  vertically, because `select_row` from the Issues dock arrives with a column 0 index and has to
+  reach the row.
+- **The two views only agree about row height once they have been shown.** The stylesheet's
+  `font-size: 13px` reaches a widget when it is polished, and the overlay is polished as a child
+  before its owner is: unshown, the rows are 33 pixels against 31. Nothing is wrong and nothing
+  needs fixing - the window shows both - but a test that asserts the heights match has to use a
+  shown view, which is what the `tall` fixture is for.
+- **`FrozenColumns.moveCursor` returns whatever the owner's returns**, including for the columns
+  it cannot show. Tab out of Shot lands on In, and `ShotListView.moveCursor` is the only thing
+  that knows that. Two implementations of section 4's Tab order would have drifted the first
+  time one of them grew a column.
 
-- **M5.11, the toolbar tooltips**, is still small and still loose in the order, and it is
-  worth a little more with every chunk: the answer to "why is Run doing nothing" is QC-008,
-  and a disabled button that says so is the difference between a tool that looks broken and
-  one that says what to do next. `Ingest Colour Session` now wants one too, both for what it
-  does and because its tooltip is what would let the button read `Ingest`.
-- **M5.9, the frozen columns, must not move earlier.** It is last on purpose (section 5).
+### Next task: nothing that this machine can finish on its own
+
+M5 was the last milestone that could be. **M7 packaging** needs a Mac (OQ-22, OQ-9), **M8
+polish** needs a real turnover and a real colour session, and **M9 the user guide** (FR-17)
+needs M7 for its install section and the Mac for its shipped screenshots. What can be drafted
+here without any of that is **M9.2, the quickstart**, and **M9.4's harness**, which builds a
+demo batch and grabs the window: the images it takes on Linux are fine for laying the document
+out and the shipped set is taken on the Mac. M9's button reference should read
+`ui/toolbar_help.py` rather than restate it.
 
 **The pane is where an ingest is seen without running anything**: its Colour section reads
 `source_encoding`, `source_encoding_origin` and `clf_path` off the row, so selecting a row
@@ -1191,7 +1235,8 @@ contains the conversion and one that does not is two plausible looking images an
   **all 1509 tests pass on Apple Silicon against the bundled ffmpeg 9.0.1** rather than only
   against this machine's 6.1.1. Check CI rather than assuming, and **pushing is still the user's
   call** rather than an automatic step: this line has twice claimed a push that had not happened,
-  which is why it names the commit count and the run.
+  which is why it names the commit count and the run. **M5.9 is committed on top of that and
+  not pushed**, so the last CI answer on record is still run 34767414688 at 1509 tests.
 - **The push before it went red first, and that is worth expecting.** Run 34767259404 failed on
   the arm64 runner alone, on two M5.11 tests that had written `Ctrl+R` into their expected text
   where macOS draws one glyph. Nothing was wrong with the code. **Two of the last two CI-only
@@ -1354,7 +1399,7 @@ Entry points worth knowing:
 | M4 | QC: all rules both phases, xlsx exports, `qc` CLI | complete, 175 tests |
 | M4.5 | Colour pipeline, core only. Source log in, CLF applied, ACEScg out, the viewing LUT | complete, 111 tests |
 | M4.6 | Per shot source encoding: read from the clip metadata, the input transform table, the input transform out of the graded chains, QC-046 to QC-048 | complete, all five chunks (OQ-37 answered; OQ-46 wants confirming) |
-| M5 | UI: the list, the FR-14 metadata pane, settings, log. **No viewers** | **everything but M5.9 done**, which is last on purpose |
+| M5 | UI: the list, the FR-14 metadata pane, settings, log. **No viewers** | **complete, all eleven chunks** |
 | M6 | ~~Stringout with burn-ins~~ | **dropped 2026-09-11**, the colour session exports it |
 | M7 | Packaging: PyInstaller `.app`, dmg, Gatekeeper | not started, and needs a Mac (OQ-22) |
 | M8 | Polish, performance on a real turnover, docs | not started |
@@ -1436,7 +1481,7 @@ batch can do", so each chunk has something a person can look at:
 | M5.7.2 | The Settings page, PRD FR-12, **including the Colour group** | **done, 1408 tests.** `ui/settings_form.py` is the field list as a value and `ui/settings_dialog.py` draws it; Output and Advanced are listed and disabled |
 | M5.7.3 | `Ingest Colour Session` in the window, and what it reports | **done, 1427 tests.** One turnover at a time, the chooser opening where FR-12 remembers, and the report the CLI prints |
 | M5.8 | The Log tab and the rotating log file, FR-13 | **done, all three chunks** |
-| M5.9 | The frozen left columns: the overlaid second view sharing the model and the selection | not started |
+| M5.9 | The frozen left columns: the overlaid second view sharing the model and the selection | **done, 1536 tests.** `FrozenColumns` in `ui/shot_list.py`; one model and one selection between the two views, and the edit is routed rather than the focus followed |
 | M5.10 | The run's strip above the list: the thin batch progress bar and the line of text naming the step being done (UI_SPEC 7.1) | **done, 1266 tests.** `ui/run_strip.py` is three states in one band, and the line names the longest running job rather than the newest message |
 | M5.11 | A hover tooltip on every toolbar button, saying what it does and, when it is disabled, why (UI_SPEC section 1) | **done, 1509 tests.** `ui/toolbar_help.py` is the wording as a value; one note lands on an **enabled** button, which is Run with no session ingested |
 
@@ -1502,14 +1547,13 @@ whose delivery root did not exist.
   the run is what has to put them there. No show to file them under is a refusal, not a
   guess: the banner says nothing was written.
 
-**M5.9 is last on purpose.** UI_SPEC section 2 freezes Status, Shot and Elem while the rest
-scrolls, and QTreeView has no such thing: it takes a second view overlaid on the first, sharing
-the model, the selection and the scroll. It is the known awkward part (section 9), it has to
-keep working through editing, filtering and selection. Editing is built as of M5.3 and the
-rest is M5.4, so the thing it has to survive is nearly all there. `shot_model.FROZEN_COLUMNS`
-already names the count so the two views cannot disagree about which columns it means, and
-`ShotListView.moveCursor` is what a second view has to keep agreeing with about where Tab
-goes next.
+**M5.9 was last on purpose and the reason held.** UI_SPEC section 2 freezes Status, Shot and
+Elem while the rest scrolls, and QTreeView has no such thing: it takes a second view overlaid
+on the first, sharing the model, the selection and the scroll. Editing, filtering and
+selection were all built before it, which is what let it be built once instead of twice - the
+two things it had to be fitted around, `ShotListView.moveCursor` and the cell editor, were
+both already there to be handed the work rather than reimplemented. The chunk note in section
+1 says what it cost and what it settled.
 
 **M5.7.1 is where the colour work finished.** The five rules that read `core/clf.py` are
 wired, and what a batch knows about its colour session is `Turnover.color_session_edl`
@@ -2337,11 +2381,11 @@ Nothing blocks the next task. These are live, in rough priority order:
   deliberately **does not repeat the list columns**, only the fields that have none. Nothing
   in core needs to change for it, which is why it costs M5 time and nothing before that.
   Which fields actually earn their place is OQ-26, and it wants a real review session.
-- **Two M5 decisions still unlogged.** Frozen left columns have no built-in QTreeView
-  support and need the overlaid second-view trick. Progress on the app icon is now a
-  macOS Dock tile rather than a Windows taskbar button; Qt 6 exposes no API for either,
-  so it needs a small `NSDockTile` shim through PyObjC in `ui/platform_mac.py`. It is
-  decoration, and the status bar carries the same information if it is never built.
+- **One M5 decision still unlogged.** Progress on the app icon is now a macOS Dock tile
+  rather than a Windows taskbar button; Qt 6 exposes no API for either, so it needs a small
+  `NSDockTile` shim through PyObjC in `ui/platform_mac.py`. It is decoration, and the status
+  bar carries the same information if it is never built. The other one was the frozen left
+  columns and their overlaid second view, which is built and written up (M5.9).
 - **OQ-2 (tracker columns) is still open** and wants a real turnover; it has a default
   template loaded from a file, so it blocks nothing. OQ-3's container half is settled and its
   encoding half became OQ-39.

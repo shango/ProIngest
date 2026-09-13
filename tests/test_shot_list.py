@@ -7,9 +7,11 @@ looks is a person's job on a Mac (docs/MAC_SESSION.md).
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+
 import pytest
-from PySide6.QtCore import QModelIndex, QRect, Qt
-from PySide6.QtGui import QImage, QPainter, QPixmap
+from PySide6.QtCore import QEvent, QModelIndex, QRect, Qt
+from PySide6.QtGui import QImage, QKeyEvent, QPainter, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
@@ -20,6 +22,7 @@ from PySide6.QtWidgets import (
 from proingest.ui.shot_list import BAR_HEIGHT, ERROR_COLOR, ShotListView, TwoLineDelegate
 from proingest.ui.shot_model import (
     DOT_COLORS,
+    FROZEN_COLUMNS,
     IN,
     NOTES,
     OUT,
@@ -381,3 +384,247 @@ class TestSkippingFromTheList:
         view.setCurrentIndex(view.proxy.index(0, 0))
         view.toggle_skip()
         assert not any(shot.skipped for shot in view.shot_model.batch.rows)
+
+
+@pytest.fixture
+def tall(qt_app: QApplication) -> Iterator[ShotListView]:
+    """A list with more rows and columns than it can show, on screen.
+
+    Scroll ranges, geometry and fonts are what Qt only works out for a view that has
+    been shown and had its events delivered, and the frozen overlay is about all three.
+    """
+    model = ShotListModel()
+    model.set_batch(
+        batch(*[row(f"MELT{shot:04d}_pl01") for shot in range(1, 30)], turnovers=[turnover()])
+    )
+    view = ShotListView(model)
+    view.resize(500, 200)
+    view.show()
+    qt_app.processEvents()
+    yield view
+    view.close()
+
+
+class TestTheFrozenColumns:
+    """M5.9, UI_SPEC section 2: Status, Shot and Elem stay while the rest scrolls.
+
+    What can be asserted about an overlay drawn to nothing is that it shows the same
+    rows as the view under it, covers the columns it claims to, and moves with it.
+    Whether it looks like one list is a person's job on a Mac (docs/MAC_SESSION.md).
+    """
+
+    def test_it_shows_the_columns_section_2_freezes(self, view: ShotListView) -> None:
+        assert [view.frozen.isColumnHidden(column) for column in range(FROZEN_COLUMNS)] == [
+            False,
+            False,
+            False,
+        ]
+
+    def test_and_hides_every_column_that_scrolls(self, view: ShotListView) -> None:
+        hidden = [view.frozen.isColumnHidden(column) for column in range(FROZEN_COLUMNS, NOTES + 1)]
+        assert all(hidden)
+
+    def test_it_is_the_same_rows_through_the_same_filter(self, view: ShotListView) -> None:
+        """One model between the two views is what stops them disagreeing about a row."""
+        assert view.frozen.model() is view.proxy
+
+    def test_and_the_same_selection(self, view: ShotListView) -> None:
+        assert view.frozen.selectionModel() is view.selectionModel()
+
+    def test_it_covers_exactly_the_three_columns(self, tall: ShotListView) -> None:
+        expected = sum(tall.columnWidth(column) for column in range(FROZEN_COLUMNS))
+        assert tall.frozen.width() == expected
+
+    def test_it_covers_the_header_as_well_as_the_rows(self, tall: ShotListView) -> None:
+        """The titles have to stay above the columns they name."""
+        assert tall.frozen.height() == tall.viewport().height() + tall.header().height()
+
+    def test_the_rows_line_up(self, tall: ShotListView) -> None:
+        """Two views of a row at two heights is a list that reads as torn in half."""
+        cell = tall.proxy.index(0, SHOT, tall.proxy.index(0, 0))
+        assert tall.frozen.rowHeight(cell) == tall.rowHeight(cell)
+
+    def test_widening_a_column_widens_the_overlay_with_it(self, tall: ShotListView) -> None:
+        tall.header().resizeSection(SHOT, 300)
+        assert tall.frozen.columnWidth(SHOT) == 300
+        assert tall.frozen.width() == sum(
+            tall.columnWidth(column) for column in range(FROZEN_COLUMNS)
+        )
+
+    def test_widening_it_on_the_overlay_widens_the_list(self, tall: ShotListView) -> None:
+        """Either header can be the one the mouse is on, so both are wired."""
+        tall.frozen.header().resizeSection(SHOT, 300)
+        assert tall.columnWidth(SHOT) == 300
+
+    def test_a_column_that_scrolls_leaves_the_overlay_alone(self, tall: ShotListView) -> None:
+        before = tall.frozen.width()
+        tall.header().resizeSection(NOTES, 400)
+        assert tall.frozen.width() == before
+
+    def test_scrolling_the_list_scrolls_the_overlay(self, tall: ShotListView) -> None:
+        tall.verticalScrollBar().setValue(40)
+        assert tall.frozen.verticalScrollBar().value() == 40
+
+    def test_scrolling_the_overlay_scrolls_the_list(self, tall: ShotListView) -> None:
+        """The wheel over the left three columns is over the overlay, not the list."""
+        tall.frozen.verticalScrollBar().setValue(25)
+        assert tall.verticalScrollBar().value() == 25
+
+    def test_collapsing_a_turnover_collapses_it_in_both(self, view: ShotListView) -> None:
+        group = view.proxy.index(0, 0)
+        view.collapse(group)
+        assert not view.frozen.isExpanded(group)
+
+    def test_and_expanding_it_on_the_overlay_opens_the_list(self, view: ShotListView) -> None:
+        group = view.proxy.index(0, 0)
+        view.collapse(group)
+        view.frozen.expand(group)
+        assert view.isExpanded(group)
+
+    def test_a_group_header_spans_the_overlay_too(self, view: ShotListView) -> None:
+        assert view.frozen.isFirstColumnSpanned(0, QModelIndex())
+
+    def test_filtering_leaves_the_overlay_spanned_and_open(self, view: ShotListView) -> None:
+        """The spans and the expansion are per view, so a filter has to redo both."""
+        view.filter_by("BRIK")
+        assert view.frozen.isFirstColumnSpanned(0, QModelIndex())
+        assert view.frozen.isExpanded(view.proxy.index(0, 0))
+
+
+class TestEditingAcrossTheSeam:
+    """A cell is edited in whichever of the two views is the one that can be seen."""
+
+    def cell(self, view: ShotListView, column: int) -> QModelIndex:
+        return view.proxy.index(0, column, view.proxy.index(0, 0))
+
+    def editors(self, view: QAbstractItemView) -> list[QLineEdit]:
+        return view.viewport().findChildren(QLineEdit)
+
+    def open_editor(self, view: QAbstractItemView, cell: QModelIndex) -> bool:
+        """What a double click or a typed character asks the view for.
+
+        `AllEditTriggers` rather than a synthetic mouse event, because what is under
+        test is where the editor opens and not what opens it.
+        """
+        return view.edit(cell, QAbstractItemView.EditTrigger.AllEditTriggers, QEvent(QEvent.Type.None_))
+
+    def test_a_frozen_cell_opens_its_editor_in_the_overlay(self, view: ShotListView) -> None:
+        """The list's own copy of Shot is underneath the overlay: an editor opened
+        there is one the editor cannot see or type into."""
+        self.open_editor(view, self.cell(view, SHOT))
+        assert len(self.editors(view.frozen)) == 1
+        assert self.editors(view) == []
+
+    def test_a_scrolling_cell_asked_of_the_overlay_opens_in_the_list(
+        self, view: ShotListView
+    ) -> None:
+        """Tab out of a Shot editor asks the overlay to edit In, which it hides."""
+        self.open_editor(view.frozen, self.cell(view, IN))
+        assert len(self.editors(view)) == 1
+        assert self.editors(view.frozen) == []
+
+    def test_tab_in_the_overlay_is_the_list_s_own_step(self, view: ShotListView) -> None:
+        """One rule for Tab, in `ShotListView.moveCursor`, not two that could drift."""
+        view.setCurrentIndex(self.cell(view, SHOT))
+        stepped = view.frozen.moveCursor(
+            QAbstractItemView.CursorAction.MoveNext, Qt.KeyboardModifier.NoModifier
+        )
+        assert stepped == self.cell(view, IN)
+
+    def test_tab_out_of_a_shot_editor_opens_the_next_one_in_the_list(
+        self, tall: ShotListView
+    ) -> None:
+        """The whole seam in one move: the edit is committed by the overlay and the
+        next editor opens in the view on the other side of it."""
+        shot = tall.proxy.index(0, SHOT, tall.proxy.index(0, 0))
+        tall.setCurrentIndex(shot)
+        self.open_editor(tall, shot)
+        editor = self.editors(tall.frozen)[0]
+        editor.setText("MELT0099")
+        QApplication.sendEvent(
+            editor, QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_Tab, Qt.KeyboardModifier.NoModifier)
+        )
+        assert tall.shot_model.batch.rows[0].shot_code == "MELT0099"
+        assert tall.currentIndex().column() == IN
+        assert len(self.editors(tall)) == 1
+
+    def test_and_shift_tab_comes_back_into_the_overlay(self, tall: ShotListView) -> None:
+        in_cell = tall.proxy.index(0, IN, tall.proxy.index(0, 0))
+        tall.setCurrentIndex(in_cell)
+        self.open_editor(tall, in_cell)
+        editor = self.editors(tall)[0]
+        QApplication.sendEvent(
+            editor,
+            QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_Backtab, Qt.KeyboardModifier.ShiftModifier),
+        )
+        assert tall.currentIndex().column() == SHOT
+        assert len(self.editors(tall.frozen)) == 1
+
+
+class TestScrollingToAFrozenCell:
+    def test_it_does_not_drag_the_list_back_to_the_left(self, tall: ShotListView) -> None:
+        """Qt's answer to "show me this Shot cell" is to scroll to the left edge, which
+        throws away the position the editor was reading at to reveal a cell that the
+        overlay was showing all along."""
+        tall.horizontalScrollBar().setValue(tall.horizontalScrollBar().maximum())
+        kept = tall.horizontalScrollBar().value()
+        assert kept > 0
+        tall.scrollTo(tall.proxy.index(20, SHOT, tall.proxy.index(0, 0)))
+        assert tall.horizontalScrollBar().value() == kept
+
+    def test_it_still_scrolls_down_to_the_row(self, tall: ShotListView) -> None:
+        tall.scrollTo(tall.proxy.index(25, SHOT, tall.proxy.index(0, 0)))
+        assert tall.verticalScrollBar().value() > 0
+
+    def test_a_cell_that_scrolls_is_scrolled_to_as_usual(self, tall: ShotListView) -> None:
+        tall.horizontalScrollBar().setValue(0)
+        tall.scrollTo(tall.proxy.index(0, NOTES, tall.proxy.index(0, 0)))
+        assert tall.horizontalScrollBar().value() > 0
+
+
+class TestTheTurnoverLine:
+    """The group header sentence is drawn by both views, so it must not move in one.
+
+    Section 2's header spans the width, which means the list draws it from wherever the
+    first column has scrolled to while the overlay draws it from the left edge. Pinned,
+    the two copies land on each other and the sentence reads once.
+    """
+
+    def painted(self, view: ShotListView, scrolled: int = 0, width: int = 600) -> QImage:
+        """The group header row as the delegate draws it, at a scroll and a width.
+
+        The width is the row's rectangle rather than the image's: the overlay spans a
+        250 pixel row and the list spans the whole of a much wider one, and what that
+        difference does to the sentence is the thing being asked about.
+        """
+        option = QStyleOptionViewItem()
+        option.initFrom(view)
+        option.widget = view
+        option.rect = QRect(-scrolled, 0, width + scrolled, 40)
+        pixmap = QPixmap(600, 40)
+        pixmap.fill(Qt.GlobalColor.black)
+        painter = QPainter(pixmap)
+        TwoLineDelegate(view).paint(painter, option, view.proxy.index(0, 0))
+        painter.end()
+        return pixmap.toImage()
+
+    def test_the_sentence_lands_in_the_same_place_however_far_the_list_has_scrolled(
+        self, tall: ShotListView
+    ) -> None:
+        still = self.painted(tall)
+        tall.horizontalScrollBar().setValue(180)
+        assert self.painted(tall, scrolled=180) == still
+
+    def test_the_overlay_draws_the_same_sentence_and_does_not_elide_it(
+        self, tall: ShotListView
+    ) -> None:
+        """An ellipsis at the overlay's edge would land in the middle of a line the
+        list is still drawing the rest of, and read as two sentences."""
+        seam = QRect(0, 0, sum(tall.columnWidth(c) for c in range(FROZEN_COLUMNS)), 40)
+        assert self.painted(tall, width=250).copy(seam) == self.painted(tall, width=900).copy(seam)
+
+    def test_it_is_drawn_at_all(self, tall: ShotListView) -> None:
+        """An identical pair of blank images would pass either test above."""
+        blank = QPixmap(600, 40)
+        blank.fill(Qt.GlobalColor.black)
+        assert self.painted(tall) != blank.toImage()

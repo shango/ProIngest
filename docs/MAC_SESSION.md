@@ -68,8 +68,15 @@ Append to this as M5 and M6 are built.
 - [ ] Cmd+, opens Settings. `UI_SPEC.md` section 11.
 - [ ] Dock tile progress during a render. Decoration only: if the `NSDockTile` shim is not
       built, the status bar carries the same information. `UI_SPEC.md` section 11.
-- [ ] Frozen left columns hold together at 2x Retina. The overlaid second-view trick is the
-      known-awkward part. `UI_SPEC.md` section 2, `PROGRESS.md` section 9.
+- [ ] **The frozen left columns hold together at 2x Retina, and the seam is the thing to
+      watch.** Built as an overlaid second view (M5.9, `UI_SPEC.md` section 2), so what a
+      person has to confirm is that it reads as one list rather than two: the three headers
+      lining up with the twelve beside them, the row separators meeting across the seam, and
+      the turnover sentence crossing it without a visible join - it is drawn twice, by two
+      views, pinned to land in the same place. Scroll right and left, drag Shot wider by its
+      header and by the overlay's, wheel over the left three columns, and edit a Shot cell
+      with the list scrolled right. A Retina half pixel is the failure this cannot be tested
+      for on Linux.
 - [ ] **The two line In/Out cell is legible at 2x Retina.** The demoted line is drawn at 85% of
       the cell font (M5.2) and that number was picked against a Linux font stack at 1x. If it
       reads as noise rather than as a second value, the number is one constant in

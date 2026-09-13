@@ -9,12 +9,10 @@ error section 5 asks for while it is open, Tab across the four editable columns,
 the prompt Ctrl+K puts in front of somebody skipping a row. A dialog is the one part of
 an edit that cannot live in a model.
 
-**The frozen left columns are not in this chunk.** Section 2 wants Status, Shot and Elem
-to stay put while the rest scrolls, and QTreeView has no such thing: it needs a second
-view overlaid on the first, sharing the model and the selection. It is the known awkward
-part (PROGRESS section 9), it interacts with editing and selection, and both of those
-land in M5.3, so it is built after them rather than twice. `shot_model.FROZEN_COLUMNS`
-is where the count already lives.
+The frozen left columns (M5.9) are `FrozenColumns` below: section 2 wants Status, Shot
+and Elem to stay put while the rest scrolls, QTreeView has no such thing, and what it
+takes is a second view overlaid on the first. It is built last because it has to keep
+working through editing, filtering and selection rather than be built twice.
 """
 
 from __future__ import annotations
@@ -22,6 +20,7 @@ from __future__ import annotations
 from typing import cast
 
 from PySide6.QtCore import (
+    QEvent,
     QModelIndex,
     QPersistentModelIndex,
     QRect,
@@ -29,10 +28,12 @@ from PySide6.QtCore import (
     QSortFilterProxyModel,
     Qt,
 )
-from PySide6.QtGui import QColor, QPainter
+from PySide6.QtGui import QColor, QPainter, QResizeEvent
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QAbstractScrollArea,
     QApplication,
+    QFrame,
     QInputDialog,
     QLineEdit,
     QStyle,
@@ -49,6 +50,7 @@ from proingest.ui.shot_model import (
     COLUMNS,
     DOT_COLORS,
     EDITABLE_COLUMNS,
+    FROZEN_COLUMNS,
     IN,
     OUT,
     PROGRESS,
@@ -89,6 +91,15 @@ def source_of(index: ModelIndex) -> tuple[ShotListModel, ModelIndex]:
     if isinstance(model, QSortFilterProxyModel):
         return cast(ShotListModel, model.sourceModel()), model.mapToSource(index)
     return cast(ShotListModel, model), index
+
+
+def scrolled_by(widget: QWidget | None) -> int:
+    """How far right the view holding a cell has scrolled, or zero if it cannot.
+
+    Only the group header line needs this, and only because the frozen overlay draws a
+    second copy of it that does not scroll (M5.9).
+    """
+    return widget.horizontalScrollBar().value() if isinstance(widget, QAbstractScrollArea) else 0
 
 
 def show_parse(editor: QLineEdit, parsed: ParsedInput) -> None:
@@ -137,6 +148,9 @@ class TwoLineDelegate(QStyledItemDelegate):
         if index.column() == PROGRESS and index.data(PROGRESS_ROLE) is not None:
             self._paint_progress(painter, option, index)
             return
+        if index.column() == 0 and not index.parent().isValid():
+            self._paint_group_header(painter, option, index)
+            return
         secondary = index.data(SECONDARY_ROLE)
         if not secondary:
             super().paint(painter, option, index)
@@ -163,6 +177,27 @@ class TwoLineDelegate(QStyledItemDelegate):
         painter.setPen(SECONDARY_COLOR)
         painter.drawText(rect, int(align | Qt.AlignmentFlag.AlignBottom), str(secondary))
         painter.restore()
+
+    def _paint_group_header(
+        self, painter: QPainter, option: QStyleOptionViewItem, index: ModelIndex
+    ) -> None:
+        """A turnover's sentence, held at the left edge while its row scrolls (M5.9).
+
+        The row is spanned, so Qt hands it a rectangle that starts wherever the first
+        column has scrolled to. The frozen overlay draws the same sentence and never
+        scrolls, so left alone the two copies slide apart and the line reads as garbage
+        from the seam rightwards. Putting the rectangle back where an unscrolled view
+        would have it lands them on each other exactly, and the sentence reads once and
+        whole at any scroll position. What is left of the band to the left of it is
+        under the overlay, which is why only the rectangle moves and not the text
+        inside it. Nor is it elided: the overlay is only as wide as its three columns, and
+        an ellipsis at that edge would land in the middle of a sentence the list is still
+        drawing the rest of. Clipped there instead, the two copies read as one line.
+        """
+        pinned = QStyleOptionViewItem(option)
+        pinned.rect.setLeft(pinned.rect.left() + scrolled_by(option.widget))
+        pinned.textElideMode = Qt.TextElideMode.ElideNone
+        super().paint(painter, pinned, index)
 
     def _paint_progress(
         self, painter: QPainter, option: QStyleOptionViewItem, index: ModelIndex
@@ -222,6 +257,80 @@ class ShotFilterProxy(QSortFilterProxyModel):
         return text.lower() in str(index.data(Qt.ItemDataRole.DisplayRole) or "").lower()
 
 
+class FrozenColumns(QTreeView):
+    """Status, Shot and Elem, pinned over the left of the list that owns it (M5.9).
+
+    Section 2 wants three columns that stay while the other twelve scroll, and
+    `QTreeView` has no such feature. What it takes is this: a second view sitting over
+    the first, showing the same rows through the same proxy, sharing the owner's
+    selection model outright, and hiding every column past `FROZEN_COLUMNS`. The owner
+    keeps all fifteen and lets its first three scroll away underneath, where nobody can
+    see them. One model and one selection between the two views is what stops them
+    disagreeing about a row; everything Qt keeps per view - scroll, expansion, spans,
+    column widths - is wired together in `ShotListView._wire_frozen`.
+
+    It has no behaviour of its own. Cursor moves and edits that belong to the other side
+    of the seam are handed back to the owner, so Tab still steps by the one rule in
+    `ShotListView.moveCursor` rather than by two rules that could drift apart.
+    """
+
+    def __init__(self, owner: ShotListView) -> None:
+        super().__init__(owner)
+        self.owner = owner
+        self.setModel(owner.proxy)
+        self.setSelectionModel(owner.selectionModel())
+        # Its own delegate rather than the owner's: the two are identical and stateless,
+        # and a delegate set on two views reports every commit to both, one of which
+        # does not own the editor and says so on the console.
+        self.setItemDelegate(TwoLineDelegate(self))
+        for column in range(FROZEN_COLUMNS, len(COLUMNS)):
+            self.setColumnHidden(column, True)
+        for column in range(FROZEN_COLUMNS):
+            self.setColumnWidth(column, owner.columnWidth(column))
+
+        self.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
+        self.setEditTriggers(owner.editTriggers())
+        self.setUniformRowHeights(True)
+        self.setTabKeyNavigation(True)
+        self.setAllColumnsShowFocus(True)
+        self.setExpandsOnDoubleClick(False)
+        self.setAlternatingRowColors(False)
+        self.setSortingEnabled(False)
+        # No frame and no scrollbars: it is a patch of the list, not a panel beside it.
+        # Its vertical position comes from the owner's scrollbar through `_wire_frozen`.
+        self.setFrameShape(QFrame.Shape.NoFrame)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
+        self.header().setStretchLastSection(False)
+        self.header().setSectionsMovable(False)
+
+    def moveCursor(
+        self, action: QAbstractItemView.CursorAction, modifiers: Qt.KeyboardModifier
+    ) -> QModelIndex:
+        """Whatever the owner says, including for the columns this view cannot show.
+
+        The cursor is shared, so a move made here has to be the move the owner would
+        have made: Tab out of Shot lands on In, which is a column this view hides, and
+        the owner's `moveCursor` is the only thing that knows that.
+        """
+        return self.owner.moveCursor(action, modifiers)
+
+    def edit(  # type: ignore[override]  # Qt calls the three argument virtual, not the slot
+        self, index: ModelIndex, trigger: QAbstractItemView.EditTrigger, event: QEvent
+    ) -> bool:
+        """A cell past the seam is the owner's to open an editor for.
+
+        Tabbing out of a Shot editor asks this view to edit In, which it hides, and a
+        hidden column has no rectangle to put a line edit in: the edit would be
+        silently declined and the editor would never appear.
+        """
+        if index.column() >= FROZEN_COLUMNS:
+            return self.owner.edit(index, trigger, event)
+        return super().edit(index, trigger, event)
+
+
 class ShotListView(QTreeView):
     """The list. Two levels, always expanded, fixed order, one row per shot."""
 
@@ -249,14 +358,96 @@ class ShotListView(QTreeView):
         self.setSortingEnabled(False)
         self.setExpandsOnDoubleClick(False)
         self.setAlternatingRowColors(False)
+        self.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
         header = self.header()
         header.setStretchLastSection(True)
         for column, spec in enumerate(COLUMNS):
             self.setColumnWidth(column, spec.width)
 
+        self.frozen = FrozenColumns(self)
+        self._wire_frozen()
+
         for signal in (model.modelReset, model.layoutChanged):
             signal.connect(self._fit_group_headers)
         self._fit_group_headers()
+
+    def _wire_frozen(self) -> None:
+        """The state Qt keeps per view, kept the same in both (M5.9).
+
+        The model and the selection are shared outright and need nothing here. What is
+        left is scroll position, which turnovers are open, and how wide the three
+        columns are. Each pair is connected both ways, because either view can be the
+        one the mouse is over, and neither loop runs away: Qt emits none of these
+        signals when the value it is being set to is the one it already has.
+        """
+        self.viewport().stackUnder(self.frozen)
+        self.verticalScrollBar().valueChanged.connect(self.frozen.verticalScrollBar().setValue)
+        self.frozen.verticalScrollBar().valueChanged.connect(self.verticalScrollBar().setValue)
+        self.expanded.connect(lambda index: self.frozen.setExpanded(index, True))
+        self.collapsed.connect(lambda index: self.frozen.setExpanded(index, False))
+        self.frozen.expanded.connect(lambda index: self.setExpanded(index, True))
+        self.frozen.collapsed.connect(lambda index: self.setExpanded(index, False))
+        self.header().sectionResized.connect(self._resize_frozen_column)
+        self.frozen.header().sectionResized.connect(self._resize_frozen_column)
+        self._place_frozen()
+        self.frozen.show()
+
+    def _place_frozen(self) -> None:
+        """The overlay covers exactly the three columns, header included.
+
+        Its height is the viewport plus the header rather than the whole widget, so the
+        titles line up with the owner's and a horizontal scrollbar at the bottom is not
+        covered by a view that has none.
+        """
+        width = sum(self.columnWidth(column) for column in range(FROZEN_COLUMNS))
+        frame = self.frameWidth()
+        self.frozen.setGeometry(
+            frame, frame, width, self.viewport().height() + self.header().height()
+        )
+
+    def _resize_frozen_column(self, column: int, _old: int, new: int) -> None:
+        """A frozen column dragged on either header moves the other and the overlay."""
+        if column >= FROZEN_COLUMNS:
+            return
+        self.setColumnWidth(column, new)
+        self.frozen.setColumnWidth(column, new)
+        self._place_frozen()
+
+    def resizeEvent(self, event: QResizeEvent) -> None:
+        super().resizeEvent(event)
+        self._place_frozen()
+
+    def scrollTo(
+        self,
+        index: ModelIndex,
+        hint: QAbstractItemView.ScrollHint = QAbstractItemView.ScrollHint.EnsureVisible,
+    ) -> None:
+        """Vertically always; horizontally never for a column the overlay is showing.
+
+        Qt's answer to "make this Shot cell visible" is to scroll the list back to the
+        left edge, which throws away the horizontal position the editor was reading at
+        in order to reveal a cell that was never hidden.
+        """
+        if index.column() >= FROZEN_COLUMNS:
+            super().scrollTo(index, hint)
+            return
+        bar = self.horizontalScrollBar()
+        keep = bar.value()
+        super().scrollTo(index, hint)
+        bar.setValue(keep)
+
+    def edit(  # type: ignore[override]  # Qt calls the three argument virtual, not the slot
+        self, index: ModelIndex, trigger: QAbstractItemView.EditTrigger, event: QEvent
+    ) -> bool:
+        """A frozen cell is edited in the overlay, which is the copy that can be seen.
+
+        Routing the edit rather than following the focus is what keeps this true: the
+        keystroke that starts an edit can arrive at either view, whichever the mouse or
+        the last Tab left the focus with, and both of them ask here.
+        """
+        if index.column() < FROZEN_COLUMNS:
+            return self.frozen.edit(index, trigger, event)
+        return super().edit(index, trigger, event)
 
     def filter_by(self, text: str) -> None:
         """What the search box types. Substring, not a pattern the editor has to escape."""
@@ -318,8 +509,10 @@ class ShotListView(QTreeView):
         opened the tool to look at. Collapsing is theirs to do (Space, section 4).
         """
         self.expandAll()
+        self.frozen.expandAll()
         for row in range(self.proxy.rowCount()):
             self.setFirstColumnSpanned(row, QModelIndex(), True)
+            self.frozen.setFirstColumnSpanned(row, QModelIndex(), True)
 
     def toggle_skip(self) -> None:
         """Ctrl+K on the current row, prompting for a reason the first time (section 4).
