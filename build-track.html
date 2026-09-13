@@ -311,7 +311,7 @@
   <header class="mast">
     <div class="eyebrow">
       <span>VFX turnover ingest &middot; macOS v01</span>
-      <span class="stamp">Updated <b>12 Sep 2026, 23:40 PDT</b></span>
+      <span class="stamp">Updated <b>13 Sep 2026, 01:20 PDT</b></span>
     </div>
     <h1>ProIngest Build Track</h1>
     <p class="standfirst">
@@ -328,15 +328,15 @@
       <div class="stat-l">Milestones done</div>
     </div>
     <div class="stat">
-      <div class="stat-n good">1344</div>
+      <div class="stat-n good">1377</div>
       <div class="stat-l">Tests, Linux + macOS</div>
     </div>
     <div class="stat">
-      <div class="stat-n">26<span style="color:var(--faint);font-size:17px">/49</span></div>
+      <div class="stat-n">27<span style="color:var(--faint);font-size:17px">/50</span></div>
       <div class="stat-l">Questions open</div>
     </div>
     <div class="stat">
-      <div class="stat-n">7<span style="color:var(--faint);font-size:17px">/11</span></div>
+      <div class="stat-n">8<span style="color:var(--faint);font-size:17px">/13</span></div>
       <div class="stat-l">Interface chunks</div>
     </div>
   </div>
@@ -679,7 +679,7 @@
         <div class="ms-body">
           <div class="ms-head">
             <span class="ms-name">User interface</span>
-            <span class="pill now">In progress &middot; 7 of 11</span>
+            <span class="pill now">In progress &middot; 8 of 13</span>
           </div>
           <p class="ms-goal">
             Main window, shot list with the keyboard model, metadata pane, validation
@@ -795,18 +795,61 @@
               <span class="c-st"><span class="tag ok">Done</span></span>
             </div>
 
-            <div class="chunk now">
-              <span class="c-id">M5.7</span>
-              <span class="c-name">Settings, and the last of the colour work</span>
+            <div class="chunk done">
+              <span class="c-id">M5.7.1</span>
+              <span class="c-name">The grading session reaches the shot list</span>
               <span class="c-note">
-                The settings window: every threshold the checks compare against, the delivery
-                naming, and <b>the grading session's location</b>, which is what turns on the five
-                checks that refuse to render a shot whose colour has not arrived. Those are
-                written and tested already and have nowhere to read the session from until this
-                lands. Also the format table and its overrides - and nothing about which format a
-                delivery is in, because there is no mode.
+                <b>This is the chunk that makes a run a real delivery.</b> Until it landed, the
+                window planned and wrote every shot <b>ungraded</b> - the right files in the right
+                places with the approved look missing from them - because nothing had put the
+                grading session in front of the five checks that exist to refuse exactly that.
+                <b>Ingesting the session now writes what it says onto the shots themselves</b>:
+                the approved In and Out from the AD's own trim, the readable record of the grade,
+                and which colour file each shot is graded with. Nothing reads the session's
+                folder again after that, so a delivery reopened months later once the session has
+                been archived still renders the grade it was signed off with, and the spreadsheet
+                and the file headers still name it.
+                <b>The approved cut wins over a trim already made, and the tool says which shots
+                lost one</b>, because that cut is the one the AD sat through. A trim made
+                afterwards is still allowed - it is what the In/Out editing is for - and it is
+                reported as a shot being delivered at something other than what was approved,
+                which is a fact that exists nowhere else.
+                <b>A delivery with no grading session is now held back rather than rendered</b>,
+                and the deliveries beside it still go. That is the point of the check being about
+                one delivery rather than the whole batch: one can be waiting on colour while
+                another is being written. A run over a batch with nothing ingested now writes
+                nothing at all, which is the refusal the colour policy has always asked for and
+                which nothing enforced.
+              </span>
+              <span class="c-st"><span class="tag ok">Done</span></span>
+            </div>
+
+            <div class="chunk now">
+              <span class="c-id">M5.7.2</span>
+              <span class="c-name">The settings window</span>
+              <span class="c-note">
+                A section list on the left and a form on the right: every threshold the checks
+                compare against, the delivery naming, the output quality, and the format table
+                and its overrides. Changing a threshold re-checks the open delivery. <b>Nothing
+                in it about which format a delivery is in</b>, because there is no mode - each
+                clip names its own - and <b>nothing in it about where the grading session is</b>,
+                because that is a record of what a delivery was rendered from rather than a
+                preference, so it lives with the delivery.
               </span>
               <span class="c-st"><span class="tag now">Next</span></span>
+            </div>
+
+            <div class="chunk">
+              <span class="c-id">M5.7.3</span>
+              <span class="c-name">Ingest, from the window</span>
+              <span class="c-note">
+                A button and a file chooser: point at the session's edit list, one delivery at a
+                time, and read back what it matched - how many shots, how many got a colour file,
+                and the three lists worth acting on: shots the session says nothing about, trims
+                it overwrote, and shots more than one colour file claims. The command line does
+                this already and prints the same thing, so the shape is settled.
+              </span>
+              <span class="c-st"><span class="tag open">Planned</span></span>
             </div>
 
             <div class="chunk">
@@ -889,11 +932,13 @@
             quite the shot that was approved.
             <b>And smaller again on 12 September</b>: a source format mode was added to the
             settings page that morning and removed that evening.
-            <b>What it inherits is the last of the colour work.</b> The grading session's location
-            becomes a remembered setting rather than a command line flag, and with it the checks
-            that refuse to render a shot whose colour has not arrived (M5.7). The report already
-            has its column for which grade each shot was rendered through, so there is nothing to
-            build behind it.
+            <b>What it inherited was the last of the colour work, and that is now done</b>
+            (M5.7.1). The grading session is ingested onto the shots rather than pointed at by a
+            setting, and the checks that refuse to render a shot whose colour has not arrived are
+            live: a delivery with no session is held back while the ones beside it still go. What
+            is left of it is the button that does the ingesting from the window rather than the
+            command line (M5.7.3). The report already had its column for which grade each shot was
+            rendered through, so there was nothing to build behind it.
             <b>Two things in here are known to be awkward and both are written down.</b> The
             frozen left columns have no support in the toolkit and need the overlaid second list
             (M5.9). And progress on the Dock icon has no interface in Qt 6 at all, so it needs a
@@ -1149,7 +1194,7 @@
     <h2>Open questions</h2>
     <p class="standfirst" style="margin-bottom:14px">
       The live list. Questions answered days ago and no longer affecting anything have been
-      taken off this board; none is deleted, and all 49 of them, closed ones included, stay in
+      taken off this board; none is deleted, and all 50 of them, closed ones included, stay in
       <span class="mono">docs/OPEN_QUESTIONS.md</span> with the reasoning that closed them.
       What is kept here is what is still open, what was answered in the last two days, and
       what was built to a default that one real delivery would confirm.
@@ -1160,6 +1205,11 @@
           <tr><th>ID</th><th>Question</th><th>State</th></tr>
         </thead>
         <tbody>
+          <tr>
+            <td class="id">OQ-50</td>
+            <td><b style="color:var(--text)">New 13 September, out of wiring the colour checks.</b> Is a grading session one package per delivery, or one for the whole batch? Three documents disagreed, and none of them is wrong about the workflow: one puts the session's location in the settings window, one makes ingesting it a step in the editor's own flow, and the check that refuses an ungraded shot is written about one delivery and says in as many words that one can be waiting on colour while another renders, which a single setting cannot express. <b style="color:var(--text)">Built to the version that covers both</b>: the session is recorded per delivery, alongside the two folder locations that are already kept there for the same reason - it is a record of what this work was rendered from rather than a preference, so reopening a delivery restores it. With one delivery in the batch it behaves exactly like a single setting. If the answer is "one per batch" it costs one field and one button, not the checks</td>
+            <td class="st"><span class="tag open">New</span></td>
+          </tr>
           <tr>
             <td class="id">OQ-49</td>
             <td><b style="color:var(--text)">New 12 September, with the user guide.</b> A PDF and a Google Doc are two different products: a PDF reads the same for everyone and cannot be edited, a Doc can be corrected and shared by link and then drifts from the copy in the repo that nobody can regenerate. The plan is one source with the pictures embedded, which prints to PDF and pastes into a Doc whole. What the answer changes is whether the studio's copy becomes the real one. Worth settling before the first hand-over rather than after</td>
@@ -1956,7 +2006,17 @@
   <footer>
     <b>Source of truth</b> &middot; PROGRESS.md, docs/OPEN_QUESTIONS.md, PRD.md section 9<br>
     <b>Verify</b> &middot; pytest &middot; ruff check . &amp;&amp; mypy proingest &middot; python -m proingest scan &lt;folder&gt;<br>
-    <b>Last updated</b> &middot; 12 September 2026, 23:40 PDT. <b>Two chunks in one evening.</b>
+    <b>Last updated</b> &middot; 13 September 2026, 01:20 PDT. <b>The grading session now reaches
+    the shot list</b>, which is the change that makes a run from the window a real delivery rather
+    than a rehearsal. Ingesting a session writes what it says onto the shots - the approved In and
+    Out, the readable record of the grade, and which colour file each shot is graded with - so a
+    delivery reopened after the session has been archived still renders the grade it was signed
+    off with. The approved cut wins over a trim already made and the tool names the shots that
+    lost one; a trim made afterwards is still allowed and is reported. <b>And a delivery with no
+    grading session is held back rather than rendered ungraded</b>, while the deliveries beside it
+    still go. A run over a batch with nothing ingested now writes nothing at all, which is the
+    refusal the colour policy has always asked for and which nothing enforced. 1377 tests green.
+    <b>Before that, on 12 September, two chunks in one evening.</b>
     <b>The run says what it is doing</b>: a thin bar for the whole delivery across the top of the
     list with a line of text under it naming each step as it happens - checking the delivery,
     planning it, each output as it is written, then the two spreadsheets - so a run can be
@@ -1968,17 +2028,17 @@
     camera data file read out into lens, filter, stop and body - the first time any of that
     appears in the window. Select several shots and it shows what they agree on and marks the
     rest "mixed", which is how one clip at the wrong resolution in a delivery of thirty gets
-    noticed. Both driven on real deliveries before they were committed. 1344 tests green.<br>
+    noticed. Both driven on real deliveries before they were committed.<br>
     <b>Still to do from 12 September</b> &middot; two of the three things the studio asked for
     after watching the run land: hover descriptions on every button along the top, and <b>a user
     guide</b> - install, quickstart, then a section per part of the window, with screenshots, as a
     PDF or something pasteable into a Google Doc. The first is small; the guide is its own
     milestone and is scheduled after the interface it describes.<br>
-    <b>Next</b> &middot; M5.7, the settings window, which is where the grading session's location
-    stops being a command line flag - and with it the five checks that refuse to render a shot
-    whose colour has not arrived. It is the one remaining chunk anything else waits on: until it
-    lands, a run started from the window renders every shot ungraded. The button descriptions
-    could still reasonably go first.
+    <b>Next</b> &middot; M5.7.2, the settings window, and M5.7.3, the button that ingests a
+    grading session from the window rather than from the command line. The second is what closes
+    the gap this chunk opened: the checks now refuse to render a shot whose colour has not
+    arrived, and the window has no way yet to tell them it has. The button descriptions could
+    still reasonably go first.
   </footer>
 
 </div>
