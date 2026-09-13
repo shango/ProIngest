@@ -1282,8 +1282,10 @@ PDF viewer.
 
 ## 3. Environment
 
-- venv at `.venv` (Python 3.12, created with `uv venv`); `uv pip install -e ".[dev]"`.
-  There is no `pip` inside the venv: use `uv pip install --python .venv/bin/python`.
+- venv at `.venv` (Python 3.12), created and kept current with `uv sync --extra dev`, which
+  installs exactly what `uv.lock` pins. Dependencies change by editing `pyproject.toml`, running
+  `uv lock`, and committing both. There is no `pip` inside the venv: use
+  `uv pip install --python .venv/bin/python` for a one-off.
 - otio 0.18.1, OpenEXR 3.4.15 (numpy File API present), numpy 2.5.3, OpenColorIO 2.5.2.
 - **OpenColorIO ships no config files.** `opencolorio>=2.4` is a runtime dependency and the ACES
   transforms travel inside the wheel: `Config.CreateFromBuiltinConfig` reads them from there.

@@ -41,13 +41,13 @@ jobs:
       # so this is pinned to an exact release and has to be bumped by hand.
       - uses: astral-sh/setup-uv@v10.1.0
         with:
-          # There is no uv.lock, so the default glob matches nothing and uv's cache would
-          # never invalidate. pyproject.toml is what actually pins the dependency set here.
-          cache-dependency-glob: "pyproject.toml"
+          # uv.lock pins the whole dependency set, so a green run is reproducible and
+          # the cache turns over exactly when the lock does.
+          cache-dependency-glob: "uv.lock"
       - name: Create the environment
-        run: |
-          uv venv --python ${{ env.PYTHON_VERSION }}
-          uv pip install -e ".[dev]"
+        # --frozen installs the lock as committed and fails if pyproject.toml has moved
+        # ahead of it, which is the reminder to run `uv lock` and commit the result.
+        run: uv sync --frozen --extra dev --python ${{ env.PYTHON_VERSION }}
 
       - name: Lint and type check
         run: |
@@ -92,13 +92,13 @@ jobs:
       # so this is pinned to an exact release and has to be bumped by hand.
       - uses: astral-sh/setup-uv@v10.1.0
         with:
-          # There is no uv.lock, so the default glob matches nothing and uv's cache would
-          # never invalidate. pyproject.toml is what actually pins the dependency set here.
-          cache-dependency-glob: "pyproject.toml"
+          # uv.lock pins the whole dependency set, so a green run is reproducible and
+          # the cache turns over exactly when the lock does.
+          cache-dependency-glob: "uv.lock"
       - name: Create the environment
-        run: |
-          uv venv --python ${{ env.PYTHON_VERSION }}
-          uv pip install -e ".[dev]"
+        # --frozen installs the lock as committed and fails if pyproject.toml has moved
+        # ahead of it, which is the reminder to run `uv lock` and commit the result.
+        run: uv sync --frozen --extra dev --python ${{ env.PYTHON_VERSION }}
 
       - name: Lint and type check
         run: |
