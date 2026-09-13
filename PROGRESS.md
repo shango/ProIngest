@@ -15,8 +15,9 @@ encoded through the shot's grade and the ACES output transform baked into one cu
 no longer converts ahead of the CLF**, which was the one thing in the code that would have
 delivered a wrong plate against a real session. The source encoding went back to camera native
 log on 2026-09-12 and the tool now reads it per shot, resolves it through a table, records it
-in the QC log and states it and its origin in the delivered header. **M5, the UI, is five
-chunks in of nine.** A batch can be made, opened, saved and filled with turnovers; the window
+in the QC log and states it and its origin in the delivered header. **M5, the UI, is seven
+chunks in of eleven**, two of those eleven having been added on 2026-09-12.
+A batch can be made, opened, saved and filled with turnovers; the window
 shows it as a list; the list can be typed into; the turnover scan runs off the UI thread;
 every QC result is readable in the Issues dock and clickable back to its shot; and **the tool
 now renders from the window**: Run plans the batch and drives the pool, the rows fill in as
