@@ -17,6 +17,11 @@ session and the window had no way to say there was one - so a person who never o
 can now deliver. 1427 tests, `ruff` and `mypy --strict` clean, and the build track is
 republished at version 48.
 
+**Everything is pushed and CI is green.** Seven commits went at the user's instruction, the five
+that had been sitting from the previous session and the two from this one. Run 34764055432 passes
+on both runners, macOS arm64 in 1m52s and Linux in 2m15s, so the suite passes on Apple Silicon
+against the bundled ffmpeg 9.0.1 rather than only against this machine's 6.1.1.
+
 ## What changed
 
 | file | what changed |

@@ -1036,13 +1036,13 @@ contains the conversion and one that does not is two plausible looking images an
   day**, as the grade carrier went CLF, then CDL, then CLF again, and **OQ-19 was reopened after
   a day** by the real tracker's FPS column. New: OQ-35, OQ-36, OQ-39, OQ-41. OQ-29 is mostly
   answered, since the colour session pins ACES 1.3, and its config half is now built.
-- **Everything through 2026-09-11 is pushed**, at the user's instruction at the end of that
-  day: 14 commits went at once, the nine specification ones from the afternoon session and the
-  five from the evening. **That line previously claimed the same thing and was wrong**, which is
-  why this one names the number. **Run 34675636686 is green on both runners**, Linux in 1m35s and
-  macOS arm64 in 1m24s, and it is the first run to carry OpenColorIO: **the wheel installs on
-  Apple Silicon and all 785 tests pass there.** Check CI rather than assuming, and pushing is
-  still the user's call rather than an automatic step.
+- **Everything through M5.7.3 is pushed**, at the user's instruction on 2026-09-13: 7 commits
+  went at once, the five that had been sitting from the M5.7.1 and M5.7.2 session and the two
+  from this one. **Run 34764055432 is green on both runners**, macOS arm64 in 1m52s and Linux in
+  2m15s, so **all 1427 tests pass on Apple Silicon against the bundled ffmpeg 9.0.1** rather than
+  only against this machine's 6.1.1. Check CI rather than assuming, and **pushing is still the
+  user's call** rather than an automatic step: this line has twice claimed a push that had not
+  happened, which is why it names the commit count and the run.
 
 ---
 
