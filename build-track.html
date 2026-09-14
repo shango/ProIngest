@@ -311,7 +311,7 @@
   <header class="mast">
     <div class="eyebrow">
       <span>VFX turnover ingest &middot; macOS v01</span>
-      <span class="stamp">Updated <b>14 Sep 2026, 00:20 PDT</b></span>
+      <span class="stamp">Updated <b>14 Sep 2026, 14:05 PDT</b></span>
     </div>
     <h1>ProIngest Build Track</h1>
     <p class="standfirst">
@@ -328,7 +328,7 @@
       <div class="stat-l">Milestones done</div>
     </div>
     <div class="stat">
-      <div class="stat-n good">1648</div>
+      <div class="stat-n good">1665</div>
       <div class="stat-l">Tests, Linux + macOS</div>
     </div>
     <div class="stat">
@@ -336,7 +336,7 @@
       <div class="stat-l">Questions open</div>
     </div>
     <div class="stat">
-      <div class="stat-n good">15<span style="color:var(--faint);font-size:17px">/15</span></div>
+      <div class="stat-n good">16<span style="color:var(--faint);font-size:17px">/16</span></div>
       <div class="stat-l">Interface chunks</div>
     </div>
   </div>
@@ -679,7 +679,7 @@
         <div class="ms-body">
           <div class="ms-head">
             <span class="ms-name">User interface</span>
-            <span class="pill done">Complete &middot; 15 of 15</span>
+            <span class="pill done">Complete &middot; 16 of 16</span>
           </div>
           <p class="ms-goal">
             Main window, shot list with the keyboard model, metadata pane, validation
@@ -849,8 +849,8 @@
                 files, so a value has to travel with the work rather than be read from a settings
                 file those processes never see. That is real plumbing and its own piece of work; a
                 control that silently did nothing would be worse than a greyed one that says why.
-                <b>The advanced one went live with the log</b> (M5.8.3); output quality is the
-                only one left. <b>Nothing in it about which format a
+                <b>The advanced one went live with the log</b> (M5.8.3) and <b>output quality
+                with M5.12</b>, so every section is live. <b>Nothing in it about which format a
                 delivery is in</b>, because there is no mode - each clip names its own - and
                 <b>nothing in it about where the grading session is</b>, because that is a record
                 of what a delivery was rendered from rather than a preference.
@@ -1039,6 +1039,35 @@
                 at 104 characters. Nothing about that fails, and it was found by printing the
                 real window rather than by any test - so the test now holds every line of every
                 description, in every state the window can be in, under a width.
+              </span>
+              <span class="c-st"><span class="tag ok">Done</span></span>
+            </div>
+
+            <div class="chunk done">
+              <span class="c-id">M5.12</span>
+              <span class="c-name">The last greyed section</span>
+              <span class="c-note">
+                <b>The settings window is whole.</b> The two output values it has shown greyed
+                since it was built - how hard the viewing copies are compressed, and how hard the
+                delivered frames are - are editable, and every section of the page is now live.
+                <b>It needed a tenth of the work the plan had budgeted for it.</b> The note that
+                stood against it for two chunks said these values would have to travel attached to
+                each individual piece of work, because they are read inside the separate processes
+                that write the files. They do not: they are the same for every file in a run, so
+                they go on <b>the channel the advanced section already built</b> for the ffmpeg
+                override, and the whole crossing is four lines. Attaching them to the work would
+                have meant the part of the tool that plans a delivery reading the user's settings,
+                which it has never had to do.
+                <b>Both stay what the specification pins</b> - the page opens on those numbers,
+                read from the code that applies them rather than written down a second time, and
+                each says what the specification is beside it. They are settings because a slow
+                line or a particular vendor can force a change to what a delivery costs, and the
+                tool should not need a rebuild for that; they are not an invitation, and nothing
+                else in that table is editable.
+                <b>The encode quality is only visible in the log afterwards</b>, since no tool
+                reads it back out of a finished video, so the test that it actually reaches a
+                worker process reads the command the tool logged. The compression level is in the
+                header of the file the worker wrote, so its test reads the file.
               </span>
               <span class="c-st"><span class="tag ok">Done</span></span>
             </div>
@@ -1373,7 +1402,7 @@
     <h2>Open questions</h2>
     <p class="standfirst" style="margin-bottom:14px">
       The live list. Questions answered days ago and no longer affecting anything have been
-      taken off this board; none is deleted, and all 50 of them, closed ones included, stay in
+      taken off this board; none is deleted, and all 52 of them, closed ones included, stay in
       <span class="mono">docs/OPEN_QUESTIONS.md</span> with the reasoning that closed them.
       What is kept here is what is still open, what was answered in the last two days, and
       what was built to a default that one real delivery would confirm.
@@ -2229,15 +2258,18 @@
     every test asked the data whether there was a dot, and there was; nothing asked the window
     whether it had drawn one. It is fixed, with three tests that ask the window, and the width is
     now worked out from the indent rather than typed in, so it cannot drift apart again.
-    1648 tests green.<br>
+    1665 tests green.<br>
     <b>The colour check that could not tell a dark Canon grade from a baked-in viewing transform
     is fixed</b>, which was the last item on the list that was a fault rather than a judgement.
     It measures the shape of the top of the range now rather than one value in it, so how dark a
     delivery is graded no longer moves the answer at all - and the numbers were measured again
     rather than trusted, which moved one of them.<br>
-    <b>Next</b> &middot; <b>the last greyed settings section</b>, output quality, needs the value
-    to travel to the worker processes on a channel that already exists. And the <b>quickstart</b>
-    can be drafted now that the pictures exist to lay it out around.
+    <b>The last greyed settings section is live</b> (M5.12), which finishes the settings
+    window: the two output quality values are editable and they reach the worker processes on the
+    channel the advanced section already built, rather than on the individual pieces of work the
+    plan had assumed they would need.<br>
+    <b>Next</b> &middot; the <b>quickstart</b>, which can be drafted now that the pictures exist to
+    lay it out around, and the structural tidying the code review deferred.
     <b>Two questions want asking before a real delivery depends on them</b>: which field the
     shooters write their camera's format into and exactly what they write, and whether a grading
     session's colour file really does contain the conversion - because if the tool also converts,
