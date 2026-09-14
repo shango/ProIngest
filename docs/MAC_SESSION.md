@@ -18,8 +18,15 @@ memory is the thing this is meant to prevent.
 
 Do not rent for any of these. Listed because the instinct to rent is usually wrong.
 
-- **Building the `.app`.** CI compiles it. There is no need to upload anything anywhere to be
-  compiled; the runner that tests the code can package it too (M7).
+- **Building the `.app`.** CI compiles it, and since M7 that is a fact rather than a plan: the
+  `package-macos` job builds the bundle and the dmg on an arm64 runner every push and uploads
+  the image as a run artifact. Download it; do not build it.
+- **Whether the bundle works at all.** `build/smoke_test.py` runs in that job and drives the
+  packaged binary through a whole turnover - scan, a two worker render, both spreadsheets. A
+  missing hidden import, an uncollected otio plugin manifest or a broken worker pool fails CI.
+  What it cannot judge is anything with a window in it, which is what the checklist below is.
+- **Measuring the installed size.** `build/build.py` prints it and the dmg's size into the run
+  summary on every build, against PRD section 8's budget.
 - **Judging encode quality.** A reference mp4 is a normal file. Download the CI
   artifact and watch it on Linux or Windows.
 - **Spreadsheets, QC rules, naming, frame math, the batch file.** Pure logic, fully covered by
@@ -32,11 +39,12 @@ Do not rent for any of these. Listed because the instinct to rent is usually wro
 
 ### Do not rent until all of these are true
 
-- [ ] CI is green on `main`.
-- [ ] M5 and M6 are feature-complete and behave correctly on Linux.
-- [ ] The M7 packaging job produces a downloadable `.app` artifact, and its headless smoke
-      test passes. Renting in order to discover that PyInstaller missed a hidden import is
-      the expensive way to learn it.
+- [x] CI is green on `main`.
+- [x] M5 is feature-complete and behaves correctly on Linux. (M6, the stringout, was dropped
+      on 2026-09-11; this line used to name it.)
+- [x] **The M7 packaging job produces a downloadable dmg and its headless smoke test passes.**
+      Done 2026-09-13. Renting in order to discover that PyInstaller missed a hidden import is
+      the expensive way to learn it, and it is now learned for free on every push.
 - [ ] Everything on the checklist below is written and pushed. Nothing on it is still in
       progress.
 
@@ -59,7 +67,18 @@ Do not rent for any of these. Listed because the instinct to rent is usually wro
 
 Append to this as M5 and M6 are built.
 
-- [ ] The CI-built bundle launches at all.
+- [ ] **The CI-built bundle launches from the Finder.** Headlessly it already scans, renders
+      and reports on every push, so what is being checked here is the half a smoke test cannot
+      reach: double-click the app and get a window.
+- [ ] **The dmg mounts and reads as a drag-to-install.** `hdiutil` with an `/Applications`
+      symlink beside the app, no background image (PACKAGING.md), so the question is whether
+      that looks deliberate or unfinished at the volume's default window size.
+- [ ] **Press Run and count the Dock icons.** The smoke test proves a spawned worker comes back
+      as a worker rather than dying, which is the failure that breaks a render. It cannot prove
+      the other half: a child spawned from a *windowed* bundle might still bounce an icon into
+      the Dock even though it never builds a window. Watch the Dock through one render.
+- [ ] **There is no application icon.** Confirm that what PyInstaller's default looks like in
+      the Dock and the Finder is tolerable for v01, or that one needs drawing.
 - [ ] About and Preferences appear in the application menu, not a window menu. Needs
       `QAction.AboutRole` and `PreferencesRole`. `UI_SPEC.md` section 11.
 - [ ] Cmd+S, Cmd+R, Cmd+F, Cmd+T, Cmd+K, Cmd+I and Cmd+. all fire. Qt maps the portable
@@ -160,9 +179,11 @@ Append to this as M5 and M6 are built.
       restores Qt's own blob and Qt clamps it to the current screen; whether that is enough
       when a laptop is undocked can only be seen on a Mac with a second display.
 - [ ] Logs land in `~/Library/Logs/ProIngest` and rotate.
-- [ ] Stringout burn-ins are legible at 1920x1080. `UI_SPEC.md` section 8.
-- [ ] Installed size against the 300 MB budget in `PRD.md` section 8. PySide6 alone is 422 MB
-      of wheels before PyInstaller strips it, so this needs measuring rather than assuming.
+- [ ] Installed size and dmg size: **read the numbers CI printed** into the run summary rather
+      than measuring here, and decide whether they are acceptable against PRD section 8's 300 MB
+      installer budget. The build reports the verdict and deliberately does not fail on it.
+
+  (The stringout burn-in line that used to sit here went with M6 on 2026-09-11, OQ-38.)
 
 ## Session 2: the editor's own Mac, free, at handover
 

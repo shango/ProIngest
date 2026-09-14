@@ -1,8 +1,13 @@
 # Packaging (macOS v01)
 
 v01 targets **macOS on Apple Silicon only**. Windows moved to the v02 backlog (PRD section
-10). Nothing here is built yet: M7 has not started, and see "The build machine problem" below
-for why it cannot start on the current dev machine.
+10).
+
+**M7 is built as of 2026-09-13 and CI packages every push.** `build/build.py` produces the
+app, and on macOS the dmg beside it; `build/smoke_test.py` drives the result through a whole
+turnover; the `package-macos` job does both on an arm64 runner and uploads the dmg. Nothing in
+this document is written from documentation alone any more except the parts marked otherwise.
+The residue that still needs a person is `docs/MAC_SESSION.md`.
 
 ## Build
 
@@ -10,10 +15,26 @@ for why it cannot start on the current dev machine.
   reason as before: faster start, no temp extraction. On macOS `onefile` is worse still,
   because an app bundle is already a directory and `onefile` would unpack ~200 MB to a temp
   path on every launch.
-- Spec file in `build/proingest.spec` with `BUNDLE(...)` for the `.app`, hidden imports for
-  PySide6 plugins, OpenEXR, numpy and PyOpenColorIO. **OpenColorIO needs no data files**: the
-  ACES config is compiled into the wheel and read with `Config.CreateFromBuiltinConfig`, so
-  there is nothing to `collect_data_files` and nothing to place beside the app.
+- Spec file in `build/proingest.spec`, and it is deliberately a **shim**: every decision about
+  what goes in the bundle lives in `build/bundle.py`, which `ruff`, `mypy` and
+  `tests/test_bundle.py` all see. A `.spec` is executed rather than imported, so nothing reads
+  one, and a mistake in one does not fail a build - it ships an app with a file missing.
+- **PySide6, OpenEXR, numpy, xxhash and PyOpenColorIO need no help.** PyInstaller's analysis
+  follows the imports and its PySide6 hooks are per module, so importing only QtCore, QtGui
+  and QtWidgets is what keeps QtWebEngine and the rest out without an exclude list.
+  **OpenColorIO needs no data files**: the ACES config is compiled into the wheel and read with
+  `Config.CreateFromBuiltinConfig`, so there is nothing to `collect_data_files` and nothing to
+  place beside the app.
+- **OpenTimelineIO is the one that needs all three kinds of help**, and it is the failure a
+  naive build ships. otio finds its adapters through `importlib.metadata` entry points and JSON
+  plugin manifests, neither of which survives freezing: so the bundle carries otio's and the
+  CMX3600 adapter's `.dist-info` metadata, their manifests, **and their `.py` sources**. The
+  sources are not belt and braces. otio's loader tries
+  `importlib.import_module("opentimelineio.adapters.<name>")` first and falls back to reading
+  the path named in the manifest off disk, and the EDL adapter is called `cmx_3600` while
+  living in `otio_cmx3600_adapter`, so for that one **only the file path fallback ever works**.
+  Without the sources there is no EDL support, and without the rest there is no `.otio` reader
+  at all, which is to say no tool.
 - `Info.plist` needs: `CFBundleIdentifier` (`com.<studio>.proingest`), `CFBundleShortVersionString`
   from `pyproject.toml`, `LSMinimumSystemVersion` (macOS 12 is a safe floor for PySide6 6.7),
   and `NSHighResolutionCapable`. No document types and no URL schemes: the app opens
@@ -27,15 +48,30 @@ for why it cannot start on the current dev machine.
   arm64 binary (it tests `is_file`, not whether this machine can execute it) and the first
   ffprobe call fails with `Exec format error`. That is a developer's problem, not the
   editor's, and the v02 Windows build will have to revisit `BUNDLED_PLATFORM` regardless.
-- Distribution as a `.dmg` built with `create-dmg`, background image and an Applications
-  symlink. A plain zip of the `.app` is the fallback and is honestly fine for one user.
-- **The entry point must call `multiprocessing.freeze_support()` before anything else.**
-  The render pool uses the spawn context on every platform (`core/render.py`), and a spawned
-  worker in a frozen bundle re-launches the bundle rather than re-importing a module. Without
-  that call, pressing Run in the packaged app opens four more copies of the window instead of
-  rendering. It costs one line, it does nothing when running from source, and it is the kind
-  of thing that is found by a person on a Mac watching windows multiply. Since M5.5 the UI
-  starts a pool of its own, so this is no longer only the CLI's problem.
+- Distribution as a `.dmg`, built with **`hdiutil`** rather than the `create-dmg` this
+  document used to name. The only part of create-dmg the tool wanted was the drag-to-install
+  layout, and that is one symlink to `/Applications` in a staging folder; doing it with
+  `hdiutil` means the CI runner installs nothing through Homebrew in order to package a build,
+  and there is no cosmetic background image in this repository for create-dmg to place. The
+  image is `UDZO` compressed and named `ProIngest-<version>.dmg`.
+- **There is no application icon.** None has been drawn, so the bundle carries PyInstaller's
+  default. It is cosmetic, it is the sort of thing the editor should have an opinion about, and
+  it is one `icon=` argument in the spec once an `.icns` exists.
+- **The entry point calls `multiprocessing.freeze_support()` before anything else**, and that
+  is the whole reason `build/entry.py` exists. The render pool uses the spawn context on every
+  platform (`core/render.py`), and a spawned worker in a frozen bundle re-launches the bundle
+  rather than re-importing a module. Without that call, pressing Run in the packaged app opens
+  four more copies of the window instead of rendering. Since M5.5 the UI starts a pool of its
+  own, so this is no longer only the CLI's problem.
+
+  **Read the next sentence before deleting that line as dead code.** CPython's
+  `multiprocessing.freeze_support` is gated on `sys.platform == "win32"` and genuinely does
+  nothing on macOS. PyInstaller's `pyi_rth_multiprocessing` runtime hook **rebinds the name**
+  to its own implementation, which is gated on nothing, and that hook runs before the entry
+  script in any bundle that imports `multiprocessing`. So the call is a no-op from source off
+  Windows and load bearing in the shipped app everywhere. Two things hold it: a unit test that
+  the call precedes `main()`, and a smoke test step that hands the built binary a
+  `--multiprocessing-fork` argument and fails if the argument parser's usage line comes back.
 - `build/build.py` runs both steps and writes to `dist/`.
 - Version comes from `pyproject.toml` and is stamped into `Info.plist`, the dmg name, the
   About box, and every QC log.
@@ -54,21 +90,41 @@ the target platform, and the dev machine tests against whatever ffmpeg the distr
 the product ships 9.0.1. The macOS job puts the bundled arm64 binary on PATH first, so the
 suite exercises the configuration that actually ships.
 
-Two things CI cannot do, and they are why a real Mac is still needed eventually:
+**Resolved for packaging too, as of 2026-09-13.** The `package-macos` job builds the `.app`
+and the dmg on the same arm64 runner and uploads the image as a run artifact, so a `.app` is a
+download rather than a thing that has to be made on a machine someone rented. `package-linux`
+builds the same spec on a free runner and smoke tests it, which is where a lost hidden import
+or an uncollected plugin manifest surfaces first: the failure is identical on both platforms
+and only one of them costs anything.
 
-- **M7 packaging.** The job is not written because `build/build.py` and `build/proingest.spec`
-  do not exist yet. It lands with M7 and is a natural fit for the same runner.
-- **M8 validation.** The turnovers live on the editor's Google Drive and no runner can judge
-  whether a reference encode looks right. That needs the editor's own Mac.
+One thing CI still cannot do, and it is why a real Mac is needed eventually:
 
-`docs/MAC_SESSION.md` holds the running checklist for both, so a rented day is execution
+- **M8 validation, and the interface.** The turnovers live on the editor's Google Drive, no
+  runner can judge whether a reference encode looks right, and nothing headless can say whether
+  the window reads correctly at 2x Retina. That needs a Mac with a person in front of it.
+
+`docs/MAC_SESSION.md` holds the running checklist, so a rented day is execution
 rather than exploration. A rented Apple Silicon machine is about EUR 3 for the 24 hour
 minimum lease Apple's licence forces, which makes preparation, not price, the thing worth
 optimising.
 
-Everything else in this document is still written from the documentation rather than from a
-machine anyone has used. Assumptions that need a Mac to settle are flagged as OQ-22 and OQ-23.
-OQ-25 no longer needs one: the tool asks for its two roots instead of looking for them.
+What in this document has still never been seen on a Mac: how the `.app` behaves once
+double-clicked, which is Gatekeeper's business (OQ-9) and `MAC_SESSION.md`'s checklist. The
+build itself, the bundle's contents and the packaged binary's behaviour are all exercised on
+every push. Assumptions that need a Mac to settle are flagged as OQ-22 and OQ-23; OQ-52 is the
+bundle identifier, which needs a decision rather than a machine. OQ-25 no longer needs one: the
+tool asks for its two roots instead of looking for them.
+
+## Size
+
+Measured by `build/build.py` on every build and printed into the CI run summary, because PRD
+section 8 budgets **under 300 MB for the installer** and a budget nobody measures is a number
+in a document. The installer is the dmg, so that is what the budget is read against, with the
+installed size printed beside it as the thing that explains it. The build prints the verdict
+and does **not** fail on it: what to drop when PySide6 gains a megabyte is a person's decision,
+not a red `main`. The first Linux build came out at 236 MB installed, which is the number to
+compare a macOS one against - the two differ by the Qt platform plugins and by the 132 MB
+ffmpeg pair that only the macOS bundle carries.
 
 ## ffmpeg
 

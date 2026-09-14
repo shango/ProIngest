@@ -53,7 +53,7 @@ jobs:
         run: |
           .venv/bin/python -m ruff check .
           .venv/bin/python -m ruff format --check .
-          .venv/bin/python -m mypy proingest tests
+          .venv/bin/python -m mypy proingest tests build
 
       - name: Tests
         run: .venv/bin/python -m pytest tests/ -q
@@ -105,7 +105,7 @@ jobs:
         run: |
           .venv/bin/python -m ruff check .
           .venv/bin/python -m ruff format --check .
-          .venv/bin/python -m mypy proingest tests
+          .venv/bin/python -m mypy proingest tests build
 
       - name: Tests
         run: .venv/bin/python -m pytest tests/ -q
@@ -122,3 +122,91 @@ jobs:
             && echo "h264_videotoolbox encoded 24 frames" \
             && ffprobe -hide_banner -v error -show_entries stream=codec_name,width,height \
                  -of default=noprint_wrappers=1 /tmp/vt-probe.mp4
+
+  # Packaging (M7). Two jobs for the same reason the two test jobs exist: the macOS one
+  # is the product and the Linux one is the cheap signal. Nothing ships from Linux, but
+  # a spec that has stopped collecting a plugin manifest or has lost a hidden import
+  # fails a Linux build exactly as it fails a macOS one, and finding that here costs a
+  # free runner rather than a day of a rented Mac (`docs/MAC_SESSION.md`).
+  package-linux:
+    name: Package (Linux, spec check)
+    needs: linux
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install ffmpeg and Qt's own shared libraries
+        # ffmpeg because the smoke test's fixtures generate their demo media with it,
+        # and the Qt libraries because PyInstaller imports PySide6 to analyse it.
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg libegl1 libxkbcommon0 libdbus-1-3
+
+      - uses: astral-sh/setup-uv@v10.1.0
+        with:
+          cache-dependency-glob: "uv.lock"
+      - name: Create the environment
+        run: uv sync --frozen --extra dev --python ${{ env.PYTHON_VERSION }}
+
+      - name: Build
+        run: .venv/bin/python build/build.py
+
+      - name: Smoke test the frozen build
+        # Scans a fixture turnover, renders it through a two worker pool and writes both
+        # spreadsheets, all through the packaged binary. See build/smoke_test.py.
+        run: .venv/bin/python build/smoke_test.py dist/ProIngest/ProIngest
+
+  package-macos:
+    name: Package (Apple Silicon)
+    needs: macos
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Cache the pinned ffmpeg
+        uses: actions/cache@v6
+        with:
+          path: proingest/resources/ffmpeg
+          key: ffmpeg-${{ runner.os }}-${{ hashFiles('build/ffmpeg.lock.json') }}
+
+      - name: Fetch the pinned ffmpeg
+        # The bundle collects these two binaries, and build/build.py refuses to build a
+        # macOS app without them rather than shipping one that cannot probe a file.
+        run: python3 build/fetch_ffmpeg.py
+
+      - name: Put the bundled ffmpeg on PATH
+        # For the smoke test's fixtures, which shell out to a bare `ffmpeg`. The app
+        # under test resolves its own copy from inside the bundle and ignores PATH.
+        run: echo "$GITHUB_WORKSPACE/proingest/resources/ffmpeg" >> "$GITHUB_PATH"
+
+      - uses: astral-sh/setup-uv@v10.1.0
+        with:
+          cache-dependency-glob: "uv.lock"
+      - name: Create the environment
+        run: uv sync --frozen --extra dev --python ${{ env.PYTHON_VERSION }}
+
+      - name: Build the app and the dmg
+        # The size report goes to the run summary as well as the log: PRD section 8 sets
+        # a 300 MB installer budget and this is the only place the number is measured.
+        shell: bash
+        run: |
+          .venv/bin/python build/build.py | tee "$RUNNER_TEMP/build.log"
+          {
+            echo '### ProIngest bundle'
+            echo '```'
+            tail -n 6 "$RUNNER_TEMP/build.log"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Smoke test the frozen app
+        run: .venv/bin/python build/smoke_test.py "dist/ProIngest.app/Contents/MacOS/ProIngest"
+
+      - name: Upload the disk image
+        uses: actions/upload-artifact@v7
+        with:
+          name: ProIngest-macos-arm64
+          # The dmg rather than the `.app`, and not only because it is smaller: this
+          # action zips what it is given, and a zip drops the symlinks and the execute
+          # bits that a bundle is made of. A dmg arrives intact.
+          path: dist/ProIngest-*.dmg
+          if-no-files-found: error

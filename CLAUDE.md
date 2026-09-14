@@ -34,9 +34,11 @@ The docs are the spec. `PROGRESS.md` is the state. When code and docs disagree, 
 ```
 uv sync --extra dev          # installs exactly what uv.lock pins; or: pip install -e .[dev]
 pytest
-ruff check . && ruff format --check . && mypy proingest tests
+ruff check . && ruff format --check . && mypy proingest tests build
 python -m proingest          # run the app
-python build/build.py        # PyInstaller .app + dmg, macOS only (see docs/PACKAGING.md)
+python build/fetch_ffmpeg.py # the bundled binaries, untracked (macOS only)
+python build/build.py        # PyInstaller app; a dmg too on macOS (see docs/PACKAGING.md)
+python build/smoke_test.py dist/ProIngest/ProIngest   # drive a frozen build end to end
 ```
 
 ## Definition of done for a feature

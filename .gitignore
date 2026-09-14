@@ -7,6 +7,9 @@ venv/
 
 # Build output (note: build/ itself is source, only its output is ignored)
 /dist/
+# PyInstaller's scratch area, which `build/build.py` points at with --workpath so
+# that nothing it writes lands beside the spec file it is building from.
+/build/pyinstaller/
 
 # Bundled binaries. Not tracked: pinned in build/ffmpeg.lock.json and fetched with
 # `python build/fetch_ffmpeg.py`. See proingest/resources/ffmpeg/PROVENANCE.md.
