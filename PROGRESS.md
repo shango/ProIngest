@@ -8,11 +8,25 @@ commit.
 
 ## 1. Resume here
 
-**State at 2026-09-13. Every feature milestone is built, and so is packaging.** M1 to M4
-complete, M4.5 all four chunks, M4.6 all five, **M5 all eleven**, and **M7 as of this
-afternoon**. `ruff`, `ruff format` and `mypy --strict` clean, the last two now over `build/`
-as well. What is left is **M8 polish** (needs a real turnover and a real colour session) and
-**M9 the user guide**.
+**State at 2026-09-14. Every feature milestone is built, and so is packaging.** M1 to M4
+complete, M4.5 all four chunks, M4.6 all five, **M5 all eleven**, **M7**, and **M9.4**.
+**1648 tests**, `ruff`, `ruff format` and `mypy --strict` clean over `proingest tests build`.
+What is left is **M8 polish** (needs a real turnover and a real colour session) and the rest
+of **M9, the user guide**.
+
+**The last session, 2026-09-13, did three things and found a fourth.** The user is taking the
+repo to a Mac and will put the ffmpeg binaries there by hand, so: **the repo is clone-ready on
+a Mac** (`docs/MAC_SETUP.md`, and `build/fetch_ffmpeg.py` takes `--show`, `--from` and
+`--verify`), **M9.4's screenshot harness is built**, and **OQ-47 is closed** - QC-039 measures
+the slope at the top of the log range now rather than white against a fixed floor, which was
+the last open item that was a fault rather than a judgement. Taking the harness's first
+picture found that **the status dot had never been drawn on any shot row**; that is fixed with
+it, and section 7 has the mechanism. Each has its own note below.
+
+**Six commits sit on `m7/packaging` and none of them is pushed.** That branch is PR #2 and is
+about packaging; nothing from the last session belongs to it except by accident of what was
+checked out, so **moving them to a branch of their own before pushing is a decision waiting for
+the user**, and CI has not seen any of them. The Build Track artifact is at version 56.
 
 **M7 did not need a Mac and this file said it did.** Everything but the `.app`'s behaviour
 once double-clicked is exercised by CI on every push: `package-macos` builds the bundle and
@@ -55,17 +69,18 @@ against a real session. The source encoding is camera native log as of 2026-09-1
 shot, resolved through a table, recorded in the QC log and stated with its origin in the
 delivered header.
 
-**Nothing in the plan is next that can be built on this machine alone.** M7 wants a Mac, M8
-wants a real turnover and a real colour session, and M9 wants both plus the screenshots. Two
-questions are open and both are about correctness rather than scope: OQ-46, and **OQ-47, which
-was found by building M4.6.2**. Every chunk has its own note further down saying what it
-settled. **OQ-47 closed on 2026-09-13**, which leaves OQ-46, and that one is a question for a
-person rather than a thing to build.
+**Three things can still be finished on this machine, and the rest wants the Mac or the real
+data.** M8 wants a real turnover and a real colour session; M9's shipped screenshots want the
+Mac. What does not: the Settings page's sixth section, M9.2's quickstart, and what `REVIEW.md`
+deferred. "Next task" below lists them in the order they are worth doing. **Of the two open
+questions that were about correctness rather than scope, OQ-47 closed on 2026-09-13**, which
+leaves OQ-46 - and that one is a question to ask a person, not a thing to build.
 
 **One of the three things added to the plan on 2026-09-12 is still unbuilt**: the user guide
-with screenshots (PRD FR-17, the new M9). The other two are done - the run's strip, built
-first because it finishes what the user had just watched being built, and the toolbar
-tooltips (M5.11). The note below says what the guide is and what decides its shape.
+itself (PRD FR-17, the new M9), though **M9.4's harness now takes its pictures**. The other two
+are done - the run's strip, built first because it finishes what the user had just watched
+being built, and the toolbar tooltips (M5.11). The note below says what the guide is and what
+decides its shape.
 
 **M4 is done.** `core/exports.py` writes both spreadsheets, `proingest qc <batch>` writes them
 headless, and QC-053 parses camData through the new `core/camdata.py`. Proved end to end on a two
@@ -83,9 +98,13 @@ is gone**, deleted with its tests in M4.5.4 as planned.
 ### First five minutes
 
 ```
-.venv/bin/python -m pytest tests/ -q
+.venv/bin/python -m pytest tests/ -q          # 1648, about 90 seconds
 .venv/bin/python -m ruff check . && .venv/bin/python -m ruff format --check . && .venv/bin/python -m mypy proingest tests build
 ```
+
+**On a Mac, none of that works until `docs/MAC_SETUP.md` has been followed**, and the trap it
+names twice is that the media tests **skip** rather than fail when ffmpeg is not on PATH: a
+suite that reports a few hundred tests instead of sixteen hundred has encoded nothing.
 
 Then read `docs/COLOR_AND_FORMAT.md` section 1 before anything else. It was rewritten twice on
 2026-09-11 and again on 2026-09-12, and it invalidates things a commit message or a memory of
