@@ -34,10 +34,26 @@ the last open item that was a fault rather than a judgement. Taking the harness'
 picture found that **the status dot had never been drawn on any shot row**; that is fixed with
 it, and section 7 has the mechanism. Each has its own note below.
 
-**Fifteen commits sit on `m7/packaging` and none of them is pushed.** That branch is PR #2 and is
-about packaging; nothing from the last session belongs to it except by accident of what was
-checked out, so **moving them to a branch of their own before pushing is a decision waiting for
-the user**, and CI has not seen any of them. The Build Track artifact is at version 56.
+**The branch tangle is resolved, 2026-09-14.** `m7/packaging` is PR #2 and is about packaging:
+five commits, pushed, green, and **still open**. The sixteen commits that had accumulated on top
+of it were not packaging - they were there by accident of what was checked out - and they are now
+**`m9/guide-and-settings`, PR #3**, pushed with the sixteen and **based on `m7/packaging` rather
+than `main`**, because that is what they were written on top of. **GitHub retargets PR #3 to
+`main` by itself when PR #2 merges**, and its diff narrows to the sixteen at that point, so
+nothing has to be rebased by hand.
+
+**Merging PR #2 is the one step still waiting on the user.** It is `MERGEABLE` / `CLEAN` with all
+four checks green, and `main` is a strict ancestor of it, so the merge cannot conflict. Until it
+happens both PRs stay open and PR #3's diff shows twenty-one commits rather than sixteen. Local
+`m7/packaging` has been reset to `origin/m7/packaging` so it matches the PR exactly; the work is
+on `m9/guide-and-settings`, which is the branch to be on.
+
+**CI saw the sixteen for the first time on that push.** Expect a first run to be capable of going
+red on the arm64 runner alone: two of the last two CI-only failures were the Mac disagreeing
+about something this machine cannot observe. The candidate here is `tests/test_guide.py`, which
+compares keyboard shortcuts - it was written to survive it, since both sides go through
+`QKeySequence.toString()` in portable text rather than the native glyphs, but it is the thing to
+read first. The Build Track artifact is at version 60.
 
 **M7 did not need a Mac and this file said it did.** Everything but the `.app`'s behaviour
 once double-clicked is exercised by CI on every push: `package-macos` builds the bundle and
@@ -48,7 +64,7 @@ was ever pushed, which is what turned M7 from written-blind into verified-except
 **Run 34798702117 is green on all four jobs**, and the macOS packaging job closed the wrapper
 too: **251 MB installed, a 110 MB dmg**, and the smoke test inside the real `.app` intercepted
 the spawn arguments, rendered through a two worker pool and wrote both spreadsheets. It is on
-the branch `m7/packaging` as **PR #2, unmerged**. Detail is in section 5 under M7.
+the branch `m7/packaging` as **PR #2, unmerged and waiting on nothing but a merge**. Detail is in section 5 under M7.
 
 **A code quality review went in on 2026-09-13, on the branch `review/quality-fixes`.**
 `REVIEW.md` at the repo root is the record: 27 bugs fixed with a test each, five structural
