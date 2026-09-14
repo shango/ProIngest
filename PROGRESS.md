@@ -20,7 +20,10 @@ the dmg on an arm64 runner and uploads the image, `package-linux` builds the sam
 free and smoke tests it, and `build/smoke_test.py` drives the packaged binary through a whole
 turnover in both. The spec was also built and smoke tested on this Linux machine before it
 was ever pushed, which is what turned M7 from written-blind into verified-except-the-wrapper.
-Detail is in section 5 under M7.
+**Run 34798702117 is green on all four jobs**, and the macOS packaging job closed the wrapper
+too: **251 MB installed, a 110 MB dmg**, and the smoke test inside the real `.app` intercepted
+the spawn arguments, rendered through a two worker pool and wrote both spreadsheets. It is on
+the branch `m7/packaging` as **PR #2, unmerged**. Detail is in section 5 under M7.
 
 **A code quality review went in on 2026-09-13, on the branch `review/quality-fixes`.**
 `REVIEW.md` at the repo root is the record: 27 bugs fixed with a test each, five structural
@@ -1657,10 +1660,13 @@ M7 detail, built 2026-09-13. Five files in `build/` and two CI jobs.
   build would be carrying 132 MB it could never run. `build/build.py` refuses a macOS build
   when they are absent, because PyInstaller would only warn and the app would install, start,
   and fail on its first probe.
-- **Size: 236 MB installed on Linux**, and the macOS number comes from CI, which prints both it
-  and the dmg into the run summary. PRD section 8 budgets under 300 MB for the *installer*, so
-  the dmg is what it is read against. The build prints the verdict and does not fail on it:
-  what to drop when PySide6 gains a megabyte is a person's decision, not a red `main`.
+- **Size: 251 MB installed on macOS and a 110 MB dmg**, measured by CI on the arm64 runner;
+  236 MB installed on Linux for comparison. PRD section 8 budgets under 300 MB for the
+  *installer*, so the dmg is what it is read against and it sits at about a third of it. The
+  build prints both into the run summary and prints the verdict, and does not fail on it: what
+  to drop when PySide6 gains a megabyte is a person's decision, not a red `main`. The packaged
+  app answered `--version` in 0.8s against PRD section 8's five second first launch, on a runner
+  rather than the target.
 
 **Two things M7 left open.** There is **no application icon**, so the bundle carries
 PyInstaller's default; and **OQ-52**, the bundle identifier, is a placeholder

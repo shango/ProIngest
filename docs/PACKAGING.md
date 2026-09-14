@@ -122,9 +122,13 @@ section 8 budgets **under 300 MB for the installer** and a budget nobody measure
 in a document. The installer is the dmg, so that is what the budget is read against, with the
 installed size printed beside it as the thing that explains it. The build prints the verdict
 and does **not** fail on it: what to drop when PySide6 gains a megabyte is a person's decision,
-not a red `main`. The first Linux build came out at 236 MB installed, which is the number to
-compare a macOS one against - the two differ by the Qt platform plugins and by the 132 MB
-ffmpeg pair that only the macOS bundle carries.
+not a red `main`.
+
+**Measured 2026-09-13 on the arm64 runner: 251 MB installed, and a 110 MB dmg**, so the installer
+sits at about a third of the budget. The Linux build is 236 MB installed for comparison; the two
+differ by the Qt platform plugins and by the 132 MB ffmpeg pair that only the macOS bundle
+carries, which compresses hard. The packaged app answered `--version` in 0.8s, which is a runner
+rather than the target hardware but is the only first launch figure that exists.
 
 ## ffmpeg
 

@@ -311,7 +311,7 @@
   <header class="mast">
     <div class="eyebrow">
       <span>VFX turnover ingest &middot; macOS v01</span>
-      <span class="stamp">Updated <b>13 Sep 2026, 19:40 PDT</b></span>
+      <span class="stamp">Updated <b>13 Sep 2026, 20:05 PDT</b></span>
     </div>
     <h1>ProIngest Build Track</h1>
     <p class="standfirst">
@@ -1142,7 +1142,8 @@
                 <b>The size is measured on every build</b> and printed into the build's own summary
                 against the 300&nbsp;MB budget, rather than being a number in a document nobody
                 checks. It reports and does not fail: what to drop when the interface toolkit gains
-                a megabyte is a person's decision.
+                a megabyte is a person's decision. <b>Measured: 251&nbsp;MB installed and a
+                110&nbsp;MB disk image</b>, about a third of the budget.
                 <b>There is still no application icon</b>, so the app carries the packaging tool's
                 default. It is cosmetic, it is one argument once somebody draws one, and it is the
                 first thing anybody sees.
@@ -1163,6 +1164,9 @@
                 pushed.</b> Nothing ships from that build; it exists because a missing file fails a
                 Linux build exactly as it fails a Mac one, and the running checklist names
                 discovering that on a rented Mac as the expensive way to find out.
+                <b>Then it ran inside a real Mac application and passed there too</b>, first time:
+                the app rendered through two worker processes and wrote both spreadsheets, which is
+                the one thing about packaging that no amount of Linux could have answered.
               </span>
               <span class="c-st"><span class="tag ok">Done</span></span>
             </div>
@@ -2203,7 +2207,9 @@
     process render, both spreadsheets - and checks what landed, which is the only way to catch the
     failures a packaged program has that a normal checkout does not. <b>All of it was built and
     proved on the Linux machine before any of it was pushed</b>, because a missing file fails a
-    Linux build exactly as it fails a Mac one.
+    Linux build exactly as it fails a Mac one. <b>It then passed inside a real Mac application on
+    the first run</b>: 251&nbsp;MB installed, a 110&nbsp;MB disk image at about a third of the
+    budget, and the app rendered through two worker processes and wrote both spreadsheets.
     <b>This milestone was recorded as needing a Mac and it did not</b>, and it was the gate in
     front of the rented day: the rule was not to rent until a downloadable app existed whose
     unattended proving run passed. That is now true, so the day is bookable.

@@ -179,9 +179,9 @@ Append to this as M5 and M6 are built.
       restores Qt's own blob and Qt clamps it to the current screen; whether that is enough
       when a laptop is undocked can only be seen on a Mac with a second display.
 - [ ] Logs land in `~/Library/Logs/ProIngest` and rotate.
-- [ ] Installed size and dmg size: **read the numbers CI printed** into the run summary rather
-      than measuring here, and decide whether they are acceptable against PRD section 8's 300 MB
-      installer budget. The build reports the verdict and deliberately does not fail on it.
+- [x] Installed size and dmg size. **Measured by CI on 2026-09-13: 251 MB installed, a 110 MB
+      dmg**, about a third of PRD section 8's 300 MB installer budget. Read the number in the run
+      summary rather than measuring here; the build reports the verdict and does not fail on it.
 
   (The stringout burn-in line that used to sit here went with M6 on 2026-09-11, OQ-38.)
 
