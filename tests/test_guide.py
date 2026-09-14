@@ -13,6 +13,10 @@ are what is here.
   see that, which is also why this cannot be a grep.
 - **A QC rule ID that has been retired.** Same rule and the same reason as the Settings
   page's help lines, which is where this check was first written.
+- **The reference page's button table.** `ui/toolbar_help.py`'s own docstring says the guide
+  reads it so the two cannot drift, and a markdown table cannot import a module: this is what
+  makes that claim true. The sentences have to match **verbatim**, because a paraphrase in the
+  guide is a second wording of the thing the module exists to keep single.
 - **The two numbers on the install page that move on their own**: the dmg's version, which
   follows `proingest.__version__`, and the macOS floor, which follows `bundle.MINIMUM_MACOS`.
   Both are the kind of fact a reader acts on - looking for a filename, or deciding whether
@@ -30,6 +34,7 @@ from PySide6.QtWidgets import QApplication
 
 from build import bundle, screenshots
 from proingest import __version__
+from proingest.ui import toolbar_help
 from proingest.ui.main_window import MainWindow
 
 GUIDE_DIR = Path(__file__).resolve().parent.parent / "docs" / "guide"
@@ -43,6 +48,24 @@ SHORTCUT = re.compile(r"⌘([A-Z.])")
 RULE_ID = re.compile(r"\bQC-(\d{3})\b")
 DMG = re.compile(r"ProIngest-([0-9.]+)\.dmg")
 MACOS_FLOOR = re.compile(r"macOS (\d+(?:\.\d+)?) or later")
+BUTTON_ROW = re.compile(r"^\| \*\*(.+?)\*\* \| (.+?) \|$", re.MULTILINE)
+"""A row of the reference page's toolbar table: `| **Run** | Renders every ... |`."""
+
+BUTTON_LABELS = {
+    toolbar_help.NEW: "New",
+    toolbar_help.OPEN: "Open...",
+    toolbar_help.SAVE: "Save",
+    toolbar_help.ADD_TURNOVER: "Add Turnover",
+    toolbar_help.SCAN: "Scan",
+    toolbar_help.INGEST: "Ingest Colour Session",
+    toolbar_help.RUN: "Run",
+    toolbar_help.STOP: "Stop",
+    toolbar_help.EXPORT: "Export",
+    toolbar_help.SETTINGS: "Settings",
+}
+"""The label beside each key, which `toolbar_help.py` deliberately does not hold: it is the
+wording that is shared with the guide, not the button text, and the window creates the labels.
+Asserted against the window below, so this cannot be a third place they are written."""
 
 
 def pages() -> list[Path]:
@@ -83,6 +106,29 @@ class TestThePages:
     def test_it_has_no_em_dashes(self, page: Path) -> None:
         """CLAUDE.md, and the guide is the document most likely to be pasted elsewhere."""
         assert "—" not in text_of(page)
+
+
+def test_the_button_table_is_the_tooltips_word_for_word() -> None:
+    """`ui/toolbar_help.py` says the guide reads it. A markdown table cannot, so this does.
+
+    Verbatim rather than "mentions", because a paraphrase in the guide is exactly the second
+    wording that module is apart from the window to prevent.
+    """
+    page = GUIDE_DIR / "reference.md"
+    rows = dict(BUTTON_ROW.findall(text_of(page)))
+    expected = {BUTTON_LABELS[key]: sentence for key, sentence in toolbar_help.WHAT_IT_DOES.items()}
+    assert {label: rows.get(label) for label in expected} == expected
+
+
+def test_the_labels_that_table_uses_are_the_windows_own(qt_app: QApplication, tmp_path: Path) -> None:
+    """Otherwise `BUTTON_LABELS` above is a third place the button text is written down."""
+    window = MainWindow(tmp_path / "settings.json")
+    try:
+        drawn = {action.text() for _key, action in window._toolbar_help}
+    finally:
+        window.log_view.detach()
+        window.close()
+    assert set(BUTTON_LABELS.values()) <= drawn
 
 
 def test_every_shortcut_the_guide_names_is_one_the_window_binds(qt_app: QApplication, tmp_path: Path) -> None:

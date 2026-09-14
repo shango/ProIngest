@@ -183,11 +183,13 @@ Append to this as M5 and M6 are built.
       broken until this is done and a Linux draft cannot be committed by accident. The
       quickstart references seven of them by name and `tests/test_guide.py` fails if one is
       renamed, so what is needed here is the files rather than any editing.
-- [ ] **Read `docs/guide/quickstart.md` at the window** (M9.2) while doing the pass above. It
-      was written on Linux from the specs and the code, so what it cannot know is whether the
-      seven steps are the order a person actually works in and whether anything in it is a step
-      too many. That is the one thing a document like this is wrong about, and it is not
-      visible from here.
+- [ ] **Read `docs/guide/` at the window** (M9.1, M9.2, M9.3) while doing the pass above. All
+      three pages were written on Linux from the specs and the code, so what they cannot know is
+      whether the quickstart's seven steps are the order a person actually works in and whether
+      the reference section describes anything that does not look like that on screen. That is
+      the one thing a document like this is wrong about, and it is not visible from here. The
+      install page's Gatekeeper section is the other half: **check what the dialog actually
+      says** when the dmg is opened after a download, because the page quotes it.
 - [ ] Metadata pane: width and section states persist, long paths elide in the middle, values
       copy. `UI_SPEC.md` section 12.
 - [ ] Dark theme and font rendering at Retina, including the IBM Plex fallback chain.

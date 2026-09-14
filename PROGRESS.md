@@ -10,7 +10,7 @@ commit.
 
 **State at 2026-09-14. Every feature milestone is built, and so is packaging.** M1 to M4
 complete, M4.5 all four chunks, M4.6 all five, **M5 all twelve**, **M7**, and **M9.4**.
-**1676 tests**, `ruff`, `ruff format` and `mypy --strict` clean over `proingest tests build`.
+**1683 tests**, `ruff`, `ruff format` and `mypy --strict` clean over `proingest tests build`.
 What is left is **M8 polish** (needs a real turnover and a real colour session) and the rest
 of **M9, the user guide**.
 
@@ -18,11 +18,12 @@ of **M9, the user guide**.
 alone.** **M5.12, the Settings page's sixth section**: reference quality and the EXR compression
 level are editable, **every section of the page is live**, and both reach a render's worker
 processes on the channel M5.8.3 built rather than on the render job the plan had assumed they
-would need. And **two thirds of the guide's prose**: **M9.2, the quickstart** and **M9.1, the
-install section**, in `docs/guide/`, the first of which found six stale lines in
-`docs/WORKFLOW.md` and fixed them in their own commit. Each has its note in section 5. **What
-is left on this machine is M9.3 and what `REVIEW.md` deferred**; everything else wants the Mac
-or a real turnover.
+would need. And **the whole of the guide's prose**: **M9.2** the quickstart, **M9.1** the
+install section and **M9.3** the reference section, in `docs/guide/`, the first of which found
+six stale lines in `docs/WORKFLOW.md` and fixed them in their own commit. Each has its note in
+section 5. **M9 is 4 of 5**, and what the last chunk wants is a decision (OQ-49) and the Mac's
+pictures rather than more writing. **What is left on this machine is what `REVIEW.md`
+deferred**; everything else wants the Mac or a real turnover.
 
 **The last session, 2026-09-13, did three things and found a fourth.** The user is taking the
 repo to a Mac and will put the ffmpeg binaries there by hand, so: **the repo is clone-ready on
@@ -33,7 +34,7 @@ the last open item that was a fault rather than a judgement. Taking the harness'
 picture found that **the status dot had never been drawn on any shot row**; that is fixed with
 it, and section 7 has the mechanism. Each has its own note below.
 
-**Thirteen commits sit on `m7/packaging` and none of them is pushed.** That branch is PR #2 and is
+**Fourteen commits sit on `m7/packaging` and none of them is pushed.** That branch is PR #2 and is
 about packaging; nothing from the last session belongs to it except by accident of what was
 checked out, so **moving them to a branch of their own before pushing is a decision waiting for
 the user**, and CI has not seen any of them. The Build Track artifact is at version 56.
@@ -107,7 +108,7 @@ is gone**, deleted with its tests in M4.5.4 as planned.
 ### First five minutes
 
 ```
-.venv/bin/python -m pytest tests/ -q          # 1676, about 90 seconds
+.venv/bin/python -m pytest tests/ -q          # 1683, about 90 seconds
 .venv/bin/python -m ruff check . && .venv/bin/python -m ruff format --check . && .venv/bin/python -m mypy proingest tests build
 ```
 
@@ -1121,6 +1122,28 @@ with it. **Four things settled.**
 before `addTopLevelItem`, so every line arriving while a filter was on came in visible. It
 looks like a filter that ignores new lines and nothing about it raises.
 
+### M9.3 is built: the reference section, and the guide's prose is done
+
+`docs/guide/reference.md`. The layout, the toolbar, the list and its fifteen columns, the dot,
+the three In/Out displays, editing, the pane, both bottom tabs, the run, Settings, and a table
+of every shortcut. 18 tests now in `tests/test_guide.py`, 1683 in the suite. **Three things.**
+
+- **The button table is `toolbar_help.WHAT_IT_DOES` word for word, and a test says so.** That
+  module's docstring has claimed since M5.11 that the guide reads it so the two cannot drift,
+  and a markdown table cannot import a module: the test is what makes the claim true. Verbatim
+  rather than "mentions", because a paraphrase in the guide is exactly the second wording the
+  module is apart from the window to prevent. The labels beside the sentences are in the test
+  rather than in `toolbar_help.py`, since what is shared is the wording and not the button
+  text, and a second test asserts them against the window so they are not a third copy.
+- **Two claims in the first draft were wrong and the code said so.** `⌘C` does not copy in the
+  metadata pane - it has **Copy** buttons and mouse selection, deliberately, because selecting
+  an elided path copies the ellipsis - and Elem is the five type codes rather than a prose
+  list. Both were written from the spec and corrected against `ui/metadata_pane.py` and
+  `NAMING_SPEC.md` section 2.
+- **Export is described as not built**, because it is: the toolbar shows it greyed with "Not
+  built yet. A run writes both spreadsheets when it finishes." A reference guide that lists a
+  button without saying that is a guide somebody presses.
+
 ### M9.1 is built: the install section
 
 `docs/guide/install.md`. What is handed over, what macOS does about it, where the app keeps
@@ -1409,11 +1432,10 @@ What is left that this machine can still finish on its own, in the order it is w
 - ~~**OQ-47, QC-039's scene linear probe.**~~ **Built 2026-09-13**, and its own note is above.
 - ~~**The Settings page's sixth section.**~~ **Built 2026-09-14 as M5.12**, and its own note is
   above. It followed the path M5.8.3 built and needed nothing on the render job.
-- ~~**M9.2, the quickstart, and M9.1, the install section.**~~ **Both built 2026-09-14**, and
-  each has its note above. **M9.3, the reference section, is what is left of the guide's prose**
-  and it can be written here too; its button reference should **read `ui/toolbar_help.py`**
-  rather than restate it, which is what that module is apart from the window for. The guide's
-  images wait on the Mac either way.
+- ~~**M9.2, M9.1 and M9.3: the guide's prose.**~~ **All three built 2026-09-14**, and each has
+  its note above. **M9.5 is what is left of M9**, and it is a decision plus the Mac: OQ-49 asks
+  whether the studio wants a PDF or a Google Doc, and the images the three pages reference are
+  deliberately not in the repo until they are taken on a Mac (`docs/MAC_SESSION.md`).
 - **What `REVIEW.md` deferred**, of which the largest is the `MainWindow` split. No behaviour
   changes there; it is a session of its own if it is wanted.
 
@@ -1635,7 +1657,7 @@ Entry points worth knowing:
 | M6 | ~~Stringout with burn-ins~~ | **dropped 2026-09-11**, the colour session exports it |
 | M7 | Packaging: PyInstaller app, dmg, the frozen smoke test, both CI jobs | **complete 2026-09-13, 19 tests.** Built and smoke tested on Linux before pushing; Gatekeeper is OQ-9 and still unanswered |
 | M8 | Polish, performance on a real turnover, docs | not started |
-| M9 | The user guide: install, quickstart, a section per surface, screenshots (PRD FR-17) | **3 of 5**: M9.4 the harness, M9.2 the quickstart, M9.1 the install section. Specified in section 5 |
+| M9 | The user guide: install, quickstart, a section per surface, screenshots (PRD FR-17) | **4 of 5**: the harness and all three pages of prose. M9.5 wants OQ-49 and the Mac |
 
 M4 detail. The milestone had no chunk table until M4.1; this is it:
 
@@ -1883,7 +1905,7 @@ studio keeps about the **build**, and M9 is what somebody reads to **use the too
 |---|---|---|
 | M9.1 | Install guide: the dmg, the quarantine bit and Gatekeeper (OQ-9), first run, where settings and logs live | **built 2026-09-14**. `docs/guide/install.md` |
 | M9.2 | Quickstart: one turnover from Add Turnover to the exports, about a page | **built 2026-09-14**, 4 tests. `docs/guide/quickstart.md`. Images wait on the Mac |
-| M9.3 | The reference guide, one section per surface: the list and its columns, editing, the Issues dock, the run, Settings, the log, the metadata pane | follows the surfaces it documents |
+| M9.3 | The reference guide, one section per surface: the list and its columns, editing, the Issues dock, the run, Settings, the log, the metadata pane | **built 2026-09-14**. `docs/guide/reference.md`, with the button table pinned to `ui/toolbar_help.py` by test |
 | M9.4 | The screenshot harness: builds a demo batch, grabs the window, writes the files the guide references. Drafted on Linux, **shipped set taken on the Mac** | **built 2026-09-13**, 8 tests. `python build/screenshots.py`, seven pictures. Images on the Mac |
 | M9.5 | The document itself: one source, printed to PDF and pasteable into Google Docs whole (OQ-49) | last |
 
