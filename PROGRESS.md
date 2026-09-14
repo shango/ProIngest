@@ -1207,6 +1207,19 @@ underneath, where the overlay covers them. **Seven things in it should not be re
 
 ### Next task
 
+**The repo is clone-ready on a Mac as of 2026-09-13.** `docs/MAC_SETUP.md` is the whole of
+it: clone, `uv sync --extra dev --python 3.12`, the ffmpeg pair, the PATH line, then the
+suite, the app and the build. Two things in it are not obvious and are why the document
+exists rather than a paragraph in the README. The ffmpeg binaries can now be **put there by
+hand** - `build/fetch_ffmpeg.py --show` prints the URLs and hashes, `--from <folder>`
+installs what was downloaded or copied from another machine, `--verify` says whether what is
+installed is the pinned build - and every route verifies the same sha256, so a wrong ffmpeg
+is refused rather than quietly bundled and written into every QC log. And the media tests
+**skip rather than fail** when `shutil.which("ffmpeg")` finds nothing, so a suite run without
+the bundled folder on PATH reports green having encoded nothing: the setup doc says so twice
+for that reason. 23 tests in `tests/test_fetch_ffmpeg.py`, and the download path is still
+what CI exercises on every push.
+
 **M7 is done, and it was the thing standing in front of the Mac day.** `docs/MAC_SESSION.md`'s
 own gate said not to rent until the packaging job produced a downloadable artifact whose
 headless smoke test passed; all three of its preconditions are now ticked, so the rented day
@@ -1353,7 +1366,12 @@ PDF viewer.
   now the martin-riedl.de macOS arm64 GPL build of ffmpeg 9.0.1, 132 MB for the pair
   rather than the Windows 446 MB. Two macOS traps are handled in that script and will bite
   anyone who rewrites it: Python's `zipfile` drops the exec bit, and the host answers the
-  default `Python-urllib` User-Agent with HTTP 403.
+  default `Python-urllib` User-Agent with HTTP 403. Since 2026-09-13 it also takes
+  `--show`, `--from <folder>` and `--verify`, so the pair can be put there by hand and is
+  checked against the same sha256 either way; a third trap lives in that path, which is
+  that a browser download on macOS carries `com.apple.quarantine` and a binary that
+  inherits it is killed on first exec, so the installer writes new bytes rather than
+  copying the file.
 - `mypy python_version` is 3.12, not 3.11: numpy's stubs use `type` statement syntax
   that mypy rejects under 3.11, and pytest imports numpy transitively. The runtime
   floor in `requires-python` stays 3.11, which numpy genuinely supports.

@@ -7,6 +7,11 @@ the core, the naming and planning, the render pipeline, the QC rules, the export
 PySide6 window are built and tested, and a turnover goes end to end from the window or the
 command line. `PROGRESS.md` section 1 is the current state.
 
+## Getting it running
+
+On a Mac, `docs/MAC_SETUP.md` start to finish. It is four commands plus the ffmpeg
+binaries, which are pinned by sha256 and not tracked in git.
+
 ## Reading order
 
 1. `CLAUDE.md` - shared context and working rules for Claude Code
@@ -18,8 +23,9 @@ command line. `PROGRESS.md` section 1 is the current state.
 7. `docs/UI_SPEC.md` - screens, list view behavior, keyboard model, theme
 8. `docs/ARCHITECTURE.md` - module layout, data model, render pipeline, testing
 9. `docs/PACKAGING.md` - installer, ffmpeg bundling, settings and log locations
-10. `docs/MAC_SESSION.md` - the residue that cannot be checked without a Mac, and the plan for it
-11. `docs/OPEN_QUESTIONS.md` - items still to confirm with the studio. Claude Code should treat these as blockers only where marked.
+10. `docs/MAC_SETUP.md` - clone to running app on a Mac, including the ffmpeg binaries
+11. `docs/MAC_SESSION.md` - the residue that cannot be checked without a Mac, and the plan for it
+12. `docs/OPEN_QUESTIONS.md` - items still to confirm with the studio. Claude Code should treat these as blockers only where marked.
 
 ## Source documents
 

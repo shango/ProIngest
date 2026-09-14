@@ -37,6 +37,8 @@ pytest
 ruff check . && ruff format --check . && mypy proingest tests build
 python -m proingest          # run the app
 python build/fetch_ffmpeg.py # the bundled binaries, untracked (macOS only)
+python build/fetch_ffmpeg.py --verify        # are they the pinned build
+python build/fetch_ffmpeg.py --from ~/Downloads  # install ones downloaded by hand
 python build/build.py        # PyInstaller app; a dmg too on macOS (see docs/PACKAGING.md)
 python build/smoke_test.py dist/ProIngest/ProIngest   # drive a frozen build end to end
 ```

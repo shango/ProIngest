@@ -10,6 +10,10 @@ is a small residue that needs a person looking at a screen, or the real turnover
 This file is that residue. It exists so that a paid Mac session is **execution, not
 exploration**. An hour of unplanned poking about costs more than the machine does.
 
+**Getting the repo running on the machine is `docs/MAC_SETUP.md`, not this file.** Do that
+first, including the ffmpeg binaries and the PATH line that stops the media tests skipping
+themselves, and start here once `python -m proingest` opens a window.
+
 **The rule, also in `CLAUDE.md`:** if you write something whose behaviour can only be
 confirmed on a Mac, add a line here in the same commit. A checklist assembled at the end from
 memory is the thing this is meant to prevent.

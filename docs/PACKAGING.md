@@ -158,6 +158,11 @@ rather than the target hardware but is the only first launch figure that exists.
 - The binaries are **not tracked in git**. `build/ffmpeg.lock.json` pins the versioned URLs and
   a sha256 per extracted file; `python build/fetch_ffmpeg.py` downloads and verifies them into
   `proingest/resources/ffmpeg/`. Run it once after cloning and before `build/build.py`.
+  `--show` prints the URLs and hashes, `--from <folder>` installs files downloaded by hand or
+  copied from another machine, and `--verify` says whether what is installed is the pinned
+  build. **The manual route verifies the same sha256 the download does**, so a hand-placed
+  binary is as trustworthy as a fetched one and a wrong one is refused rather than silently
+  bundled. `docs/MAC_SETUP.md` is the clone-to-running-app version of all of this.
 - Two macOS-specific traps, both already handled in `fetch_ffmpeg.py` and worth knowing before
   anyone rewrites it: Python's `zipfile` does not carry the archived mode across, so the
   **exec bit must be set explicitly** or the binary lands unrunnable; and
