@@ -139,6 +139,24 @@ def display_clf(path: Path, size: int = 9) -> Path:
     return write_clf(path, lut)
 
 
+def probed(path: Path) -> tuple[float, float]:
+    """The two numbers `_probe_scene_linear` works from, for the tests that are about
+    the margin rather than about the verdict: white, and white over the shade below it."""
+    cpu = color.processor(ocio.FileTransform(src=str(path), interpolation=color.INTERPOLATION))
+    samples = np.array([[[clf.LOG_WHITE] * 3, [clf.LOG_NEAR_WHITE] * 3]], dtype=np.float32)
+    color.apply(samples, cpu)
+    white, near = samples[0, 0], samples[0, 1]
+    return float(np.max(white)), float(np.max(white / near))
+
+
+def probe_white(path: Path) -> float:
+    return probed(path)[0]
+
+
+def probe_ratio(path: Path) -> float:
+    return probed(path)[1]
+
+
 class TestReadFinalEdl:
     def test_it_reads_every_video_event(self, tmp_path: Path) -> None:
         events = clf.read_final_edl(edl(tmp_path), RATE_24)
@@ -391,6 +409,97 @@ class TestLoadClf:
             ocio.ColorSpaceTransform(src=CLF_SOURCE, dst=color.PLATE_SPACE),
         )
         assert clf.load_clf(dark).is_scene_linear
+
+    @pytest.mark.parametrize(
+        "encoding",
+        [
+            "ACEScct",
+            "BMDFilm WideGamut Gen5",
+            "DaVinci Intermediate WideGamut",
+            "S-Log3 S-Gamut3.Cine",
+            "CanonLog3 CinemaGamut D55",
+        ],
+    )
+    def test_a_dark_grade_survives_the_probe_whatever_the_clip_was_shot_on(
+        self, tmp_path: Path, encoding: str
+    ) -> None:
+        """OQ-47, and the reason the probe is a ratio.
+
+        A CLF starts at whatever its clip is encoded in, and white is worth 222 out of
+        ACEScct but **14.7 out of C-Log3**, so the old fixed floor of 2.0 called a
+        four stops down C-Log3 grade a display rendering - one of the three cameras
+        named for this show, and QC-039 is an error, so that refused a valid delivery.
+        """
+        dark = write_clf(
+            tmp_path / f"{encoding.split()[0]}.clf",
+            ocio.CDLTransform(offset=[-4 / 17.52] * 3, sat=1.0),
+            ocio.ColorSpaceTransform(src=encoding, dst=color.PLATE_SPACE),
+        )
+        assert clf.load_clf(dark).is_scene_linear
+
+    @pytest.mark.parametrize(
+        "encoding",
+        [
+            "ACEScct",
+            "DaVinci Intermediate WideGamut",
+            "S-Log3 S-Gamut3.Cine",
+            "CanonLog3 CinemaGamut D55",
+        ],
+    )
+    def test_a_display_rendering_is_caught_whatever_the_clip_was_shot_on(
+        self, tmp_path: Path, encoding: str
+    ) -> None:
+        """The other half of the same question: the ratio has to stay under the floor
+        for every encoding, not only the one the fixtures use."""
+        view = ocio.DisplayViewTransform(src=encoding, display="sRGB - Display", view="ACES 1.0 - SDR Video")
+        cpu = color.config().getProcessor(view).getDefaultCPUProcessor()
+        size = 9
+        lut = ocio.Lut3DTransform(gridSize=size, interpolation=color.INTERPOLATION)
+        for red in range(size):
+            for green in range(size):
+                for blue in range(size):
+                    sample = [value / (size - 1) for value in (red, green, blue)]
+                    lut.setValue(red, green, blue, *cpu.applyRGB(sample))
+        baked = write_clf(tmp_path / f"{encoding.split()[0]}_display.clf", lut)
+        assert not clf.load_clf(baked).is_scene_linear
+
+    def test_a_dark_grade_moves_white_under_the_old_floor_and_barely_moves_the_ratio(
+        self, tmp_path: Path
+    ) -> None:
+        """Why a ratio was the shape to reach for, and the exact failure OQ-47 records.
+
+        Darkening a C-Log3 grade takes white from 14.7 to 1.7, straight under the fixed
+        floor of 2.0 the probe used to compare against, which is how QC-039 came to
+        refuse a valid CLF. A grade scales both samples, so the ratio between them
+        barely moves: the top of the range keeps its slope however dark the delivery is,
+        and slope is what a tone map flattens. Exactly invariant for a grade authored in
+        the grading space; authored in the camera's own log, as here, the curve's own
+        shape lets it drift a few percent.
+        """
+        old_fixed_floor = 2.0
+        whites, ratios = [], []
+        for index, offset in enumerate((0.0, -0.114, -0.228, -0.342)):
+            path = write_clf(
+                tmp_path / f"exposure{index}.clf",
+                ocio.CDLTransform(offset=[offset] * 3, sat=1.0),
+                ocio.ColorSpaceTransform(src="CanonLog3 CinemaGamut D55", dst=color.PLATE_SPACE),
+            )
+            whites.append(probe_white(path))
+            ratios.append(probe_ratio(path))
+
+        assert max(whites) / min(whites) > 8
+        assert min(whites) < old_fixed_floor
+        assert max(ratios) / min(ratios) < 1.15
+        assert min(ratios) > clf.TONE_MAP_RATIO_FLOOR
+
+    def test_the_floor_sits_between_the_two_populations(self, tmp_path: Path) -> None:
+        """The margin, stated as a test rather than only in a docstring: a plate CLF and
+        a CLF with the output transform in it are an order of magnitude apart on this
+        measurement, and the floor is roughly a third away from each."""
+        plate = probe_ratio(plate_clf(tmp_path / "plate.clf"))
+        display = probe_ratio(display_clf(tmp_path / "display.clf"))
+        assert display < clf.TONE_MAP_RATIO_FLOOR < plate
+        assert display * 1.25 < clf.TONE_MAP_RATIO_FLOOR < plate / 1.25
 
     def test_a_file_that_is_not_a_clf_is_refused(self, tmp_path: Path) -> None:
         """QC-019: colour that is unknown is worse than colour that is missing."""

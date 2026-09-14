@@ -59,7 +59,8 @@ delivered header.
 wants a real turnover and a real colour session, and M9 wants both plus the screenshots. Two
 questions are open and both are about correctness rather than scope: OQ-46, and **OQ-47, which
 was found by building M4.6.2**. Every chunk has its own note further down saying what it
-settled.
+settled. **OQ-47 closed on 2026-09-13**, which leaves OQ-46, and that one is a question for a
+person rather than a thing to build.
 
 **One of the three things added to the plan on 2026-09-12 is still unbuilt**: the user guide
 with screenshots (PRD FR-17, the new M9). The other two are done - the run's strip, built
@@ -297,12 +298,19 @@ Five things in it should not be re-derived.
 - **An EDL's out timecode is the first frame after the cut and is converted on the way in.**
   `ConformEvent` ranges are inclusive like every other range in the codebase, so nothing
   downstream has to remember which convention the file used.
-- **QC-039 is a probe of what the CLF does to white, not of what it is called.** ACEScct 1.0 is
-  222 in scene linear; a display rendering tone maps it to about 1.0, four stops down still
-  answers 13.9, so `SCENE_LINEAR_FLOOR` is 2.0 and sits clear of both. The test fixture bakes a
-  real ACES output transform into a 3D LUT to make the failing case, which is also the only way
-  such a CLF can exist: the output transform uses ops CLF cannot express, so a session that
-  shipped one would have had to bake it exactly the same way.
+- **QC-039 is a probe of what the CLF does to the top of the range, not of what it is called.**
+  It was a probe of what the CLF does to white until 2026-09-13, when OQ-47 closed: white is
+  worth 222 out of ACEScct and 14.7 out of C-Log3, so no fixed floor can straddle the five
+  encodings in play and a dark C-Log3 grade was refused. It now compares **two samples**,
+  `1.0` and `LOG_NEAR_WHITE` at 0.8, and asks how far apart they come out - the slope at the
+  top of the range, which is exactly what a tone map flattens and what a grade cannot move,
+  because a grade scales both samples. Measured over all five encodings and grades from
+  neutral to aggressively dark: a plate CLF is 1.86 to 11.3 and a CLF with the output
+  transform baked in is 1.01 to 1.06, so `TONE_MAP_RATIO_FLOOR` is 1.4 and sits about a third
+  from each. The test fixture bakes a real ACES output transform into a 3D LUT to make the
+  failing case, which is also the only way such a CLF can exist: the output transform uses ops
+  CLF cannot express, so a session that shipped one would have had to bake it exactly the same
+  way.
 
 **What is still not checkable is which fields Ben's export actually populates.** Both defaults
 are built and both are pinned by tests, so one real EDL and one real CLF confirm or move one
@@ -437,14 +445,13 @@ it should not be re-derived.
   so the fixture's choice of starting space no longer means anything to the tool. It is named
   `CLF_SOURCE` in the fixtures rather than borrowed from `core/color.py`, so nothing reads a
   constant of the tool's as though it were a fact about the session.
-- **QC-039's probe came out of this looking weaker than it went in, and that is OQ-47.** The
-  probe feeds log white through the CLF and wants the answer above 2.0. That floor was set
+- **QC-039's probe came out of this looking weaker than it went in, and that was OQ-47.** The
+  probe fed log white through the CLF and wanted the answer above 2.0. That floor was set
   when white meant 222, which is what ACEScct white is worth; out of C-Log3 white is worth
-  **14.7**, so four stops of grade answers 0.92 and the probe cannot tell it from a display
-  rendering's 1.0. Measured, not estimated, and a ratio probe separates every case cleanly
-  (1.88 to 3.37 against 1.010 to 1.015, and invariant to how dark the grade is). **Not changed
-  here**, because it is QC-039's definition rather than this chunk's chain, and because the
-  failure is a valid grade refused rather than a bad one delivered.
+  **14.7**, so four stops of grade answers 0.92 and the probe could not tell it from a display
+  rendering's 1.0. Measured, not estimated. **Fixed on 2026-09-13** with the ratio probe below;
+  it was left alone here because it is QC-039's definition rather than this chunk's chain, and
+  because the failure direction was a valid grade refused rather than a bad one delivered.
 
 ### M4.6.1 is built: the source encoding is a per row fact
 
@@ -1205,6 +1212,34 @@ underneath, where the overlay covers them. **Seven things in it should not be re
   that knows that. Two implementations of section 4's Tab order would have drifted the first
   time one of them grew a column.
 
+### OQ-47 is built: QC-039 measures the slope at the top, not the value of white
+
+**The one open item that was a correctness bug rather than a judgement, and it is closed.**
+QC-039 refuses a CLF with a display rendering baked into it, because a display referred plate
+that claims to be linear comps wrong and looks completely normal until somebody tries to work
+on it. It probed by feeding log white through the CLF and wanting the answer above 2.0. That
+floor was calibrated when every CLF started at ACEScct, where white is worth 222; since OQ-37
+a CLF starts at whatever its clip is encoded in, and white is worth **14.7 out of C-Log3**, so
+a dark C-Log3 grade answered under the floor and the rule refused a valid delivery. C-Log3 is
+one of the three cameras named for this show.
+
+**It now compares two samples rather than one**: `LOG_WHITE` at 1.0 and `LOG_NEAR_WHITE` at
+0.8, and how far apart they come out. That is the slope of the chain at the top of the range,
+which is exactly what a tone map flattens, and it is the measurement a grade cannot move -
+a grade scales both samples and cancels. Per channel, widest channel wins, because a grade with
+per channel slopes leaves one channel with more range than the others and one channel with room
+at the top is enough.
+
+**The numbers were re-measured rather than taken from the question, and that changed one.**
+OQ-47 proposed sampling at 0.9. Over the same grades that puts the darkest legitimate plate at
+**1.35** against a display rendering's **1.016**, which no floor near 1.4 can separate; at 0.8
+the same pair is **1.86 and 1.055**. So the lower sample is 0.8 and `TONE_MAP_RATIO_FLOOR` is
+1.4, about a third from each in the scale they are separated on. Eleven tests, including the
+five encodings in play against a dark grade and four of them against a real baked output
+transform, and one that states the margin so that narrowing it fails rather than passes
+quietly. `QC_RULES.md` carries the rule's new definition, because that is where a rule's
+meaning lives.
+
 ### M9.4 is built: the guide's pictures are a script, and it found a bug
 
 `python build/screenshots.py` writes seven PNGs - the empty state, the list, the metadata
@@ -1251,12 +1286,7 @@ is bookable.
 
 What is left that this machine can still finish on its own, in the order it is worth doing:
 
-- **OQ-47, QC-039's scene linear probe.** Pure core, and the one open item that is a
-  correctness bug rather than a judgement: the probe is calibrated on ACEScct, the CLF no
-  longer starts there, and for C-Log3 - one of the three cameras named for this show - it
-  cannot separate a valid grade from a display rendering at all. The replacement ratio probe
-  is already measured and written out in the question. It is a rule definition, so
-  `QC_RULES.md` moves with it.
+- ~~**OQ-47, QC-039's scene linear probe.**~~ **Built 2026-09-13**, and its own note is above.
 - **The Settings page's sixth section.** Output is listed and disabled because reference CRF
   and the EXR compression level are applied inside a worker and would have to travel on the
   render job. M5.8.3 already built that channel for the ffmpeg override and the log level, so
@@ -1301,7 +1331,7 @@ contains the conversion and one that does not is two plausible looking images an
   `macos-latest` arm64 runner on every push, against the bundled ffmpeg 9.0.1 rather than this
   machine's Ubuntu 6.1.1. `h264_videotoolbox` was confirmed to open and encode there, which
   answered half of OQ-23.
-- **41 open questions, 19 of them still open.** Closed on 2026-09-11: OQ-2, OQ-12, OQ-15, OQ-32,
+- **41 open questions, 18 of them still open** (OQ-47 closed on 2026-09-13). Closed on 2026-09-11: OQ-2, OQ-12, OQ-15, OQ-32,
   OQ-34, OQ-37, OQ-38 and OQ-40. **OQ-30 and OQ-33 each closed and reopened within the same
   day**, as the grade carrier went CLF, then CDL, then CLF again, and **OQ-19 was reopened after
   a day** by the real tracker's FPS column. New: OQ-35, OQ-36, OQ-39, OQ-41. OQ-29 is mostly
@@ -2434,15 +2464,13 @@ Nothing blocks the next task. These are live, in rough priority order:
   repaint cheap, and an animated one needs a repaint timer and a cache key that carries a
   phase. The state is live and the colour is right; only the movement is missing.
 
-- **QC-039's probe cannot separate a dark C-Log3 grade from a display rendering (OQ-47).**
-  New 2026-09-12, found while building M4.6.2, and the most important open item because it is
-  the only one that can refuse a valid delivery. The probe wants the CLF's white above 2.0,
-  which was calibrated when white meant ACEScct's 222; out of C-Log3 white is worth 14.7, so a
-  CLF graded four stops down answers 0.92 and a display rendering answers 1.0. The direction of
-  the failure is the safe one, an error on a good CLF rather than a bad plate delivered.
-  **The fix is measured and written up in OQ-47**: `out(1.0) / out(0.9)`, which is invariant to
-  how dark the grade is and separates every encoding in play by an order of magnitude. Left
-  alone in M4.6.2 because it is QC-039's definition rather than the chain.
+- ~~QC-039's probe cannot separate a dark C-Log3 grade from a display rendering (OQ-47).~~
+  **Closed 2026-09-13.** The probe compares two samples near the top of the log range rather
+  than white against a fixed floor, and the floor is a ratio of 1.4. Its note is in section 1
+  under the M4.5 CLF decisions, the rule's own definition is in `QC_RULES.md`, and the numbers
+  were re-measured rather than taken from the question - which moved the lower sample from the
+  0.9 it proposed to 0.8, because 0.9 leaves the darkest plate grade at 1.35 against a display
+  rendering's 1.016 and no floor near 1.4 separates those.
 
 - **Where the source encoding comes from is built, and the field name is a guess.** The
   encoding is read at scan time from `Input Color Space` on the clip, or
