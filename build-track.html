@@ -311,7 +311,7 @@
   <header class="mast">
     <div class="eyebrow">
       <span>VFX turnover ingest &middot; macOS v01</span>
-      <span class="stamp">Updated <b>14 Sep 2026, 14:05 PDT</b></span>
+      <span class="stamp">Updated <b>14 Sep 2026, 16:40 PDT</b></span>
     </div>
     <h1>ProIngest Build Track</h1>
     <p class="standfirst">
@@ -328,7 +328,7 @@
       <div class="stat-l">Milestones done</div>
     </div>
     <div class="stat">
-      <div class="stat-n good">1665</div>
+      <div class="stat-n good">1669</div>
       <div class="stat-l">Tests, Linux + macOS</div>
     </div>
     <div class="stat">
@@ -1313,7 +1313,7 @@
         <div class="ms-body">
           <div class="ms-head">
             <span class="ms-name">The user guide</span>
-            <span class="pill">In progress &middot; 1 of 5</span>
+            <span class="pill">In progress &middot; 2 of 5</span>
           </div>
           <p class="ms-goal">
             One document the editor is handed: how to install it, a quickstart, then a section on
@@ -1332,14 +1332,30 @@
               <span class="c-st"><span class="tag open">Can start</span></span>
             </div>
 
-            <div class="chunk">
+            <div class="chunk done">
               <span class="c-id">M9.2</span>
               <span class="c-name">Quickstart</span>
               <span class="c-note">
-                One delivery from opening the app to the finished spreadsheets, in about a page.
-                The thing somebody reads once and then does not need again.
+                <b>Written.</b> One delivery from opening the app to the finished spreadsheets,
+                in about a page: seven steps, then what lands where, then the two things somebody
+                stuck actually needs - why Run refuses, and where the log is.
+                <b>The keyboard shortcuts are written the way the Mac draws them</b>, and a test
+                proves every one of them is a key the window really binds. The toolkit maps the
+                control key to Command on a Mac by itself, so the code says one thing and the
+                editor sees another, and a guide for a Mac that prints the code's version is a
+                guide to a keyboard the reader has not got. The test caught one on its first run.
+                <b>Every picture it shows is checked against the list the screenshot script
+                declares</b>, so a renamed picture fails a test rather than leaving a hole in a
+                document that gets emailed around. The pictures themselves are deliberately
+                <b>not</b> in the repository yet: the set that ships comes from the Mac, and a
+                Linux draft committed now is exactly what that rule exists to prevent.
+                <b>Writing it found six stale lines in the workflow summary</b> - the one page
+                the project tells a new reader to open second - all of them the colour policy
+                that was replaced on 12 September, plus an instruction to the colourist not to
+                use curves, which is the whole reason the tool applies a colour file rather than
+                the short numeric grade. Fixed in its own change.
               </span>
-              <span class="c-st"><span class="tag open">Can start</span></span>
+              <span class="c-st"><span class="tag ok">Done</span></span>
             </div>
 
             <div class="chunk">
@@ -2258,7 +2274,7 @@
     every test asked the data whether there was a dot, and there was; nothing asked the window
     whether it had drawn one. It is fixed, with three tests that ask the window, and the width is
     now worked out from the indent rather than typed in, so it cannot drift apart again.
-    1665 tests green.<br>
+    1669 tests green.<br>
     <b>The colour check that could not tell a dark Canon grade from a baked-in viewing transform
     is fixed</b>, which was the last item on the list that was a fault rather than a judgement.
     It measures the shape of the top of the range now rather than one value in it, so how dark a
@@ -2268,8 +2284,12 @@
     window: the two output quality values are editable and they reach the worker processes on the
     channel the advanced section already built, rather than on the individual pieces of work the
     plan had assumed they would need.<br>
-    <b>Next</b> &middot; the <b>quickstart</b>, which can be drafted now that the pictures exist to
-    lay it out around, and the structural tidying the code review deferred.
+    <b>The quickstart is written</b> (M9.2), which is the second of the guide's five parts and
+    the first of its prose. Its pictures wait on the Mac, and so does the one question it cannot
+    answer from here: whether seven steps are the order a person actually works in.<br>
+    <b>Next</b> &middot; nothing else on this machine but the structural tidying the code review
+    deferred. The rest of the guide, the polish pass and the proving run all want the Mac or a
+    real delivery.
     <b>Two questions want asking before a real delivery depends on them</b>: which field the
     shooters write their camera's format into and exactly what they write, and whether a grading
     session's colour file really does contain the conversion - because if the tool also converts,
