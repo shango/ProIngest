@@ -311,7 +311,7 @@
   <header class="mast">
     <div class="eyebrow">
       <span>VFX turnover ingest &middot; macOS v01</span>
-      <span class="stamp">Updated <b>14 Sep 2026, 16:40 PDT</b></span>
+      <span class="stamp">Updated <b>14 Sep 2026, 18:15 PDT</b></span>
     </div>
     <h1>ProIngest Build Track</h1>
     <p class="standfirst">
@@ -328,7 +328,7 @@
       <div class="stat-l">Milestones done</div>
     </div>
     <div class="stat">
-      <div class="stat-n good">1669</div>
+      <div class="stat-n good">1676</div>
       <div class="stat-l">Tests, Linux + macOS</div>
     </div>
     <div class="stat">
@@ -1313,7 +1313,7 @@
         <div class="ms-body">
           <div class="ms-head">
             <span class="ms-name">The user guide</span>
-            <span class="pill">In progress &middot; 2 of 5</span>
+            <span class="pill">In progress &middot; 3 of 5</span>
           </div>
           <p class="ms-goal">
             One document the editor is handed: how to install it, a quickstart, then a section on
@@ -1321,15 +1321,29 @@
           </p>
           <div class="chunks">
 
-            <div class="chunk">
+            <div class="chunk done">
               <span class="c-id">M9.1</span>
               <span class="c-name">Installing it</span>
               <span class="c-note">
-                The disk image, what macOS says the first time and what to do about it, where the
-                app keeps its settings and its logs. <b>No longer blocked</b>: the packaged app
-                and its disk image now exist, so there is something to describe.
+                <b>Written.</b> The disk image, what macOS says the first time and what to do
+                about it, where the app keeps its settings and its logs, and how it is updated
+                and removed.
+                <b>The Gatekeeper section is not softened.</b> An unsigned application that
+                arrived through a browser is <b>refused</b> - the dialog says it is damaged and
+                there is no "open anyway" worth looking for - so the page says exactly that, gives
+                the two routes that work, and says that buying a developer identity would delete
+                the whole section. That decision is still the studio's, so the page describes what
+                happens today rather than guessing at it.
+                <b>Two numbers in it move on their own and a test now pins both</b>: the disk
+                image's filename, which follows the version, and the oldest macOS it will launch
+                on. A reader acts on each of them - looking for a file, or deciding whether their
+                machine is new enough - and neither announces that it has changed.
+                <b>Nothing unbuilt is described.</b> The packaging notes promise a first-run
+                notice about hardware encoding and a crash dump file, and neither exists, so the
+                page covers the first run that actually happens: an empty window and two folder
+                choosers.
               </span>
-              <span class="c-st"><span class="tag open">Can start</span></span>
+              <span class="c-st"><span class="tag ok">Done</span></span>
             </div>
 
             <div class="chunk done">
@@ -2274,7 +2288,7 @@
     every test asked the data whether there was a dot, and there was; nothing asked the window
     whether it had drawn one. It is fixed, with three tests that ask the window, and the width is
     now worked out from the indent rather than typed in, so it cannot drift apart again.
-    1669 tests green.<br>
+    1676 tests green.<br>
     <b>The colour check that could not tell a dark Canon grade from a baked-in viewing transform
     is fixed</b>, which was the last item on the list that was a fault rather than a judgement.
     It measures the shape of the top of the range now rather than one value in it, so how dark a
@@ -2284,12 +2298,14 @@
     window: the two output quality values are editable and they reach the worker processes on the
     channel the advanced section already built, rather than on the individual pieces of work the
     plan had assumed they would need.<br>
-    <b>The quickstart is written</b> (M9.2), which is the second of the guide's five parts and
-    the first of its prose. Its pictures wait on the Mac, and so does the one question it cannot
-    answer from here: whether seven steps are the order a person actually works in.<br>
-    <b>Next</b> &middot; nothing else on this machine but the structural tidying the code review
-    deferred. The rest of the guide, the polish pass and the proving run all want the Mac or a
-    real delivery.
+    <b>Two of the guide's three written parts are done</b> (M9.2 and M9.1): the quickstart, one
+    delivery from opening the app to the spreadsheets, and the install section, which describes
+    what macOS does to an unsigned application without softening it. Their pictures wait on the
+    Mac, and so does the one question neither can answer from here: whether the steps are the
+    order a person actually works in.<br>
+    <b>Next</b> &middot; the <b>reference section</b>, the last of the guide's prose, which can
+    be written here. After that, nothing on this machine but the structural tidying the code
+    review deferred: the polish pass and the proving run want the Mac or a real delivery.
     <b>Two questions want asking before a real delivery depends on them</b>: which field the
     shooters write their camera's format into and exactly what they write, and whether a grading
     session's colour file really does contain the conversion - because if the tool also converts,

@@ -33,7 +33,7 @@ the last open item that was a fault rather than a judgement. Taking the harness'
 picture found that **the status dot had never been drawn on any shot row**; that is fixed with
 it, and section 7 has the mechanism. Each has its own note below.
 
-**Twelve commits sit on `m7/packaging` and none of them is pushed.** That branch is PR #2 and is
+**Thirteen commits sit on `m7/packaging` and none of them is pushed.** That branch is PR #2 and is
 about packaging; nothing from the last session belongs to it except by accident of what was
 checked out, so **moving them to a branch of their own before pushing is a decision waiting for
 the user**, and CI has not seen any of them. The Build Track artifact is at version 56.
