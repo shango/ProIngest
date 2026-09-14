@@ -35,18 +35,18 @@ picture found that **the status dot had never been drawn on any shot row**; that
 it, and section 7 has the mechanism. Each has its own note below.
 
 **The branch tangle is resolved, 2026-09-14.** `m7/packaging` is PR #2 and is about packaging:
-five commits, pushed, green, and **still open**. The sixteen commits that had accumulated on top
-of it were not packaging - they were there by accident of what was checked out - and they are now
-**`m9/guide-and-settings`, PR #3**, pushed with the sixteen and **based on `m7/packaging` rather
-than `main`**, because that is what they were written on top of. **GitHub retargets PR #3 to
-`main` by itself when PR #2 merges**, and its diff narrows to the sixteen at that point, so
-nothing has to be rebased by hand.
+five commits, pushed, green, and **still open**. The commits that had accumulated on top of it
+were not packaging - they were there by accident of what was checked out - and they are now
+**`m9/guide-and-settings`, PR #3**: **18 commits, pushed, green**, and **based on `m7/packaging`
+rather than `main`**, because that is what they were written on top of. **GitHub retargets PR #3
+to `main` by itself when PR #2 merges**, and its diff narrows to the 18 at that point, so nothing
+has to be rebased by hand.
 
-**Merging PR #2 is the one step still waiting on the user.** It is `MERGEABLE` / `CLEAN` with all
+**Merging PR #2 is the one step still waiting on a person.** It is `MERGEABLE` / `CLEAN` with all
 four checks green, and `main` is a strict ancestor of it, so the merge cannot conflict. Until it
-happens both PRs stay open and PR #3's diff shows twenty-one commits rather than sixteen. Local
-`m7/packaging` has been reset to `origin/m7/packaging` so it matches the PR exactly; the work is
-on `m9/guide-and-settings`, which is the branch to be on.
+happens both PRs stay open and PR #3's diff shows 23 commits rather than 18. Local
+`m7/packaging` has been reset to `origin/m7/packaging` so it matches the PR exactly; **the work
+is on `m9/guide-and-settings`, which is the branch to be on.**
 
 **CI saw them for the first time on that push and went green first time: run 34900426677, all
 four jobs.** That was worth watching rather than assuming, because two of the last two CI-only
@@ -1445,19 +1445,51 @@ own gate said not to rent until the packaging job produced a downloadable artifa
 headless smoke test passed; all three of its preconditions are now ticked, so the rented day
 is bookable.
 
-What is left that this machine can still finish on its own, in the order it is worth doing:
+**Everything this machine could finish on its own is finished as of 2026-09-14.** OQ-47 closed
+on the 13th; M5.12 and the guide's three pages of prose went in on the 14th, and each has its
+note above. What remains is below, grouped by what it is actually waiting on, because that is
+the thing that decides whether a session can start it.
 
-- ~~**OQ-47, QC-039's scene linear probe.**~~ **Built 2026-09-13**, and its own note is above.
-- ~~**The Settings page's sixth section.**~~ **Built 2026-09-14 as M5.12**, and its own note is
-  above. It followed the path M5.8.3 built and needed nothing on the render job.
-- ~~**M9.2, M9.1 and M9.3: the guide's prose.**~~ **All three built 2026-09-14**, and each has
-  its note above. **M9.5 is what is left of M9**, and it is a decision plus the Mac: OQ-49 asks
-  whether the studio wants a PDF or a Google Doc, and the images the three pages reference are
-  deliberately not in the repo until they are taken on a Mac (`docs/MAC_SESSION.md`).
-- **What `REVIEW.md` deferred**, of which the largest is the `MainWindow` split. No behaviour
-  changes there; it is a session of its own if it is wanted.
+**Waiting on a person, not on work:**
 
-**M8 still needs the real thing** and nothing here substitutes for it.
+- **Merge PR #2.** One command, cannot conflict, and it unblocks PR #3's retarget. See the
+  branch paragraph above.
+- **OQ-9, the Apple Developer ID.** Buy one, or agree a route to the editor that never marks a
+  build as downloaded. **This is the single item that blocks handover** and it is a spend
+  decision rather than a task. `docs/PACKAGING.md` has the three options in preference order.
+- **OQ-49, the guide's form.** A fixed PDF or a Google Doc they can edit. It decides whether the
+  repo's copy stays the only one, and it is what M9.5 is waiting on.
+- **OQ-44**, to whoever briefs the shooters: which metadata field carries the log name and
+  exactly what string goes in it, remembering that "S-Log3" names four colour spaces in the
+  pinned config.
+- **OQ-46**, against one real export: whether a session's CLF really does start at the source
+  encoding. If it does not and the tool converts too, it converts **twice** - nothing fails,
+  every check passes, and both images look plausible.
+
+**Can be done here, and it is the only code left:**
+
+- **What `REVIEW.md` deferred**, of which the largest is **S1, the `MainWindow` split**, with
+  **S2** (blocked-run and turnover-numbering policy sitting in the UI) belonging to the same
+  session. **No behaviour changes**, the tests survive it, and the diff is most of one file. The
+  review called it a session of its own and that is still the right read. Everything else
+  deferred there is micro-smells, performance that needs a real mount (S4, which is M8), or
+  test gaps not tied to a bug - `REVIEW.md`'s last section has each with its reason.
+
+**Waiting on the Mac** (`docs/MAC_SESSION.md` is the checklist and the day is bookable, since
+M7 ticked all three of its preconditions):
+
+- **The guide's images.** `docs/guide/images/` is **empty in the repo on purpose** - the shipped
+  set has to be drawn by a Mac - so all three pages have broken image links until the day.
+  `python build/screenshots.py`, then commit what it writes.
+- **Reading the guide at the window.** Whether the quickstart's seven steps are the order a
+  person actually works in, and whether the reference section describes anything that does not
+  look like that on screen, cannot be seen from here.
+- The rest of that checklist: the `.app` double-clicked, the Dock tile, Retina rendering,
+  geometry across displays.
+
+**Waiting on a real turnover and a real colour session:** the whole of **M8**, all four chunks.
+Nothing here substitutes for it, and M8.2's speed target has never been measured against media
+on a Drive mount.
 
 **The pane is where an ingest is seen without running anything**: its Colour section reads
 `source_encoding`, `source_encoding_origin` and `clf_path` off the row, so selecting a row
