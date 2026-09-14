@@ -1140,6 +1140,24 @@ with it. **Four things settled.**
 before `addTopLevelItem`, so every line arriving while a filter was on came in visible. It
 looks like a filter that ignores new lines and nothing about it raises.
 
+### The MainWindow split is being built: what `REVIEW.md` deferred as S1 and S2
+
+The review's two structural findings that were left for a session of their own. S2 first,
+because one half of it was a real mismatch rather than a tidy-up.
+
+- **`qc.blocking_results(batch)`** is now the one place FR-6's "a batch scope error stops the
+  run" is decided. It was written out by hand in `main_window.run_batch` and again in
+  `__main__._print_preflight`, which is two copies of a rule about whether a delivery may go
+  ahead. Its docstring names all three scopes beside each other, since the reason the list
+  comprehension looked harmless is that the scope it filters on is the whole rule.
+- **`scan.next_turnover_id(batch)`** replaces the window's own copy of the numbering, and
+  **`scan_batch` now calls it too** rather than counting with `enumerate`. The window's version
+  said "counted past the highest in use" and started at `len(used) + 1`, so a batch holding
+  `{t1, t5}` was handed `t3`: not a collision, but not what it claimed either, and the claim is
+  the safe behaviour. It now returns `t6`. An id that is not `t` and a number is left out of the
+  count rather than refused, because a hand edited batch file carrying one still has to be able
+  to take another turnover.
+
 ### M9.3 is built: the reference section, and the guide's prose is done
 
 `docs/guide/reference.md`. The layout, the toolbar, the list and its fifteen columns, the dot,

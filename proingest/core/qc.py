@@ -1090,6 +1090,18 @@ def check_free_space(batch: Batch) -> list[QCResult]:
     ]
 
 
+def blocking_results(batch: Batch) -> list[QCResult]:
+    """The batch-scope errors, which are the only ones that stop a run outright.
+
+    FR-6's rule, in one place rather than in each surface that has to obey it: a batch
+    scope error stops the run, a turnover scope one holds that turnover back
+    (`blocked_turnovers` below), and a row scope one drops that row from the plan
+    (`planner.plannable_identity`). The window and `proingest run` both ask here, so
+    the two cannot come to different answers about whether a batch may go.
+    """
+    return [result for result in batch.qc if result.severity == "error"]
+
+
 def blocked_turnovers(batch: Batch) -> frozenset[str]:
     """Turnovers carrying any turnover-scope error, whose rows must not be rendered.
 

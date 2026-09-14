@@ -688,9 +688,14 @@ class TestAddingAndScanningTurnovers:
         assert NO_ROWS_TEXT in window.list_empty_text.text()
         assert "#issues" in window.list_empty_text.text()
 
-    def test_the_next_turnover_id_steps_past_the_ones_in_use(self, window: DrivenWindow) -> None:
+    def test_an_added_turnover_is_numbered_past_the_ones_in_use(self, window: DrivenWindow) -> None:
+        """The numbering itself is `scan.next_turnover_id`; this is that the window asks it."""
         window.set_batch(batch(turnovers=[Turnover("t1", Path("/a")), Turnover("t3", Path("/b"))]))
-        assert window._next_turnover_id() == "t4"
+        started = stub_scanner(window)
+        window.folder_answer = Path("/a/turnover004")
+        window.action_add_turnover.trigger()
+
+        assert started == [[(Path("/a/turnover004"), "t4")]]
 
     def test_nothing_can_be_added_while_a_scan_is_running(self, window: DrivenWindow) -> None:
         window.set_batch(Batch())

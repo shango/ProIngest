@@ -436,6 +436,27 @@ def _single_match(
     return hits[0] if len(hits) == 1 else None
 
 
+TURNOVER_ID_PATTERN = re.compile(r"t(\d+)")
+
+
+def next_turnover_id(batch: Batch) -> str:
+    """`t1`, `t2`, and so on: the id the next turnover added to this batch takes.
+
+    **Counted past the highest in use rather than off how many there are**, because a
+    row points at its turnover by id: removing the second of three turnovers and then
+    adding one must not hand the new one an id the rows of the old one still carry.
+
+    One authority for both ways a turnover is numbered - `scan_batch` below, and Add
+    Turnover in the window - so a batch built by the CLI and one built by hand cannot
+    end up numbered differently. An id that is not `t` and a number is left out of the
+    count rather than refused: nothing writes one, and a hand edited batch file that
+    carries one still has to be able to take another turnover.
+    """
+    numbered = [TURNOVER_ID_PATTERN.fullmatch(t.turnover_id) for t in batch.turnovers]
+    highest = max((int(match.group(1)) for match in numbered if match), default=0)
+    return f"t{highest + 1}"
+
+
 def scan_batch(
     folders: list[Path],
     name: str = "untitled",
@@ -444,8 +465,10 @@ def scan_batch(
     """Scan several turnover folders into one batch, sharing the probe cache."""
     settings = settings or ScanSettings()
     batch = Batch(name=name, project_rate=settings.project_rate)
-    for position, folder in enumerate(folders, start=1):
-        turnover, rows = scan_turnover(folder, f"t{position}", settings, probe_cache=batch.probe_cache)
+    for folder in folders:
+        turnover, rows = scan_turnover(
+            folder, next_turnover_id(batch), settings, probe_cache=batch.probe_cache
+        )
         batch.turnovers.append(turnover)
         batch.rows.extend(rows)
     # QC-011 is the one row rule that needs every row, so it can only run once they exist.

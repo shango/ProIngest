@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from proingest.core import scan
-from proingest.core.models import Batch, ShotRow
+from proingest.core.models import Batch, ShotRow, Turnover
 from tests.fixtures import media as fixtures
 
 GOOD_FOLDER = "turnover001_02_23_2026_danielluckett"
@@ -347,3 +347,28 @@ class TestScanBatch:
         batch = scan.scan_batch([good, broken])
         assert len(batch.rows) == 1
         assert "QC-001" in turnover_rules(batch)
+
+
+class TestNextTurnoverId:
+    """One authority for the numbering, whether the CLI or the window is adding it."""
+
+    def test_an_empty_batch_starts_at_one(self) -> None:
+        assert scan.next_turnover_id(Batch()) == "t1"
+
+    def test_it_counts_past_the_highest_rather_than_filling_a_gap(self) -> None:
+        """A row points at its turnover by id, so a gap is not an id to hand out again."""
+        batch = Batch(turnovers=[Turnover("t1", Path("/a")), Turnover("t5", Path("/b"))])
+        assert scan.next_turnover_id(batch) == "t6"
+
+    def test_an_id_that_is_not_t_and_a_number_is_left_out_of_the_count(self) -> None:
+        batch = Batch(turnovers=[Turnover("hand_edited", Path("/a")), Turnover("t2", Path("/b"))])
+        assert scan.next_turnover_id(batch) == "t3"
+
+    def test_scan_batch_numbers_them_the_same_way(self, tmp_path: Path) -> None:
+        first = tmp_path / "turnover001_02_23_2026_dan"
+        second = tmp_path / "turnover002_02_24_2026_sam"
+        fixtures.make_turnover(first, shots=1, frames=4)
+        fixtures.make_turnover(second, shots=1, frames=4)
+
+        batch = scan.scan_batch([first, second])
+        assert [turnover.turnover_id for turnover in batch.turnovers] == ["t1", "t2"]

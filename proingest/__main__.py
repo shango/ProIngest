@@ -146,7 +146,7 @@ def _print_preflight(batch: Batch) -> bool:
             if result.severity == "error":
                 code = row.shot_code or row.clip_name
                 print(f"  {result.severity.upper():7} {result.rule_id}  {code}: {result.message}")
-    blocking = [result for result in batch.qc if result.severity == "error"]
+    blocking = qc.blocking_results(batch)
     for result in blocking:
         print(f"error: {result.rule_id}: {result.message}", file=sys.stderr)
     return bool(blocking)

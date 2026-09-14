@@ -652,7 +652,7 @@ class MainWindow(QMainWindow):
             self.report_problem("Already added", f"{folder.name} is already in this batch.")
             return
         self.batch.source_root = folder.parent
-        self._scan([(folder, self._next_turnover_id())])
+        self._scan([(folder, scan.next_turnover_id(self.batch))])
 
     def scan_unscanned(self) -> None:
         """Scan the turnovers that have no rows. The retry, and nothing else.
@@ -669,18 +669,6 @@ class MainWindow(QMainWindow):
 
     def _unscanned(self) -> list[Turnover]:
         return [t for t in self.batch.turnovers if not self.batch.rows_for(t.turnover_id)]
-
-    def _next_turnover_id(self) -> str:
-        """`t1`, `t2`, and so on, which is what `scan.scan_batch` numbers them.
-
-        Counted past the highest in use rather than off the length, so removing the
-        second of three turnovers cannot hand the next one an id a row still points at.
-        """
-        used = {t.turnover_id for t in self.batch.turnovers}
-        position = len(used) + 1
-        while f"t{position}" in used:
-            position += 1
-        return f"t{position}"
 
     def _scan(self, folders: list[tuple[Path, str]]) -> None:
         """Hand the folders to the worker thread and show that something is happening."""
@@ -837,7 +825,7 @@ class MainWindow(QMainWindow):
         self.run_strip.start()
         self.run_strip.say(CHECKING_BATCH)
         qc.preflight(batch)
-        blocking = [result for result in batch.qc if result.severity == "error"]
+        blocking = qc.blocking_results(batch)
         self._show_results()
         self.shot_model.refresh_rows()
         if blocking:
