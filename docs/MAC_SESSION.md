@@ -178,7 +178,16 @@ Append to this as M5 and M6 are built.
       collecting the files rather than posing the app by hand - but the shipped set has to come from **this** machine, because a guide
       illustrated with a Linux font stack and Linux window furniture is a guide to a tool the
       editor does not have. Budget a slot for it late in the day, after the interface has been
-      looked at and anything embarrassing has been fixed.
+      looked at and anything embarrassing has been fixed. **Commit what it writes**:
+      `docs/guide/images/` is empty in the repo on purpose, so the quickstart's images are
+      broken until this is done and a Linux draft cannot be committed by accident. The
+      quickstart references seven of them by name and `tests/test_guide.py` fails if one is
+      renamed, so what is needed here is the files rather than any editing.
+- [ ] **Read `docs/guide/quickstart.md` at the window** (M9.2) while doing the pass above. It
+      was written on Linux from the specs and the code, so what it cannot know is whether the
+      seven steps are the order a person actually works in and whether anything in it is a step
+      too many. That is the one thing a document like this is wrong about, and it is not
+      visible from here.
 - [ ] Metadata pane: width and section states persist, long paths elide in the middle, values
       copy. `UI_SPEC.md` section 12.
 - [ ] Dark theme and font rendering at Retina, including the IBM Plex fallback chain.

@@ -1,0 +1,94 @@
+"""The user guide's prose. M9, and `docs/guide/`.
+
+A document has no unit tests, and most of what is in one cannot have any: whether the
+quickstart is clear is a person's job. Three things in it can drift silently, and those
+are what is here.
+
+- **An image reference that names a picture the harness does not take** leaves a broken
+  image in a document that gets emailed around, and nothing says so until somebody opens
+  it. `build/screenshots.py` already declares every picture it writes for this reason.
+- **A shortcut the guide names that the window does not bind.** The guide is written for
+  the Mac, where Qt draws `Ctrl` as Command, so the guide says `⌘R` where the code says
+  `Ctrl+R`; they are the same key and the comparison has to go through `QKeySequence` to
+  see that, which is also why this cannot be a grep.
+- **A QC rule ID that has been retired.** Same rule and the same reason as the Settings
+  page's help lines, which is where this check was first written.
+"""
+
+from __future__ import annotations
+
+import re
+from pathlib import Path
+
+import pytest
+from PySide6.QtGui import QAction, QKeySequence, QShortcut
+from PySide6.QtWidgets import QApplication
+
+from build import screenshots
+from proingest.ui.main_window import MainWindow
+
+GUIDE_DIR = Path(__file__).resolve().parent.parent / "docs" / "guide"
+
+PAGES = sorted(GUIDE_DIR.glob("*.md"))
+"""Every page written so far. A glob rather than a list, so a page added later is
+covered without anybody remembering to add it here."""
+
+IMAGE = re.compile(r"!\[[^\]]*\]\(([^)]+)\)")
+SHORTCUT = re.compile(r"⌘([A-Z.])")
+RULE_ID = re.compile(r"\bQC-(\d{3})\b")
+
+
+def pages() -> list[Path]:
+    assert PAGES, f"no guide pages under {GUIDE_DIR}"
+    return PAGES
+
+
+def text_of(page: Path) -> str:
+    return page.read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize("page", pages(), ids=lambda p: p.name)
+class TestThePages:
+    def test_every_picture_it_shows_is_one_the_harness_takes(self, page: Path) -> None:
+        """Otherwise the guide ships with a broken image and nothing says so."""
+        for target in IMAGE.findall(text_of(page)):
+            assert target.startswith("images/"), target
+            assert target.endswith(".png"), target
+            assert Path(target).stem in screenshots.PICTURES, target
+
+    def test_every_rule_id_it_names_is_live(self, page: Path) -> None:
+        rules = (GUIDE_DIR.parent / "QC_RULES.md").read_text(encoding="utf-8")
+        for number in RULE_ID.findall(text_of(page)):
+            assert f"QC-{number}" in rules, number
+
+    def test_it_has_no_em_dashes(self, page: Path) -> None:
+        """CLAUDE.md, and the guide is the document most likely to be pasted elsewhere."""
+        assert "—" not in text_of(page)
+
+
+def test_every_shortcut_the_guide_names_is_one_the_window_binds(qt_app: QApplication, tmp_path: Path) -> None:
+    """Written as the Mac draws them and compared as Qt spells them portably.
+
+    A window rather than a list of strings, because the point is that the guide agrees
+    with the actions the window actually creates: a shortcut moved in `_build_actions`
+    is exactly the drift a guide cannot notice on its own.
+
+    `QShortcut` as well as `QAction`, because not every key in the window is a toolbar
+    button: the Log tab's copy is a shortcut on the tree itself, which is how it stays a
+    copy of the selection rather than of whatever the window thinks is current.
+    """
+    window = MainWindow(tmp_path / "settings.json")
+    try:
+        # An action calls it `shortcut` and a QShortcut calls it `key`, which is the
+        # only reason this is not one comprehension.
+        keys = [action.shortcut() for action in window.findChildren(QAction)]
+        keys += [shortcut.key() for shortcut in window.findChildren(QShortcut)]
+        bound = {key.toString() for key in keys if not key.isEmpty()}
+    finally:
+        window.log_view.detach()
+        window.close()
+
+    named = {key for page in pages() for key in SHORTCUT.findall(text_of(page))}
+    assert named, "the guide names no shortcuts at all, which means the pattern stopped matching"
+    for key in sorted(named):
+        assert QKeySequence(f"Ctrl+{key}").toString() in bound, key

@@ -37,7 +37,7 @@ one-line version, for checking that everyone means the same thing.
 | 17 | Bake the CLF and the ACES output transform into one LUT and encode the references with it. | 4k and HD H.264 mp4, sRGB |
 | 18 | Copy audio and side files, renamed to spec. | wav, HDRI, camData, stills |
 | 19 | Verify every deliverable the moment it lands, and keep any that fails for inspection. | QC-1xx results |
-| 20 | Write the spreadsheets. | `shot_tracker.xlsx`, `qc_ingest_log.xlsx` |
+| 20 | Write the spreadsheets. | `shot_tracker_<batch>_<date>.xlsx` and `qc_ingest_log_<batch>_<date>.xlsx`, under `<delivery root>/<show>/_reports/` |
 
 ## What the tool is for
 
