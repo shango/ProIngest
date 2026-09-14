@@ -44,10 +44,12 @@ it, and section 7 has the mechanism. Each has its own note below.
 **The branch tangle is resolved, 2026-09-14.** `m7/packaging` is PR #2 and is about packaging:
 five commits, pushed, green, and **still open**. The commits that had accumulated on top of it
 were not packaging - they were there by accident of what was checked out - and they are now
-**`m9/guide-and-settings`, PR #3**: **18 commits, pushed, green**, and **based on `m7/packaging`
+**`m9/guide-and-settings`, PR #3**: **24 commits, pushed, green**, and **based on `m7/packaging`
 rather than `main`**, because that is what they were written on top of. **GitHub retargets PR #3
-to `main` by itself when PR #2 merges**, and its diff narrows to the 18 at that point, so nothing
-has to be rebased by hand.
+to `main` by itself when PR #2 merges**, and its diff narrows at that point, so nothing has to be
+rebased by hand. **A fresh clone lands on `main`, which has neither M7's packaging nor anything
+since**, so a Mac clone has to `git checkout m9/guide-and-settings` until those two merges happen
+(`HANDOFF.md` says so too).
 
 **Merging PR #2 is the one step still waiting on a person.** It is `MERGEABLE` / `CLEAN` with all
 four checks green, and `main` is a strict ancestor of it, so the merge cannot conflict. Until it
@@ -55,8 +57,9 @@ happens both PRs stay open and PR #3's diff shows 23 commits rather than 18. Loc
 `m7/packaging` has been reset to `origin/m7/packaging` so it matches the PR exactly; **the work
 is on `m9/guide-and-settings`, which is the branch to be on.**
 
-**CI saw them for the first time on that push and went green first time: run 34900426677, all
-four jobs.** That was worth watching rather than assuming, because two of the last two CI-only
+**CI went green first time on the push that carried the `MainWindow` split too: run
+34904834036, all four jobs, 2026-09-14.** The push before it was run 34900426677, which was CI's
+first sight of this branch and also green first time. That was worth watching rather than assuming, because two of the last two CI-only
 failures were the Mac disagreeing about something this machine cannot observe, and this push
 added `tests/test_guide.py`, which compares keyboard shortcuts. It holds on arm64 because both
 sides of the comparison go through `QKeySequence.toString()` in **portable** text - `Ctrl+R` on

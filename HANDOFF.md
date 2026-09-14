@@ -17,7 +17,8 @@ and `scan.next_turnover_id` replace two rules that had each been written out twi
 `ruff`, `ruff format` and `mypy --strict` clean. No behaviour changed except the turnover
 numbering, which now does what its docstring always said. **There is no code left that can be
 written on this machine**: what remains wants the Mac, a real turnover, or an answer from a
-person. Four commits, pushed. Build Track republished, version 61.
+person. Five commits, pushed, and **CI is green on all four jobs, first time: run 34904834036**.
+Build Track republished, version 61.
 
 ## Going to the Mac
 
