@@ -311,7 +311,7 @@
   <header class="mast">
     <div class="eyebrow">
       <span>VFX turnover ingest &middot; macOS v01</span>
-      <span class="stamp">Updated <b>13 Sep 2026, 20:30 PDT</b></span>
+      <span class="stamp">Updated <b>13 Sep 2026, 23:10 PDT</b></span>
     </div>
     <h1>ProIngest Build Track</h1>
     <p class="standfirst">
@@ -328,7 +328,7 @@
       <div class="stat-l">Milestones done</div>
     </div>
     <div class="stat">
-      <div class="stat-n good">1603</div>
+      <div class="stat-n good">1637</div>
       <div class="stat-l">Tests, Linux + macOS</div>
     </div>
     <div class="stat">
@@ -1284,7 +1284,7 @@
         <div class="ms-body">
           <div class="ms-head">
             <span class="ms-name">The user guide</span>
-            <span class="pill">New &middot; 0 of 5</span>
+            <span class="pill">In progress &middot; 1 of 5</span>
           </div>
           <p class="ms-goal">
             One document the editor is handed: how to install it, a quickstart, then a section on
@@ -1324,17 +1324,23 @@
               <span class="c-st"><span class="tag open">Follows</span></span>
             </div>
 
-            <div class="chunk">
+            <div class="chunk done">
               <span class="c-id">M9.4</span>
               <span class="c-name">Screenshots, from a script</span>
               <span class="c-note">
                 <b>Taken by a harness rather than by hand</b>: it builds a demonstration delivery
                 and grabs the window, so a changed interface is a re-run instead of a re-shoot,
                 and no production shot name or drive path ends up in a document that gets emailed
-                around. The pictures that ship have to come from the Mac, because a guide showing
-                Linux window furniture is a guide to a tool the editor does not have.
+                around. Seven pictures, one per part of the window. The pictures that ship still
+                have to come from the Mac, because a guide showing Linux window furniture is a
+                guide to a tool the editor does not have, and the script knows the difference:
+                on a Mac it lets the real Mac drawing engine draw, everywhere else it draws to
+                nothing. <b>Taking the first picture found a fault nothing else could have</b>:
+                the coloured status dot beside every shot was never being drawn, and the tests
+                could not see it because they were asking the data for the dot rather than the
+                window.
               </span>
-              <span class="c-st"><span class="tag open">Needs a Mac</span></span>
+              <span class="c-st"><span class="tag ok">Done</span></span>
             </div>
 
             <div class="chunk">
@@ -2200,37 +2206,40 @@
     <b>Source of truth</b> &middot; PROGRESS.md, docs/OPEN_QUESTIONS.md, PRD.md section 9<br>
     <b>Verify</b> &middot; pytest &middot; ruff check . &amp;&amp; mypy proingest tests build &middot;
     python build/build.py &middot; python build/smoke_test.py &lt;app&gt;<br>
-    <b>Last updated</b> &middot; 13 September 2026, 19:40 PDT. <b>The application is packaged.</b>
-    A double-clickable Mac app with the video tools inside it and a disk image beside it are now
-    built on every change by the hosted Apple Silicon machine and attached to the run, so getting
-    one is a download. A script drives the packaged app through a whole delivery - scan, a two
-    process render, both spreadsheets - and checks what landed, which is the only way to catch the
-    failures a packaged program has that a normal checkout does not. <b>All of it was built and
-    proved on the Linux machine before any of it was pushed</b>, because a missing file fails a
-    Linux build exactly as it fails a Mac one. <b>It then passed inside a real Mac application on
-    the first run</b>: 251&nbsp;MB installed, a 110&nbsp;MB disk image at about a third of the
-    budget, and the app rendered through two worker processes and wrote both spreadsheets.
-    <b>This milestone was recorded as needing a Mac and it did not</b>, and it was the gate in
-    front of the rented day: the rule was not to rent until a downloadable app existed whose
-    unattended proving run passed. That is now true, so the day is bookable.
-    <b>One library broke when frozen and it is the one that reads every delivery</b>: it finds its
-    readers by looking them up rather than importing them, and the edit list reader is registered
-    under a name that does not match the package it lives in, so only a fallback reading the
-    source off disk ever works. Everything else needed nothing. 1603 tests green.<br>
-    <b>Next</b> &middot; three things can still be finished on this machine. <b>The colour check
-    that can no longer tell a dark Canon grade from a baked-in viewing transform</b> is the one
-    that is a fault rather than a judgement, and its replacement is already measured. <b>The last
-    greyed settings section</b>, output quality, needs the value to travel to the worker processes
-    on a channel that already exists. And <b>the quickstart and the screenshot script</b> can be
-    drafted, with the pictures that ship taken on the Mac.
+    <b>Last updated</b> &middot; 13 September 2026, 23:10 PDT. <b>The repository is ready to be
+    opened on a Mac, and the guide's pictures are now taken by a script.</b> A new setup document
+    takes a Mac from a fresh copy of the code to a running application in four commands plus the
+    video tools, which are 132&nbsp;MB and deliberately not kept in the repository. Those can now
+    be <b>added by hand</b> - downloaded in a browser, or carried over from another machine - and
+    whichever way they arrive they are checked against the same fingerprint the automatic download
+    checks, so a wrong copy is refused rather than quietly packaged and then named in every
+    delivery report as though it were the right one. The document also names the trap that would
+    otherwise waste a morning: the tests that touch video <b>skip themselves</b> when they cannot
+    find the tools, so a run without one line of setup reports success having encoded nothing.
+    <b>The user guide's screenshots are a script</b> rather than somebody pressing a key: it
+    builds a demonstration delivery of six shots and takes seven pictures, so a changed interface
+    is a re-run instead of a re-shoot, and nothing from a real production can reach a document
+    that gets emailed around. On a Mac it lets the Mac draw; everywhere else it draws to nothing,
+    because a guide illustrated on Linux is a guide to a tool the editor does not have.
+    <b>Taking the first picture found a fault that nothing else would have.</b> The coloured
+    status dot beside every shot - the one thing in the list that says at a glance whether a shot
+    is fine, warned, failed or held back - <b>was never drawn at all</b>. The list indents each
+    shot under its delivery, that indent is taken out of the first column rather than out of the
+    row, and the first column was too narrow to have anything left. Every test passed because
+    every test asked the data whether there was a dot, and there was; nothing asked the window
+    whether it had drawn one. It is fixed, with three tests that ask the window, and the width is
+    now worked out from the indent rather than typed in, so it cannot drift apart again.
+    1637 tests green.<br>
+    <b>Next</b> &middot; <b>the colour check that can no longer tell a dark Canon grade from a
+    baked-in viewing transform</b> is the one item that is a fault rather than a judgement, and
+    its replacement is already measured. <b>The last greyed settings section</b>, output quality,
+    needs the value to travel to the worker processes on a channel that already exists. And the
+    <b>quickstart</b> can be drafted now that the pictures exist to lay it out around.
     <b>Two questions want asking before a real delivery depends on them</b>: which field the
     shooters write their camera's format into and exactly what they write, and whether a grading
     session's colour file really does contain the conversion - because if the tool also converts,
     it converts twice and nothing fails. <b>One decision wants making before handover</b>: an
-    Apple Developer ID, or a route to the editor that never marks a build as downloaded. The
-    other, the name the application identifies itself by, was settled the same day it was raised
-    - it names nobody connected to the production, and the only rule now is not to change it once
-    a build has reached the editor.
+    Apple Developer ID, or a route to the editor that never marks a build as downloaded.
   </footer>
 
 </div>
