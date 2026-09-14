@@ -106,7 +106,11 @@ Append to this as M5 and M6 are built.
       `ui/shot_list.py`. `UI_SPEC.md` section 2.
 - [ ] **The status dot reads at a glance in all seven states.** Nine pixels, filled or hollow,
       against the row tint behind it (M5.2, `UI_SPEC.md` section 3). Amber on faint amber is
-      the pair to look at.
+      the pair to look at. **It was not drawn at all until 2026-09-13** - the tree indentation
+      took the whole of the status column's width and Qt drew nothing - so this line is now
+      about whether it reads, not whether it is there. `INDENT` is set explicitly for the same
+      reason: a style that indented further on a Mac would take the room away again, and the
+      test that holds it asserts the view's own geometry rather than a picture.
 - [ ] **The inline red on a mistyped In or Out is legible against the editor's own background.**
       The cell editor colours what was typed rather than replacing it (M5.3, `UI_SPEC.md`
       section 5), and the red is the same `#cf5a52` as the error dot, chosen against the list's
@@ -169,9 +173,9 @@ Append to this as M5 and M6 are built.
 - [ ] **Closing the window mid-run waits for the jobs in flight and says nothing.** Up to two
       minutes if a reference encode is going (M5.5). Decide whether that wants a sheet
       explaining itself, or a prompt before the close.
-- [ ] **Take the user guide's screenshots** (FR-17, M9.4). The harness builds a demo batch and
-      grabs the window, so this is running a script and collecting the files rather than posing
-      the app by hand - but the shipped set has to come from **this** machine, because a guide
+- [ ] **Take the user guide's screenshots** (FR-17, M9.4): `python build/screenshots.py`. The
+      harness builds a demo batch and grabs the window, so this is running a script and
+      collecting the files rather than posing the app by hand - but the shipped set has to come from **this** machine, because a guide
       illustrated with a Linux font stack and Linux window furniture is a guide to a tool the
       editor does not have. Budget a slot for it late in the day, after the interface has been
       looked at and anything embarrassing has been fixed.

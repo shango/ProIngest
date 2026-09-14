@@ -155,8 +155,22 @@ class Column:
     width: int
 
 
+INDENT = 20
+"""How far one level of the tree steps in. Qt's own default, stated here because the
+status column's width is derived from it.
+
+A shot row sits two indents in - one for the group header's branch arrow and one for
+itself - and `QTreeView` takes that out of the **first column**, not out of the row. A
+status column narrower than two indents plus the dot leaves the cell with no width at
+all, and a decoration with no rectangle is simply never drawn."""
+
+STATUS_WIDTH = INDENT * 2 + DOT_SIZE + 14
+"""Wide enough that a shot row's dot has somewhere to be. See `INDENT`: this was 30 and
+the dot was invisible on every shot row in the list, while the model served it
+correctly and every test that asked the model got one."""
+
 COLUMNS = (
-    Column("", 30),
+    Column("", STATUS_WIDTH),
     Column("Shot", 150),
     Column("Elem", 70),
     Column("Source", 230),

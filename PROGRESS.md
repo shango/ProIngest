@@ -1205,6 +1205,30 @@ underneath, where the overlay covers them. **Seven things in it should not be re
   that knows that. Two implementations of section 4's Tab order would have drifted the first
   time one of them grew a column.
 
+### M9.4 is built: the guide's pictures are a script, and it found a bug
+
+`python build/screenshots.py` writes seven PNGs - the empty state, the list, the metadata
+pane, the Issues dock, the Log tab, a run in progress and the Settings page - into
+`docs/guide/images`. The batch in them is the fixtures' synthetic `MELT` show, imported
+rather than reimplemented, so a model change that would break the pictures breaks the
+suite first and no real shot code or Drive path can reach a document that gets emailed
+around. The run picture is driven through `_show_run_progress`, the window's own method,
+so the strip, the status bar and the row bars agree in the picture for the same reason
+they agree in the tool; a fake clock is passed to `RunProgress` so the status line reads
+"9.4 frames/s" rather than the 50,908 that messages arriving in microseconds produce.
+
+**Two things in it are decisions rather than code.** `choose_platform` leaves macOS on
+its own cocoa plugin and forces `offscreen` everywhere else: the offscreen plugin draws
+with Qt's own Fusion style and font fallbacks, so forcing it on a Mac would take pictures
+of a tool the editor does not have, which is the whole reason the shipped set comes from
+there. And the images are **not committed** - the guide does not exist yet and the set it
+ships with is the Mac's.
+
+**It found that the status dot was never drawn at all.** Section 7 has the mechanism. It
+is fixed, with three tests that assert the view's geometry rather than the model's answer,
+and `docs/MAC_SESSION.md`'s dot line is now about whether nine pixels read at 2x rather
+than about whether anything is there.
+
 ### Next task
 
 **The repo is clone-ready on a Mac as of 2026-09-13.** `docs/MAC_SETUP.md` is the whole of
@@ -1237,10 +1261,11 @@ What is left that this machine can still finish on its own, in the order it is w
   and the EXR compression level are applied inside a worker and would have to travel on the
   render job. M5.8.3 already built that channel for the ffmpeg override and the log level, so
   this is following a path that exists.
-- **M9.2, the quickstart, and M9.4's harness**, which builds a demo batch and grabs the
-  window: the images it takes on Linux are fine for laying the document out and the shipped
-  set is taken on the Mac. M9's button reference should read `ui/toolbar_help.py` rather than
-  restate it. **M9.1's install section is no longer blocked**, since M7 exists to describe.
+- **M9.2, the quickstart.** **M9.4's harness is built** (see its note above): the images it
+  takes on Linux are fine for laying the document out and the shipped set is taken on the
+  Mac. M9's button reference should read `ui/toolbar_help.py` rather than restate it.
+  **M9.1's install section is no longer blocked**, since M7 exists to describe, and
+  `docs/MAC_SETUP.md` is the developer half of the same ground.
 - **What `REVIEW.md` deferred**, of which the largest is the `MainWindow` split. No behaviour
   changes there; it is a session of its own if it is wanted.
 
@@ -1711,7 +1736,7 @@ studio keeps about the **build**, and M9 is what somebody reads to **use the too
 | M9.1 | Install guide: the dmg, the quarantine bit and Gatekeeper (OQ-9), first run, where settings and logs live | needs M7 |
 | M9.2 | Quickstart: one turnover from Add Turnover to the exports, about a page | can be drafted now |
 | M9.3 | The reference guide, one section per surface: the list and its columns, editing, the Issues dock, the run, Settings, the log, the metadata pane | follows the surfaces it documents |
-| M9.4 | The screenshot harness: builds a demo batch, grabs the window, writes the files the guide references. Drafted on Linux, **shipped set taken on the Mac** | harness now, images on the Mac |
+| M9.4 | The screenshot harness: builds a demo batch, grabs the window, writes the files the guide references. Drafted on Linux, **shipped set taken on the Mac** | **built 2026-09-13**, 8 tests. `python build/screenshots.py`, seven pictures. Images on the Mac |
 | M9.5 | The document itself: one source, printed to PDF and pasteable into Google Docs whole (OQ-49) | last |
 
 **Three things about M9 that are decisions rather than tasks.**
@@ -2190,6 +2215,21 @@ deleted it along with `TestSupersededDisplayEncode`.
 ---
 
 ## 7. Findings worth keeping
+
+**The status dot was never drawn, and the suite was green.** Found on 2026-09-13 by
+building M9.4's screenshot harness and looking at the picture it took. `QTreeView` takes
+its indentation out of the **first column**, not out of the row, and a shot row sits two
+indents in: one for its turnover's branch arrow and one for itself. The status column was
+30 pixels and the indent is 20, so `visualRect` for a shot's status cell came back with a
+**negative width** and Qt drew nothing - no dot in any of section 3's seven states, and
+nothing to click for section 3's "clicking the dot focuses the Issues dock" either.
+Every test that asked the *model* for the decoration got its pixmap, which is why nothing
+failed. `STATUS_WIDTH` is now derived from `INDENT` and the dot's size, `INDENT` is set on
+both views explicitly because Qt's default is the style's to choose and a Mac that
+indented further would take the room away again, and three tests assert the view's
+geometry rather than the model's answer. **The general lesson is the one M9.4 was built
+on**: a headless suite can assert everything about a widget except that it is visible, and
+a harness that takes a picture is the cheapest thing that closes that gap.
 
 **Three ways a reference encode goes wrong without failing.**
 

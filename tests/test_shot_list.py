@@ -21,13 +21,17 @@ from PySide6.QtWidgets import (
 
 from proingest.ui.shot_list import BAR_HEIGHT, ERROR_COLOR, ShotListView, TwoLineDelegate
 from proingest.ui.shot_model import (
+    COLUMNS,
     DOT_COLORS,
+    DOT_SIZE,
     FROZEN_COLUMNS,
     IN,
+    INDENT,
     NOTES,
     OUT,
     PROGRESS,
     SHOT,
+    STATUS,
     DisplayMode,
     RowState,
     ShotListModel,
@@ -577,9 +581,9 @@ class TestTheTurnoverLine:
     def painted(self, view: ShotListView, scrolled: int = 0, width: int = 600) -> QImage:
         """The group header row as the delegate draws it, at a scroll and a width.
 
-        The width is the row's rectangle rather than the image's: the overlay spans a
-        250 pixel row and the list spans the whole of a much wider one, and what that
-        difference does to the sentence is the thing being asked about.
+        The width is the row's rectangle rather than the image's: the overlay spans
+        only its three columns and the list spans the whole of a much wider row, and
+        what that difference does to the sentence is the thing being asked about.
         """
         option = QStyleOptionViewItem()
         option.initFrom(view)
@@ -602,11 +606,51 @@ class TestTheTurnoverLine:
     def test_the_overlay_draws_the_same_sentence_and_does_not_elide_it(self, tall: ShotListView) -> None:
         """An ellipsis at the overlay's edge would land in the middle of a line the
         list is still drawing the rest of, and read as two sentences."""
-        seam = QRect(0, 0, sum(tall.columnWidth(c) for c in range(FROZEN_COLUMNS)), 40)
-        assert self.painted(tall, width=250).copy(seam) == self.painted(tall, width=900).copy(seam)
+        frozen_width = sum(tall.columnWidth(c) for c in range(FROZEN_COLUMNS))
+        seam = QRect(0, 0, frozen_width, 40)
+        assert self.painted(tall, width=frozen_width).copy(seam) == self.painted(tall, width=900).copy(seam)
 
     def test_it_is_drawn_at_all(self, tall: ShotListView) -> None:
         """An identical pair of blank images would pass either test above."""
         blank = QPixmap(600, 40)
         blank.fill(Qt.GlobalColor.black)
         assert self.painted(tall) != blank.toImage()
+
+
+class TestTheStatusDotHasRoomToBeDrawn:
+    """UI_SPEC section 3's dot, and the reason it was invisible until 2026-09-13.
+
+    `QTreeView` takes the indentation out of the **first column**, not out of the row,
+    and a shot row sits two indents in: one for its turnover's branch arrow and one for
+    itself. With the status column at 30 pixels and the indent at 20, the cell came back
+    with a **negative width** and Qt drew nothing at all - no dot on any shot row, in
+    any state, and nothing to click for section 3's "clicking the dot focuses the Issues
+    dock" either. Every test that asked the *model* for the decoration got a pixmap, so
+    the suite was green and the feature was not there.
+
+    Asserted against the view's own geometry rather than against a picture: the numbers
+    are what the fix is made of, and whether nine pixels reads at 2x Retina is still a
+    person's job (docs/MAC_SESSION.md).
+    """
+
+    def status_rect(self, view: ShotListView, shot: int = 0) -> QRect:
+        parent = view.proxy.index(0, 0)
+        return view.visualRect(view.proxy.index(shot, STATUS, parent))
+
+    def test_a_shot_rows_status_cell_is_wider_than_the_dot(self, tall: ShotListView) -> None:
+        assert self.status_rect(tall).width() >= DOT_SIZE
+
+    def test_the_frozen_overlay_draws_it_in_the_same_place(self, tall: ShotListView) -> None:
+        """The overlay is what is actually on top of the first three columns, so it is
+        the one that has to have the room. They share a model and column widths, so a
+        difference here means the two have drifted apart."""
+        parent = tall.proxy.index(0, 0)
+        index = tall.proxy.index(0, STATUS, parent)
+        assert tall.frozen.visualRect(index) == tall.visualRect(index)
+
+    def test_the_width_is_derived_from_the_indentation_the_view_is_set_to(self, tall: ShotListView) -> None:
+        """The derivation only holds while the view really uses `INDENT`. Qt's default
+        is the style's to choose, so a Mac that indented further would take the cell's
+        width away again."""
+        assert tall.indentation() == tall.frozen.indentation() == INDENT
+        assert COLUMNS[STATUS].width >= INDENT * 2 + DOT_SIZE
