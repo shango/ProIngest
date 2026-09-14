@@ -10,20 +10,27 @@ commit.
 
 **State at 2026-09-14. Every feature milestone is built, and so is packaging.** M1 to M4
 complete, M4.5 all four chunks, M4.6 all five, **M5 all twelve**, **M7**, and **M9.4**.
-**1683 tests**, `ruff`, `ruff format` and `mypy --strict` clean over `proingest tests build`.
+**1691 tests**, `ruff`, `ruff format` and `mypy --strict` clean over `proingest tests build`.
 What is left is **M8 polish** (needs a real turnover and a real colour session) and the rest
 of **M9, the user guide**.
 
-**This session built the two things on the list below that this machine could still finish
-alone.** **M5.12, the Settings page's sixth section**: reference quality and the EXR compression
+**This session split `MainWindow`, which was the last code on the list that this machine
+could write alone.** `REVIEW.md`'s S1 and S2, both closed: the run is `ui/run_controller.py`,
+the colour session ingest is `ui/color_session.py`, `qc.blocking_results` and
+`scan.next_turnover_id` are one authority each where there had been two, and `main_window.py`
+is 1394 lines down to 1039. No behaviour changed except the turnover numbering, which now does
+what its docstring always claimed. Its note is below, and it is worth reading for the guard the
+move dropped in silence. **There is now no code left here**: everything below wants the Mac, a
+real turnover, or an answer from a person.
+
+**The session before it built the two things this machine could still finish alone.** **M5.12, the Settings page's sixth section**: reference quality and the EXR compression
 level are editable, **every section of the page is live**, and both reach a render's worker
 processes on the channel M5.8.3 built rather than on the render job the plan had assumed they
 would need. And **the whole of the guide's prose**: **M9.2** the quickstart, **M9.1** the
 install section and **M9.3** the reference section, in `docs/guide/`, the first of which found
 six stale lines in `docs/WORKFLOW.md` and fixed them in their own commit. Each has its note in
 section 5. **M9 is 4 of 5**, and what the last chunk wants is a decision (OQ-49) and the Mac's
-pictures rather than more writing. **What is left on this machine is what `REVIEW.md`
-deferred**; everything else wants the Mac or a real turnover.
+pictures rather than more writing.
 
 **The last session, 2026-09-13, did three things and found a fourth.** The user is taking the
 repo to a Mac and will put the ffmpeg binaries there by hand, so: **the repo is clone-ready on
@@ -98,11 +105,11 @@ against a real session. The source encoding is camera native log as of 2026-09-1
 shot, resolved through a table, recorded in the QC log and stated with its origin in the
 delivered header.
 
-**Two things can still be finished on this machine, and the rest wants the Mac or the real
-data.** M8 wants a real turnover and a real colour session; M9's shipped screenshots want the
-Mac. What does not: M9.2's quickstart, and what `REVIEW.md` deferred. "Next task" below lists them in the order they are worth doing. **Of the two open
-questions that were about correctness rather than scope, OQ-47 closed on 2026-09-13**, which
-leaves OQ-46 - and that one is a question to ask a person, not a thing to build.
+**Nothing is left that can be finished on this machine.** M8 wants a real turnover and a real
+colour session; M9's shipped screenshots want the Mac; the rest is questions for a person.
+"Next task" below groups them by what each is waiting on. **Of the two open questions that were
+about correctness rather than scope, OQ-47 closed on 2026-09-13**, which leaves OQ-46 - and
+that one is a question to ask a person, not a thing to build.
 
 **One of the three things added to the plan on 2026-09-12 is still unbuilt**: the user guide
 itself (PRD FR-17, the new M9), though **M9.4's harness now takes its pictures**. The other two
@@ -1501,9 +1508,9 @@ headless smoke test passed; all three of its preconditions are now ticked, so th
 is bookable.
 
 **Everything this machine could finish on its own is finished as of 2026-09-14.** OQ-47 closed
-on the 13th; M5.12 and the guide's three pages of prose went in on the 14th, and each has its
-note above. What remains is below, grouped by what it is actually waiting on, because that is
-the thing that decides whether a session can start it.
+on the 13th; M5.12, the guide's three pages of prose and the `MainWindow` split went in on the
+14th, and each has its note above. What remains is below, grouped by what it is actually
+waiting on, because that is the thing that decides whether a session can start it.
 
 **Waiting on a person, not on work:**
 
@@ -1521,14 +1528,10 @@ the thing that decides whether a session can start it.
   encoding. If it does not and the tool converts too, it converts **twice** - nothing fails,
   every check passes, and both images look plausible.
 
-**Can be done here, and it is the only code left:**
-
-- **What `REVIEW.md` deferred**, of which the largest is **S1, the `MainWindow` split**, with
-  **S2** (blocked-run and turnover-numbering policy sitting in the UI) belonging to the same
-  session. **No behaviour changes**, the tests survive it, and the diff is most of one file. The
-  review called it a session of its own and that is still the right read. Everything else
-  deferred there is micro-smells, performance that needs a real mount (S4, which is M8), or
-  test gaps not tied to a bug - `REVIEW.md`'s last section has each with its reason.
+**Nothing is left that can be done here.** `REVIEW.md`'s S1 and S2 were the last of it and
+they closed on 2026-09-14. What is still deferred there is micro-smells, performance that needs
+a real mount (S4, which is M8), or test gaps not tied to a bug; `REVIEW.md`'s last section has
+each with its reason, and none of them is worth a session on their own.
 
 **Waiting on the Mac** (`docs/MAC_SESSION.md` is the checklist and the day is bookable, since
 M7 ticked all three of its preconditions):
