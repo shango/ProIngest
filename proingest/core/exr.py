@@ -23,8 +23,33 @@ import OpenEXR
 
 from proingest.core import clf, color, frames
 
-DWA_COMPRESSION_LEVEL = 45.0
-"""Required by COLOR_AND_FORMAT section 3. Written as a float attribute."""
+DWA_COMPRESSION_LEVEL = 45
+"""What COLOR_AND_FORMAT section 3 pins, and the default. Written as a float attribute.
+
+Higher is smaller and lossier. The Settings page's Output section may move it (FR-12),
+which is what `set_compression_level` is for; an integer because every value anyone
+states for DWAA is one, and a spin box is how the page edits it.
+"""
+
+_LEVEL = float(DWA_COMPRESSION_LEVEL)
+"""The level in force for this process (FR-12, Output).
+
+A module global for the reason `ffmpeg._OVERRIDE` is one, and it crosses the spawn
+boundary on the same channel: `core/render.py` hands it to every worker at its
+initialiser, because a worker is a fresh interpreter that never saw the Settings page.
+"""
+
+
+def set_compression_level(level: float) -> None:
+    """Write every later frame at this DWAA level."""
+    global _LEVEL
+    _LEVEL = float(level)
+
+
+def current_compression_level() -> float:
+    """What is in force, so a caller can hand it to a process that has not got it."""
+    return _LEVEL
+
 
 CHROMATICITIES = (0.713, 0.293, 0.165, 0.830, 0.128, 0.044, 0.32168, 0.33767)
 """**AP1 primaries with the ACES white point**, COLOR_AND_FORMAT section 1.
@@ -264,7 +289,7 @@ def write_frame(
     pixels: npt.NDArray[Any],
     timecode_frames: int | None = None,
     fps: float = 24.0,
-    compression_level: float = DWA_COMPRESSION_LEVEL,
+    compression_level: float | None = None,
     shot_color: clf.ShotColor = clf.DEFAULT_SHOT_COLOR,
     loaded_clf: clf.LoadedClf | None = None,
 ) -> None:
@@ -273,6 +298,10 @@ def write_frame(
     `pixels` is `(h, w, 3)` or `(h, w, 4)` in any float type; it is stored as half
     (OQ-13). The data window comes from the array shape, so the two windows always
     agree and QC-104 cannot fail for a frame this function wrote.
+
+    `compression_level` defaults to whatever the Settings page put in force for this
+    process rather than to the constant, so a render honours the setting without every
+    caller forwarding it.
 
     `shot_color` and `loaded_clf` are **recorded, never applied**: the pixels arrive
     already transformed and this states what was done to them. They are the pair
@@ -287,7 +316,7 @@ def write_frame(
 
     header: dict[str, Any] = {
         "compression": OpenEXR.DWAA_COMPRESSION,
-        "dwaCompressionLevel": float(compression_level),
+        "dwaCompressionLevel": _LEVEL if compression_level is None else float(compression_level),
         "type": OpenEXR.scanlineimage,
         "chromaticities": CHROMATICITIES,
         COLORSPACE_ATTRIBUTE: color.PLATE_SPACE,

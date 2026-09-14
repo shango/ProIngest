@@ -456,10 +456,37 @@ def extract_audio(source: Path, destination: Path, ffmpeg: Path | None = None) -
 ENCODE_TIMEOUT = 1800
 """A 4k CRF 18 `preset slow` encode of a long shot is minutes, not seconds."""
 
-REFERENCE_CRF = "18"
+REFERENCE_CRF = 18
+"""The quality a reference is encoded at by default, COLOR_AND_FORMAT section 3.
+
+x264's rate factor: lower is better and bigger, 0 is lossless and 51 is the worst the
+encoder will do. The spec pins 18 and the Settings page's Output section may move it
+(FR-12), which is what `set_reference_crf` below is for.
+"""
+
 REFERENCE_PRESET = "slow"
 REFERENCE_KEYINT = "24"
 """One keyframe a second at 24. The spec pins the number, not the duration."""
+
+_CRF = REFERENCE_CRF
+"""The rate factor in force for this process (FR-12, Output).
+
+A module global for the reason `_OVERRIDE` is one, and it crosses the spawn boundary on
+the same channel: `core/render.py` hands it to every worker at its initialiser, because
+a worker is a fresh interpreter that never saw the Settings page.
+"""
+
+
+def set_reference_crf(crf: int) -> None:
+    """Encode every later reference at this rate factor."""
+    global _CRF
+    _CRF = int(crf)
+
+
+def current_reference_crf() -> int:
+    """What is in force, so a caller can hand it to a process that has not got it."""
+    return _CRF
+
 
 REFERENCE_PIXEL_FORMAT = "yuv420p"
 REFERENCE_AUDIO_BITRATE = "192k"
@@ -520,6 +547,7 @@ def encode_command(
     audio: Path | None = None,
     audio_skip: float = 0.0,
     ffmpeg: Path | None = None,
+    crf: int | None = None,
 ) -> list[str]:
     """The command that encodes `[in_frame, out_frame]` to one reference mp4.
 
@@ -543,6 +571,10 @@ def encode_command(
     swscale needs them (section 1). Everything unbounded is inside the cube. `audio_skip`
     drops that many seconds off the front of the audio, which is how sound stays with
     the picture when the editor delivers a sub-range.
+
+    `crf` defaults to whatever the Settings page put in force for this process, the same
+    way `ffmpeg` defaults to the override: a caller that has an opinion states it, and
+    everything else gets the one setting rather than a constant.
     """
     tool = ffmpeg or resolve_tool("ffmpeg")
     count = frames.duration(in_frame, out_frame)
@@ -588,7 +620,7 @@ def encode_command(
         "-preset",
         REFERENCE_PRESET,
         "-crf",
-        REFERENCE_CRF,
+        str(_CRF if crf is None else crf),
         "-g",
         REFERENCE_KEYINT,
         "-pix_fmt",

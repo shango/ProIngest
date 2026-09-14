@@ -28,7 +28,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from proingest.core import color, ffmpeg, logsetup, naming, qc
+from proingest.core import color, exr, ffmpeg, logsetup, naming, qc
 from proingest.core import settings as core_settings
 from proingest.core.settings import AppSettings
 from proingest.ui import settings_form
@@ -122,12 +122,16 @@ def editor(dialog: SettingsDialog, key: str) -> object:
 
 @pytest.fixture
 def restore_process() -> Iterator[None]:
-    """Put the log level and the ffmpeg override back, since both are process wide."""
+    """Put back everything `apply_to_process` moves, since all four are process wide."""
     level = logging.getLogger().level
     override = ffmpeg.current_override()
+    crf = ffmpeg.current_reference_crf()
+    compression = exr.current_compression_level()
     yield
     logging.getLogger().setLevel(level)
     ffmpeg.set_override(override)
+    ffmpeg.set_reference_crf(crf)
+    exr.set_compression_level(compression)
 
 
 class TestTheDialog:
@@ -302,10 +306,6 @@ def test_every_rule_id_a_help_line_names_is_live_rather_than_retired() -> None:
 class TestTheAdvancedSection:
     """M5.8.3. The section M5.7.2 listed and disabled, waiting on there being a log."""
 
-    def test_it_is_live_and_output_is_the_only_one_still_waiting(self) -> None:
-        waiting = [s.title for s in settings_form.sections() if not s.enabled]
-        assert waiting == ["Output"]
-
     def test_the_level_is_a_choice_rather_than_something_to_type(self, dialog: SettingsDialog) -> None:
         """A misspelt level in a settings file is a tool logging the wrong amount."""
         box = editor(dialog, "app.log_level")
@@ -333,6 +333,54 @@ class TestTheAdvancedSection:
         edit.setText("/opt/ffmpeg/bin")
         app, _ = dialog.result_settings()
         assert app.ffmpeg_path == "/opt/ffmpeg/bin"
+
+
+class TestTheOutputSection:
+    """M5.12. The last section M5.7.2 listed and disabled, waiting on the worker channel."""
+
+    def test_every_section_is_live_now(self) -> None:
+        assert [s.title for s in settings_form.sections() if not s.enabled] == []
+
+    def test_it_offers_the_two_the_prd_lists(self) -> None:
+        section = next(s for s in settings_form.sections() if s.title == settings_form.OUTPUT)
+        assert [f.key for f in section.fields] == ["app.reference_crf", "app.exr_compression_level"]
+
+    def test_the_quality_is_bounded_by_what_x264_accepts(self) -> None:
+        """A rate factor outside 0 to 51 is an encode that fails on the first frame."""
+        section = next(s for s in settings_form.sections() if s.title == settings_form.OUTPUT)
+        crf = section.fields[0]
+        assert (crf.minimum, crf.maximum) == (0, 51)
+
+    def test_a_quality_typed_in_comes_back_out(self, dialog: SettingsDialog) -> None:
+        spin = editor(dialog, "app.reference_crf")
+        assert isinstance(spin, QSpinBox)
+        spin.setValue(23)
+        app, _ = dialog.result_settings()
+        assert app.reference_crf == 23
+
+    def test_a_compression_level_typed_in_comes_back_out(self, dialog: SettingsDialog) -> None:
+        spin = editor(dialog, "app.exr_compression_level")
+        assert isinstance(spin, QSpinBox)
+        spin.setValue(60)
+        app, _ = dialog.result_settings()
+        assert app.exr_compression_level == 60
+
+    def test_the_page_opens_on_the_spec_values(self, dialog: SettingsDialog) -> None:
+        """The defaults are the spec's, read from core rather than typed in twice."""
+        app, _ = dialog.result_settings()
+        assert app.reference_crf == ffmpeg.REFERENCE_CRF
+        assert app.exr_compression_level == exr.DWA_COMPRESSION_LEVEL
+
+    def test_applying_saves_them(self, window: DrivenWindow, tmp_path: Path) -> None:
+        def edit(dialog: SettingsDialog) -> None:
+            dialog._editors["app.reference_crf"].setValue(23)  # type: ignore[attr-defined]
+            dialog._editors["app.exr_compression_level"].setValue(60)  # type: ignore[attr-defined]
+
+        window.settings_answer = QDialog.DialogCode.Accepted
+        window.settings_edit = edit
+        window.action_settings.trigger()
+        saved = core_settings.load(tmp_path / "settings.json")
+        assert (saved.reference_crf, saved.exr_compression_level) == (23, 60)
 
 
 class TestPuttingThemInForce:
@@ -365,6 +413,14 @@ class TestPuttingThemInForce:
         settings_form.apply_to_process(AppSettings(ffmpeg_path=str(tmp_path)))
         settings_form.apply_to_process(AppSettings())
         assert ffmpeg.current_override() is None
+
+    def test_the_quality_reaches_the_encode_command(self, restore_process: None) -> None:
+        settings_form.apply_to_process(AppSettings(reference_crf=23))
+        assert ffmpeg.current_reference_crf() == 23
+
+    def test_the_compression_level_reaches_the_exr_writer(self, restore_process: None) -> None:
+        settings_form.apply_to_process(AppSettings(exr_compression_level=60))
+        assert exr.current_compression_level() == 60.0
 
     def test_applying_the_page_puts_them_in_force_at_once(
         self, window: DrivenWindow, restore_process: None

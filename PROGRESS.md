@@ -9,10 +9,16 @@ commit.
 ## 1. Resume here
 
 **State at 2026-09-14. Every feature milestone is built, and so is packaging.** M1 to M4
-complete, M4.5 all four chunks, M4.6 all five, **M5 all eleven**, **M7**, and **M9.4**.
-**1648 tests**, `ruff`, `ruff format` and `mypy --strict` clean over `proingest tests build`.
+complete, M4.5 all four chunks, M4.6 all five, **M5 all twelve**, **M7**, and **M9.4**.
+**1665 tests**, `ruff`, `ruff format` and `mypy --strict` clean over `proingest tests build`.
 What is left is **M8 polish** (needs a real turnover and a real colour session) and the rest
 of **M9, the user guide**.
+
+**This session built M5.12, the Settings page's sixth section**, which was the top item on the
+list below of what this machine can still finish alone. Reference quality and the EXR
+compression level are editable, **every section of the page is live**, and both values reach a
+render's worker processes on the channel M5.8.3 built rather than on the render job the plan
+had assumed they would need. Its note is in section 5.
 
 **The last session, 2026-09-13, did three things and found a fourth.** The user is taking the
 repo to a Mac and will put the ffmpeg binaries there by hand, so: **the repo is clone-ready on
@@ -23,7 +29,7 @@ the last open item that was a fault rather than a judgement. Taking the harness'
 picture found that **the status dot had never been drawn on any shot row**; that is fixed with
 it, and section 7 has the mechanism. Each has its own note below.
 
-**Six commits sit on `m7/packaging` and none of them is pushed.** That branch is PR #2 and is
+**Seven commits sit on `m7/packaging` and none of them is pushed.** That branch is PR #2 and is
 about packaging; nothing from the last session belongs to it except by accident of what was
 checked out, so **moving them to a branch of their own before pushing is a decision waiting for
 the user**, and CI has not seen any of them. The Build Track artifact is at version 56.
@@ -69,10 +75,9 @@ against a real session. The source encoding is camera native log as of 2026-09-1
 shot, resolved through a table, recorded in the QC log and stated with its origin in the
 delivered header.
 
-**Three things can still be finished on this machine, and the rest wants the Mac or the real
+**Two things can still be finished on this machine, and the rest wants the Mac or the real
 data.** M8 wants a real turnover and a real colour session; M9's shipped screenshots want the
-Mac. What does not: the Settings page's sixth section, M9.2's quickstart, and what `REVIEW.md`
-deferred. "Next task" below lists them in the order they are worth doing. **Of the two open
+Mac. What does not: M9.2's quickstart, and what `REVIEW.md` deferred. "Next task" below lists them in the order they are worth doing. **Of the two open
 questions that were about correctness rather than scope, OQ-47 closed on 2026-09-13**, which
 leaves OQ-46 - and that one is a question to ask a person, not a thing to build.
 
@@ -98,7 +103,7 @@ is gone**, deleted with its tests in M4.5.4 as planned.
 ### First five minutes
 
 ```
-.venv/bin/python -m pytest tests/ -q          # 1648, about 90 seconds
+.venv/bin/python -m pytest tests/ -q          # 1665, about 90 seconds
 .venv/bin/python -m ruff check . && .venv/bin/python -m ruff format --check . && .venv/bin/python -m mypy proingest tests build
 ```
 
@@ -1112,12 +1117,49 @@ with it. **Four things settled.**
 before `addTopLevelItem`, so every line arriving while a filter was on came in visible. It
 looks like a filter that ignores new lines and nothing about it raises.
 
+### M5.12 is built: the Output section, and the Settings page is whole
+
+The last section M5.7.2 listed and disabled. FR-12's two values - the reference mp4's x264
+rate factor and the delivered EXR's DWAA level - are editable, and **every section of the page
+is live**. 17 tests, 1665 in the suite. **Five things in it are worth not re-deriving.**
+
+- **It did not need the render job, which is what the plan said it would.** Both values are
+  read inside a worker process, and the note that stood here for two chunks said a setting
+  would have to travel on a `DeliverableJob`. It does not: they are per process, not per
+  deliverable, so they go on **the channel M5.8.3 built for the ffmpeg override** -
+  `_worker_init`'s initargs - and the whole crossing is two lines in `render.execute` and two
+  in `_worker_init`. Putting them on the job would have meant the planner reading the app
+  settings, which is a coupling it has never had.
+- **A module global in the module that applies it**, the same shape `ffmpeg._OVERRIDE` has and
+  for the same reason: `ffmpeg._CRF` with `set_reference_crf` / `current_reference_crf`, and
+  `exr._LEVEL` with `set_compression_level` / `current_compression_level`. Each also takes an
+  explicit argument that wins over the one in force (`encode_command(crf=...)`,
+  `write_frame(compression_level=...)`), which is `resolve_tool`'s rule as well: a caller with
+  an opinion states it, and everything else gets the setting rather than a constant.
+- **The defaults are read from core, not typed into the settings file's defaults.**
+  `AppSettings.reference_crf` defaults to `ffmpeg.REFERENCE_CRF` and `exr_compression_level` to
+  `exr.DWA_COMPRESSION_LEVEL`, so a settings file written before this chunk reads back as
+  exactly what the tool did before it, and moving the spec moves both. Both constants changed
+  from `"18"` and `45.0` to plain ints on the way, so the page can edit them with a spin box
+  and `str()` / `float()` happen where they are needed.
+- **The CRF is bounded 0 to 51 because that is what x264 accepts**; outside it, the encode
+  fails on the first frame. The preset stays `slow` and is **not** editable: the PRD asks for
+  quality, and the preset is a speed for a given quality. The DWAA level is bounded 0 to 200,
+  which is a judgement rather than a limit anything enforces.
+- **The rate factor is only observable in the log afterwards.** ffprobe does not surface it, so
+  the test that it reaches a spawned worker reads the logged command and lives with the other
+  channel tests in `tests/test_logsetup.py`; the compression level is in the header of the file
+  the worker wrote, so its test is in `tests/test_render.py`. **The spec still pins both**
+  (CRF 18, DWAA 45) and `docs/COLOR_AND_FORMAT.md` section 3 now says which two numbers in its
+  table are settings and that nothing else in it is.
+
 ### M5.8.3 is built: the Advanced section, and M5.8 is done
 
 The section M5.7.2 listed and disabled because logging had nowhere to be configured from.
 **Output is now the only disabled section left**, and it is disabled for the reason it always
 was: reference quality and the EXR compression level are read inside a worker, so they have to
-travel on a `DeliverableJob`.
+travel there. **M5.12 built that on 2026-09-14** and it turned out not to need the job at all,
+only the channel this chunk built; its note is above.
 
 - **`apply_to_process` is apart from `apply_values` on purpose.** One writes the settings
   objects, the other changes what the interpreter does. Merging them would mean a test of the
@@ -1306,10 +1348,8 @@ is bookable.
 What is left that this machine can still finish on its own, in the order it is worth doing:
 
 - ~~**OQ-47, QC-039's scene linear probe.**~~ **Built 2026-09-13**, and its own note is above.
-- **The Settings page's sixth section.** Output is listed and disabled because reference CRF
-  and the EXR compression level are applied inside a worker and would have to travel on the
-  render job. M5.8.3 already built that channel for the ffmpeg override and the log level, so
-  this is following a path that exists.
+- ~~**The Settings page's sixth section.**~~ **Built 2026-09-14 as M5.12**, and its own note is
+  above. It followed the path M5.8.3 built and needed nothing on the render job.
 - **M9.2, the quickstart.** **M9.4's harness is built** (see its note above): the images it
   takes on Linux are fine for laying the document out and the shipped set is taken on the
   Mac. M9's button reference should read `ui/toolbar_help.py` rather than restate it.
@@ -1532,7 +1572,7 @@ Entry points worth knowing:
 | M4 | QC: all rules both phases, xlsx exports, `qc` CLI | complete, 175 tests |
 | M4.5 | Colour pipeline, core only. Source log in, CLF applied, ACEScg out, the viewing LUT | complete, 111 tests |
 | M4.6 | Per shot source encoding: read from the clip metadata, the input transform table, the input transform out of the graded chains, QC-046 to QC-048 | complete, all five chunks (OQ-37 answered; OQ-46 wants confirming) |
-| M5 | UI: the list, the FR-14 metadata pane, settings, log. **No viewers** | **complete, all eleven chunks** |
+| M5 | UI: the list, the FR-14 metadata pane, settings, log. **No viewers** | **complete, all twelve chunks** |
 | M6 | ~~Stringout with burn-ins~~ | **dropped 2026-09-11**, the colour session exports it |
 | M7 | Packaging: PyInstaller app, dmg, the frozen smoke test, both CI jobs | **complete 2026-09-13, 19 tests.** Built and smoke tested on Linux before pushing; Gatekeeper is OQ-9 and still unanswered |
 | M8 | Polish, performance on a real turnover, docs | not started |

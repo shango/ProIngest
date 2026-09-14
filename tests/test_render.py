@@ -854,6 +854,32 @@ class TestExecute:
         assert not any(job.temp.exists() for job in jobs)
 
 
+class TestTheCompressionLevelReachingAWorker:
+    """M5.12, FR-12 Output. It travels on the channel M5.8.3 built for the override.
+
+    A worker is a fresh interpreter that never saw the Settings page, so a level that
+    stayed in the parent would be every plate written at 45 while the page said
+    otherwise, and nothing anywhere would say so. The reference quality is the other
+    half of this and is tested in `test_logsetup.py`, because the logged command is the
+    only place a rate factor is visible after the fact.
+    """
+
+    def test_a_worker_writes_at_the_level_the_settings_page_set(self, tmp_path: Path) -> None:
+        was = exr.current_compression_level()
+        exr.set_compression_level(60)
+        try:
+            job = raw_job(tmp_path, count=2)
+            assert render.execute([job], workers=1)[0].status == "done"
+        finally:
+            exr.set_compression_level(was)
+
+        written = sorted(job.destination.iterdir())
+        assert written
+        for frame in written:
+            with OpenEXR.File(str(frame)) as handle:
+                assert handle.header()["dwaCompressionLevel"] == 60.0
+
+
 class TestApplyResults:
     def test_executed_records_replace_the_planned_ones_on_their_row(self) -> None:
         planned = Deliverable(kind="raw_dir", name="a", path=Path("/x/a"), version=1)

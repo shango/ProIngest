@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from proingest.core import logsetup, settings
+from proingest.core import exr, ffmpeg, logsetup, settings
 from proingest.core.models import DEFAULT_WORKERS
 
 
@@ -91,6 +91,21 @@ class TestRoundTrip:
         assert loaded.path_map == {"G:/media": "/Volumes/drive"}
         assert loaded.rules == {"min_duration_frames": 11}
         assert loaded.color_session_folder == "/Volumes/drive/colour"
+
+    def test_the_two_output_fields_survive(self, tmp_path: Path) -> None:
+        """M5.12, additive for the same reason: the schema version does not move."""
+        path = tmp_path / "settings.json"
+        settings.save(settings.AppSettings(reference_crf=23, exr_compression_level=60), path)
+        loaded = settings.load(path)
+        assert (loaded.reference_crf, loaded.exr_compression_level) == (23, 60)
+
+    def test_a_file_written_before_the_output_section_existed_delivers_the_spec(self, tmp_path: Path) -> None:
+        """A settings file that predates the section has to read back as the spec values."""
+        path = tmp_path / "settings.json"
+        path.write_text(json.dumps({"schema_version": settings.SCHEMA_VERSION}))
+        loaded = settings.load(path)
+        assert loaded.reference_crf == ffmpeg.REFERENCE_CRF
+        assert loaded.exr_compression_level == exr.DWA_COMPRESSION_LEVEL
 
     def test_a_file_written_before_the_settings_page_existed_reads_back_bare(self, tmp_path: Path) -> None:
         """`workers` has to read back as what the tool would have done anyway."""
