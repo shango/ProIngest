@@ -198,6 +198,17 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
+      - name: The shipped bundle says who it is
+        # OQ-52. The identifier must never change once a build has reached the editor:
+        # macOS keys folder access grants and Launch Services off it. Reading it back out
+        # of the built app checks what actually shipped rather than the value that went in,
+        # which is the only version of this check that would catch the spec dropping it.
+        run: |
+          built=$(plutil -extract CFBundleIdentifier raw "dist/ProIngest.app/Contents/Info.plist")
+          want=$(.venv/bin/python -c 'from build import bundle; print(bundle.BUNDLE_IDENTIFIER)')
+          echo "Info.plist says $built"
+          [ "$built" = "$want" ]
+
       - name: Smoke test the frozen app
         run: .venv/bin/python build/smoke_test.py "dist/ProIngest.app/Contents/MacOS/ProIngest"
 

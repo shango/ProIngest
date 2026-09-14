@@ -78,6 +78,8 @@ whoever registers one owns the domain in it**. It is now `io.github.shango.proin
 standard form for a project whose namespace is its repository. **Do not change it once a build
 has reached the editor** - folder access grants and Launch Services key off it, and notarizing
 would bake it in. Settings and logs are unaffected, being named after the application.
+The macOS job now **reads the identifier back out of the built `Info.plist`** and fails if it
+is not what `build/bundle.py` says, so what shipped is checked rather than what went in.
 
 ## State of PR #2 at close
 
