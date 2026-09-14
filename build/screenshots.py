@@ -159,16 +159,16 @@ def mid_run(window: MainWindow) -> None:
     """
     jobs = plan_batch(window.batch)
     progress = RunProgress(jobs, clock=demo_clock())
-    window._run_progress = progress
+    window.run.progress = progress
     window.shot_model.set_run(progress)
     window.run_strip.start()
     window.progress.setVisible(True)
 
     for job in jobs[:5]:
-        window._run_progressed(Progress(job.name, "done", job.frame_count, job.frame_count))
+        window.run.progressed(Progress(job.name, "done", job.frame_count, job.frame_count))
     running = jobs[5]
-    window._run_progressed(Progress(running.name, "frame", running.frame_count // 3, running.frame_count))
-    window._show_run_progress()
+    window.run.progressed(Progress(running.name, "frame", running.frame_count // 3, running.frame_count))
+    window.run.refresh()
 
 
 PICTURES = (

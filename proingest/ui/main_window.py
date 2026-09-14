@@ -12,18 +12,21 @@ What the window owns is the batch and the file it came from (M5.4), and window s
 which is restored before it is shown and saved when it closes. **Every dialog it opens
 is its own method**, so a test can answer one: an offscreen modal is a hung suite rather
 than a failed assertion.
+
+**A run is `ui/run_controller.py`'s and the pool under it is `ui/runner.py`'s**, in the
+same way a scan is `ui/scanner.py`'s: what is left here is the batch, the surfaces, and
+which of them a collaborator is allowed to ask for. `show_results`, `show_issues`,
+`update_state` and `settings` are public for that reason and for no other.
 """
 
 from __future__ import annotations
 
 import logging
-import re
 from base64 import b64decode, b64encode
-from collections import Counter
 from collections.abc import Sequence
 from pathlib import Path
 
-from PySide6.QtCore import QByteArray, Qt, QTimer, QUrl
+from PySide6.QtCore import QByteArray, Qt, QUrl
 from PySide6.QtGui import QAction, QCloseEvent, QDesktopServices, QKeySequence
 from PySide6.QtWidgets import (
     QDialog,
@@ -43,12 +46,11 @@ from PySide6.QtWidgets import (
 )
 
 from proingest import __version__
-from proingest.core import batchfile, camdata, clf, exports, planner, qc, render, scan
+from proingest.core import batchfile, camdata, clf, qc, scan
 from proingest.core import settings as core_settings
 from proingest.core.models import (
     DEFAULT_BATCH_NAME,
     Batch,
-    Deliverable,
     FrameRate,
     MediaInfo,
     ShotRow,
@@ -60,8 +62,8 @@ from proingest.ui.batch_bar import BatchBar
 from proingest.ui.issues import IssuesDock
 from proingest.ui.log_view import LogView
 from proingest.ui.metadata_pane import MetadataPane
-from proingest.ui.run_strip import LINK_COLOR, RunStrip
-from proingest.ui.runner import SHUTDOWN_WAIT_MS, Runner, RunProgress
+from proingest.ui.run_controller import RunController
+from proingest.ui.run_strip import RunStrip
 from proingest.ui.scanner import Scanner
 from proingest.ui.settings_dialog import SettingsDialog
 from proingest.ui.shot_list import ShotListView
@@ -88,9 +90,7 @@ EDL_FILTER = "Final EDL (*.edl)"
 
 BOTTOM_TABS = ("Issues", "Log", "Deliverables")
 
-NOTHING_TO_RENDER = "Nothing to render: no row produced a deliverable"
 SETTINGS_APPLIED = "Settings applied; the batch has been re-checked"
-CLOSING_AFTER_RUN = "Stopping the run, then closing..."
 
 INGEST_TITLE = "Colour session ingested"
 INGEST_READ = "Read from {name}, which holds {events} events."
@@ -100,19 +100,6 @@ NO_RATE = "No row in {name} has media, so there is no rate to read the EDL's tim
 CANNOT_READ_SESSION = "Could not read the colour session"
 WHICH_TURNOVER = "Ingest a colour session into which turnover?"
 
-HELD_BACK = "{count} turnovers are held back by an error; see the Issues dock"
-HELD_BACK_ONE = "{name} is held back by an error; see the Issues dock"
-
-CHECKING_BATCH = "Checking the batch"
-PLANNING = "Planning {count} shots"
-CHECKING_RESULTS = "Checking what landed"
-WRITING_REPORTS = "Writing the QC log and the shot tracker"
-"""The steps of a run that happen on the UI thread rather than in a worker.
-
-Section 7.1's line names one step at a time, and the ones a worker reports come from
-`RunProgress.activity`. These four are the ones either side of the pool, which are the
-steps that would otherwise be a window that has stopped responding with nothing said.
-"""
 
 METADATA_WIDTH = 360
 """What the pane opens at on a window that has never been arranged."""
@@ -124,13 +111,6 @@ Narrow enough to give the list most of a 1500 pixel window and wide enough that 
 `label  value` line does not wrap on every field. Paths elide rather than wrap, so this
 is about the values that are words.
 """
-
-RUN_REFRESH_MS = 200
-"""How often the status bar and the row bars are redrawn while a run is going.
-
-Five times a second reads as live and costs nothing. The alternative, repainting per
-progress message, is a message per frame per worker: on a fast copy job that is
-thousands a second, all of them saying something the eye cannot see."""
 
 
 def turnover_labels(turnovers: Sequence[Turnover]) -> list[str]:
@@ -147,23 +127,6 @@ def unsaved_question(path: Path | None) -> str:
     if path is None:
         return "This batch has never been saved. Save it before closing?"
     return f"The last save to {path.name} failed and the edits are still unsaved. Save it before closing?"
-
-
-def banner_text(written: Sequence[Deliverable], reports: Path | None, cancelled: bool) -> str:
-    """UI_SPEC section 7's banner, with the path as the thing that can be clicked.
-
-    The wording is the spec's, except that a stopped run says so: the counts alone would
-    read as a batch that finished with most of it skipped, which is the one thing an
-    editor who pressed Stop already knows and the one thing somebody who did not needs
-    telling. The exports sentence is dropped rather than faked when nothing was written.
-    """
-    counts = Counter(item.status for item in written)
-    head = "Run stopped" if cancelled else "Batch complete"
-    text = f"{head}: {counts['done']} done, {counts['failed']} failed, {counts['skipped']} skipped."
-    if reports is None:
-        return f"{text} No exports were written."
-    link = f'<a href="#reports" style="color:{LINK_COLOR}">{reports}</a>'
-    return f"{text} Exports written to {link}"
 
 
 def ingest_text(report: clf.IngestReport, turnover_name: str, rates: Sequence[FrameRate]) -> str:
@@ -238,9 +201,9 @@ class MainWindow(QMainWindow):
         self.action_ingest = self._action("Ingest Colour Session")
         self.action_ingest.triggered.connect(self.ingest_color_session)
         self.action_run = self._action("Run", QKeySequence("Ctrl+R"))
-        self.action_run.triggered.connect(self.run_batch)
+        self.action_run.triggered.connect(lambda: self.run.start())
         self.action_stop = self._action("Stop", QKeySequence("Ctrl+."))
-        self.action_stop.triggered.connect(self.stop_run)
+        self.action_stop.triggered.connect(lambda: self.run.stop())
         self.action_toggle_skip = self._action("Skip Shot", QKeySequence("Ctrl+K"))
         self.action_toggle_skip.triggered.connect(lambda: self.shot_list.toggle_skip())
         self.action_export = self._action("Export")
@@ -370,7 +333,7 @@ class MainWindow(QMainWindow):
         # A commit re-runs that row's rules (M5.3), so what the dock is showing about
         # that row is what just changed. Rebuilt whole: the results are a list short
         # enough that finding the ones that moved costs more than redrawing them.
-        self.shot_model.row_edited.connect(lambda _row: self._show_results())
+        self.shot_model.row_edited.connect(lambda _row: self.show_results())
         self._camdata_cache: dict[Path, dict[str, str]] = {}
         self.autosave.saved.connect(lambda path: self.statusBar().showMessage(f"Saved {path.name}"))
         self.batch_bar = BatchBar(self)
@@ -384,24 +347,9 @@ class MainWindow(QMainWindow):
         self.scanner.started_folder.connect(self._say_scanning)
         self.scanner.finished.connect(self._scan_finished)
 
-        self.runner = Runner(self)
-        self.runner.progressed.connect(self._run_progressed)
-        self.runner.finished.connect(self._run_finished)
-        self.runner.failed.connect(lambda text: self.report_problem("The run failed", text))
-        self._run_progress: RunProgress | None = None
-        self._reports_folder: Path | None = None
-        self._run_timer = QTimer(self)
-        self._run_timer.setInterval(RUN_REFRESH_MS)
-        self._run_timer.timeout.connect(self._show_run_progress)
-        # A close during a run: the run is stopped and the close retried when its
-        # results are in, or when this gives up waiting for them.
-        self._close_wait = QTimer(self)
-        self._close_wait.setSingleShot(True)
-        self._close_wait.timeout.connect(self._close_without_results)
-        self._closing_after_run = False
-        self._close_wait_expired = False
         self.run_strip = RunStrip(self)
-        self.run_strip.link_activated.connect(self._open_reports)
+        # After the strip, because the run reports through it and wires itself to it.
+        self.run = RunController(self)
 
         self.list_pages = QStackedWidget(self)
         self.list_pages.addWidget(self.shot_list)
@@ -441,9 +389,9 @@ class MainWindow(QMainWindow):
         self.batch_bar.set_batch_name(batch.name)
         self.batch_bar.show_delivery_root(batch.delivery_root)
         self._camdata_cache.clear()
-        self._show_results()
+        self.show_results()
         self.pages.setCurrentIndex(1)
-        self._update_state()
+        self.update_state()
 
     @property
     def batch(self) -> Batch:
@@ -454,6 +402,15 @@ class MainWindow(QMainWindow):
     def batch_path(self) -> Path | None:
         """Where the open batch is saved, or None when it has never been saved."""
         return self._batch_path
+
+    @property
+    def settings(self) -> core_settings.AppSettings:
+        """The per user settings now in force. Replaced wholesale by an Apply.
+
+        Read only from here, because a run reads three of them (`ui/run_controller.py`)
+        and the Settings page is the one thing that writes them.
+        """
+        return self._settings
 
     def new_batch(self) -> None:
         """An empty batch with no file, waiting for a turnover (section 10).
@@ -542,7 +499,7 @@ class MainWindow(QMainWindow):
         batch.settings_overrides[qc.RULES_OVERRIDE_KEY] = rules.to_dict()
         qc.apply_batch_rules(batch, rules)
         self.shot_model.refresh_rows()
-        self._show_results()
+        self.show_results()
         self.autosave.schedule()
         self.statusBar().showMessage(SETTINGS_APPLIED)
 
@@ -550,29 +507,6 @@ class MainWindow(QMainWindow):
         """Built here so a test can hand back one it has already answered."""
         rules = qc.settings_for(self.batch) if self._batch_open else self._app_rules()
         return SettingsDialog(self._settings, rules, self)
-
-    def _close_after_run(self) -> None:
-        """Stop the run and close once `_run_finished` has applied what it wrote."""
-        if self._closing_after_run:
-            return
-        self._closing_after_run = True
-        self.runner.finished.connect(self._close_now_that_the_run_is_over)
-        self._close_wait.start(SHUTDOWN_WAIT_MS)
-        self.stop_run()
-        self.statusBar().showMessage(CLOSING_AFTER_RUN)
-
-    def _close_now_that_the_run_is_over(self, *_: object) -> None:
-        """Connected after `_run_finished`, so the results are on the rows by now."""
-        self.runner.finished.disconnect(self._close_now_that_the_run_is_over)
-        self._close_wait.stop()
-        self._closing_after_run = False
-        self.close()
-
-    def _close_without_results(self) -> None:
-        """The bounded wait ran out: close the way it used to, dropping the results."""
-        log.warning("the run did not stop within %d ms; closing without its results", SHUTDOWN_WAIT_MS)
-        self._close_wait_expired = True
-        self.close()
 
     def _app_rules(self) -> qc.RuleSettings:
         """The thresholds a new batch would start from, or the defaults.
@@ -682,7 +616,7 @@ class MainWindow(QMainWindow):
         )
         self.progress.setRange(0, 0)
         self.progress.setVisible(True)
-        self._update_state()
+        self.update_state()
         self.scanner.start(folders, settings, self.batch.probe_cache)
 
     def _say_scanning(self, folder: Path) -> None:
@@ -715,15 +649,15 @@ class MainWindow(QMainWindow):
         batch.probe_cache.update(probe_cache)
         qc.apply_batch_rules(batch, qc.settings_for(batch))
         self.shot_model.set_batch(batch)
-        self._show_results()
+        self.show_results()
         self.autosave.schedule()
-        self._update_state()
+        self.update_state()
 
     def _scan_finished(self) -> None:
         self.progress.setVisible(False)
         self.progress.setRange(0, 100)
         self.statusBar().showMessage(f"{len(self.batch.rows)} shots")
-        self._update_state()
+        self.update_state()
 
     # --- the colour session -----------------------------------------------------------
 
@@ -744,7 +678,7 @@ class MainWindow(QMainWindow):
         matched, so the durations the thresholds are judged against have changed. QC-008
         and QC-009 are pre-flight and clear at the next Run.
         """
-        if not self._batch_open or self.scanner.busy or self.runner.busy:
+        if not self._batch_open or self.scanner.busy or self.run.busy:
             return
         turnover = self._turnover_to_ingest()
         if turnover is None:
@@ -769,7 +703,7 @@ class MainWindow(QMainWindow):
         self._settings.color_session_folder = str(edl.parent)
         qc.apply_batch_rules(self.batch, qc.settings_for(self.batch))
         self.shot_model.refresh_rows()
-        self._show_results()
+        self.show_results()
         self.autosave.schedule()
         self.report_ingest(ingest_text(report, turnover.folder.name, rates))
 
@@ -791,191 +725,9 @@ class MainWindow(QMainWindow):
                 chosen = next((t for t in turnovers if t.turnover_id == one), None)
         return chosen if chosen is not None else self.ask_turnover(turnovers)
 
-    # --- the run ----------------------------------------------------------------------
-
-    def run_batch(self) -> None:
-        """Plan the batch and render it. UI_SPEC section 7, and PRD FR-6 and FR-7.
-
-        Three things happen before a job reaches a worker, and all three are on this
-        thread because all three write to the batch: pre-flight, which reads the disk
-        and records what it found on the rows; planning, which resolves one version per
-        shot from what is already in the delivery folder and replaces every row's
-        deliverables with the plan; and the check that anything came out of it. The
-        pool gets the jobs and nothing else (`ui/runner.py`).
-
-        **A batch scope error stops the run and a row scope one does not** (FR-6): a
-        turnover with no lens grid is a warning the editor reads, and a delivery root
-        that cannot be written to is not.
-
-        **A turnover whose pre-flight found an error is held back rather than rendered**,
-        and the rest of the batch still delivers (`qc.blocked_turnovers`). That is what
-        QC-008 buys by being turnover scope: a turnover waiting on its colour session
-        would otherwise render every row ungraded, which is the wrong pixels under the
-        right filename, while the turnovers beside it are ready to go.
-        """
-        if not self._batch_open or self.runner.busy or self.scanner.busy:
-            return
-        batch = self.batch
-        if batch.delivery_root is None:
-            # Section 7: prompted once, here, rather than by a dialog every run opens.
-            self.choose_delivery_root()
-            if batch.delivery_root is None:
-                return
-
-        self.run_strip.start()
-        self.run_strip.say(CHECKING_BATCH)
-        qc.preflight(batch)
-        blocking = qc.blocking_results(batch)
-        self._show_results()
-        self.shot_model.refresh_rows()
-        if blocking:
-            self.run_strip.clear()
-            self.report_problem(
-                "The batch cannot run",
-                "\n".join(f"{result.rule_id}: {result.message}" for result in blocking),
-            )
-            self._show_issues()
-            return
-
-        held_back = qc.blocked_turnovers(batch)
-        if held_back:
-            self.statusBar().showMessage(self._held_back_text(held_back))
-
-        self.run_strip.say(PLANNING.format(count=len(batch.rows)))
-        try:
-            jobs = planner.plan_batch(
-                batch,
-                batch.delivery_root,
-                settings_form.show_pattern_of(self._settings),
-                skip_turnovers=held_back,
-            )
-        except (ValueError, clf.ClfError) as exc:
-            self.run_strip.clear()
-            self.report_problem("The batch cannot be planned", str(exc))
-            return
-        self.shot_model.refresh_rows()
-        if not jobs:
-            self.run_strip.clear()
-            self.statusBar().showMessage(NOTHING_TO_RENDER)
-            return
-
-        self._run_progress = RunProgress(jobs)
-        self.shot_model.set_run(self._run_progress)
-        self.progress.setRange(0, 100)
-        self.progress.setValue(0)
-        self.progress.setVisible(True)
-        self._run_timer.start()
-        self._update_state()
-        self.runner.start(jobs, self._settings.workers)
-
-    def _held_back_text(self, held_back: frozenset[str]) -> str:
-        """What the status bar says about the turnovers this run will not touch."""
-        if len(held_back) > 1:
-            return HELD_BACK.format(count=len(held_back))
-        one = next(iter(held_back))
-        name = next((t.folder.name for t in self.batch.turnovers if t.turnover_id == one), one)
-        return HELD_BACK_ONE.format(name=name)
-
-    def stop_run(self) -> None:
-        """Stop: no new jobs, in-flight ones stop at their next frame boundary.
-
-        What is already written stays written and what was part way through discards
-        its `.part`, so a stopped run leaves the delivery folder holding finished files
-        only (UI_SPEC section 7). The results still come back and are still applied,
-        because a job that finished before Stop was pressed is a real deliverable.
-        """
-        if not self.runner.busy:
-            return
-        self.runner.cancel()
-        self.statusBar().showMessage("Stopping after the frames in flight...")
-        self._update_state()
-
-    def _run_progressed(self, message: render.Progress) -> None:
-        """One message from a worker. Folded in and drawn on the timer, never here."""
-        if self._run_progress is not None:
-            self._run_progress.update(message)
-
-    def _show_run_progress(self) -> None:
-        """Every surface a run has, five times a second, all off the one `RunProgress`.
-
-        Four of them and each says what the others cannot (section 7.1): the strip's
-        bar for the batch, its line for the step, the status bar for the numbers, and
-        the Progress column for the shot. Drawn from one object in one place, so they
-        cannot disagree about how far along the run is.
-        """
-        if self._run_progress is None:
-            return
-        self.progress.setValue(self._run_progress.percent)
-        self.run_strip.set_percent(self._run_progress.percent)
-        # Left alone when nothing is running: at the end of a run every job is finished
-        # and the next thing to say is `_run_finished`'s rather than a worker's.
-        if activity := self._run_progress.activity:
-            self.run_strip.say(activity)
-        self.statusBar().showMessage(self._run_progress.summary())
-        self.shot_model.refresh_rows()
-
-    def _run_finished(self, written: list[Deliverable], cancelled: bool) -> None:
-        """The records, back on the UI thread, written onto the rows they were planned from.
-
-        `apply_results` is what re-runs QC-150 and QC-151, the two phase B rules a worker
-        cannot answer, so the Issues dock is only right after it. The exports come next
-        because they report what the QC just decided, and the banner last because it
-        says where they went.
-        """
-        self._run_timer.stop()
-        self._run_progress = None
-        self.shot_model.set_run(None)
-        self.progress.setVisible(False)
-
-        batch = self.batch
-        self.run_strip.say(CHECKING_RESULTS)
-        render.apply_results(batch, written, settings_form.show_pattern_of(self._settings))
-        self.shot_model.refresh_rows()
-        self._show_results()
-        self.autosave.schedule()
-
-        self.run_strip.say(WRITING_REPORTS)
-        reports = self._write_reports(batch)
-        text = banner_text(written, reports, cancelled)
-        self.run_strip.show_banner(text)
-        self._reports_folder = reports
-        # The same sentence without its link, because the banner is above the list and
-        # the status bar is where the eye already is when a long run ends.
-        self.statusBar().showMessage(re.sub(r"<[^>]+>", "", text))
-        self._update_state()
-
-    def _write_reports(self, batch: Batch) -> Path | None:
-        """The two spreadsheets, into the delivery root (FR-10). None when they could not go.
-
-        Written by the run rather than by a button, because section 7's banner says
-        where they are and PRD section 7 puts them at the end of a delivery. A batch
-        whose rows have no shot code has no show to file them under, which is a
-        `ValueError` from `report_paths` rather than a crash, and the banner then says
-        nothing was written instead of naming a folder that does not exist.
-        """
-        if batch.delivery_root is None:
-            return None
-        try:
-            log_path, tracker_path = exports.report_paths(batch, batch.delivery_root)
-            exports.write_qc_log(batch, log_path)
-            exports.write_shot_tracker(batch, tracker_path)
-        except (ValueError, OSError) as exc:
-            self.report_problem("The exports could not be written", str(exc))
-            return None
-        return log_path.parent
-
-    def _open_reports(self) -> None:
-        """The banner's link: the folder the two spreadsheets went into."""
-        if self._reports_folder is not None:
-            self.open_folder(self._reports_folder)
-
-    def open_folder(self, folder: Path) -> None:
-        """Show a folder in the Finder. Its own method so a test can answer it."""
-        QDesktopServices.openUrl(QUrl.fromLocalFile(str(folder)))
-
     # --- what is enabled, and what the centre shows -----------------------------------
 
-    def _update_state(self) -> None:
+    def update_state(self) -> None:
         """One place that decides both, because both answer the same three questions.
 
         Called after anything that can change what the batch holds, rather than from
@@ -984,7 +736,7 @@ class MainWindow(QMainWindow):
         """
         open_batch = self._batch_open
         scanning = self.scanner.busy
-        running = self.runner.busy
+        running = self.run.busy
         busy = scanning or running
         for action in (self.action_cycle_display, self.action_find, self.action_toggle_skip):
             action.setEnabled(open_batch)
@@ -996,7 +748,7 @@ class MainWindow(QMainWindow):
         self.action_new.setEnabled(not running)
         self.action_open.setEnabled(not running)
         self.action_run.setEnabled(open_batch and not busy and bool(self.batch.rows))
-        self.action_stop.setEnabled(running and not self.runner.cancelled)
+        self.action_stop.setEnabled(running and not self.run.cancelled)
         self._refresh_tooltips(open_batch=open_batch, scanning=scanning, running=running)
 
         if not open_batch:
@@ -1026,7 +778,7 @@ class MainWindow(QMainWindow):
             has_session=open_batch and any(t.color_session_edl is not None for t in self.batch.turnovers),
             scanning=scanning,
             rendering=running,
-            stopping=running and self.runner.cancelled,
+            stopping=running and self.run.cancelled,
         )
         for key, action in self._toolbar_help:
             shortcut = action.shortcut().toString(QKeySequence.SequenceFormat.NativeText)
@@ -1082,11 +834,11 @@ class MainWindow(QMainWindow):
         self.list_empty_text = QLabel(NO_TURNOVERS_TEXT, central)
         self.list_empty_text.setObjectName("list_empty_state_text")
         self.list_empty_text.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.list_empty_text.linkActivated.connect(self._show_issues)
+        self.list_empty_text.linkActivated.connect(self.show_issues)
         layout.addWidget(self.list_empty_text)
         return central
 
-    def _show_issues(self) -> None:
+    def show_issues(self) -> None:
         """Bring the Issues tab up, which is where the link in section 10 points."""
         self.bottom_dock.setVisible(True)
         self.bottom_tabs.setCurrentIndex(BOTTOM_TABS.index("Issues"))
@@ -1156,6 +908,10 @@ class MainWindow(QMainWindow):
             | QMessageBox.StandardButton.Cancel,
             QMessageBox.StandardButton.Save,
         )
+
+    def open_folder(self, folder: Path) -> None:
+        """Show a folder in the Finder. Its own method so a test can answer it."""
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(folder)))
 
     def report_problem(self, title: str, text: str) -> None:
         """Something the editor has to know about and can do something about."""
@@ -1257,10 +1013,10 @@ class MainWindow(QMainWindow):
 
     def _show_issue(self, rule_id: str) -> None:
         """A rule ID clicked in the pane: bring the Issues dock forward (section 12.2)."""
-        self._show_issues()
+        self.show_issues()
         self.issues.select_result(rule_id, self.shot_list.selected_rows())
 
-    def _show_results(self) -> None:
+    def show_results(self) -> None:
         """The Issues dock and the metadata pane, which read the same QC results.
 
         One method because they are always right or wrong together: every place that
@@ -1368,15 +1124,15 @@ class MainWindow(QMainWindow):
         worker must not be a window that cannot be closed, and after that long the close
         goes ahead without the results, as it always did.
         """
-        if self.runner.busy and not self._close_wait_expired:
-            self._close_after_run()
+        if self.run.busy and not self.run.wait_expired:
+            self.run.close_when_finished()
             event.ignore()
             return
         if not self._may_abandon_current():
             event.ignore()
             return
         self.scanner.shutdown()
-        self.runner.shutdown()
+        self.run.shutdown()
         self.log_view.detach()
         self.save_window_state()
         super().closeEvent(event)

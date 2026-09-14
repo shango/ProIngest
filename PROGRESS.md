@@ -1158,6 +1158,28 @@ because one half of it was a real mismatch rather than a tidy-up.
   count rather than refused, because a hand edited batch file carrying one still has to be able
   to take another turnover.
 
+Then S1, one collaborator at a time.
+
+- **`ui/run_controller.py`** is the first half: the whole of a run, out of the window.
+  Pre-flight, the blocked turnovers, planning, the timer that draws the four surfaces, the
+  records coming back, the two spreadsheets, the banner, and the bounded wait that lets a
+  window close mid run without dropping what the run finished. `main_window.py` is **1394
+  lines down to 1135**, and the run's twelve methods are one collaborator with the run's own
+  state beside them. No behaviour changed and the suite says so.
+  - **It holds the window rather than a list of the seven things it needs.** A run touches the
+    batch, the model, the strip, the status bar, the autosaver, the Issues dock and two
+    dialogs; a constructor taking all seven is the same coupling at greater length. What the
+    boundary buys is that the run's own state - the progress fold up, the two timers, where the
+    exports went - lives beside the code that reads it.
+  - **Four of the window's methods are public now and that is the point**: `show_results`,
+    `show_issues`, `update_state` and a read only `settings`. They are what a collaborator is
+    allowed to ask for, and the module docstring says so, so the next split has a surface to
+    aim at rather than a guess.
+  - **The run's tests drive the signal rather than the slot.** `window._run_finished(...)` was
+    a call into a private method; `finish_run` emits `runner.finished` instead, which is the
+    seam the window actually listens on - a run whose results reached nothing would have passed
+    the old way.
+
 ### M9.3 is built: the reference section, and the guide's prose is done
 
 `docs/guide/reference.md`. The layout, the toolbar, the list and its fifteen columns, the dot,
@@ -1666,7 +1688,8 @@ PDF viewer.
 | `core/qc.py` | rule registry: phase A, `RuleSettings`, `preflight`, phase B | 1416 |
 | `core/settings.py` | what the app remembers between launches, as JSON. Takes the path; never works out where it is | 111 |
 | `ui/app.py` | the QApplication, its names, the theme, and `run()` | 49 |
-| `ui/main_window.py` | UI_SPEC section 1's frame: menus and their macOS roles, toolbar, bottom dock, status bar, the three empty states and the batch page, window state, the autosaver, the batch lifecycle (New, Open, Save, the two roots, Add Turnover and Scan), the colour session ingest (which turnover, which EDL, and what it reports), and the run (pre-flight, planning, Stop, the exports, the steps it narrates and section 7's banner text), and the metadata dock with the three signals that refresh it | 1275 |
+| `ui/main_window.py` | UI_SPEC section 1's frame: menus and their macOS roles, toolbar, bottom dock, status bar, the three empty states and the batch page, window state, the autosaver, the batch lifecycle (New, Open, Save, the two roots, Add Turnover and Scan), the colour session ingest (which turnover, which EDL, and what it reports), and the metadata dock with the three signals that refresh it | 1135 |
+| `ui/run_controller.py` | what one Run does either side of the pool: pre-flight, the blocked turnovers, planning, the four surfaces it reports through on a timer, applying the records, the two spreadsheets, section 7's banner text, and the bounded wait that lets a window close mid run without dropping its results | 339 |
 | `ui/shot_model.py` | the batch as a two level tree: section 2's columns, section 3's dot and tints, the In/Out display mode, what the four editable cells commit, where a given row sits, and how far a live run has got with it | 760 |
 | `ui/shot_list.py` | the view, the two line cell, the Progress column's slim bar, the search filter, the cell editor, Tab across the editable columns, the skip prompt, what is selected, and selecting a row somebody pointed at from the Issues dock | 410 |
 | `ui/batch_bar.py` | the batch name, the delivery root button, the three state In/Out toggle and the search box | 104 |
