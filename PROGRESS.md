@@ -1140,7 +1140,7 @@ with it. **Four things settled.**
 before `addTopLevelItem`, so every line arriving while a filter was on came in visible. It
 looks like a filter that ignores new lines and nothing about it raises.
 
-### The MainWindow split is being built: what `REVIEW.md` deferred as S1 and S2
+### The MainWindow split is built: what `REVIEW.md` deferred as S1 and S2
 
 The review's two structural findings that were left for a session of their own. S2 first,
 because one half of it was a real mismatch rather than a tidy-up.
@@ -1163,9 +1163,9 @@ Then S1, one collaborator at a time.
 - **`ui/run_controller.py`** is the first half: the whole of a run, out of the window.
   Pre-flight, the blocked turnovers, planning, the timer that draws the four surfaces, the
   records coming back, the two spreadsheets, the banner, and the bounded wait that lets a
-  window close mid run without dropping what the run finished. `main_window.py` is **1394
-  lines down to 1135**, and the run's twelve methods are one collaborator with the run's own
-  state beside them. No behaviour changed and the suite says so.
+  window close mid run without dropping what the run finished. That step alone took
+  `main_window.py` from 1394 lines to 1135, and the run's twelve methods are one collaborator
+  with the run's own state beside them.
   - **It holds the window rather than a list of the seven things it needs.** A run touches the
     batch, the model, the strip, the status bar, the autosaver, the Issues dock and two
     dialogs; a constructor taking all seven is the same coupling at greater length. What the
@@ -1179,6 +1179,21 @@ Then S1, one collaborator at a time.
     a call into a private method; `finish_run` emits `runner.finished` instead, which is the
     seam the window actually listens on - a run whose results reached nothing would have passed
     the old way.
+- **`ui/color_session.py`** is the second half: which turnover the ingest is for, the rate its
+  EDL is read at, what `core/clf.py` is handed, and the report the editor is shown, with the
+  seven strings that say it. **The dialogs stayed on the window** - `ask_edl_path`,
+  `ask_turnover`, `report_ingest` and `report_problem` are each their own method there so a
+  test can answer one, and moving them would have traded a hung suite for a tidier module.
+- **`main_window.py` is 1394 lines down to 1039**, and what is left is one subject: the frame,
+  the batch lifecycle, the scan, what is enabled, the dialogs and what the window remembers.
+- **Moving a block dropped a guard, and now two tests hold it down.** `run_batch` began
+  `if not self._batch_open or self.runner.busy or self.scanner.busy: return` and the move lost
+  it; nothing failed, because **a disabled `QAction` swallows a `trigger()`**, so every test
+  that pressed Run while a scan was going still passed. Both guards are asked of the
+  controller and of `color_session.ingest` directly now, and each was checked by deleting the
+  guard and watching the test go red. **That is the failure mode of this whole refactor**: the
+  UI tests drive the toolbar, and the toolbar is the thing that greys itself, so a guard behind
+  a greyed button is invisible to them.
 
 ### M9.3 is built: the reference section, and the guide's prose is done
 
@@ -1688,7 +1703,8 @@ PDF viewer.
 | `core/qc.py` | rule registry: phase A, `RuleSettings`, `preflight`, phase B | 1416 |
 | `core/settings.py` | what the app remembers between launches, as JSON. Takes the path; never works out where it is | 111 |
 | `ui/app.py` | the QApplication, its names, the theme, and `run()` | 49 |
-| `ui/main_window.py` | UI_SPEC section 1's frame: menus and their macOS roles, toolbar, bottom dock, status bar, the three empty states and the batch page, window state, the autosaver, the batch lifecycle (New, Open, Save, the two roots, Add Turnover and Scan), the colour session ingest (which turnover, which EDL, and what it reports), and the metadata dock with the three signals that refresh it | 1135 |
+| `ui/main_window.py` | UI_SPEC section 1's frame: menus and their macOS roles, toolbar, bottom dock, status bar, the three empty states and the batch page, window state, the autosaver, the batch lifecycle (New, Open, Save, the two roots, Add Turnover and Scan), every dialog it opens, and the metadata dock with the three signals that refresh it | 1039 |
+| `ui/color_session.py` | the window's half of PRD section 6 step 4: which turnover the ingest is for, the rate its EDL is read at, what `core/clf.py` is handed, and the report the editor is shown | 129 |
 | `ui/run_controller.py` | what one Run does either side of the pool: pre-flight, the blocked turnovers, planning, the four surfaces it reports through on a timer, applying the records, the two spreadsheets, section 7's banner text, and the bounded wait that lets a window close mid run without dropping its results | 339 |
 | `ui/shot_model.py` | the batch as a two level tree: section 2's columns, section 3's dot and tints, the In/Out display mode, what the four editable cells commit, where a given row sits, and how far a live run has got with it | 760 |
 | `ui/shot_list.py` | the view, the two line cell, the Progress column's slim bar, the search filter, the cell editor, Tab across the editable columns, the skip prompt, what is selected, and selecting a row somebody pointed at from the Issues dock | 410 |

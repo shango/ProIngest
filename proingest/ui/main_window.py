@@ -13,10 +13,11 @@ which is restored before it is shown and saved when it closes. **Every dialog it
 is its own method**, so a test can answer one: an offscreen modal is a hung suite rather
 than a failed assertion.
 
-**A run is `ui/run_controller.py`'s and the pool under it is `ui/runner.py`'s**, in the
-same way a scan is `ui/scanner.py`'s: what is left here is the batch, the surfaces, and
-which of them a collaborator is allowed to ask for. `show_results`, `show_issues`,
-`update_state` and `settings` are public for that reason and for no other.
+**A run is `ui/run_controller.py`'s, the pool under it is `ui/runner.py`'s, and the
+colour session ingest is `ui/color_session.py`'s**, in the same way a scan is
+`ui/scanner.py`'s: what is left here is the batch, the surfaces, and which of them a
+collaborator is allowed to ask for. `batch`, `batch_open`, `settings`, `show_results`,
+`show_issues` and `update_state` are public for that reason and for no other.
 """
 
 from __future__ import annotations
@@ -46,17 +47,16 @@ from PySide6.QtWidgets import (
 )
 
 from proingest import __version__
-from proingest.core import batchfile, camdata, clf, qc, scan
+from proingest.core import batchfile, camdata, qc, scan
 from proingest.core import settings as core_settings
 from proingest.core.models import (
     DEFAULT_BATCH_NAME,
     Batch,
-    FrameRate,
     MediaInfo,
     ShotRow,
     Turnover,
 )
-from proingest.ui import metadata, settings_form, toolbar_help
+from proingest.ui import color_session, metadata, settings_form, toolbar_help
 from proingest.ui.autosave import AutoSaver
 from proingest.ui.batch_bar import BatchBar
 from proingest.ui.issues import IssuesDock
@@ -92,14 +92,6 @@ BOTTOM_TABS = ("Issues", "Log", "Deliverables")
 
 SETTINGS_APPLIED = "Settings applied; the batch has been re-checked"
 
-INGEST_TITLE = "Colour session ingested"
-INGEST_READ = "Read from {name}, which holds {events} events."
-INGEST_MIXED_RATES = "This turnover carries more than one rate; the EDL was read at {rate}."
-NO_RATE_TITLE = "Nothing to read the EDL at"
-NO_RATE = "No row in {name} has media, so there is no rate to read the EDL's timecode at. Scan it first."
-CANNOT_READ_SESSION = "Could not read the colour session"
-WHICH_TURNOVER = "Ingest a colour session into which turnover?"
-
 
 METADATA_WIDTH = 360
 """What the pane opens at on a window that has never been arranged."""
@@ -113,40 +105,11 @@ is about the values that are words.
 """
 
 
-def turnover_labels(turnovers: Sequence[Turnover]) -> list[str]:
-    """Folder names, with the parent folder added where two turnovers share one."""
-    names = [turnover.folder.name for turnover in turnovers]
-    return [
-        f"{turnover.folder.parent.name}/{name}" if names.count(name) > 1 else name
-        for turnover, name in zip(turnovers, names, strict=True)
-    ]
-
-
 def unsaved_question(path: Path | None) -> str:
     """What to ask about pending edits: no file yet, or a file the last write missed."""
     if path is None:
         return "This batch has never been saved. Save it before closing?"
     return f"The last save to {path.name} failed and the edits are still unsaved. Save it before closing?"
-
-
-def ingest_text(report: clf.IngestReport, turnover_name: str, rates: Sequence[FrameRate]) -> str:
-    """What one ingest did, in the words `proingest run --color-session` prints.
-
-    The counts and the three labelled lists come off the report itself
-    (`IngestReport.counts` and `notices`), so the two surfaces cannot drift apart. What
-    is said here and not there is the turnover's folder name, because the window ingests
-    one turnover rather than all of them.
-    """
-    lines = [
-        f"{turnover_name}: {report.counts}",
-        "",
-        INGEST_READ.format(name=report.edl_path.name, events=report.events),
-    ]
-    if len({str(rate) for rate in rates}) > 1:
-        lines.append(INGEST_MIXED_RATES.format(rate=rates[0]))
-    for label, names in report.notices():
-        lines += ["", f"{label}: {', '.join(names)}"]
-    return "\n".join(lines)
 
 
 class MainWindow(QMainWindow):
@@ -199,7 +162,7 @@ class MainWindow(QMainWindow):
         self.action_scan = self._action("Scan")
         self.action_scan.triggered.connect(self.scan_unscanned)
         self.action_ingest = self._action("Ingest Colour Session")
-        self.action_ingest.triggered.connect(self.ingest_color_session)
+        self.action_ingest.triggered.connect(lambda: color_session.ingest(self))
         self.action_run = self._action("Run", QKeySequence("Ctrl+R"))
         self.action_run.triggered.connect(lambda: self.run.start())
         self.action_stop = self._action("Stop", QKeySequence("Ctrl+."))
@@ -402,6 +365,11 @@ class MainWindow(QMainWindow):
     def batch_path(self) -> Path | None:
         """Where the open batch is saved, or None when it has never been saved."""
         return self._batch_path
+
+    @property
+    def batch_open(self) -> bool:
+        """Whether there is a batch at all. What every action that needs one asks first."""
+        return self._batch_open
 
     @property
     def settings(self) -> core_settings.AppSettings:
@@ -659,72 +627,6 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(f"{len(self.batch.rows)} shots")
         self.update_state()
 
-    # --- the colour session -----------------------------------------------------------
-
-    def ingest_color_session(self) -> None:
-        """Point at the session's final EDL and write what it says onto one turnover.
-
-        PRD section 6 step 4, and the window's half of what `run --color-session` does.
-        **One turnover**, because that is the scope the session is recorded at
-        (`Turnover.color_session_edl`, OQ-50) and the scope QC-008 holds a run back at: a
-        turnover still waiting on colour is a different turnover from this one.
-
-        **The rate the EDL is read at is the first row with media's**, which is the CLI's
-        answer and for the CLI's reason: an EDL's timecode is read at one rate and a batch
-        can carry more than one (OQ-19). A turnover whose rows have no media has no rate to
-        read it at, and that is said before the chooser opens rather than after it.
-
-        The rules re-run afterwards because the ingest moves In and Out on the rows it
-        matched, so the durations the thresholds are judged against have changed. QC-008
-        and QC-009 are pre-flight and clear at the next Run.
-        """
-        if not self._batch_open or self.scanner.busy or self.run.busy:
-            return
-        turnover = self._turnover_to_ingest()
-        if turnover is None:
-            return
-        rows = self.batch.rows_for(turnover.turnover_id)
-        rates = [row.media.rate for row in rows if row.media is not None]
-        if not rates:
-            self.report_problem(NO_RATE_TITLE, NO_RATE.format(name=turnover.folder.name))
-            return
-        edl = self.ask_edl_path()
-        if edl is None:
-            return
-        try:
-            session = clf.load_session(edl, rates[0], settings_form.show_pattern_of(self._settings))
-        except clf.ColorSessionError as exc:
-            self.report_problem(CANNOT_READ_SESSION, str(exc))
-            return
-
-        report = clf.ingest(turnover, rows, session)
-        # Where the chooser opens next time, which is a per user starting point and not
-        # a record of what this batch was graded from: that is on the turnover (FR-12).
-        self._settings.color_session_folder = str(edl.parent)
-        qc.apply_batch_rules(self.batch, qc.settings_for(self.batch))
-        self.shot_model.refresh_rows()
-        self.show_results()
-        self.autosave.schedule()
-        self.report_ingest(ingest_text(report, turnover.folder.name, rates))
-
-    def _turnover_to_ingest(self) -> Turnover | None:
-        """Which turnover the ingest is for: the selection when it says, else asked for.
-
-        A batch of one turnover never asks, because there is nothing to choose between.
-        A selected group header says which, and so does a selection of rows that are all
-        in the same one; a selection spanning two turnovers says nothing, so it asks.
-        """
-        turnovers = [t for t in self.batch.turnovers if self.batch.rows_for(t.turnover_id)]
-        if len(turnovers) == 1:
-            return turnovers[0]
-        chosen = self.shot_list.selected_turnover()
-        if chosen is None:
-            selected = {row.turnover_id for row in self.shot_list.selected_rows()}
-            if len(selected) == 1:
-                one = next(iter(selected))
-                chosen = next((t for t in turnovers if t.turnover_id == one), None)
-        return chosen if chosen is not None else self.ask_turnover(turnovers)
-
     # --- what is enabled, and what the centre shows -----------------------------------
 
     def update_state(self) -> None:
@@ -880,9 +782,9 @@ class MainWindow(QMainWindow):
         The folder is what the editor picked in Add Turnover and what the session was
         exported for; `turnover001` is the tool's own handle for it.
         """
-        names = turnover_labels(turnovers)
+        names = color_session.turnover_labels(turnovers)
         chosen, accepted = QInputDialog.getItem(
-            self, "Ingest Colour Session", WHICH_TURNOVER, names, 0, False
+            self, "Ingest Colour Session", color_session.WHICH_TURNOVER, names, 0, False
         )
         if not accepted:
             return None
@@ -895,7 +797,7 @@ class MainWindow(QMainWindow):
         something to act on now - a row with no event will not render - and the
         alternative is a status bar line that is gone before it has been read.
         """
-        QMessageBox.information(self, INGEST_TITLE, text)
+        QMessageBox.information(self, color_session.INGEST_TITLE, text)
 
     def ask_unsaved(self) -> QMessageBox.StandardButton:
         """Save, Discard or Cancel, for edits that could not be written."""

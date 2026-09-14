@@ -152,6 +152,8 @@ class RunController(QObject):
         right filename, while the turnovers beside it are ready to go.
         """
         window = self._window
+        if not window.batch_open or self.runner.busy or window.scanner.busy:
+            return
         batch = window.batch
         strip = window.run_strip
         if batch.delivery_root is None:

@@ -31,16 +31,14 @@ from proingest.core.models import Batch, Deliverable, FrameRate, InOut, Turnover
 from proingest.core.planner import DeliverableJob
 from proingest.core.render import Progress
 from proingest.ui import app as ui_app
-from proingest.ui import paths
+from proingest.ui import color_session, paths
+from proingest.ui.color_session import INGEST_MIXED_RATES, ingest_text, turnover_labels
 from proingest.ui.main_window import (
     BOTTOM_TABS,
     EMPTY_STATE_TEXT,
-    INGEST_MIXED_RATES,
     NO_ROWS_TEXT,
     NO_TURNOVERS_TEXT,
     MainWindow,
-    ingest_text,
-    turnover_labels,
     unsaved_question,
 )
 from proingest.ui.metadata import MIXED, NO_SELECTION, as_text
@@ -874,16 +872,28 @@ class TestIngestingAColourSession:
         assert all(t.color_session_edl is None for t in window.batch.turnovers)
 
     def test_it_waits_for_a_scan_to_finish(self, window: DrivenWindow) -> None:
-        """A scan rebuilds rows, and an ingest writes onto the rows it can see now."""
-        window.set_batch(batch(row()))
+        """A scan rebuilds rows, and an ingest writes onto the rows it can see now.
+
+        Both the greyed button and the guard behind it, because a disabled `QAction`
+        swallows a `trigger()` and would pass whether the guard is there or not.
+        """
+        window.set_batch(
+            batch(
+                row(turnover_id="t1"),
+                row("mx0002_pl01", turnover_id="t2"),
+                turnovers=[turnover("t1"), turnover("t2")],
+            )
+        )
         stub_scanner(window, busy=True)
         window.update_state()
 
         assert not window.action_ingest.isEnabled()
+        color_session.ingest(window)
+        assert window.turnovers_asked == []
 
 
 class TestWhatAnIngestSays:
-    """`ingest_text`, which says what `--color-session` prints (`_ingest_color_session`)."""
+    """`ingest_text`, which says what `--color-session` prints (`ui/color_session.py`)."""
 
     def report(self, tmp_path: Path, **lists: list[str]) -> clf.IngestReport:
         return clf.IngestReport(edl_path=tmp_path / "MELT_FINAL_v01.edl", events=3, **lists)
@@ -1189,6 +1199,26 @@ class TestRunningABatch:
         assert not window.action_open.isEnabled()
         assert not window.action_add_turnover.isEnabled()
         assert window.action_stop.isEnabled()
+
+    def test_it_refuses_to_start_on_top_of_a_scan_or_another_run(
+        self, window: DrivenWindow, tmp_path: Path
+    ) -> None:
+        """The toolbar greys Run in both states; this is the guard behind the button.
+
+        Asked of the controller rather than the action, because a disabled `QAction`
+        swallows a `trigger()` and would pass whether the guard is there or not.
+        """
+        window.set_batch(ingested(batch(row(), delivery_root=tmp_path), tmp_path))
+        started = stub_runner(window, busy=True)
+        stub_scanner(window, busy=True)
+        window.run.start()
+        assert started == []
+
+        # And a second Run on top of the first, once the scan is out of the way.
+        window.scanner._thread = None
+        window.run.start()
+        window.run.start()
+        assert len(started) == 1
 
     def test_progress_reaches_the_status_bar_and_the_rows(self, window: DrivenWindow, tmp_path: Path) -> None:
         window.set_batch(ingested(batch(row(), delivery_root=tmp_path), tmp_path))
