@@ -13,6 +13,10 @@ are what is here.
   see that, which is also why this cannot be a grep.
 - **A QC rule ID that has been retired.** Same rule and the same reason as the Settings
   page's help lines, which is where this check was first written.
+- **The two numbers on the install page that move on their own**: the dmg's version, which
+  follows `proingest.__version__`, and the macOS floor, which follows `bundle.MINIMUM_MACOS`.
+  Both are the kind of fact a reader acts on - looking for a filename, or deciding whether
+  their machine is new enough - and neither announces that it has changed.
 """
 
 from __future__ import annotations
@@ -24,7 +28,8 @@ import pytest
 from PySide6.QtGui import QAction, QKeySequence, QShortcut
 from PySide6.QtWidgets import QApplication
 
-from build import screenshots
+from build import bundle, screenshots
+from proingest import __version__
 from proingest.ui.main_window import MainWindow
 
 GUIDE_DIR = Path(__file__).resolve().parent.parent / "docs" / "guide"
@@ -36,6 +41,8 @@ covered without anybody remembering to add it here."""
 IMAGE = re.compile(r"!\[[^\]]*\]\(([^)]+)\)")
 SHORTCUT = re.compile(r"⌘([A-Z.])")
 RULE_ID = re.compile(r"\bQC-(\d{3})\b")
+DMG = re.compile(r"ProIngest-([0-9.]+)\.dmg")
+MACOS_FLOOR = re.compile(r"macOS (\d+(?:\.\d+)?) or later")
 
 
 def pages() -> list[Path]:
@@ -60,6 +67,18 @@ class TestThePages:
         rules = (GUIDE_DIR.parent / "QC_RULES.md").read_text(encoding="utf-8")
         for number in RULE_ID.findall(text_of(page)):
             assert f"QC-{number}" in rules, number
+
+    def test_any_dmg_it_names_is_the_version_that_is_built(self, page: Path) -> None:
+        """The filename is what somebody looks for in a folder, so a stale one sends them
+        looking for a file that is not there."""
+        for named in DMG.findall(text_of(page)):
+            assert named == __version__, named
+
+    def test_any_macos_floor_it_names_is_the_one_the_bundle_sets(self, page: Path) -> None:
+        """`LSMinimumSystemVersion` is what actually refuses to launch, so the guide has to
+        agree with it: too low reads as a broken app, too high turns somebody away."""
+        for named in MACOS_FLOOR.findall(text_of(page)):
+            assert named == bundle.MINIMUM_MACOS.removesuffix(".0"), named
 
     def test_it_has_no_em_dashes(self, page: Path) -> None:
         """CLAUDE.md, and the guide is the document most likely to be pasted elsewhere."""
