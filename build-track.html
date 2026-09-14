@@ -311,7 +311,7 @@
   <header class="mast">
     <div class="eyebrow">
       <span>VFX turnover ingest &middot; macOS v01</span>
-      <span class="stamp">Updated <b>14 Sep 2026, 18:15 PDT</b></span>
+      <span class="stamp">Updated <b>14 Sep 2026, 20:05 PDT</b></span>
     </div>
     <h1>ProIngest Build Track</h1>
     <p class="standfirst">
@@ -328,7 +328,7 @@
       <div class="stat-l">Milestones done</div>
     </div>
     <div class="stat">
-      <div class="stat-n good">1676</div>
+      <div class="stat-n good">1683</div>
       <div class="stat-l">Tests, Linux + macOS</div>
     </div>
     <div class="stat">
@@ -1313,7 +1313,7 @@
         <div class="ms-body">
           <div class="ms-head">
             <span class="ms-name">The user guide</span>
-            <span class="pill">In progress &middot; 3 of 5</span>
+            <span class="pill">In progress &middot; 4 of 5</span>
           </div>
           <p class="ms-goal">
             One document the editor is handed: how to install it, a quickstart, then a section on
@@ -1372,15 +1372,29 @@
               <span class="c-st"><span class="tag ok">Done</span></span>
             </div>
 
-            <div class="chunk">
+            <div class="chunk done">
               <span class="c-id">M9.3</span>
               <span class="c-name">A section per part of the window</span>
               <span class="c-note">
-                The list and its columns, editing a shot, the issues panel, the run, settings, the
-                log, the information panel. Written against the built tool rather than the
-                specification, and sharing its wording with the buttons' own descriptions.
+                <b>Written, and the guide's prose is finished with it.</b> The layout, the
+                toolbar, the list and its fifteen columns, what each colour of the status dot
+                means, the three ways In and Out can be read, editing a shot, the information
+                panel, both bottom tabs, the run, the settings page, and a table of every
+                keyboard shortcut.
+                <b>The button table is the buttons' own hover descriptions word for word, and a
+                test says so.</b> That wording was deliberately put in a file of its own two
+                chunks ago on the promise that the guide would share it rather than write a
+                second version - and a document cannot read a file, so the test is what makes
+                the promise true. Word for word rather than roughly, because a paraphrase is
+                exactly the second version the arrangement exists to prevent.
+                <b>Two things in the first draft were wrong and the code said so.</b> The copy
+                shortcut does not work in the information panel - it has copy buttons instead,
+                deliberately, because selecting a shortened path copies the dots rather than the
+                path - and the element column is five short codes rather than the prose list the
+                specification suggested. Both were written from the documents and corrected
+                against the build, which is the argument for writing a guide last.
               </span>
-              <span class="c-st"><span class="tag open">Follows</span></span>
+              <span class="c-st"><span class="tag ok">Done</span></span>
             </div>
 
             <div class="chunk done">
@@ -2288,7 +2302,7 @@
     every test asked the data whether there was a dot, and there was; nothing asked the window
     whether it had drawn one. It is fixed, with three tests that ask the window, and the width is
     now worked out from the indent rather than typed in, so it cannot drift apart again.
-    1676 tests green.<br>
+    1683 tests green.<br>
     <b>The colour check that could not tell a dark Canon grade from a baked-in viewing transform
     is fixed</b>, which was the last item on the list that was a fault rather than a judgement.
     It measures the shape of the top of the range now rather than one value in it, so how dark a
@@ -2298,14 +2312,16 @@
     window: the two output quality values are editable and they reach the worker processes on the
     channel the advanced section already built, rather than on the individual pieces of work the
     plan had assumed they would need.<br>
-    <b>Two of the guide's three written parts are done</b> (M9.2 and M9.1): the quickstart, one
-    delivery from opening the app to the spreadsheets, and the install section, which describes
-    what macOS does to an unsigned application without softening it. Their pictures wait on the
-    Mac, and so does the one question neither can answer from here: whether the steps are the
-    order a person actually works in.<br>
-    <b>Next</b> &middot; the <b>reference section</b>, the last of the guide's prose, which can
-    be written here. After that, nothing on this machine but the structural tidying the code
-    review deferred: the polish pass and the proving run want the Mac or a real delivery.
+    <b>The guide's prose is finished</b>: the quickstart, one delivery from opening the app to
+    the spreadsheets; the install section, which describes what macOS does to an unsigned
+    application without softening it; and the reference section, one part of the window at a
+    time, whose button table is the buttons' own wording word for word with a test holding it
+    there. Four of the guide's five parts are done. <b>The last one is a decision and a
+    machine</b>: whether the studio wants a fixed PDF or an editable document, and the pictures,
+    which are deliberately not in the repository until they are taken on the Mac.<br>
+    <b>Next</b> &middot; nothing on this machine but the structural tidying the code review
+    deferred, which is a session of its own and changes no behaviour. The polish pass, the
+    proving run and the guide's last part all want the Mac or a real delivery.
     <b>Two questions want asking before a real delivery depends on them</b>: which field the
     shooters write their camera's format into and exactly what they write, and whether a grading
     session's colour file really does contain the conversion - because if the tool also converts,
