@@ -48,12 +48,14 @@ happens both PRs stay open and PR #3's diff shows twenty-one commits rather than
 `m7/packaging` has been reset to `origin/m7/packaging` so it matches the PR exactly; the work is
 on `m9/guide-and-settings`, which is the branch to be on.
 
-**CI saw the sixteen for the first time on that push.** Expect a first run to be capable of going
-red on the arm64 runner alone: two of the last two CI-only failures were the Mac disagreeing
-about something this machine cannot observe. The candidate here is `tests/test_guide.py`, which
-compares keyboard shortcuts - it was written to survive it, since both sides go through
-`QKeySequence.toString()` in portable text rather than the native glyphs, but it is the thing to
-read first. The Build Track artifact is at version 60.
+**CI saw them for the first time on that push and went green first time: run 34900426677, all
+four jobs.** That was worth watching rather than assuming, because two of the last two CI-only
+failures were the Mac disagreeing about something this machine cannot observe, and this push
+added `tests/test_guide.py`, which compares keyboard shortcuts. It holds on arm64 because both
+sides of the comparison go through `QKeySequence.toString()` in **portable** text - `Ctrl+R` on
+either platform - rather than the native glyphs the window draws. `main_window.py` uses
+`NativeText` where it wants `⌘R`, and that distinction is the whole reason the test survives a
+runner this machine cannot reproduce. The Build Track artifact is at version 60.
 
 **M7 did not need a Mac and this file said it did.** Everything but the `.app`'s behaviour
 once double-clicked is exercised by CI on every push: `package-macos` builds the bundle and
