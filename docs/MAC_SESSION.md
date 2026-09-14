@@ -49,8 +49,10 @@ Do not rent for any of these. Listed because the instinct to rent is usually wro
 - [x] **The M7 packaging job produces a downloadable dmg and its headless smoke test passes.**
       Done 2026-09-13. Renting in order to discover that PyInstaller missed a hidden import is
       the expensive way to learn it, and it is now learned for free on every push.
-- [ ] Everything on the checklist below is written and pushed. Nothing on it is still in
-      progress.
+- [x] Everything on the checklist below is written and pushed. Nothing on it is still in
+      progress. **Done 2026-09-14.** `REVIEW.md`'s S1 and S2 closed on the same day and were
+      the last code this project had that did not want a Mac, so nothing is half built
+      underneath this list.
 
 ### Logistics
 

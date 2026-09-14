@@ -1,120 +1,154 @@
-# Session close, 14 September 2026 (M5.12, the guide's prose, the branch)
+# Session close, 14 September 2026 (the MainWindow split, and the handoff to a Mac)
 
 **This file is disposable and it is not the handoff record.** `PROGRESS.md` section 1 is, and it
 is written to be picked up cold. This is a note about what one session did, kept because context
 is being cleared. Delete it once it has been read. **If it disagrees with `PROGRESS.md` or the
 docs, they win.**
 
-It replaces the previous file of the same name, which closed on the Mac setup, M9.4 and OQ-47.
+It replaces the previous file of the same name, which closed on M5.12, the guide's prose and the
+branch untangle.
 
 ## The one paragraph version
 
-Four chunks and a branch untangle. **M5.12** put the Settings page's sixth section in, so every
-section of that page is live. **M9.2, M9.1 and M9.3** are the user guide's whole prose, in
-`docs/guide/`. **`docs/WORKFLOW.md` was six lines stale** and is fixed in its own commit.
-**1683 tests**, `ruff`, `ruff format` and `mypy --strict` clean. The commits that had piled up on
-`m7/packaging` by accident are now **`m9/guide-and-settings`, PR #3, pushed and green on all four
-jobs** (run 34900426677). Build Track republished four times, versions 57 to 60.
+`REVIEW.md`'s **S1 and S2 are closed**, which were the last things on the list that could be done
+away from a Mac. The window's run is `ui/run_controller.py`, its colour session ingest is
+`ui/color_session.py`, and `main_window.py` is **1394 lines down to 1039**. `qc.blocking_results`
+and `scan.next_turnover_id` replace two rules that had each been written out twice. **1691 tests**,
+`ruff`, `ruff format` and `mypy --strict` clean. No behaviour changed except the turnover
+numbering, which now does what its docstring always said. **There is no code left that can be
+written on this machine**: what remains wants the Mac, a real turnover, or an answer from a
+person. Four commits, pushed. Build Track republished, version 61.
 
-## Pick up here
+## Going to the Mac
+
+`docs/MAC_SETUP.md` is the whole of getting a clone running, and nothing in it has changed. The
+two things in it that are not obvious, repeated here because they are the two that cost a
+morning:
+
+- **The ffmpeg pair is 132 MB and is not in git.** `build/fetch_ffmpeg.py` downloads it,
+  `--show` prints the URLs and hashes if you would rather use a browser, `--from <folder>`
+  installs what you downloaded or carried over, and `--verify` says whether what is installed is
+  the pinned build. Every route checks the same sha256, so a hand-placed binary is exactly as
+  trustworthy as a fetched one.
+- **Put that folder on `PATH` before running the suite.** The media tests generate their
+  fixtures by shelling out to a bare `ffmpeg` and **skip rather than fail** when
+  `shutil.which` finds nothing. A run without the PATH line reports green having encoded
+  nothing. If it says a few hundred tests rather than **1691**, that line did not happen.
+
+**Which branch.** A fresh clone lands on `main`, which has **neither** M7's packaging nor
+anything since. Everything is on **`m9/guide-and-settings`**, which is based on `m7/packaging`
+rather than on `main`, so that one branch carries the lot:
 
 ```
-cd /home/sgold/dev/repos/ProIngest
-git branch --show-current          # expect m9/guide-and-settings
-.venv/bin/python -m pytest tests/ -q
-.venv/bin/python -m ruff check . && .venv/bin/python -m ruff format --check . && .venv/bin/python -m mypy proingest tests build
+git clone git@github.com:shango/ProIngest.git ProIngest
+cd ProIngest
+git checkout m9/guide-and-settings
 ```
 
-Then `PROGRESS.md` section 1. Its "Next task" now lists what is left **grouped by what it is
-waiting on** - a person, this machine, the Mac, or real data - which is the thing that decides
-whether a session can start it.
+Merging PR #2 and then PR #3 would make that a plain `git clone` and nothing else. It is one
+command each and neither can conflict - `main` is a strict ancestor of `m7/packaging` - and it is
+still the one step waiting on a person.
 
-## What is different now
+## What the Mac day is for
 
-- **Settings' Output section is live.** `app.reference_crf` and `app.exr_compression_level` on
-  `AppSettings`, spin boxes bounded 0-51 and 0-200, defaults read from `ffmpeg.REFERENCE_CRF`
-  and `exr.DWA_COMPRESSION_LEVEL` rather than written down twice. Both constants are plain ints
-  now (`"18"` and `45.0` before).
-- **Two new process-wide knobs, shaped like `ffmpeg._OVERRIDE`**: `ffmpeg.set_reference_crf` /
-  `current_reference_crf`, `exr.set_compression_level` / `current_compression_level`. Each also
-  takes an explicit argument that wins over the one in force, which is `resolve_tool`'s rule.
-- **`docs/guide/`** holds `install.md`, `quickstart.md` and `reference.md`, and
-  `tests/test_guide.py` holds 18 tests over them.
-- **`docs/WORKFLOW.md`** now matches the 2026-09-12 colour decision.
-- **`docs/MAC_SESSION.md`** gained two lines: commit the screenshots, and read the guide at the
-  window.
+`docs/MAC_SESSION.md` is the checklist and it is current. Its own gate is now fully ticked, so
+the day is bookable. Three things on it are not judgement calls and should be done first, because
+everything else is looking at a screen and forming an opinion:
 
-## Five things worth not re-deriving
+1. **`.venv/bin/python build/screenshots.py`, then commit what it writes.**
+   `docs/guide/images/` does not exist in the repo on purpose - the harness creates it - so all
+   three pages of `docs/guide/` have broken image links until this runs. It must run on **this**
+   machine: the harness leaves macOS on its own cocoa plugin and forces `offscreen` everywhere
+   else, and an offscreen draw uses Qt's Fusion style and its own font fallbacks, so a Linux set
+   would be a guide to a tool the editor has not got. `tests/test_guide.py` checks the image
+   **names** against `screenshots.PICTURES`, so a renamed picture fails loudly and a missing one
+   does not - which is why this is a checklist line rather than a red test.
+2. **Read `docs/guide/` at the window.** All three pages were written on Linux from the specs
+   and the code. What they cannot know is whether the quickstart's seven steps are the order a
+   person actually works in, and whether the reference section describes anything that does not
+   look like that on screen.
+3. **Build it and drive the built thing.**
+   ```
+   .venv/bin/python build/build.py
+   .venv/bin/python build/smoke_test.py "dist/ProIngest.app/Contents/MacOS/ProIngest"
+   ```
+   The first writes `dist/ProIngest.app` and `dist/ProIngest-<version>.dmg` and prints both sizes
+   against the 300 MB budget. The second drives the packaged binary through a whole fixture
+   turnover. **Neither is the reason to be on a Mac** - CI does both on an arm64 runner on every
+   push and uploads the dmg - so build locally only if you are changing what goes into the
+   bundle. What the machine is actually for is the half a smoke test cannot reach: double-click
+   the app and get a window, count the Dock icons through a render, and the Retina judgements.
 
-- **M5.12 did not need the render job, and the plan said it would.** The note that stood for two
-  chunks said reference quality and the EXR level would have to travel on a `DeliverableJob`
-  because they are read inside a worker. They do not: they are **per process, not per
-  deliverable**, so they ride `_worker_init`'s initargs - the channel M5.8.3 built for the
-  ffmpeg override - and the whole crossing is two lines in `render.execute` and two in
-  `_worker_init`. Putting them on the job would have meant the planner reading the app settings,
-  a coupling it has never had.
-- **The guide's shortcuts are `⌘R` and the test compares them in *portable* text.** Qt maps
-  `Ctrl` to Command on macOS by itself, so the code says `Ctrl+R` and the editor sees `⌘R`. The
-  test reads the glyphs out of the page and compares `QKeySequence(f"Ctrl+{key}").toString()`
-  against a real window's bindings; `toString()` defaults to `PortableText`, so both sides say
-  `Ctrl+R` on **either** platform. `main_window.py` uses `NativeText` where it actually wants the
-  glyph. **That distinction is the whole reason the test went green on arm64 first time**, and
-  it is the trap to remember: a test that compared native text would pass here and fail there,
-  which is exactly what happened to two M5.11 tests on an earlier push.
-- **The reference page's button table is `toolbar_help.WHAT_IT_DOES` verbatim, held by a test.**
-  That module has claimed since M5.11 that the guide reads it so the two cannot drift, and a
-  markdown table cannot import a module - the test is what makes the claim true. The button
-  *labels* live in the test rather than in `toolbar_help.py`, since what is shared is the
-  wording and not the button text, and a second test asserts them against the window so they are
-  not a third copy.
-- **Two claims written from the spec were wrong and the code said so.** `⌘C` does not copy in
-  the metadata pane - it has **Copy** buttons and mouse selection, deliberately, because
-  selecting an elided path copies the ellipsis - and `Elem` is five type codes rather than a
-  prose list. Both were caught by checking `ui/metadata_pane.py` and `NAMING_SPEC.md` section 2
-  against the draft. **Writing a guide from the documents alone produces confident wrong
-  sentences**; it is the eighth time this project has been corrected by looking at the build.
-- **`docs/WORKFLOW.md`'s step 7 told the colourist not to use curves**, with a "see below"
-  pointing at the rule that says the CLF carries them. That is the whole reason the CLF is
-  applied rather than the CDL. The other five stale lines were the superseded colour policy: one
-  studio standard encoding, an ACEScct timeline, the CLF starting there, and the tool applying an
-  input transform ahead of it.
+## Before a dist can go to anybody: OQ-9
 
-## The guide's images
+**A built dmg is not yet a distributable one, and this is a decision rather than a task.** There
+is no Apple Developer account, so `ProIngest.app` ships unsigned and un-notarized. On macOS that
+is not a warning the user clicks past: a dmg **downloaded through a browser** carries
+`com.apple.quarantine`, and an unsigned quarantined app is **blocked outright**. The dialog says
+the app is damaged and there is no "open anyway" worth looking for.
 
-`docs/guide/images/` is **deliberately empty in the repo**, so all three pages have broken image
-links right now. The shipped set has to be drawn by a Mac: the harness leaves macOS on its own
-cocoa plugin and forces `offscreen` everywhere else, and an offscreen draw uses Qt's Fusion style
-and its own font fallbacks. `tests/test_guide.py` therefore checks image **names** against
-`screenshots.PICTURES` rather than checking that files exist, so a renamed picture still fails
-loudly. `docs/MAC_SESSION.md` says to run `python build/screenshots.py` and commit what it writes.
+`docs/PACKAGING.md` has the three routes in preference order:
 
-If a Linux draft set is wanted in the meantime that is a decision to take deliberately, not a
-thing to do by accident - it is what the Mac rule exists to prevent.
+1. **A Developer ID**, $99/year, then `codesign --deep --options runtime` and `notarytool` with
+   the ticket stapled to the dmg. The only clean answer, and the only one that survives a macOS
+   release that tightens the rules again.
+2. **Transfer without quarantine.** `scp`, `rsync` and a USB stick do not apply the attribute;
+   a browser download and AirDrop do.
+3. **Strip it on the target machine**: `xattr -dr com.apple.quarantine /Applications/ProIngest.app`.
 
-## The branch, resolved
+The bundled ffmpeg and ffprobe are **already Developer ID signed with the hardened runtime**, so
+they are not the problem. If ProIngest is ever signed for real, those nested signatures are
+replaced as part of signing the bundle, which is normal.
 
-- **`m7/packaging`** is **PR #2**: five commits, all genuinely packaging, pushed, green,
-  `MERGEABLE` / `CLEAN`, **still open**. Local `m7/packaging` was reset to `origin/m7/packaging`
-  so it matches the PR exactly.
-- **`m9/guide-and-settings`** is **PR #3**: 18 commits, pushed, **green on all four jobs**
-  (run 34900426677). It is **based on `m7/packaging`, not `main`**, because that is what the
-  commits were written on top of.
-- **Merging PR #2 retargets PR #3 to `main` automatically** and narrows its diff from 23 commits
-  to 18. **Nothing has to be rebased by hand.** `main` is a strict ancestor of `m7/packaging`, so
-  the merge cannot conflict.
-- The merge was attempted this session and **refused by the auto-mode classifier** as "Merge
-  Without Review". It was not worked around; the stacked-PR route reaches the same place without
-  needing it. `gh pr merge 2 --merge` is the command.
+Route 2 or 3 is enough to put a build in front of the editor this week. Route 1 is what handing
+the tool over means.
+
+## What changed in the code this session
+
+- **`proingest/ui/run_controller.py`** (341 lines): pre-flight, the blocked turnovers, planning,
+  the timer that draws the four surfaces, the records coming back, the two spreadsheets, the
+  banner, and the bounded wait that lets a window close mid run without dropping what the run
+  finished. Built in `MainWindow._build_central`, after `run_strip`, and it wires itself.
+- **`proingest/ui/color_session.py`** (129 lines): which turnover the ingest is for, the rate its
+  EDL is read at, what `core/clf.py` is handed, and the report. **The dialogs stayed on the
+  window** - `ask_edl_path`, `ask_turnover`, `report_ingest`, `report_problem` - because each is
+  its own method there so a test can answer it, and an offscreen modal is a hung suite rather
+  than a failed assertion.
+- **Both hold the window** rather than a list of the seven things a run touches. That cost six of
+  the window's members becoming public - `batch`, `batch_open`, `settings`, `show_results`,
+  `show_issues`, `update_state` - and `main_window.py`'s docstring now says that is what a
+  collaborator may ask for, so the next split has a surface to aim at.
+- **`qc.blocking_results(batch)`** is FR-6's "a batch scope error stops the run", in one place
+  instead of two. **`scan.next_turnover_id(batch)`** is the numbering, and `scan_batch` counts
+  with it now rather than with `enumerate`.
+- Test surface that moved: `window.runner` is `window.run.runner`, `window._run_progress` is
+  `window.run.progress`, `window._show_run_progress()` is `window.run.refresh()`, and
+  `window._run_finished(...)` is now `finish_run(window, ...)`, which **emits
+  `runner.finished`** rather than calling the slot behind it. `build/screenshots.py` follows the
+  same three renames.
+
+## The one thing worth not re-deriving
+
+**Moving the run dropped its opening guard and the whole suite still passed.** `run_batch` began
+`if not self._batch_open or self.runner.busy or self.scanner.busy: return` and the move lost it.
+Nothing went red, because **the UI tests press the toolbar button and a disabled `QAction`
+swallows a `trigger()`** - so every test that tried Run during a scan was testing the greying
+rather than the guard.
+
+It is restored, both guards are now asked of the collaborator directly rather than through the
+toolbar, and each was checked by deleting the guard and watching the test go red. **That failure
+mode belongs to every interface test in this repo**, not to this change: anything whose only
+coverage is `action.trigger()` is covered for the enabled path and nothing else.
 
 ## What is next
 
 `PROGRESS.md` section 1's "Next task" is current and is the list. In one line each:
 
-- **A person:** merge PR #2. Then OQ-9 (the Developer ID, which blocks handover), OQ-49 (the
-  guide's form), and asking OQ-44 and OQ-46.
-- **This machine:** only what `REVIEW.md` deferred, of which **S1, the `MainWindow` split**, with
-  **S2** belonging to the same session, is the real item. No behaviour changes, the tests survive
-  it, the diff is most of one file, and the review called it a session of its own.
+- **A person:** merge PR #2 (then #3, if you want `main` to carry everything). Then OQ-9, which
+  blocks handover; OQ-49, the guide's form; and asking OQ-44 and OQ-46.
+- **This machine:** nothing. `REVIEW.md`'s last section still has micro-smells, performance that
+  needs a real mount (S4, which is M8), and test gaps not tied to a bug, and none of them is
+  worth a session.
 - **The Mac:** the guide's images, reading the guide at the window, and the rest of
-  `docs/MAC_SESSION.md`. The day is bookable - M7 ticked all three of its preconditions.
+  `docs/MAC_SESSION.md`.
 - **A real turnover and a real colour session:** the whole of M8.
