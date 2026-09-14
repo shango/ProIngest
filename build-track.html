@@ -311,7 +311,7 @@
   <header class="mast">
     <div class="eyebrow">
       <span>VFX turnover ingest &middot; macOS v01</span>
-      <span class="stamp">Updated <b>13 Sep 2026, 20:05 PDT</b></span>
+      <span class="stamp">Updated <b>13 Sep 2026, 20:30 PDT</b></span>
     </div>
     <h1>ProIngest Build Track</h1>
     <p class="standfirst">
@@ -1378,10 +1378,10 @@
           <tr><th>ID</th><th>Question</th><th>State</th></tr>
         </thead>
         <tbody>
-          <tr>
+          <tr class="resolved">
             <td class="id">OQ-52</td>
-            <td><b style="color:var(--text)">New 13 September, out of packaging.</b> What name the application identifies itself by to macOS. The specification says to use the studio's name in it and <b style="color:var(--text)">no studio name appears anywhere in this project</b>, so the build ships a placeholder. Worth settling <b style="color:var(--text)">before the first build reaches the editor's machine</b> rather than at leisure: macOS files everything it remembers about an application under that name, so changing it later orphans the lot and the editor is asked again for every permission they have already given. One word today, a confusing afternoon later</td>
-            <td class="st"><span class="tag open">New</span></td>
+            <td><b style="color:var(--text)">Raised and answered on 13 September, out of packaging.</b> What name the application identifies itself by to macOS. The specification said to use the studio's name and <b style="color:var(--text)">the studio is not to be named in anything that ships</b>. That turned out to cost nothing, because the question rested on a wrong premise: the name only has to be <b style="color:var(--text)">unique and permanent</b>, not descriptive, and <b style="color:var(--text)">Apple does not check that whoever registers one owns the web address inside it</b>. It is now built from the project's own code repository, which is unique, genuinely controlled, and names nobody connected to the production. <b style="color:var(--text)">The half that still binds is not changing it afterwards</b>: macOS files folder permissions under that name, so a later change means the editor is asked again for every folder they have already approved. Settings and logs are unaffected, being filed under the application's visible name instead</td>
+            <td class="st"><span class="tag ok">Answered</span></td>
           </tr>
           <tr>
             <td class="id">OQ-50</td>
@@ -2226,9 +2226,11 @@
     <b>Two questions want asking before a real delivery depends on them</b>: which field the
     shooters write their camera's format into and exactly what they write, and whether a grading
     session's colour file really does contain the conversion - because if the tool also converts,
-    it converts twice and nothing fails. <b>Two decisions want making before handover</b>: an
-    Apple Developer ID, or a route to the editor that never marks a build as downloaded; and the
-    name the application identifies itself by, which is cheap now and awkward later.
+    it converts twice and nothing fails. <b>One decision wants making before handover</b>: an
+    Apple Developer ID, or a route to the editor that never marks a build as downloaded. The
+    other, the name the application identifies itself by, was settled the same day it was raised
+    - it names nobody connected to the production, and the only rule now is not to change it once
+    a build has reached the editor.
   </footer>
 
 </div>

@@ -35,10 +35,20 @@ The residue that still needs a person is `docs/MAC_SESSION.md`.
   living in `otio_cmx3600_adapter`, so for that one **only the file path fallback ever works**.
   Without the sources there is no EDL support, and without the rest there is no `.otio` reader
   at all, which is to say no tool.
-- `Info.plist` needs: `CFBundleIdentifier` (`com.<studio>.proingest`), `CFBundleShortVersionString`
+- `Info.plist` needs: `CFBundleIdentifier`, `CFBundleShortVersionString`
   from `pyproject.toml`, `LSMinimumSystemVersion` (macOS 12 is a safe floor for PySide6 6.7),
   and `NSHighResolutionCapable`. No document types and no URL schemes: the app opens
   `.pibatch` files through its own dialogs, not through Launch Services.
+- **The identifier names nobody, on purpose.** This document used to specify
+  `com.<studio>.proingest`; the studio is not to be named in anything that ships (OQ-52), and
+  an identifier does not have to name anyone. It has to be unique and it has to never change.
+  Apple does not check that whoever registers one owns the domain in it, so the reverse-DNS
+  form is collision avoidance rather than a claim that has to be true. It is
+  `io.github.shango.proingest`, the standard form for a project whose namespace is its
+  repository: unique because GitHub usernames are, controlled by someone who really holds it,
+  and naming only the account that already owns the repo. **Nothing else identifying ships
+  either**: the visible name is ProIngest and the only show code in `proingest/` is `MELT` in
+  two docstrings, which is the synthetic fixture show.
 - `LSApplicationCategoryType` is `public.app-category.video`.
 - **The build is arm64 only, and that is now a decision rather than an assumption** (OQ-24,
   confirmed 2026-09-10). Do not spend installer budget on a universal2 build. An Intel Mac

@@ -1668,11 +1668,21 @@ M7 detail, built 2026-09-13. Five files in `build/` and two CI jobs.
   app answered `--version` in 0.8s against PRD section 8's five second first launch, on a runner
   rather than the target.
 
-**Two things M7 left open.** There is **no application icon**, so the bundle carries
-PyInstaller's default; and **OQ-52**, the bundle identifier, is a placeholder
-(`com.proingest.ProIngest`) because no studio name exists anywhere in this repository. The
-identifier is worth settling before the first build reaches the editor, since macOS keys
-per-app state off it.
+**One thing M7 left open, and one it answered.** There is **no application icon**, so the
+bundle carries PyInstaller's default.
+
+**OQ-52 is answered: the identifier names nobody.** It was raised as a placeholder because
+PACKAGING.md specified `com.<studio>.proingest` and no studio name exists in this repository.
+The user then settled it the other way on 2026-09-13: **the studio is not to be named in
+anything that ships.** That needs no compromise, because an identifier only has to be unique
+and permanent, and **Apple does not verify that whoever registers one owns the domain in it** -
+the reverse-DNS form is collision avoidance, not a claim that has to be true. So it is
+`io.github.shango.proingest`, the standard form for a project whose only namespace is its
+repository. What still matters is the second half of the original question: **do not change it
+once a build has reached the editor**, because macOS keys folder access grants and its own
+application register off it, and because notarizing under OQ-9 would bake it in. Settings,
+window state and logs are unaffected either way, since `ui/paths.py` builds those from the
+application name.
 
 M9 detail, asked for 2026-09-12 and specified against PRD FR-17. It is the first milestone
 whose deliverable is not code, and it is deliberately separate from M8.4: M8.4 is what the

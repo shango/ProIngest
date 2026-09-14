@@ -66,12 +66,18 @@ written, so it landed green rather than hopefully. Build Track republished (vers
 
 ## Left open, on purpose
 
-- **OQ-52 is new**: the bundle identifier is the placeholder `com.proingest.ProIngest`, because
-  no studio name exists anywhere in this repo. Worth settling **before a build reaches the
-  editor** - macOS files per-app state under it, so changing it later re-prompts for everything.
 - **There is no application icon.** The bundle carries PyInstaller's default. One argument in the
   spec once an `.icns` exists.
 - **OQ-9, Gatekeeper, is untouched** and still the one item that blocks handover.
+
+**OQ-52 was raised and answered inside the session.** The bundle identifier was a placeholder
+because PACKAGING.md specified `com.<studio>.proingest` and no studio name exists here. The user
+ruled that **the studio is not to be named in anything that ships**, which costs nothing: an
+identifier has to be unique and permanent, not descriptive, and **Apple does not verify that
+whoever registers one owns the domain in it**. It is now `io.github.shango.proingest`, the
+standard form for a project whose namespace is its repository. **Do not change it once a build
+has reached the editor** - folder access grants and Launch Services key off it, and notarizing
+would bake it in. Settings and logs are unaffected, being named after the application.
 
 ## State of PR #2 at close
 

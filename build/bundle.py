@@ -28,12 +28,28 @@ APP_NAME = "ProIngest"
 from `QApplication.applicationName()` rather than from this, so the two are independent
 by design and the app data folder does not move if the bundle is ever renamed."""
 
-BUNDLE_IDENTIFIER = "com.proingest.ProIngest"
-"""`CFBundleIdentifier`. PACKAGING.md specifies `com.<studio>.proingest` and no studio
-name exists in this repository, so this is a placeholder and it is OQ-52. It has to be
-settled **before** the first build reaches the editor's machine: macOS keys per-app
-state off the identifier, so changing it later orphans whatever the old one accumulated
-and re-prompts for everything the user already granted."""
+BUNDLE_IDENTIFIER = "io.github.shango.proingest"
+"""`CFBundleIdentifier`, and it deliberately names nobody.
+
+PACKAGING.md used to specify `com.<studio>.proingest`. **The studio is not to be named
+in anything that ships** (OQ-52, answered 2026-09-13), and it does not have to be: an
+identifier only has to be unique and never change. Apple does not verify that whoever
+registers one owns the domain in it, so reverse-DNS here is a convention for avoiding
+collisions rather than a claim of ownership that has to be true.
+
+`io.github.<user>.<app>` is the established form for a project whose only namespace is
+its repository, and this one is `github.com/shango/ProIngest`. It is unique because
+GitHub usernames are, it belongs to someone who actually controls it, and the only name
+in it is the account that already owns the repo. Nothing about the production, the
+studio or the show appears in a built app: the identifier is this, the visible name is
+`APP_NAME`, and the only show code anywhere in `proingest/` is `MELT` in two docstrings,
+which is the synthetic fixture show.
+
+**Do not change it once a build has reached the editor.** macOS keys folder access
+grants and its own application register off this string, so a later change means being
+asked again for every folder already approved, and means re-notarizing if OQ-9 is ever
+answered with a Developer ID. Settings, window state and logs are unaffected either way:
+`ui/paths.py` builds those paths from the application *name*."""
 
 MACOS = "darwin"
 
