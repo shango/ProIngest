@@ -311,7 +311,7 @@
   <header class="mast">
     <div class="eyebrow">
       <span>VFX turnover ingest &middot; macOS v01</span>
-      <span class="stamp">Updated <b>13 Sep 2026, 23:10 PDT</b></span>
+      <span class="stamp">Updated <b>14 Sep 2026, 00:20 PDT</b></span>
     </div>
     <h1>ProIngest Build Track</h1>
     <p class="standfirst">
@@ -328,11 +328,11 @@
       <div class="stat-l">Milestones done</div>
     </div>
     <div class="stat">
-      <div class="stat-n good">1637</div>
+      <div class="stat-n good">1648</div>
       <div class="stat-l">Tests, Linux + macOS</div>
     </div>
     <div class="stat">
-      <div class="stat-n">28<span style="color:var(--faint);font-size:17px">/52</span></div>
+      <div class="stat-n">27<span style="color:var(--faint);font-size:17px">/52</span></div>
       <div class="stat-l">Questions open</div>
     </div>
     <div class="stat">
@@ -1404,10 +1404,10 @@
             <td><b style="color:var(--text)">Answered the same day, and it was the cheapest question on the board.</b> The grading session starts each shot's colour file from the camera's own format, or from the house format in the other mode. So the colour file is the entire conversion and the tool performs none of its own on a plate, it cannot disagree with Resolve about what a camera format is, and a camera nobody has mapped still delivers. The common working format that used to sit in between is gone from the chain</td>
             <td class="st"><span class="tag ok">Answered</span></td>
           </tr>
-          <tr>
+          <tr class="resolved">
             <td class="id">OQ-47</td>
-            <td><b style="color:var(--text)">New 12 September, found while building the fix above.</b> The check that opens each colour file and measures it can no longer tell a dark grade shot on a Canon from a colour file with the viewing transform baked in. White out of Canon's log is worth a fifteenth of what it is worth out of the format the threshold was set against, so four stops of grade lands a good file exactly where a bad one lands. Measured rather than estimated, with a replacement that compares two points near the top instead of one and separates every camera in play by an order of magnitude. It refuses a good file rather than passing a bad one, which is the safe direction, and it is one camera of the three</td>
-            <td class="st"><span class="tag hot">Measured</span></td>
+            <td><b style="color:var(--text)">Raised 12 September, answered 13 September by building the replacement.</b> The check that opens each colour file and measures it could no longer tell a dark grade shot on a Canon from a colour file with the viewing transform baked in. White out of Canon's log is worth a fifteenth of what it is worth out of the format the old threshold was set against, so a few stops of grade landed a good file exactly where a bad one lands - and it refused the good file, because that check stops a delivery. <b style="color:var(--text)">It now measures the shape of the top of the range rather than one value in it</b>: two samples near white, and how far apart they come out. A grade darkens both and cancels out, so what is left is the steepness at the top, which is precisely what a baked-in viewing transform flattens. <b style="color:var(--text)">The numbers were measured again rather than taken from this row, and one of them moved</b>: the second sample this question proposed leaves the darkest legitimate grade at 1.35 against a bad file's 1.016, which no threshold can separate; a sample slightly further down the curve puts them at 1.86 and 1.055, and the threshold sits about a third from each. Eleven tests, including every camera format in play against a dark grade and against a real baked-in viewing transform</td>
+            <td class="st"><span class="tag ok">Answered</span></td>
           </tr>
           <tr>
             <td class="id">OQ-46</td>
@@ -2206,7 +2206,7 @@
     <b>Source of truth</b> &middot; PROGRESS.md, docs/OPEN_QUESTIONS.md, PRD.md section 9<br>
     <b>Verify</b> &middot; pytest &middot; ruff check . &amp;&amp; mypy proingest tests build &middot;
     python build/build.py &middot; python build/smoke_test.py &lt;app&gt;<br>
-    <b>Last updated</b> &middot; 13 September 2026, 23:10 PDT. <b>The repository is ready to be
+    <b>Last updated</b> &middot; 14 September 2026, 00:20 PDT. <b>The repository is ready to be
     opened on a Mac, and the guide's pictures are now taken by a script.</b> A new setup document
     takes a Mac from a fresh copy of the code to a running application in four commands plus the
     video tools, which are 132&nbsp;MB and deliberately not kept in the repository. Those can now
@@ -2229,12 +2229,15 @@
     every test asked the data whether there was a dot, and there was; nothing asked the window
     whether it had drawn one. It is fixed, with three tests that ask the window, and the width is
     now worked out from the indent rather than typed in, so it cannot drift apart again.
-    1637 tests green.<br>
-    <b>Next</b> &middot; <b>the colour check that can no longer tell a dark Canon grade from a
-    baked-in viewing transform</b> is the one item that is a fault rather than a judgement, and
-    its replacement is already measured. <b>The last greyed settings section</b>, output quality,
-    needs the value to travel to the worker processes on a channel that already exists. And the
-    <b>quickstart</b> can be drafted now that the pictures exist to lay it out around.
+    1648 tests green.<br>
+    <b>The colour check that could not tell a dark Canon grade from a baked-in viewing transform
+    is fixed</b>, which was the last item on the list that was a fault rather than a judgement.
+    It measures the shape of the top of the range now rather than one value in it, so how dark a
+    delivery is graded no longer moves the answer at all - and the numbers were measured again
+    rather than trusted, which moved one of them.<br>
+    <b>Next</b> &middot; <b>the last greyed settings section</b>, output quality, needs the value
+    to travel to the worker processes on a channel that already exists. And the <b>quickstart</b>
+    can be drafted now that the pictures exist to lay it out around.
     <b>Two questions want asking before a real delivery depends on them</b>: which field the
     shooters write their camera's format into and exactly what they write, and whether a grading
     session's colour file really does contain the conversion - because if the tool also converts,
