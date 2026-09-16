@@ -73,6 +73,12 @@ Do not rent for any of these. Listed because the instinct to rent is usually wro
 
 Append to this as M5 and M6 are built.
 
+- [ ] **Does a dmg that arrives through the Google Drive *mount* carry quarantine?** Ten
+      seconds, and it decides whether the editor ever has to open Terminal: put a dmg in a
+      shared Drive folder, let it sync, and `xattr -l` it on the mount. A browser download is
+      quarantined for certain and AirDrop is too, but a file appearing through a mounted
+      filesystem may not be, and this studio already runs that mount for turnovers. If it comes
+      back clean, the handover route is Drive and the instructions lose their Terminal step.
 - [ ] **`ProIngest.command` opens the window when double-clicked in Finder.** It is the
       route for handing the tool over without building one, and the half only a Mac can
       answer is Finder's: whether a file with the executable bit is offered as something to

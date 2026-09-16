@@ -311,7 +311,7 @@
   <header class="mast">
     <div class="eyebrow">
       <span>VFX turnover ingest &middot; macOS v01</span>
-      <span class="stamp">Updated <b>16 Sep 2026, 12:20 PDT</b></span>
+      <span class="stamp">Updated <b>16 Sep 2026, 16:40 PDT</b></span>
     </div>
     <h1>ProIngest Build Track</h1>
     <p class="standfirst">
@@ -328,7 +328,7 @@
       <div class="stat-l">Milestones done</div>
     </div>
     <div class="stat">
-      <div class="stat-n good">1694</div>
+      <div class="stat-n good">1697</div>
       <div class="stat-l">Tests, Linux + macOS</div>
     </div>
     <div class="stat">
@@ -1131,7 +1131,7 @@
         <div class="ms-body">
           <div class="ms-head">
             <span class="ms-name">Packaging</span>
-            <span class="pill done">Complete &middot; 22 tests</span>
+            <span class="pill done">Complete &middot; 25 tests</span>
           </div>
           <p class="ms-goal">
             A double-clickable Mac application with the video tools inside it, on a disk image,
@@ -1253,6 +1253,33 @@
               <span class="c-st"><span class="tag ok">Done</span></span>
             </div>
 
+            <div class="chunk done">
+              <span class="c-id">M7.7</span>
+              <span class="c-name">Run it from the folder</span>
+              <span class="c-note">
+                <b>A file in the folder that starts the tool when it is double-clicked</b>, for
+                when there is no time to build an application, sign one or download one. The first
+                run prepares everything and opens the window; after that it takes seconds.
+                <b>The question it was built to answer was really a different one.</b> Asked
+                whether the tool could run from a downloaded folder rather than as an application,
+                the honest answer turned out to be that <b>a Mac application already is a
+                folder</b> - macOS simply draws it as a single icon - so the thing that runs with
+                nothing installed was already built. This launcher is the other case: the source
+                folder, which needs a package manager and a network the first time and is for
+                somebody who has both. The board's own note and the setup document now carry a
+                table of the two, because the half hour that distinction cost is the kind that
+                gets spent twice.
+                <b>What was learned about handing a build to the editor is written down</b>, and
+                it is the more valuable half of this chunk. The short version: the download mark
+                macOS refuses an unsigned application over is applied by whatever receives the
+                file, so the route it took before that does not matter; a zip archive destroys an
+                application by dropping the pieces it is made of, though a disk image inside a zip
+                is perfectly safe; and the dialog the editor meets says the application is
+                <i>damaged</i> and offers to move it to the Trash as the default button.
+              </span>
+              <span class="c-st"><span class="tag ok">Done</span></span>
+            </div>
+
             <div class="chunk">
               <span class="c-id">OQ-9</span>
               <span class="c-name">Getting it past Gatekeeper</span>
@@ -1267,7 +1294,7 @@
             </div>
 
           </div>
-          <div class="mods"><span>build/entry.py</span><i>/</i><span>bundle.py</span><i>/</i><span>proingest.spec</span><i>/</i><span>build.py</span><i>/</i><span>smoke_test.py</span><i>/</i><span>mac_build.sh</span><i>/</i><span>ci.yml</span></div>
+          <div class="mods"><span>build/entry.py</span><i>/</i><span>bundle.py</span><i>/</i><span>proingest.spec</span><i>/</i><span>build.py</span><i>/</i><span>smoke_test.py</span><i>/</i><span>mac_build.sh</span><i>/</i><span>ProIngest.command</span><i>/</i><span>ci.yml</span></div>
           <div class="gate">
             <b>This milestone was recorded as needing a Mac and it did not.</b> Everything except
             how the app behaves once double-clicked is now exercised automatically on every change.
@@ -2320,11 +2347,27 @@
     <b>Verify</b> &middot; bash build/mac_build.sh &middot; pytest &middot;
     ruff check . &amp;&amp; mypy proingest tests build &middot; python build/build.py &middot;
     python build/smoke_test.py &lt;app&gt;<br>
-    <b>Last updated</b> &middot; 16 September 2026, 12:20 PDT. <b>A fresh copy of the code
+    <b>Last updated</b> &middot; 16 September 2026, 16:40 PDT. <b>The tool can now be started
+    from the folder as well as built into an application</b>, and everything about getting a
+    build onto somebody else's Mac has been worked out and written down. Double-clicking one file
+    in the folder prepares it on the first run and opens the window; it is for somebody who has a
+    package manager and a network, and the application remains the thing that runs on a machine
+    with nothing installed. <b>An application on a Mac is a folder</b>, which is the answer to the
+    question that prompted this and was worth half an hour to establish.
+    <b>The awkward part is not technical.</b> The download mark macOS refuses an unsigned
+    application over is applied by whatever <i>receives</i> the file, so relaying a build through
+    another computer or a shared drive changes nothing; a zip archive quietly destroys an
+    application by dropping the pieces it is made of, although a disk image inside a zip is safe;
+    and the dialog the editor meets calls the application <b>damaged</b> and offers to move it to
+    the Trash as its default button, so anybody following it deletes the build and reports that it
+    arrived broken. One line in a terminal clears the mark. <b>None of this goes away until a
+    developer identity is bought</b>, which is the decision at the bottom of this page and is now
+    the whole of the handover problem.<br>
+    <b>A fresh copy of the code
     becomes a built Mac application in one command.</b> Clone it, run one script, and it installs
     exactly the pinned set of libraries, fetches the video tools and checks them against their
     fingerprints, puts them where the tests look for them, runs the lint, the type check and all
-    1694 tests, builds the application and its disk image, and drives the built thing through a
+    1697 tests, builds the application and its disk image, and drives the built thing through a
     whole demonstration delivery. It stops at the first thing that fails and it is safe to run
     again. <b>Nothing in it is new work</b>: every step is one the setup document already
     described and the hosted machines already run on every change. What it removes is the chance

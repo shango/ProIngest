@@ -10,21 +10,42 @@ commit.
 
 **State at 2026-09-16. Every feature milestone is built, and so is packaging.** M1 to M4
 complete, M4.5 all four chunks, M4.6 all five, **M5 all twelve**, **M7**, and **M9.4**.
-**1694 tests**, `ruff`, `ruff format` and `mypy --strict` clean over `proingest tests build`.
+**1697 tests**, `ruff`, `ruff format` and `mypy --strict` clean over `proingest tests build`.
 What is left is **M8 polish** (needs a real turnover and a real colour session) and the rest
 of **M9, the user guide**.
 
-**This session, 2026-09-16, made the Mac clone one command.** `build/mac_build.sh` is
-`docs/MAC_SETUP.md` sections 2 to 6 as a script: the locked environment, the ffmpeg pair and
-its verify, the `PATH` export, `ruff`, `mypy` and the suite, then the app, the dmg and the
-smoke test through the frozen binary. `--from DIR` installs an ffmpeg pair downloaded by hand
-and `--skip-checks` builds without the suite. It adds no step the document did not already
-have and no step CI does not already run; what it removes is the chance of typing six commands
-in the wrong order on a machine that is rented by the day. `tests/test_mac_build.py` is the
-three ways a shell script nothing imports can rot: the executable bit, `bash -n`, and every
-repo path it names still existing. It has **never been run on a Mac** - CI's macOS jobs do the
-same steps from their own YAML rather than by calling it - so `docs/MAC_SESSION.md`'s checklist
-now opens with running it.
+**This session, 2026-09-16, was about getting the tool onto a Mac and then onto the editor's
+Mac, and it was driven by somebody running out of time on a rented box.** Nothing about what the
+tool does changed. Two shell scripts, both merged, and everything anybody learned about handing a
+build over is written down rather than left in a chat.
+
+**`build/mac_build.sh` is the Mac clone in one command.** `docs/MAC_SETUP.md` sections 2 to 6 as
+a script: the locked environment, the ffmpeg pair and its verify, the `PATH` export, `ruff`,
+`mypy` and the suite, then the app, the dmg and the smoke test through the frozen binary.
+`--from DIR` installs an ffmpeg pair downloaded by hand, `--skip-checks` builds without the
+suite. It adds no step the document did not already have and no step CI does not already run;
+what it removes is the chance of typing six commands in the wrong order on a machine that is
+rented by the day. Three decisions in it are in its note below, and the sharpest is that it
+**execs `ffmpeg -version`** rather than trusting the sha256: the hash says the bytes are the
+pinned build, not that this machine can run them.
+
+**`ProIngest.command` is the same folder with nothing built.** Double-click it in Finder and it
+prepares the environment on first run and opens the window; after that it takes seconds. It is
+the answer to "can it run from a downloaded folder", and `docs/MAC_SETUP.md` section 0.5 is
+mostly about the question behind that one, which is **which of the two folders somebody
+actually wants**: this one needs `uv` and a network on first use, `dist/ProIngest.app` needs
+neither and is what goes to a machine with nothing installed. **An `.app` is a folder**; macOS
+draws it as one icon. That confusion cost half an hour and is now a table.
+
+**`tests/test_shell_scripts.py`** (was `test_mac_build.py`) parametrises over both scripts: the
+executable bit, `bash -n`, and every repo path each one names still existing. That third check
+caught a `docs/MAC_SESSION.md.` with the sentence's full stop attached while it was being
+written. The bit matters more for the launcher than for the builder - **Finder will not offer
+to run a file that has not got it**.
+
+**Neither script has ever run on a Mac.** CI's macOS jobs do the same steps from their own YAML
+rather than by calling either, so `docs/MAC_SESSION.md`'s checklist now opens with two lines
+about them, and a third about Google Drive that is described below.
 
 **This session split `MainWindow`, which was the last code on the list that this machine
 could write alone.** `REVIEW.md`'s S1 and S2, both closed: the run is `ui/run_controller.py`,
@@ -53,11 +74,13 @@ the last open item that was a fault rather than a judgement. Taking the harness'
 picture found that **the status dot had never been drawn on any shot row**; that is fixed with
 it, and section 7 has the mechanism. Each has its own note below.
 
-**The branch tangle is over: both PRs are merged, 2026-09-16, and `main` carries everything.**
-PR #2 (`m7/packaging`, five commits) went in first, then PR #3 (`m9/guide-and-settings`,
-27 commits) on top of it, both as merge commits so every commit message survives. **A fresh
-clone now lands on `main` with the lot** and needs no `git checkout` at all, which is what
-`docs/MAC_SETUP.md` section 0 says. No PR is open.
+**The branch tangle is over and `main` carries everything, 2026-09-16.** PR #2
+(`m7/packaging`, five commits) went in first, then PR #3 (`m9/guide-and-settings`, 27 commits)
+on top of it, then **#4** (this file and `HANDOFF.md`, which still told a Mac clone to check out
+a branch that no longer mattered) and **#5** (the launcher). All as merge commits, so every
+commit message survives. **A fresh clone now lands on `main` with the lot** and needs no
+`git checkout` at all, which is what `docs/MAC_SETUP.md` section 0 says. **No PR is open and
+CI is green on `main`**: run 35144687967.
 
 **One thing in the old plan was wrong and is worth not re-deriving.** This file said GitHub
 would retarget PR #3 to `main` by itself once PR #2 merged. It does that when the base branch
@@ -1161,6 +1184,52 @@ with it. **Four things settled.**
 before `addTopLevelItem`, so every line arriving while a filter was on came in visible. It
 looks like a filter that ignores new lines and nothing about it raises.
 
+### `ProIngest.command`, and everything about handing a build to somebody else
+
+**The launcher.** A bash script at the repo root, double-clicked in Finder. It `cd`s to its own
+folder, because **Finder starts a double-clicked script in the home folder**; it `uv sync`s and
+fetches ffmpeg if either is missing; and it **holds a failure on screen** with a keypress,
+because Terminal closes on exit and takes the error with it. A missing `uv` is a message with
+the install line in it rather than a `curl | sh` it decided to run.
+
+**What it is not.** It does not replace the app for the editor. It still wants `uv` and a
+network on its first run, so on a machine with nothing installed it is *more* setup, not less.
+The thing that runs with nothing installed is `dist/ProIngest.app`, and the half hour this
+question cost was spent establishing that **an `.app` is a folder** - so "a folder that runs
+without installing anything" is the packaged build rather than a third thing to make.
+
+### Getting a build to the editor: what is actually known
+
+None of this is code and all of it was learned the expensive way on 2026-09-16. It is here
+because the alternative is learning it again.
+
+- **Quarantine is applied by the receiving application, not by the file's history.** So the
+  route a dmg took before it reached the editor's Mac is irrelevant - relaying it through
+  Windows or Drive changes nothing about what their browser does when they download it.
+- **`gh` and `curl` do not set it. Browsers and AirDrop do.** `scp`, `rsync`, a USB stick and a
+  mounted share do not. This is why `gh run download` is the clean way to pull a CI build.
+- **A CI artifact needs a logged-in GitHub account even though this repository is public.**
+  That rules artifacts out as a handover channel for anybody who is not a developer, which was
+  the assumption being made when this came up.
+- **Artifacts expire.** The dmg from run 35144687967 dies on 2026-12-15. A handed-over dmg
+  keeps working; the link does not.
+- **A `.zip` drops symlinks and the executable bit.** That destroys an `.app` and makes
+  `ProIngest.command` unrunnable, and the failure reads as a broken build rather than a broken
+  transfer. `.dmg`, `.tar.gz`, `scp`, `rsync` and USB all survive. **A dmg *inside* a zip is
+  safe**, because the dmg is one opaque file with nothing for zip to damage - which is the
+  distinction that matters when somebody puts a build on Drive. CI uploads the dmg rather than
+  the app for exactly this reason and says so in a comment in `ci.yml`.
+- **The dialog the editor sees says the app is *damaged* and offers to move it to the Trash,
+  and that is the default button.** Somebody following it deletes the build and reports that it
+  arrived broken. Any instructions sent with a build have to say **Cancel** in bold before they
+  say anything else. `docs/guide/install.md` describes the refusal but was written for somebody
+  handed a bare dmg: it does not mention a zip and it does not warn about that button. Worth
+  fixing when M9.5 settles (OQ-49).
+- **`xattr -dr com.apple.quarantine /Applications/ProIngest.app` prints nothing on success**,
+  which a non-technical reader will take for failure unless told.
+- **None of this goes away until OQ-9.** A Developer ID and notarization is the only answer that
+  makes every route work, and it is still a spend decision rather than a task.
+
 ### `build/mac_build.sh`: the Mac clone is one command
 
 **What it is.** A bash script that runs `docs/MAC_SETUP.md` sections 2 to 6 in order and stops
@@ -1532,6 +1601,27 @@ is fixed, with three tests that assert the view's geometry rather than the model
 and `docs/MAC_SESSION.md`'s dot line is now about whether nine pixels read at 2x rather
 than about whether anything is there.
 
+### The delivery folder structure, confirmed against a sample the user supplied
+
+On 2026-09-16 the user put a sample shot folder in the repo root, `TEST0001/`, as "the preferred
+folder structure of the exports". Nine folders, empty, so it says nothing about the files.
+**Eight of the nine are exactly what `naming.raw_sequence_dir` already writes**, character for
+character: `cp01`, `el01`, `pl01` and `re01`, each at `4k` and `HD`, all `_raw_..._v01`, under
+`<delivery_root>/TEST/TEST0001/`. That is the first time the output naming has been checked
+against something the user produced rather than against the spec it was built from.
+
+**The ninth is `TEST0001_lidar`, and nothing in this project knows about it.** It is not in
+`ELEMENT_TYPES`, not in `docs/NAMING_SPEC.md`, and **`PRD.md` lists "Lidar deliverables" as an
+explicit v01 non-goal**. So either that exclusion is stale or the folder is made by hand like
+the lens grid (OQ-20). The user was asked and said the sample was information rather than a
+request, so nothing was built. **If lidar comes into scope**, what is needed first is what
+arrives - a folder in the turnover, or clips on the timeline - because the lens grid is the
+precedent for the first and it is handled by a person.
+
+`TEST0001/` is untracked and git cannot commit empty directories, so it exists on that machine
+only. Recording the structure in `docs/NAMING_SPEC.md` section 5 would be the durable form; the
+section already describes this layout correctly, which is why it was left alone.
+
 ### Next task
 
 **The repo is clone-ready on a Mac as of 2026-09-13, and is one command as of 2026-09-16.**
@@ -1560,6 +1650,10 @@ waiting on, because that is the thing that decides whether a session can start i
 
 **Waiting on a person, not on work:**
 
+- **OQ-9 is now the whole of the handover problem and it has been looked at properly.** Every
+  route that reaches the editor without a Developer ID ends in them pasting one line into
+  Terminal, or in somebody carrying a USB stick. The one thing that might avoid it and has never
+  been tested is the Drive mount, which is a line on `docs/MAC_SESSION.md` now.
 - **OQ-9, the Apple Developer ID.** Buy one, or agree a route to the editor that never marks a
   build as downloaded. **This is the single item that blocks handover** and it is a spend
   decision rather than a task. `docs/PACKAGING.md` has the three options in preference order.
