@@ -53,21 +53,20 @@ the last open item that was a fault rather than a judgement. Taking the harness'
 picture found that **the status dot had never been drawn on any shot row**; that is fixed with
 it, and section 7 has the mechanism. Each has its own note below.
 
-**The branch tangle is resolved, 2026-09-14.** `m7/packaging` is PR #2 and is about packaging:
-five commits, pushed, green, and **still open**. The commits that had accumulated on top of it
-were not packaging - they were there by accident of what was checked out - and they are now
-**`m9/guide-and-settings`, PR #3**: **24 commits, pushed, green**, and **based on `m7/packaging`
-rather than `main`**, because that is what they were written on top of. **GitHub retargets PR #3
-to `main` by itself when PR #2 merges**, and its diff narrows at that point, so nothing has to be
-rebased by hand. **A fresh clone lands on `main`, which has neither M7's packaging nor anything
-since**, so a Mac clone has to `git checkout m9/guide-and-settings` until those two merges happen
-(`HANDOFF.md` says so too).
+**The branch tangle is over: both PRs are merged, 2026-09-16, and `main` carries everything.**
+PR #2 (`m7/packaging`, five commits) went in first, then PR #3 (`m9/guide-and-settings`,
+27 commits) on top of it, both as merge commits so every commit message survives. **A fresh
+clone now lands on `main` with the lot** and needs no `git checkout` at all, which is what
+`docs/MAC_SETUP.md` section 0 says. No PR is open.
 
-**Merging PR #2 is the one step still waiting on a person.** It is `MERGEABLE` / `CLEAN` with all
-four checks green, and `main` is a strict ancestor of it, so the merge cannot conflict. Until it
-happens both PRs stay open and PR #3's diff shows 23 commits rather than 18. Local
-`m7/packaging` has been reset to `origin/m7/packaging` so it matches the PR exactly; **the work
-is on `m9/guide-and-settings`, which is the branch to be on.**
+**One thing in the old plan was wrong and is worth not re-deriving.** This file said GitHub
+would retarget PR #3 to `main` by itself once PR #2 merged. It does that when the base branch
+is **deleted**, and this repository does not delete on merge, so #3 sat pointing at
+`m7/packaging` after #2 was in. Retargeting it by hand is one call -
+`gh api -X PATCH repos/shango/ProIngest/pulls/3 -f base=main` - because `gh pr edit --base`
+fails on this repository with a Projects (classic) GraphQL deprecation error that has nothing
+to do with the base branch. **Both branches still exist**, unmerged-looking but fully merged;
+deleting them is safe and nothing needs them.
 
 **CI went green first time on the push that carried the `MainWindow` split too: run
 34904834036, all four jobs, 2026-09-14.** The push before it was run 34900426677, which was CI's
@@ -88,7 +87,7 @@ was ever pushed, which is what turned M7 from written-blind into verified-except
 **Run 34798702117 is green on all four jobs**, and the macOS packaging job closed the wrapper
 too: **251 MB installed, a 110 MB dmg**, and the smoke test inside the real `.app` intercepted
 the spawn arguments, rendered through a two worker pool and wrote both spreadsheets. It is on
-the branch `m7/packaging` as **PR #2, unmerged and waiting on nothing but a merge**. Detail is in section 5 under M7.
+the branch `m7/packaging` as **PR #2, merged into `main` on 2026-09-16**. Detail is in section 5 under M7.
 
 **A code quality review went in on 2026-09-13, on the branch `review/quality-fixes`.**
 `REVIEW.md` at the repo root is the record: 27 bugs fixed with a test each, five structural
@@ -1561,8 +1560,6 @@ waiting on, because that is the thing that decides whether a session can start i
 
 **Waiting on a person, not on work:**
 
-- **Merge PR #2.** One command, cannot conflict, and it unblocks PR #3's retarget. See the
-  branch paragraph above.
 - **OQ-9, the Apple Developer ID.** Buy one, or agree a route to the editor that never marks a
   build as downloaded. **This is the single item that blocks handover** and it is a spend
   decision rather than a task. `docs/PACKAGING.md` has the three options in preference order.
