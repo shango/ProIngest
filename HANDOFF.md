@@ -36,19 +36,17 @@ morning:
   `shutil.which` finds nothing. A run without the PATH line reports green having encoded
   nothing. If it says a few hundred tests rather than **1691**, that line did not happen.
 
-**Which branch.** A fresh clone lands on `main`, which has **neither** M7's packaging nor
-anything since. Everything is on **`m9/guide-and-settings`**, which is based on `m7/packaging`
-rather than on `main`, so that one branch carries the lot:
+**Which branch: `main`, as of 2026-09-16.** Both PRs are merged and there is nothing to check
+out. The whole of getting a Mac from nothing to a built app is:
 
 ```
 git clone git@github.com:shango/ProIngest.git ProIngest
 cd ProIngest
-git checkout m9/guide-and-settings
+bash build/mac_build.sh
 ```
 
-Merging PR #2 and then PR #3 would make that a plain `git clone` and nothing else. It is one
-command each and neither can conflict - `main` is a strict ancestor of `m7/packaging` - and it is
-still the one step waiting on a person.
+`docs/MAC_SETUP.md` section 0 is that script and the rest of that document is the same thing by
+hand.
 
 ## What the Mac day is for
 
@@ -145,8 +143,8 @@ coverage is `action.trigger()` is covered for the enabled path and nothing else.
 
 `PROGRESS.md` section 1's "Next task" is current and is the list. In one line each:
 
-- **A person:** merge PR #2 (then #3, if you want `main` to carry everything). Then OQ-9, which
-  blocks handover; OQ-49, the guide's form; and asking OQ-44 and OQ-46.
+- **A person:** both PRs are merged, so what is left is OQ-9, which blocks handover; OQ-49, the
+  guide's form; and asking OQ-44 and OQ-46.
 - **This machine:** nothing. `REVIEW.md`'s last section still has micro-smells, performance that
   needs a real mount (S4, which is M8), and test gaps not tied to a bug, and none of them is
   worth a session.
