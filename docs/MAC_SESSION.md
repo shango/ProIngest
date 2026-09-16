@@ -73,6 +73,12 @@ Do not rent for any of these. Listed because the instinct to rent is usually wro
 
 Append to this as M5 and M6 are built.
 
+- [ ] **`ProIngest.command` opens the window when double-clicked in Finder.** It is the
+      route for handing the tool over without building one, and the half only a Mac can
+      answer is Finder's: whether a file with the executable bit is offered as something to
+      run rather than opened in an editor, and what the quarantine dialog says when the
+      folder arrived from somewhere else. The shell in it is the same shell
+      `build/mac_build.sh` runs.
 - [ ] **`bash build/mac_build.sh` runs start to finish.** It is the first thing typed at the
       machine and the one file here that CI never executes: the workflow does the same steps
       as its own YAML rather than by running the script. Every line in it is a line

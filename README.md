@@ -11,6 +11,7 @@ command line. `PROGRESS.md` section 1 is the current state.
 
 On a Mac, clone it and run `bash build/mac_build.sh`: it installs the locked
 environment, fetches the ffmpeg binaries, runs the checks and builds the app and the dmg.
+To just run it without building anything, double-click `ProIngest.command` instead.
 `docs/MAC_SETUP.md` is the same thing by hand, and is what to read when a step fails.
 
 ## Reading order

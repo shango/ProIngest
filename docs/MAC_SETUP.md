@@ -32,6 +32,39 @@ re-running it is safe: every step does nothing when it has nothing to do.
 The rest of this document is the same thing by hand, and is what to read when a step
 fails or when you want only part of it.
 
+## 0.5 Running it without building anything
+
+**Double-click `ProIngest.command` in this folder.** It prepares the environment on the
+first run and opens the window; every run after that takes a couple of seconds. This is
+the route for when there is no time to build, and the folder is the program.
+
+It needs `uv` and a network connection the first time, because the environment and the
+132 MB of video tools are not in the folder as it comes out of git. After that first run
+the folder is self-sufficient and can be copied to another Mac of the same architecture.
+
+**There are two different "folders" here and it is worth being clear which one is wanted.**
+
+| | `ProIngest.command` beside the source | `dist/ProIngest.app` |
+| --- | --- | --- |
+| Needs `uv` and a network on first use | yes | no |
+| Needs building first | no | yes, `build/build.py` |
+| Size | 5 MB of source, then ~500 MB once prepared | 251 MB, complete |
+| Hand to somebody with nothing installed | no | yes |
+
+An `.app` **is** a folder - macOS just draws it as one icon - so "a folder that runs with
+nothing installed" is the packaged build rather than a different thing to make. CI builds
+one on every push and attaches it to the run.
+
+**Two things about sending either one to somebody else.**
+
+- **Do not send it as a `.zip`.** A zip drops the executable bit, so `ProIngest.command`
+  arrives as a file Finder will not run, and an `.app` arrives broken outright. A `.dmg`,
+  a `.tar.gz`, `scp`, `rsync` or a USB drive all keep it. The same is true of the zip
+  GitHub wraps a CI artifact in, which is why the artifact is a dmg rather than the app.
+- **A browser download is quarantined.** For `ProIngest.command` that is a dialog with an
+  Open button behind a right-click; for an unsigned `.app` it is a refusal (section 7).
+  Either way `xattr -dr com.apple.quarantine <the folder>` clears it in one go.
+
 ## 1. What has to be there first
 
 - **Apple Silicon.** The build is arm64 only and deliberately so (OQ-24). Running from
