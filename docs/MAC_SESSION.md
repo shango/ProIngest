@@ -73,6 +73,12 @@ Do not rent for any of these. Listed because the instinct to rent is usually wro
 
 Append to this as M5 and M6 are built.
 
+- [ ] **`bash build/mac_build.sh` runs start to finish.** It is the first thing typed at the
+      machine and the one file here that CI never executes: the workflow does the same steps
+      as its own YAML rather than by running the script. Every line in it is a line
+      `docs/MAC_SETUP.md` documents and CI proves, so what is being checked is the wrapper -
+      that `uv` is found, that the arm64 guard passes, that the `PATH` export reaches the
+      suite, and that it ends holding a dmg.
 - [ ] **The CI-built bundle launches from the Finder.** Headlessly it already scans, renders
       and reports on every push, so what is being checked here is the half a smoke test cannot
       reach: double-click the app and get a window.

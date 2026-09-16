@@ -9,8 +9,9 @@ command line. `PROGRESS.md` section 1 is the current state.
 
 ## Getting it running
 
-On a Mac, `docs/MAC_SETUP.md` start to finish. It is four commands plus the ffmpeg
-binaries, which are pinned by sha256 and not tracked in git.
+On a Mac, clone it and run `bash build/mac_build.sh`: it installs the locked
+environment, fetches the ffmpeg binaries, runs the checks and builds the app and the dmg.
+`docs/MAC_SETUP.md` is the same thing by hand, and is what to read when a step fails.
 
 ## Reading order
 

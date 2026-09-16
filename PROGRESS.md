@@ -8,11 +8,23 @@ commit.
 
 ## 1. Resume here
 
-**State at 2026-09-14. Every feature milestone is built, and so is packaging.** M1 to M4
+**State at 2026-09-16. Every feature milestone is built, and so is packaging.** M1 to M4
 complete, M4.5 all four chunks, M4.6 all five, **M5 all twelve**, **M7**, and **M9.4**.
-**1691 tests**, `ruff`, `ruff format` and `mypy --strict` clean over `proingest tests build`.
+**1694 tests**, `ruff`, `ruff format` and `mypy --strict` clean over `proingest tests build`.
 What is left is **M8 polish** (needs a real turnover and a real colour session) and the rest
 of **M9, the user guide**.
+
+**This session, 2026-09-16, made the Mac clone one command.** `build/mac_build.sh` is
+`docs/MAC_SETUP.md` sections 2 to 6 as a script: the locked environment, the ffmpeg pair and
+its verify, the `PATH` export, `ruff`, `mypy` and the suite, then the app, the dmg and the
+smoke test through the frozen binary. `--from DIR` installs an ffmpeg pair downloaded by hand
+and `--skip-checks` builds without the suite. It adds no step the document did not already
+have and no step CI does not already run; what it removes is the chance of typing six commands
+in the wrong order on a machine that is rented by the day. `tests/test_mac_build.py` is the
+three ways a shell script nothing imports can rot: the executable bit, `bash -n`, and every
+repo path it names still existing. It has **never been run on a Mac** - CI's macOS jobs do the
+same steps from their own YAML rather than by calling it - so `docs/MAC_SESSION.md`'s checklist
+now opens with running it.
 
 **This session split `MainWindow`, which was the last code on the list that this machine
 could write alone.** `REVIEW.md`'s S1 and S2, both closed: the run is `ui/run_controller.py`,
@@ -1150,6 +1162,37 @@ with it. **Four things settled.**
 before `addTopLevelItem`, so every line arriving while a filter was on came in visible. It
 looks like a filter that ignores new lines and nothing about it raises.
 
+### `build/mac_build.sh`: the Mac clone is one command
+
+**What it is.** A bash script that runs `docs/MAC_SETUP.md` sections 2 to 6 in order and stops
+at the first failure. `uv sync --frozen --extra dev --python 3.12`, then
+`fetch_ffmpeg.py --verify` and a fetch only if that says no, then the `PATH` export and
+`ffmpeg -version` to prove the binary execs, then `ruff check`, `ruff format --check`, `mypy`
+and `pytest`, then `build/build.py` and `build/smoke_test.py` against
+`dist/ProIngest.app/Contents/MacOS/ProIngest`. It ends by printing where the app and the dmg
+are and what the Gatekeeper situation is.
+
+**Three decisions in it.**
+
+- **`--frozen`**, which `MAC_SETUP.md` section 2 does not use and CI does. On a build machine
+  the loud failure is the right one: without it, a `pyproject.toml` that has moved ahead of
+  `uv.lock` silently resolves a dependency set nothing has proved green.
+- **It execs `ffmpeg -version` rather than trusting the verify.** The sha256 says the bytes are
+  the pinned build; it does not say this machine can run them. An Intel Mac and a quarantined
+  binary both fail here with their own error instead of as a hundred skipped media tests.
+- **It does not run `build/screenshots.py`.** That writes files into `docs/guide/images/` for a
+  person to look at and commit, which is a Mac-session task and not a build step. The script's
+  closing lines point at it rather than doing it.
+
+**It installs nothing behind your back.** A missing `uv` is an error with the one-line
+installer in it, not a `curl | sh` the script decided to run.
+
+**What cannot be checked from here.** All of it, in the sense that matters: every line is a
+line CI runs and the document already carried, but the wrapper around them has only ever been
+parsed on this machine. `tests/test_mac_build.py` covers the three failure modes that are
+silent - the executable bit, a syntax error, and a path that a rename left pointing at nothing
+- and the rest is the first line of `docs/MAC_SESSION.md`'s checklist.
+
 ### The MainWindow split is built: what `REVIEW.md` deferred as S1 and S2
 
 The review's two structural findings that were left for a session of their own. S2 first,
@@ -1492,8 +1535,9 @@ than about whether anything is there.
 
 ### Next task
 
-**The repo is clone-ready on a Mac as of 2026-09-13.** `docs/MAC_SETUP.md` is the whole of
-it: clone, `uv sync --extra dev --python 3.12`, the ffmpeg pair, the PATH line, then the
+**The repo is clone-ready on a Mac as of 2026-09-13, and is one command as of 2026-09-16.**
+`bash build/mac_build.sh` is the short route and `docs/MAC_SETUP.md` is the whole of it by
+hand: clone, `uv sync --extra dev --python 3.12`, the ffmpeg pair, the PATH line, then the
 suite, the app and the build. Two things in it are not obvious and are why the document
 exists rather than a paragraph in the README. The ffmpeg binaries can now be **put there by
 hand** - `build/fetch_ffmpeg.py --show` prints the URLs and hashes, `--from <folder>`

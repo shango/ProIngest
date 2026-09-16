@@ -10,6 +10,28 @@ are deliberately not in git. Section 3 is that, and it has a manual route.
 Once the app runs, `docs/MAC_SESSION.md` is the checklist of what to actually look at.
 This document only gets you to the point where that checklist can begin.
 
+## 0. The short way
+
+Everything in sections 2 to 6 is also one script. On a machine that has `git` and `uv`:
+
+```
+git clone git@github.com:shango/ProIngest.git ProIngest
+cd ProIngest
+bash build/mac_build.sh
+```
+
+It installs the locked environment, fetches and verifies the ffmpeg pair, puts it on
+`PATH`, runs `ruff`, `mypy` and the suite, builds `ProIngest.app` and the dmg, and drives
+the frozen binary through a fixture turnover. It stops at the first thing that fails, and
+re-running it is safe: every step does nothing when it has nothing to do.
+
+- `bash build/mac_build.sh --from ~/Downloads` installs the ffmpeg pair from files you
+  downloaded by hand rather than fetching them (section 3).
+- `bash build/mac_build.sh --skip-checks` builds without the lint and the suite first.
+
+The rest of this document is the same thing by hand, and is what to read when a step
+fails or when you want only part of it.
+
 ## 1. What has to be there first
 
 - **Apple Silicon.** The build is arm64 only and deliberately so (OQ-24). Running from
@@ -127,7 +149,8 @@ which is the check that no hidden import or plugin manifest was lost in freezing
 
 You do not have to build it to have it: CI builds the same dmg on an arm64 runner on every
 push and uploads it as a run artifact. Building locally is for when you are changing what
-goes into the bundle.
+goes into the bundle. `bash build/mac_build.sh --skip-checks` is these two
+commands with sections 2 to 4 re-verified ahead of them.
 
 ## 7. Gatekeeper, once
 
