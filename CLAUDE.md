@@ -33,6 +33,7 @@ The docs are the spec. `PROGRESS.md` is the state. When code and docs disagree, 
 ## Commands
 ```
 bash build/mac_build.sh      # a fresh Mac clone: environment, ffmpeg, checks, app, dmg (docs/MAC_SETUP.md)
+./ProIngest.command          # run from the folder, no build; double-clickable in Finder
 uv sync --extra dev          # installs exactly what uv.lock pins; or: pip install -e .[dev]
 pytest
 ruff check . && ruff format --check . && mypy proingest tests build
