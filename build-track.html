@@ -311,7 +311,7 @@
   <header class="mast">
     <div class="eyebrow">
       <span>VFX turnover ingest &middot; macOS v01</span>
-      <span class="stamp">Updated <b>13 Sep 2026, 09:17 PDT</b></span>
+      <span class="stamp">Updated <b>13 Sep 2026, 20:30 PDT</b></span>
     </div>
     <h1>ProIngest Build Track</h1>
     <p class="standfirst">
@@ -324,15 +324,15 @@
 
   <div class="stats">
     <div class="stat">
-      <div class="stat-n">5<span style="color:var(--faint);font-size:17px">/8</span></div>
+      <div class="stat-n">6<span style="color:var(--faint);font-size:17px">/8</span></div>
       <div class="stat-l">Milestones done</div>
     </div>
     <div class="stat">
-      <div class="stat-n good">1536</div>
+      <div class="stat-n good">1603</div>
       <div class="stat-l">Tests, Linux + macOS</div>
     </div>
     <div class="stat">
-      <div class="stat-n">27<span style="color:var(--faint);font-size:17px">/50</span></div>
+      <div class="stat-n">28<span style="color:var(--faint);font-size:17px">/52</span></div>
       <div class="stat-l">Questions open</div>
     </div>
     <div class="stat">
@@ -1082,12 +1082,12 @@
         </div>
       </div>
 
-      <div class="ms">
+      <div class="ms done">
         <div class="ms-id">M7</div>
         <div class="ms-body">
           <div class="ms-head">
             <span class="ms-name">Packaging</span>
-            <span class="pill">Not started &middot; 0 of 5</span>
+            <span class="pill done">Complete &middot; 19 tests</span>
           </div>
           <p class="ms-goal">
             A double-clickable Mac application with the video tools inside it, on a disk image,
@@ -1095,76 +1095,121 @@
           </p>
           <div class="chunks">
 
-            <div class="chunk">
+            <div class="chunk done">
               <span class="c-id">M7.1</span>
-              <span class="c-name">The bundle</span>
+              <span class="c-name">The one line that stops Run opening four windows</span>
               <span class="c-note">
-                PyInstaller spec and build script producing a <span class="mono">.app</span>:
-                the colour engine's data files, the Qt plugins and the numeric libraries all have
-                to be carried explicitly or the bundle launches and then fails on the first
-                delivery.
+                Each output is written in a separate process, and inside a packaged Mac app a
+                fresh process <b>re-launches the app</b> rather than importing a module. One line
+                in the packaged entry point intercepts that. <b>The interesting part is that
+                reading Python's own source says the line does nothing on a Mac</b> - it is
+                written to apply on Windows only - and the packaging tool quietly replaces it with
+                a version that applies everywhere. Both halves were proved by running the built
+                app rather than taken on trust, and two tests now hold it, because it is the line
+                in this project most likely to be deleted by somebody who checked.
               </span>
-              <span class="c-st"><span class="tag open">Planned</span></span>
+              <span class="c-st"><span class="tag ok">Done</span></span>
             </div>
 
-            <div class="chunk">
+            <div class="chunk done">
               <span class="c-id">M7.2</span>
-              <span class="c-name">The video tools inside it</span>
+              <span class="c-name">The bundle, and the one library that breaks when frozen</span>
               <span class="c-note">
-                Fetched from the pinned build rather than committed, checked against its recorded
-                fingerprint, and placed where the app looks for them first. <b>This part is
-                already settled and measured</b>: the pair compresses to 57&nbsp;MB against a
-                300&nbsp;MB budget.
+                Everything the app carries is decided in a normal, type-checked, tested file, and
+                the packaging tool's own recipe file is a six line shim over it. That is
+                deliberate: a recipe file is <b>run</b> rather than imported, so nothing lints or
+                tests one, and a mistake in it does not fail a build - it ships an app with a file
+                missing.
+                <b>Of everything the tool depends on, exactly one breaks when frozen</b>, and it
+                is the library that reads the timeline file every delivery arrives as. It finds
+                its readers by looking them up in installed-package records and description files
+                rather than by importing them, and freezing throws all of that away. The edit list
+                reader is the sharper case: it is registered under a name that does not match the
+                package it lives in, so the lookup <b>always</b> misses and only a fallback that
+                reads the source file off disk ever works. Everything else - the interface
+                toolkit, the numeric libraries, the image and colour engines - needed nothing.
               </span>
-              <span class="c-st"><span class="tag open">Planned</span></span>
+              <span class="c-st"><span class="tag ok">Done</span></span>
             </div>
 
-            <div class="chunk">
+            <div class="chunk done">
               <span class="c-id">M7.3</span>
-              <span class="c-name">Disk image and icon</span>
+              <span class="c-name">Disk image and size</span>
               <span class="c-note">
-                The <span class="mono">.dmg</span> the editor is handed, with the drag-to-
-                Applications layout, and an application icon. Cosmetic and quick, and the first
-                thing anybody sees.
+                The image the editor is handed, with the drag-to-Applications layout, built with
+                the tool macOS already has rather than one installed from Homebrew - the only part
+                of the fancier option that was wanted is a single shortcut in a staging folder.
+                <b>The size is measured on every build</b> and printed into the build's own summary
+                against the 300&nbsp;MB budget, rather than being a number in a document nobody
+                checks. It reports and does not fail: what to drop when the interface toolkit gains
+                a megabyte is a person's decision. <b>Measured: 251&nbsp;MB installed and a
+                110&nbsp;MB disk image</b>, about a third of the budget.
+                <b>There is still no application icon</b>, so the app carries the packaging tool's
+                default. It is cosmetic, it is one argument once somebody draws one, and it is the
+                first thing anybody sees.
               </span>
-              <span class="c-st"><span class="tag open">Planned</span></span>
+              <span class="c-st"><span class="tag ok">Done</span></span>
             </div>
 
-            <div class="chunk">
+            <div class="chunk done">
               <span class="c-id">M7.4</span>
-              <span class="c-name">First run on a clean machine</span>
+              <span class="c-name">Proving the built app actually works</span>
               <span class="c-note">
-                Settings and logs land in the folders Apple's guidelines name, and <b>nothing has
-                to be placed or pointed at by hand</b> - the colour engine ships no configuration
-                files of its own, which was arranged for deliberately back in the colour work.
+                <b>A script drives the packaged app through a whole delivery</b> - scan it, render
+                it through two worker processes, write both spreadsheets - and checks what landed.
+                That is the half of packaging that cannot be tested any other way: every failure a
+                frozen app has that a normal checkout does not shows up as the packaged program
+                behaving differently, so the only way to see it is to run the packaged program.
+                <b>It was all built and proved on the Linux machine before any of it was
+                pushed.</b> Nothing ships from that build; it exists because a missing file fails a
+                Linux build exactly as it fails a Mac one, and the running checklist names
+                discovering that on a rented Mac as the expensive way to find out.
+                <b>Then it ran inside a real Mac application and passed there too</b>, first time:
+                the app rendered through two worker processes and wrote both spreadsheets, which is
+                the one thing about packaging that no amount of Linux could have answered.
               </span>
-              <span class="c-st"><span class="tag open">Planned</span></span>
+              <span class="c-st"><span class="tag ok">Done</span></span>
+            </div>
+
+            <div class="chunk done">
+              <span class="c-id">M7.5</span>
+              <span class="c-name">Built on every change, and downloadable</span>
+              <span class="c-note">
+                The hosted Apple Silicon machine now <b>builds the app and the disk image on every
+                push</b> and attaches the image to the run, so a Mac application is a download
+                rather than something that has to be made on a machine somebody rented. A second
+                job builds the same thing on a free Linux machine and runs the same proving script,
+                which is where a missing file surfaces first and cheapest.
+              </span>
+              <span class="c-st"><span class="tag ok">Done</span></span>
             </div>
 
             <div class="chunk">
-              <span class="c-id">M7.5</span>
+              <span class="c-id">OQ-9</span>
               <span class="c-name">Getting it past Gatekeeper</span>
               <span class="c-note">
-                <b>The one thing here that is not code.</b> A downloaded, unsigned Mac
-                application is <b>refused outright</b>, not warned about. Either an Apple
-                Developer ID is bought, or every build reaches the editor by a route that never
-                marks it as downloaded. That is a decision for the studio rather than a task, and
-                it is the single item that blocks handover.
+                <b>The one thing here that is not code, and it is unchanged.</b> A downloaded,
+                unsigned Mac application is <b>refused outright</b>, not warned about. Either an
+                Apple Developer ID is bought, or every build reaches the editor by a route that
+                never marks it as downloaded. That is a decision for the studio rather than a task,
+                and it is the single item that blocks handover.
               </span>
               <span class="c-st"><span class="tag hot">Decision</span></span>
             </div>
 
           </div>
-          <div class="mods"><span>build/build.py</span><i>/</i><span>proingest.spec</span><i>/</i><span>dmg.py</span></div>
+          <div class="mods"><span>build/entry.py</span><i>/</i><span>bundle.py</span><i>/</i><span>proingest.spec</span><i>/</i><span>build.py</span><i>/</i><span>smoke_test.py</span><i>/</i><span>ci.yml</span></div>
           <div class="gate">
-            <b>The build itself is no longer a gate.</b> The same hosted Apple Silicon machine
-            that runs the tests can package the app, so nothing has to be uploaded anywhere to be
-            compiled. What is left that genuinely needs a person is <b>one planned day on a rented
-            Mac</b>, at about EUR 3, to look at the things only a person can check. Preparation
-            rather than price is what matters there, and the running checklist is
-            <code>docs/MAC_SESSION.md</code>, which is added to in the same commit as any work
-            whose behaviour only a Mac can confirm - it now carries the native file dialogs, the
-            unsaved-work prompt and the tab order through the list.
+            <b>This milestone was recorded as needing a Mac and it did not.</b> Everything except
+            how the app behaves once double-clicked is now exercised automatically on every change.
+            <b>That matters because it was the gate in front of the rented Mac day</b>: the
+            checklist's own rule was not to rent until the packaging job produced a downloadable
+            application whose unattended proving run passed, on the grounds that renting a machine
+            in order to discover a missing file is the expensive way to discover one. All three
+            preconditions are now met, so the day is bookable and is spent on the things only a
+            person can judge. The checklist is <code>docs/MAC_SESSION.md</code>, and it has gained
+            what a packaged app adds to it: launching from the Finder, whether the disk image reads
+            as a drag-to-install, and counting the icons in the Dock during a render.
           </div>
         </div>
       </div>
@@ -1252,9 +1297,10 @@
               <span class="c-name">Installing it</span>
               <span class="c-note">
                 The disk image, what macOS says the first time and what to do about it, where the
-                app keeps its settings and its logs. Waits on the packaged app existing.
+                app keeps its settings and its logs. <b>No longer blocked</b>: the packaged app
+                and its disk image now exist, so there is something to describe.
               </span>
-              <span class="c-st"><span class="tag open">Needs M7</span></span>
+              <span class="c-st"><span class="tag open">Can start</span></span>
             </div>
 
             <div class="chunk">
@@ -1332,6 +1378,11 @@
           <tr><th>ID</th><th>Question</th><th>State</th></tr>
         </thead>
         <tbody>
+          <tr class="resolved">
+            <td class="id">OQ-52</td>
+            <td><b style="color:var(--text)">Raised and answered on 13 September, out of packaging.</b> What name the application identifies itself by to macOS. The specification said to use the studio's name and <b style="color:var(--text)">the studio is not to be named in anything that ships</b>. That turned out to cost nothing, because the question rested on a wrong premise: the name only has to be <b style="color:var(--text)">unique and permanent</b>, not descriptive, and <b style="color:var(--text)">Apple does not check that whoever registers one owns the web address inside it</b>. It is now built from the project's own code repository, which is unique, genuinely controlled, and names nobody connected to the production. <b style="color:var(--text)">The half that still binds is not changing it afterwards</b>: macOS files folder permissions under that name, so a later change means the editor is asked again for every folder they have already approved. Settings and logs are unaffected, being filed under the application's visible name instead</td>
+            <td class="st"><span class="tag ok">Answered</span></td>
+          </tr>
           <tr>
             <td class="id">OQ-50</td>
             <td><b style="color:var(--text)">New 13 September, out of wiring the colour checks.</b> Is a grading session one package per delivery, or one for the whole batch? Three documents disagreed, and none of them is wrong about the workflow: one puts the session's location in the settings window, one makes ingesting it a step in the editor's own flow, and the check that refuses an ungraded shot is written about one delivery and says in as many words that one can be waiting on colour while another renders, which a single setting cannot express. <b style="color:var(--text)">Built to the version that covers both</b>: the session is recorded per delivery, alongside the two folder locations that are already kept there for the same reason - it is a record of what this work was rendered from rather than a preference, so reopening a delivery restores it. With one delivery in the batch it behaves exactly like a single setting. If the answer is "one per batch" it costs one field and one button, not the checks</td>
@@ -1489,7 +1540,7 @@
           </tr>
           <tr>
             <td class="id">OQ-22</td>
-            <td>No Mac to build on. CI now runs the suite on Apple Silicon; packaging and M8 still need one</td>
+            <td><b style="color:var(--text)">Narrowed again 13 September.</b> No Mac to build on. The hosted Apple Silicon machine has run the tests for some days and <b style="color:var(--text)">now builds and proves the packaged application too</b>, so packaging is off this question entirely. What is left needs a person rather than a machine: how the app behaves when double-clicked, and the proving pass against a real delivery</td>
             <td class="st"><span class="tag open">Narrowed</span></td>
           </tr>
           <tr>
@@ -2049,14 +2100,29 @@
         </p>
       </div>
       <div class="note">
-        <h3>Rendering from the window sets a trap for packaging</h3>
+        <h3>The line that stops Run opening four windows reads exactly like dead code</h3>
         <p>
-          Each worker is a fresh process, and inside a packaged Mac app a fresh process
-          <b>re-launches the app</b> rather than importing a module. Unless the packaged entry
-          point says otherwise in one line, pressing Run would open four more copies of the
-          window instead of rendering. Nothing is wrong today - it only bites once there is a
-          bundle - and it is written into the packaging notes so the person building that bundle
-          meets it as a line to add rather than as windows multiplying on screen.
+          Each output is written in a separate process, and inside a packaged Mac app a fresh
+          process <b>re-launches the app</b> rather than importing a module, so without one line
+          in the packaged entry point, pressing Run would open four more copies of the window
+          instead of rendering. That trap was written into the packaging notes weeks ago so
+          whoever built the bundle would meet it as a line to add. <b>They did, and it turned out
+          to be stranger than the note said.</b>
+        </p>
+        <p>
+          <b>Python's own copy of that line does nothing on a Mac.</b> Read the standard library
+          and its body applies on Windows only, which makes the line look like something to
+          delete. The packaging tool quietly <b>replaces</b> it at startup with a version that
+          applies everywhere. So it is genuinely inert when running from source and genuinely
+          load-bearing in the shipped app, and no amount of reading either source on its own says
+          so.
+        </p>
+        <p>
+          Both halves were settled by running the built application rather than by reasoning: hand
+          it the argument a worker process gets and a working build swallows it, while the same
+          argument from source is rejected outright. It now has a test that the line is there and
+          a step in the proving run that fails if it stops working, because it is the line in this
+          project most likely to be removed by somebody being careful.
         </p>
       </div>
       <div class="note">
@@ -2132,42 +2198,39 @@
 
   <footer>
     <b>Source of truth</b> &middot; PROGRESS.md, docs/OPEN_QUESTIONS.md, PRD.md section 9<br>
-    <b>Verify</b> &middot; pytest &middot; ruff check . &amp;&amp; mypy proingest &middot; python -m proingest scan &lt;folder&gt;<br>
-    <b>Last updated</b> &middot; 13 September 2026, 09:17 PDT. <b>The interface is finished.</b>
-    The last chunk of it freezes the first three columns - the state dot, the shot code and the
-    element - so they stay put while the other twelve scroll sideways, and a row can still be
-    identified while reading a column at the far right of it. The toolkit has no feature for that:
-    it takes a second list laid over the first, sharing the shots and the selection outright, with
-    the scroll, the open deliveries and the column widths held in step both ways. <b>Typing works
-    across the join</b> - an edit opens in whichever list can actually be seen, so tabbing out of
-    the shot code and into the In point crosses between them with nothing to notice. <b>Two faults
-    in it were found by grabbing a picture of the real window rather than by any test</b>, both in
-    the delivery heading, which both lists draw: it read as two sentences spliced together, and it
-    slid apart when the list was scrolled. That is the sixth time looking at the real thing has
-    caught something, and both now have a test that fails without the fix. 1536 tests green, and
-    <b>all fifteen interface chunks are done</b>.<br>
-    <b>Before that, the buttons along the top were given descriptions</b>, one sentence each with
-    its shortcut, and a greyed button adds the reason it cannot be pressed - no delivery open, a
-    scan is going, every delivery already has shots. One of them lands on a button that is not
-    greyed at all: a delivery with shots but no grading session ingested <i>runs</i>, is refused,
-    and writes nothing, which looks exactly like a dead button. The sentences live apart from the
-    code that draws the toolbar, so the user guide can use the same ones rather than a second set
-    that drifts.<br>
-    <b>Before that, the log</b>, which found that the commands most worth having were never being
-    written down: the files are produced in separate worker processes, and a freshly started
-    process has nowhere to write until it is told where, so every command a render ran went
-    nowhere at all. The workers now send their lines back to the one process that owns the file, a
-    day is kept for a fortnight, the Log tab reads it inside the window, and the advanced settings
-    are ungreyed - how much is logged, and which copy of the video tools writes the files.<br>
-    <b>Next</b> &middot; <b>nothing left in the plan can be finished on this machine alone.</b>
-    Packaging needs a Mac, the proving pass needs a real delivery and a real grading session, and
-    the user guide needs both - its install section waits on the packaged app and its pictures
-    have to be taken on the Mac, because a guide showing Linux window furniture is a guide to a
-    tool the editor does not have. What can be drafted here meanwhile is the quickstart and the
-    script that takes the screenshots. <b>Two questions are worth asking before a real delivery
-    depends on them</b>: which field the shooters write their camera's format into and exactly
-    what they write, and whether a grading session's colour file really does contain the
-    conversion - because if the tool also converts, it converts twice, and nothing fails.
+    <b>Verify</b> &middot; pytest &middot; ruff check . &amp;&amp; mypy proingest tests build &middot;
+    python build/build.py &middot; python build/smoke_test.py &lt;app&gt;<br>
+    <b>Last updated</b> &middot; 13 September 2026, 19:40 PDT. <b>The application is packaged.</b>
+    A double-clickable Mac app with the video tools inside it and a disk image beside it are now
+    built on every change by the hosted Apple Silicon machine and attached to the run, so getting
+    one is a download. A script drives the packaged app through a whole delivery - scan, a two
+    process render, both spreadsheets - and checks what landed, which is the only way to catch the
+    failures a packaged program has that a normal checkout does not. <b>All of it was built and
+    proved on the Linux machine before any of it was pushed</b>, because a missing file fails a
+    Linux build exactly as it fails a Mac one. <b>It then passed inside a real Mac application on
+    the first run</b>: 251&nbsp;MB installed, a 110&nbsp;MB disk image at about a third of the
+    budget, and the app rendered through two worker processes and wrote both spreadsheets.
+    <b>This milestone was recorded as needing a Mac and it did not</b>, and it was the gate in
+    front of the rented day: the rule was not to rent until a downloadable app existed whose
+    unattended proving run passed. That is now true, so the day is bookable.
+    <b>One library broke when frozen and it is the one that reads every delivery</b>: it finds its
+    readers by looking them up rather than importing them, and the edit list reader is registered
+    under a name that does not match the package it lives in, so only a fallback reading the
+    source off disk ever works. Everything else needed nothing. 1603 tests green.<br>
+    <b>Next</b> &middot; three things can still be finished on this machine. <b>The colour check
+    that can no longer tell a dark Canon grade from a baked-in viewing transform</b> is the one
+    that is a fault rather than a judgement, and its replacement is already measured. <b>The last
+    greyed settings section</b>, output quality, needs the value to travel to the worker processes
+    on a channel that already exists. And <b>the quickstart and the screenshot script</b> can be
+    drafted, with the pictures that ship taken on the Mac.
+    <b>Two questions want asking before a real delivery depends on them</b>: which field the
+    shooters write their camera's format into and exactly what they write, and whether a grading
+    session's colour file really does contain the conversion - because if the tool also converts,
+    it converts twice and nothing fails. <b>One decision wants making before handover</b>: an
+    Apple Developer ID, or a route to the editor that never marks a build as downloaded. The
+    other, the name the application identifies itself by, was settled the same day it was raised
+    - it names nobody connected to the production, and the only rule now is not to change it once
+    a build has reached the editor.
   </footer>
 
 </div>

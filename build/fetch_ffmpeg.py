@@ -47,7 +47,7 @@ def is_satisfied(dest: Path, entry: dict[str, Any]) -> bool:
         return False
     if entry["executable"] and not dest.stat().st_mode & stat.S_IXUSR:
         return False
-    return sha256_of(dest) == entry["sha256"]
+    return sha256_of(dest) == str(entry["sha256"])
 
 
 def download(url: str, dest: Path) -> None:

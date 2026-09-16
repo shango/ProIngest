@@ -8,11 +8,22 @@ commit.
 
 ## 1. Resume here
 
-**State at 2026-09-13. Every feature milestone is built.** M1 to M4 complete, M4.5 all four
-chunks, M4.6 all five, and **M5 is all eleven**: M5.9, the frozen left columns, went in last
-as planned. 1584 tests passing, `ruff`, `ruff format` and `mypy --strict` clean. What is left
-is **M7 packaging** (needs a Mac), **M8 polish** (needs a real turnover and a real colour
-session) and **M9 the user guide**.
+**State at 2026-09-13. Every feature milestone is built, and so is packaging.** M1 to M4
+complete, M4.5 all four chunks, M4.6 all five, **M5 all eleven**, and **M7 as of this
+afternoon**. `ruff`, `ruff format` and `mypy --strict` clean, the last two now over `build/`
+as well. What is left is **M8 polish** (needs a real turnover and a real colour session) and
+**M9 the user guide**.
+
+**M7 did not need a Mac and this file said it did.** Everything but the `.app`'s behaviour
+once double-clicked is exercised by CI on every push: `package-macos` builds the bundle and
+the dmg on an arm64 runner and uploads the image, `package-linux` builds the same spec for
+free and smoke tests it, and `build/smoke_test.py` drives the packaged binary through a whole
+turnover in both. The spec was also built and smoke tested on this Linux machine before it
+was ever pushed, which is what turned M7 from written-blind into verified-except-the-wrapper.
+**Run 34798702117 is green on all four jobs**, and the macOS packaging job closed the wrapper
+too: **251 MB installed, a 110 MB dmg**, and the smoke test inside the real `.app` intercepted
+the spawn arguments, rendered through a two worker pool and wrote both spreadsheets. It is on
+the branch `m7/packaging` as **PR #2, unmerged**. Detail is in section 5 under M7.
 
 **A code quality review went in on 2026-09-13, on the branch `review/quality-fixes`.**
 `REVIEW.md` at the repo root is the record: 27 bugs fixed with a test each, five structural
@@ -72,7 +83,7 @@ is gone**, deleted with its tests in M4.5.4 as planned.
 
 ```
 .venv/bin/python -m pytest tests/ -q
-.venv/bin/python -m ruff check . && .venv/bin/python -m ruff format --check . && .venv/bin/python -m mypy proingest tests
+.venv/bin/python -m ruff check . && .venv/bin/python -m ruff format --check . && .venv/bin/python -m mypy proingest tests build
 ```
 
 Then read `docs/COLOR_AND_FORMAT.md` section 1 before anything else. It was rewritten twice on
@@ -1194,15 +1205,33 @@ underneath, where the overlay covers them. **Seven things in it should not be re
   that knows that. Two implementations of section 4's Tab order would have drifted the first
   time one of them grew a column.
 
-### Next task: nothing that this machine can finish on its own
+### Next task
 
-M5 was the last milestone that could be. **M7 packaging** needs a Mac (OQ-22, OQ-9), **M8
-polish** needs a real turnover and a real colour session, and **M9 the user guide** (FR-17)
-needs M7 for its install section and the Mac for its shipped screenshots. What can be drafted
-here without any of that is **M9.2, the quickstart**, and **M9.4's harness**, which builds a
-demo batch and grabs the window: the images it takes on Linux are fine for laying the document
-out and the shipped set is taken on the Mac. M9's button reference should read
-`ui/toolbar_help.py` rather than restate it.
+**M7 is done, and it was the thing standing in front of the Mac day.** `docs/MAC_SESSION.md`'s
+own gate said not to rent until the packaging job produced a downloadable artifact whose
+headless smoke test passed; all three of its preconditions are now ticked, so the rented day
+is bookable.
+
+What is left that this machine can still finish on its own, in the order it is worth doing:
+
+- **OQ-47, QC-039's scene linear probe.** Pure core, and the one open item that is a
+  correctness bug rather than a judgement: the probe is calibrated on ACEScct, the CLF no
+  longer starts there, and for C-Log3 - one of the three cameras named for this show - it
+  cannot separate a valid grade from a display rendering at all. The replacement ratio probe
+  is already measured and written out in the question. It is a rule definition, so
+  `QC_RULES.md` moves with it.
+- **The Settings page's sixth section.** Output is listed and disabled because reference CRF
+  and the EXR compression level are applied inside a worker and would have to travel on the
+  render job. M5.8.3 already built that channel for the ffmpeg override and the log level, so
+  this is following a path that exists.
+- **M9.2, the quickstart, and M9.4's harness**, which builds a demo batch and grabs the
+  window: the images it takes on Linux are fine for laying the document out and the shipped
+  set is taken on the Mac. M9's button reference should read `ui/toolbar_help.py` rather than
+  restate it. **M9.1's install section is no longer blocked**, since M7 exists to describe.
+- **What `REVIEW.md` deferred**, of which the largest is the `MainWindow` split. No behaviour
+  changes there; it is a session of its own if it is wanted.
+
+**M8 still needs the real thing** and nothing here substitutes for it.
 
 **The pane is where an ingest is seen without running anything**: its Colour section reads
 `source_encoding`, `source_encoding_origin` and `clf_path` off the row, so selecting a row
@@ -1413,7 +1442,7 @@ Entry points worth knowing:
 | M4.6 | Per shot source encoding: read from the clip metadata, the input transform table, the input transform out of the graded chains, QC-046 to QC-048 | complete, all five chunks (OQ-37 answered; OQ-46 wants confirming) |
 | M5 | UI: the list, the FR-14 metadata pane, settings, log. **No viewers** | **complete, all eleven chunks** |
 | M6 | ~~Stringout with burn-ins~~ | **dropped 2026-09-11**, the colour session exports it |
-| M7 | Packaging: PyInstaller `.app`, dmg, Gatekeeper | not started, and needs a Mac (OQ-22) |
+| M7 | Packaging: PyInstaller app, dmg, the frozen smoke test, both CI jobs | **complete 2026-09-13, 19 tests.** Built and smoke tested on Linux before pushing; Gatekeeper is OQ-9 and still unanswered |
 | M8 | Polish, performance on a real turnover, docs | not started |
 | M9 | The user guide: install, quickstart, a section per surface, screenshots (PRD FR-17) | **new 2026-09-12**, not started, specified in section 5 |
 
@@ -1573,6 +1602,88 @@ rather than a Settings value (OQ-50). Nothing in core had to change for M5.7.2 o
 beyond `IngestReport.counts` and `notices()`, which are the words both surfaces report an
 ingest in, kept in one place so the CLI and the window cannot drift.
 
+M7 detail, built 2026-09-13. Five files in `build/` and two CI jobs.
+
+| chunk | scope | state |
+|---|---|---|
+| M7.1 | `build/entry.py`: the frozen entry point and its `freeze_support()` call | done |
+| M7.2 | `build/bundle.py` and `build/proingest.spec`: what goes in the bundle, and a shim | done, 19 tests |
+| M7.3 | `build/build.py`: PyInstaller, the dmg, the size report | done |
+| M7.4 | `build/smoke_test.py`: drive a frozen build through a whole turnover | done |
+| M7.5 | `package-linux` and `package-macos` CI jobs, dmg uploaded as an artifact | done |
+
+**Eight things in it that should not be re-derived.**
+
+- **`multiprocessing.freeze_support()` is a no-op on macOS, and the line is still load
+  bearing.** CPython's `BaseContext.freeze_support` has a body gated on
+  `sys.platform == "win32"`; anyone who checks `build/entry.py` against the standard library
+  will conclude the call does nothing and delete it. PyInstaller's `pyi_rth_multiprocessing`
+  runtime hook **rebinds the name** to its own implementation, gated on nothing, and that hook
+  runs before the entry script. Both halves were proved rather than assumed: the frozen binary
+  handed `--multiprocessing-fork` by hand reaches `spawn_main` and dies on the bogus file
+  descriptor, and the same argument from source is rejected by argparse with a usage line.
+  Two things now hold it, a unit test on the call's position and a smoke test step that fails
+  if that usage line comes back.
+- **OpenTimelineIO was the one dependency freezing actually breaks, and it needs all three
+  kinds of help.** Adapters are found through `importlib.metadata` entry points and JSON plugin
+  manifests, so the bundle carries otio's and the CMX3600 adapter's `.dist-info`, their
+  manifests, **and their `.py` sources**. The sources are not caution: otio's loader tries
+  `importlib.import_module("opentimelineio.adapters.<name>")` and falls back to reading the
+  path in the manifest off disk, and the EDL adapter is named `cmx_3600` while living in
+  `otio_cmx3600_adapter`, so **for that adapter only the fallback ever works**. Everything
+  else - PySide6, numpy, OpenEXR, xxhash, OpenColorIO - needed nothing at all, and OCIO needed
+  no data files because the ACES config is compiled into the wheel.
+- **The spec file is a shim and that is the point.** A `.spec` is executed rather than
+  imported, so `ruff`, `mypy` and the suite never see one, which makes it the worst possible
+  home for a decision: a mistake in it does not fail a build, it ships an app with a file
+  missing. Everything with a judgement in it is in `build/bundle.py`, which all three do see,
+  and `mypy` now runs over `build/` as well as `proingest` and `tests`.
+- **`build/` needed an `__init__.py`.** Without one the folder is a namespace package,
+  `bundle` is reachable as both `bundle` and `build.bundle` depending on who imports it, and
+  `mypy` refuses to check a file it can reach under two names. Every script and the spec now
+  import it the same way, `from build import bundle`, with the repo root on the path.
+- **The Linux build is not a product, it is a test of the spec.** Nothing ships from it. It
+  exists because a lost hidden import or an uncollected manifest fails a Linux build exactly
+  as it fails a macOS one, and `MAC_SESSION.md` names discovering that on a rented Mac as the
+  expensive way to learn it. The whole thing was built and smoke tested here before the CI
+  jobs were written, which is why M7 landed green rather than being pushed hopefully.
+- **The dmg is `hdiutil`, not `create-dmg`, and PACKAGING.md used to say otherwise.** The only
+  part of create-dmg the tool wanted was drag-to-install, and that is one `/Applications`
+  symlink in a staging folder. Doing it this way means the runner installs nothing through
+  Homebrew to package a build, and there was never a background image in this repo for
+  create-dmg to place.
+- **The ffmpeg pair is collected as `binaries`, not as `datas`.** PyInstaller lays binaries out
+  the way the `.app` needs and re-signs them ad-hoc after rewriting their load commands, which
+  the arm64 kernel requires of anything it executes. That replaces their Developer ID
+  signatures, which costs nothing while the app itself is unsigned (OQ-9). They are collected
+  on macOS only: they are arm64 Mach-O and `core/ffmpeg.py` skips them elsewhere, so a Linux
+  build would be carrying 132 MB it could never run. `build/build.py` refuses a macOS build
+  when they are absent, because PyInstaller would only warn and the app would install, start,
+  and fail on its first probe.
+- **Size: 251 MB installed on macOS and a 110 MB dmg**, measured by CI on the arm64 runner;
+  236 MB installed on Linux for comparison. PRD section 8 budgets under 300 MB for the
+  *installer*, so the dmg is what it is read against and it sits at about a third of it. The
+  build prints both into the run summary and prints the verdict, and does not fail on it: what
+  to drop when PySide6 gains a megabyte is a person's decision, not a red `main`. The packaged
+  app answered `--version` in 0.8s against PRD section 8's five second first launch, on a runner
+  rather than the target.
+
+**One thing M7 left open, and one it answered.** There is **no application icon**, so the
+bundle carries PyInstaller's default.
+
+**OQ-52 is answered: the identifier names nobody.** It was raised as a placeholder because
+PACKAGING.md specified `com.<studio>.proingest` and no studio name exists in this repository.
+The user then settled it the other way on 2026-09-13: **the studio is not to be named in
+anything that ships.** That needs no compromise, because an identifier only has to be unique
+and permanent, and **Apple does not verify that whoever registers one owns the domain in it** -
+the reverse-DNS form is collision avoidance, not a claim that has to be true. So it is
+`io.github.shango.proingest`, the standard form for a project whose only namespace is its
+repository. What still matters is the second half of the original question: **do not change it
+once a build has reached the editor**, because macOS keys folder access grants and its own
+application register off it, and because notarizing under OQ-9 would bake it in. Settings,
+window state and logs are unaffected either way, since `ui/paths.py` builds those from the
+application name.
+
 M9 detail, asked for 2026-09-12 and specified against PRD FR-17. It is the first milestone
 whose deliverable is not code, and it is deliberately separate from M8.4: M8.4 is what the
 studio keeps about the **build**, and M9 is what somebody reads to **use the tool**.
@@ -1617,7 +1728,7 @@ mp4 and stringout" and that was a mistake in the row, not a change of plan.
 
 Tests by file: qc 195, ui_shell 130, naming 115, shot_model 92, render 75, clf 73,
 planner 66, metadata 57, frames 55, media 46, models 45, shot_list 43, ffmpeg 43,
-color 40, timeline 37, exr 37, scan 36, cli 32, runner 29, settings_page 28, exports 28,
+color 40, timeline 37, exr 37, scan 36, cli 32, runner 29, settings_page 28, exports 28, bundle 19,
 issues 22, batchfile 18, resize 16, settings 16, camdata 12, scanner 11, autosave 11.
 1408 in total, counted rather than carried forward.
 
@@ -2337,12 +2448,11 @@ Nothing blocks the next task. These are live, in rough priority order:
   They are cheap, they need only what the job already carries, and nothing has asked for them,
   so the doc now says "not yet written" rather than describing them as built.
 
-- **A frozen `.app` needs `multiprocessing.freeze_support()` and there is no entry point
-  to put it in yet.** The pool spawns on every platform, and a spawned worker inside a
-  PyInstaller bundle re-launches the bundle rather than importing a module, so Run in the
-  packaged app would open four more windows instead of rendering. It is one line in
-  whatever `build/build.py` makes the entry point, it does nothing when running from
-  source, and M7 is where it lands. `docs/PACKAGING.md` now says so under Build.
+- ~~A frozen `.app` needs `multiprocessing.freeze_support()` and there is no entry point to
+  put it in yet.~~ **Built in M7**, in `build/entry.py`, which exists for that one line. The
+  reasoning was right and the mechanism was not what this entry assumed: see M7's detail in
+  section 5, because CPython's `freeze_support` does nothing at all on macOS and the line
+  works anyway.
 
 - **QC-024, a letterboxed source, is the one phase A rule that cannot be a model
   function.** QC-023 now catches a source that is not 3840x2160, but a source that *is*
