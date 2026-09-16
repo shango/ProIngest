@@ -501,6 +501,16 @@ look very nearly right.
 | HDRI, stills, camData | byte copy with rename, checksum recorded |
 | lens grid | not written in v01; moved and renamed by hand (OQ-20) |
 
+**Two of those numbers are editable as of M5.12** and only two: the EXR compression level and
+the reference's CRF, in Settings' Output section (`UI_SPEC.md` section 9). The page opens on
+the values above, reads them from `core/exr.py` and `core/ffmpeg.py` rather than carrying a
+second copy, and says what the spec is beside each field. They are settings because the tool
+must not hardcode a delivery cost a slow line or a picky vendor can force a change to;
+**they remain what this document pins**, so a turnover delivered at anything else is a
+decision somebody made rather than a default that drifted. Everything else in the table -
+the preset, the codec, the pixel format, the keyint, the chromaticities, half float - is not
+editable and is not meant to be.
+
 ### Hardware encoding on macOS
 
 NVENC was the Windows hardware encoder and **does not exist on macOS**. The macOS equivalent is

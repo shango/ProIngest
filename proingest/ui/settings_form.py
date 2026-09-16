@@ -13,10 +13,11 @@ window, which is how a section that quietly lost a field gets caught.
 **A field is here only if something already reads it**, with one stated exception: the
 Colour section's ingest folder is read by the chooser in M5.7.3 and is remembered from
 now, because the alternative is a Colour section that is entirely read only and a page
-reopened one chunk later for one line. Two whole sections are listed and **disabled**,
-because the shape of the page is in the spec and reviewing it is easier against the real
-page than against a document - the same rule the toolbar was built to in M5.1, and for
-the same reason. Each says what it is waiting on rather than sitting there inert.
+reopened one chunk later for one line. **Every section is live as of M5.12**, Output
+last: the two settings it carries are applied inside a worker process, so they had to
+travel there before the section could mean anything. `Section.enabled` stays, because
+listing a section that has nothing behind it yet and saying what it waits on is the rule
+the page was built to - the same one the toolbar was built to in M5.1.
 """
 
 from __future__ import annotations
@@ -25,7 +26,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
-from proingest.core import color, ffmpeg, logsetup, naming, qc
+from proingest.core import color, exr, ffmpeg, logsetup, naming, qc
 from proingest.core.settings import AppSettings
 from proingest.ui import paths
 
@@ -218,12 +219,34 @@ def sections() -> tuple[Section, ...]:
         ),
         Section(
             OUTPUT,
-            enabled=False,
+            (
+                Field(
+                    "app.reference_crf",
+                    "Reference quality",
+                    "int",
+                    "The x264 rate factor a reference mp4 is encoded at. Lower is better "
+                    "and bigger; 0 is lossless and 51 is the worst the encoder will do. "
+                    f"The spec is {ffmpeg.REFERENCE_CRF}, at preset {ffmpeg.REFERENCE_PRESET}, "
+                    "and the preset is not editable.",
+                    minimum=0,
+                    maximum=51,
+                ),
+                Field(
+                    "app.exr_compression_level",
+                    "EXR compression level",
+                    "int",
+                    "How hard DWAA compresses a delivered plate. Higher is smaller and "
+                    f"lossier; the spec is {exr.DWA_COMPRESSION_LEVEL}. DWAA is lossy at "
+                    "every level, so this moves how lossy rather than whether.",
+                    minimum=0,
+                    maximum=200,
+                ),
+            ),
             note=(
-                "Reference quality and EXR compression level are not editable yet. Both are "
-                "applied inside a worker process, so a setting has to travel on the render "
-                "job itself rather than be read from here; that is the work, and it is not "
-                "done. The values in force are CRF 18 preset slow, and DWAA at level 45."
+                "What the two delivered picture formats cost. Both are applied inside a "
+                "render's worker processes, so a change reaches the next run rather than "
+                "one already going, and both are pinned by the spec: moving either is a "
+                "decision about a delivery, not a preference."
             ),
         ),
         Section(
@@ -284,6 +307,8 @@ def to_values(app: AppSettings, rules: qc.RuleSettings) -> dict[str, Any]:
         "app.color_session_folder": app.color_session_folder,
         "app.log_level": app.log_level,
         "app.ffmpeg_path": app.ffmpeg_path,
+        "app.reference_crf": app.reference_crf,
+        "app.exr_compression_level": app.exr_compression_level,
         "rules.target_resolution": tuple(rules.target_resolution),
         "rules.allow_non_4k": rules.allow_non_4k,
     }
@@ -321,6 +346,8 @@ def apply_values(
     app.color_session_folder = str(values.get("app.color_session_folder", app.color_session_folder))
     app.log_level = logsetup.name_of(logsetup.level_of(str(values.get("app.log_level", app.log_level))))
     app.ffmpeg_path = str(values.get("app.ffmpeg_path", app.ffmpeg_path))
+    app.reference_crf = int(values.get("app.reference_crf", app.reference_crf))
+    app.exr_compression_level = int(values.get("app.exr_compression_level", app.exr_compression_level))
     applied = qc.RuleSettings(
         min_duration_frames=int(values.get("rules.min_duration_frames", current.min_duration_frames)),
         max_duration_frames=int(values.get("rules.max_duration_frames", current.max_duration_frames)),
@@ -351,15 +378,18 @@ def show_pattern_of(app: AppSettings) -> str:
 
 
 def apply_to_process(app: AppSettings) -> None:
-    """Put the two Advanced settings into force for this process.
+    """Put the four settings that change behaviour into force for this process.
 
-    Apart from `apply_values`, which only writes the objects: these two change what the
-    rest of the tool does, and doing that inside a function whose job is to read a form
-    would mean a test of the form had side effects on the interpreter running it.
+    The two Advanced ones and the two Output ones. Apart from `apply_values`, which only
+    writes the objects: these change what the rest of the tool does, and doing that
+    inside a function whose job is to read a form would mean a test of the form had side
+    effects on the interpreter running it.
 
     Called at startup and again after every Apply. A render's worker processes are told
-    both when they start (`core/render.execute`), so a change reaches the next run
+    all four when they start (`core/render.execute`), so a change reaches the next run
     rather than the one in flight.
     """
     logsetup.set_level(logsetup.level_of(app.log_level))
     ffmpeg.set_override(Path(app.ffmpeg_path) if app.ffmpeg_path else None)
+    ffmpeg.set_reference_crf(app.reference_crf)
+    exr.set_compression_level(app.exr_compression_level)

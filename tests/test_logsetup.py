@@ -253,3 +253,29 @@ class TestTheFfmpegOverrideReachingAWorker:
         assert ffmpeg.current_override() is None
         source = fixtures.make_mov(tmp_path / "src.mov", count=3)
         assert render.execute([ref_job(tmp_path, source, 0, 2)], workers=1)[0].status == "done"
+
+    def test_a_worker_encodes_at_the_quality_the_settings_page_set(
+        self, tmp_path: Path, quiet_root: None
+    ) -> None:
+        """M5.12, the Output section's half of the same channel.
+
+        Here rather than in `test_render.py` because the logged command is the only place
+        the rate factor is visible afterwards: ffprobe does not surface it. The other
+        Output setting is observable in the file it wrote, so its test is with the render.
+        """
+        captured = Captured()
+        root = logging.getLogger()
+        root.addHandler(captured)
+        root.setLevel(logging.INFO)
+        was = ffmpeg.current_reference_crf()
+        ffmpeg.set_reference_crf(30)
+        try:
+            source = fixtures.make_mov(tmp_path / "src.mov", count=3)
+            assert render.execute([ref_job(tmp_path, source, 0, 2)], workers=1)[0].status == "done"
+        finally:
+            ffmpeg.set_reference_crf(was)
+            root.removeHandler(captured)
+
+        encodes = [r.getMessage() for r in captured.records if "libx264" in r.getMessage()]
+        assert encodes, "the run logged no encode at all"
+        assert all("-crf 30" in command for command in encodes), encodes

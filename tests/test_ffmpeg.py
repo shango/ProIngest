@@ -13,6 +13,7 @@ to prevent.
 from __future__ import annotations
 
 import subprocess
+from collections.abc import Iterator
 from pathlib import Path
 
 import numpy as np
@@ -24,6 +25,14 @@ from tests.fixtures import media as fixtures
 WIDTH, HEIGHT = fixtures.SMALL
 SIZE = (WIDTH, HEIGHT)
 HALF = (WIDTH // 2, HEIGHT // 2)
+
+
+@pytest.fixture
+def restore_crf() -> Iterator[None]:
+    """The rate factor is process wide, so a test that moves it puts it back."""
+    crf = ffmpeg.current_reference_crf()
+    yield
+    ffmpeg.set_reference_crf(crf)
 
 
 def decode(
@@ -409,6 +418,33 @@ class TestEncodeCommand:
             audio=Path("a.wav"),
         )
         assert "-ss" not in command
+
+
+class TestTheReferenceQuality:
+    """FR-12, Output. The rate factor the Settings page may move, M5.12.
+
+    It is read from the module rather than taken as an argument at every call site, for
+    the reason the ffmpeg override is: a render's worker is a fresh interpreter that
+    never saw the page, and `core/render.py` hands it over at the initialiser.
+    """
+
+    def test_the_default_is_the_spec(self) -> None:
+        command = ffmpeg.encode_command("in.mov", Path("out.mp4.part"), 0, 3, is_sequence=False, rate="24/1")
+        assert command[command.index("-crf") + 1] == str(ffmpeg.REFERENCE_CRF)
+
+    def test_one_in_force_is_what_the_command_carries(self, restore_crf: None) -> None:
+        ffmpeg.set_reference_crf(23)
+        command = ffmpeg.encode_command("in.mov", Path("out.mp4.part"), 0, 3, is_sequence=False, rate="24/1")
+        assert command[command.index("-crf") + 1] == "23"
+        assert ffmpeg.current_reference_crf() == 23
+
+    def test_a_stated_one_wins_over_the_one_in_force(self, restore_crf: None) -> None:
+        """The same rule as `ffmpeg=`: a caller with an opinion states it."""
+        ffmpeg.set_reference_crf(23)
+        command = ffmpeg.encode_command(
+            "in.mov", Path("out.mp4.part"), 0, 3, is_sequence=False, rate="24/1", crf=30
+        )
+        assert command[command.index("-crf") + 1] == "30"
 
 
 class TestCountFrames:

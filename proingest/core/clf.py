@@ -53,33 +53,57 @@ is the fallback, because Resolve populates reel names differently depending on e
 settings and a reel is not required to be unique.
 """
 
-SCENE_LINEAR_FLOOR = 2.0
-"""What a CLF's white has to exceed for the output to be scene linear (QC-039).
+TONE_MAP_RATIO_FLOOR = 1.4
+"""How much brighter the top of the log range must come out than a shade below it, for
+QC-039 to call a CLF scene linear.
 
-Every output transform tone maps the top end into display range, so a CLF with a
-display rendering baked into it answers about 1.0 at white, where a scene linear one
-answers what the log encoding's top is worth: 222 from ACEScct, 100 from DaVinci
-Intermediate, 38 from S-Log3. A grade in the CLF scales that, so the margin is what is
-left after the darkest grade anyone would deliver.
+**A ratio rather than an absolute, since 2026-09-13 (OQ-47).** The probe used to compare
+white against a fixed floor of 2.0, which worked while every CLF started at ACEScct and
+white was always worth 222. Since OQ-37 a CLF starts at whatever the clip is encoded in
+and white is worth 222 out of ACEScct and BMD Film Gen 5, 100 out of DaVinci
+Intermediate, 38.4 out of S-Log3 and **14.7 out of C-Log3**; four stops of grade scales
+that, so a C-Log3 CLF graded four stops down answered 0.92 and the probe called it a
+display rendering. C-Log3 is one of the three cameras named for this show.
 
-**The margin depends on the source encoding, and since 2026-09-12 that is per clip.**
-The floor was calibrated when every CLF started at ACEScct and 2.0 sat clear of both
-ends. It no longer does for every camera: C-Log3 white is worth 14.7, so four stops of
-grade in the CLF answers 0.92 and this probe calls a valid CLF a display rendering.
-Recorded as OQ-47 with the numbers, and not changed here, because it is QC-039's
-definition rather than M4.6.2's chain.
+A ratio is the measurement that does not move. An exposure change in the grade scales
+both samples and cancels exactly - 3.368 at neutral, at two stops down and at four - and
+what is left is the slope of the chain at the top of the range, which is precisely what
+a tone map flattens.
 
-What it does not catch either way is a transfer curve with no tone map in it, which is
-not something an ACES session exports.
+Measured across all five encodings in play, with grades from neutral to aggressively
+dark and contrasty (`out(1.0) / out(0.8)`):
+
+| chain | ratio |
+|---|---|
+| a plate CLF, any encoding, any grade measured | 1.86 to 11.3 |
+| the same with the ACES output transform baked in | 1.01 to 1.06 |
+
+1.4 sits about a third above the highest display rendering and a third below the lowest
+plate, in the log scale the two are separated on. The old floor is gone rather than
+loosened: no absolute value can straddle five encodings whose whites differ by a factor
+of fifteen.
 """
 
 LOG_WHITE = 1.0
-"""The probe value: the top of the log encoding, where a tone map is unmissable.
+"""The probe's upper sample: the top of the log encoding, where a tone map is unmissable.
 
 Whichever log the CLF starts at. It was named for ACEScct, which was the only thing a
 CLF could start at before 2026-09-12; the value is 1.0 for the same reason under every
 camera log, which is that the top of the code range is where a display rendering is
 forced to give itself away.
+"""
+
+_CRUSHED = 1e-9
+"""Below this the probe's lower sample is not a number to divide by."""
+
+LOG_NEAR_WHITE = 0.8
+"""The probe's lower sample, which is what makes the measurement a ratio (OQ-47).
+
+0.8 rather than the 0.9 the question proposed, and the difference is not cosmetic: over
+the same set of grades the 0.9 pair puts the lowest plate at 1.35 against a highest
+display rendering of 1.016, which no floor of 1.4 can separate, while the 0.8 pair puts
+them at 1.86 and 1.055. Far enough down the curve to have leverage, far enough from
+middle grey to still be about the top end.
 """
 
 
@@ -596,8 +620,19 @@ def _probe_scene_linear(cpu: ocio.CPUProcessor) -> bool:
     Probed rather than trusted, because the filename cannot say and the failure is
     invisible: a display referred plate that claims to be linear looks completely normal
     until someone tries to comp it. What it catches is a tone map, which is what every
-    output transform and film emulation ends with.
+    output transform and film emulation ends with, and what it measures is how much
+    **room is left at the top**: two samples near the top of the log range, and how far
+    apart they come out. A tone map's whole job is to close that gap.
+
+    Per channel, and the widest channel decides. A grade with per channel slopes leaves
+    one channel with more range than the others, and one channel with room at the top is
+    enough to say nothing flattened it.
     """
-    white = np.array([[[LOG_WHITE, LOG_WHITE, LOG_WHITE]]], dtype=np.float32)
-    color.apply(white, cpu)
-    return bool(white.max() > SCENE_LINEAR_FLOOR)
+    samples = np.array([[[LOG_WHITE] * 3, [LOG_NEAR_WHITE] * 3]], dtype=np.float32)
+    color.apply(samples, cpu)
+    white, near = samples[0, 0], samples[0, 1]
+    # A chain that crushes the shade below white to nothing has not tone mapped it: it
+    # is a very dark grade, and dividing by it would say the opposite. QC-039 is an
+    # error, so the tie goes to letting the render happen.
+    open_top = near <= _CRUSHED
+    return bool(np.any(open_top | (white > near * TONE_MAP_RATIO_FLOOR)))

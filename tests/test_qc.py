@@ -793,6 +793,28 @@ class TestPreflight:
         assert "QC-040" in ids(batch.rows[0].qc)
 
 
+class TestBlockingResults:
+    """FR-6's scopes: only a batch scope error stops the run (`qc.blocking_results`)."""
+
+    def test_a_batch_scope_error_blocks(self) -> None:
+        batch = Batch(rows=[row()])
+        qc.preflight(batch)
+        assert [result.rule_id for result in qc.blocking_results(batch)] == ["QC-062"]
+
+    def test_a_batch_scope_warning_does_not(self, tmp_path: Path) -> None:
+        batch = Batch(delivery_root=tmp_path, rows=[row()])
+        batch.qc.append(QCResult("QC-063", "warning", "batch", "not much room left"))
+        assert qc.blocking_results(batch) == []
+
+    def test_a_turnover_scope_error_holds_that_turnover_back_rather_than_the_run(
+        self, tmp_path: Path
+    ) -> None:
+        batch = Batch(delivery_root=tmp_path, turnovers=[Turnover("t1", tmp_path)], rows=[row()])
+        qc.preflight(batch)
+        assert qc.blocking_results(batch) == []
+        assert qc.blocked_turnovers(batch) == frozenset({"t1"})
+
+
 def ingested_batch(tmp_path: Path, *rows: ShotRow, edl_name: str = "MELT_FINAL.edl") -> Batch:
     """A batch whose one turnover has had a colour session ingested into it.
 

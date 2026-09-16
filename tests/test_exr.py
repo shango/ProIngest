@@ -43,6 +43,29 @@ class TestWriteFrame:
         with OpenEXR.File(str(path)) as handle:
             assert handle.header()["dwaCompressionLevel"] == exr.DWA_COMPRESSION_LEVEL
 
+    def test_a_level_in_force_is_what_is_written(self, tmp_path: Path) -> None:
+        """FR-12, Output. The Settings page may move it, M5.12, and a worker is told it."""
+        was = exr.current_compression_level()
+        try:
+            exr.set_compression_level(60)
+            path = tmp_path / "frame.exr"
+            exr.write_frame(path, image())
+            with OpenEXR.File(str(path)) as handle:
+                assert handle.header()["dwaCompressionLevel"] == 60.0
+        finally:
+            exr.set_compression_level(was)
+
+    def test_a_stated_level_wins_over_the_one_in_force(self, tmp_path: Path) -> None:
+        was = exr.current_compression_level()
+        try:
+            exr.set_compression_level(60)
+            path = tmp_path / "frame.exr"
+            exr.write_frame(path, image(), compression_level=10)
+            with OpenEXR.File(str(path)) as handle:
+                assert handle.header()["dwaCompressionLevel"] == 10.0
+        finally:
+            exr.set_compression_level(was)
+
     def test_pixels_are_half_float(self, tmp_path: Path) -> None:
         """QC-105, and OQ-13: half, not full float."""
         path = tmp_path / "frame.exr"

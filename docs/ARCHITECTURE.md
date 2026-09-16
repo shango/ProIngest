@@ -40,8 +40,10 @@ tests/
   fixtures/media.py      # generates synthetic exr/mov/wav with ffmpeg
   test_naming.py test_frames.py test_timeline.py test_planner.py test_qc.py test_render.py
 build/
-  build.py proingest.spec dmg.py    # PyInstaller .app then create-dmg; Inno Setup returns with v02 Windows
-  fetch_ffmpeg.py ffmpeg.lock.json
+  build.py bundle.py proingest.spec # PyInstaller .app, then the dmg with hdiutil; the spec is a shim
+  entry.py smoke_test.py            # the frozen entry point, and a run through a whole turnover
+  screenshots.py                    # the user guide's pictures (M9.4)
+  fetch_ffmpeg.py ffmpeg.lock.json  # the pinned binaries: download, or --from a folder
 ```
 
 ## Data flow

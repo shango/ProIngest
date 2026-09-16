@@ -8,11 +8,76 @@ commit.
 
 ## 1. Resume here
 
-**State at 2026-09-13. Every feature milestone is built, and so is packaging.** M1 to M4
-complete, M4.5 all four chunks, M4.6 all five, **M5 all eleven**, and **M7 as of this
-afternoon**. `ruff`, `ruff format` and `mypy --strict` clean, the last two now over `build/`
-as well. What is left is **M8 polish** (needs a real turnover and a real colour session) and
-**M9 the user guide**.
+**State at 2026-09-16. Every feature milestone is built, and so is packaging.** M1 to M4
+complete, M4.5 all four chunks, M4.6 all five, **M5 all twelve**, **M7**, and **M9.4**.
+**1694 tests**, `ruff`, `ruff format` and `mypy --strict` clean over `proingest tests build`.
+What is left is **M8 polish** (needs a real turnover and a real colour session) and the rest
+of **M9, the user guide**.
+
+**This session, 2026-09-16, made the Mac clone one command.** `build/mac_build.sh` is
+`docs/MAC_SETUP.md` sections 2 to 6 as a script: the locked environment, the ffmpeg pair and
+its verify, the `PATH` export, `ruff`, `mypy` and the suite, then the app, the dmg and the
+smoke test through the frozen binary. `--from DIR` installs an ffmpeg pair downloaded by hand
+and `--skip-checks` builds without the suite. It adds no step the document did not already
+have and no step CI does not already run; what it removes is the chance of typing six commands
+in the wrong order on a machine that is rented by the day. `tests/test_mac_build.py` is the
+three ways a shell script nothing imports can rot: the executable bit, `bash -n`, and every
+repo path it names still existing. It has **never been run on a Mac** - CI's macOS jobs do the
+same steps from their own YAML rather than by calling it - so `docs/MAC_SESSION.md`'s checklist
+now opens with running it.
+
+**This session split `MainWindow`, which was the last code on the list that this machine
+could write alone.** `REVIEW.md`'s S1 and S2, both closed: the run is `ui/run_controller.py`,
+the colour session ingest is `ui/color_session.py`, `qc.blocking_results` and
+`scan.next_turnover_id` are one authority each where there had been two, and `main_window.py`
+is 1394 lines down to 1039. No behaviour changed except the turnover numbering, which now does
+what its docstring always claimed. Its note is below, and it is worth reading for the guard the
+move dropped in silence. **There is now no code left here**: everything below wants the Mac, a
+real turnover, or an answer from a person.
+
+**The session before it built the two things this machine could still finish alone.** **M5.12, the Settings page's sixth section**: reference quality and the EXR compression
+level are editable, **every section of the page is live**, and both reach a render's worker
+processes on the channel M5.8.3 built rather than on the render job the plan had assumed they
+would need. And **the whole of the guide's prose**: **M9.2** the quickstart, **M9.1** the
+install section and **M9.3** the reference section, in `docs/guide/`, the first of which found
+six stale lines in `docs/WORKFLOW.md` and fixed them in their own commit. Each has its note in
+section 5. **M9 is 4 of 5**, and what the last chunk wants is a decision (OQ-49) and the Mac's
+pictures rather than more writing.
+
+**The last session, 2026-09-13, did three things and found a fourth.** The user is taking the
+repo to a Mac and will put the ffmpeg binaries there by hand, so: **the repo is clone-ready on
+a Mac** (`docs/MAC_SETUP.md`, and `build/fetch_ffmpeg.py` takes `--show`, `--from` and
+`--verify`), **M9.4's screenshot harness is built**, and **OQ-47 is closed** - QC-039 measures
+the slope at the top of the log range now rather than white against a fixed floor, which was
+the last open item that was a fault rather than a judgement. Taking the harness's first
+picture found that **the status dot had never been drawn on any shot row**; that is fixed with
+it, and section 7 has the mechanism. Each has its own note below.
+
+**The branch tangle is resolved, 2026-09-14.** `m7/packaging` is PR #2 and is about packaging:
+five commits, pushed, green, and **still open**. The commits that had accumulated on top of it
+were not packaging - they were there by accident of what was checked out - and they are now
+**`m9/guide-and-settings`, PR #3**: **24 commits, pushed, green**, and **based on `m7/packaging`
+rather than `main`**, because that is what they were written on top of. **GitHub retargets PR #3
+to `main` by itself when PR #2 merges**, and its diff narrows at that point, so nothing has to be
+rebased by hand. **A fresh clone lands on `main`, which has neither M7's packaging nor anything
+since**, so a Mac clone has to `git checkout m9/guide-and-settings` until those two merges happen
+(`HANDOFF.md` says so too).
+
+**Merging PR #2 is the one step still waiting on a person.** It is `MERGEABLE` / `CLEAN` with all
+four checks green, and `main` is a strict ancestor of it, so the merge cannot conflict. Until it
+happens both PRs stay open and PR #3's diff shows 23 commits rather than 18. Local
+`m7/packaging` has been reset to `origin/m7/packaging` so it matches the PR exactly; **the work
+is on `m9/guide-and-settings`, which is the branch to be on.**
+
+**CI went green first time on the push that carried the `MainWindow` split too: run
+34904834036, all four jobs, 2026-09-14.** The push before it was run 34900426677, which was CI's
+first sight of this branch and also green first time. That was worth watching rather than assuming, because two of the last two CI-only
+failures were the Mac disagreeing about something this machine cannot observe, and this push
+added `tests/test_guide.py`, which compares keyboard shortcuts. It holds on arm64 because both
+sides of the comparison go through `QKeySequence.toString()` in **portable** text - `Ctrl+R` on
+either platform - rather than the native glyphs the window draws. `main_window.py` uses
+`NativeText` where it wants `⌘R`, and that distinction is the whole reason the test survives a
+runner this machine cannot reproduce. The Build Track artifact is at version 60.
 
 **M7 did not need a Mac and this file said it did.** Everything but the `.app`'s behaviour
 once double-clicked is exercised by CI on every push: `package-macos` builds the bundle and
@@ -23,7 +88,7 @@ was ever pushed, which is what turned M7 from written-blind into verified-except
 **Run 34798702117 is green on all four jobs**, and the macOS packaging job closed the wrapper
 too: **251 MB installed, a 110 MB dmg**, and the smoke test inside the real `.app` intercepted
 the spawn arguments, rendered through a two worker pool and wrote both spreadsheets. It is on
-the branch `m7/packaging` as **PR #2, unmerged**. Detail is in section 5 under M7.
+the branch `m7/packaging` as **PR #2, unmerged and waiting on nothing but a merge**. Detail is in section 5 under M7.
 
 **A code quality review went in on 2026-09-13, on the branch `review/quality-fixes`.**
 `REVIEW.md` at the repo root is the record: 27 bugs fixed with a test each, five structural
@@ -55,16 +120,17 @@ against a real session. The source encoding is camera native log as of 2026-09-1
 shot, resolved through a table, recorded in the QC log and stated with its origin in the
 delivered header.
 
-**Nothing in the plan is next that can be built on this machine alone.** M7 wants a Mac, M8
-wants a real turnover and a real colour session, and M9 wants both plus the screenshots. Two
-questions are open and both are about correctness rather than scope: OQ-46, and **OQ-47, which
-was found by building M4.6.2**. Every chunk has its own note further down saying what it
-settled.
+**Nothing is left that can be finished on this machine.** M8 wants a real turnover and a real
+colour session; M9's shipped screenshots want the Mac; the rest is questions for a person.
+"Next task" below groups them by what each is waiting on. **Of the two open questions that were
+about correctness rather than scope, OQ-47 closed on 2026-09-13**, which leaves OQ-46 - and
+that one is a question to ask a person, not a thing to build.
 
 **One of the three things added to the plan on 2026-09-12 is still unbuilt**: the user guide
-with screenshots (PRD FR-17, the new M9). The other two are done - the run's strip, built
-first because it finishes what the user had just watched being built, and the toolbar
-tooltips (M5.11). The note below says what the guide is and what decides its shape.
+itself (PRD FR-17, the new M9), though **M9.4's harness now takes its pictures**. The other two
+are done - the run's strip, built first because it finishes what the user had just watched
+being built, and the toolbar tooltips (M5.11). The note below says what the guide is and what
+decides its shape.
 
 **M4 is done.** `core/exports.py` writes both spreadsheets, `proingest qc <batch>` writes them
 headless, and QC-053 parses camData through the new `core/camdata.py`. Proved end to end on a two
@@ -82,9 +148,13 @@ is gone**, deleted with its tests in M4.5.4 as planned.
 ### First five minutes
 
 ```
-.venv/bin/python -m pytest tests/ -q
+.venv/bin/python -m pytest tests/ -q          # 1683, about 90 seconds
 .venv/bin/python -m ruff check . && .venv/bin/python -m ruff format --check . && .venv/bin/python -m mypy proingest tests build
 ```
+
+**On a Mac, none of that works until `docs/MAC_SETUP.md` has been followed**, and the trap it
+names twice is that the media tests **skip** rather than fail when ffmpeg is not on PATH: a
+suite that reports a few hundred tests instead of sixteen hundred has encoded nothing.
 
 Then read `docs/COLOR_AND_FORMAT.md` section 1 before anything else. It was rewritten twice on
 2026-09-11 and again on 2026-09-12, and it invalidates things a commit message or a memory of
@@ -297,12 +367,19 @@ Five things in it should not be re-derived.
 - **An EDL's out timecode is the first frame after the cut and is converted on the way in.**
   `ConformEvent` ranges are inclusive like every other range in the codebase, so nothing
   downstream has to remember which convention the file used.
-- **QC-039 is a probe of what the CLF does to white, not of what it is called.** ACEScct 1.0 is
-  222 in scene linear; a display rendering tone maps it to about 1.0, four stops down still
-  answers 13.9, so `SCENE_LINEAR_FLOOR` is 2.0 and sits clear of both. The test fixture bakes a
-  real ACES output transform into a 3D LUT to make the failing case, which is also the only way
-  such a CLF can exist: the output transform uses ops CLF cannot express, so a session that
-  shipped one would have had to bake it exactly the same way.
+- **QC-039 is a probe of what the CLF does to the top of the range, not of what it is called.**
+  It was a probe of what the CLF does to white until 2026-09-13, when OQ-47 closed: white is
+  worth 222 out of ACEScct and 14.7 out of C-Log3, so no fixed floor can straddle the five
+  encodings in play and a dark C-Log3 grade was refused. It now compares **two samples**,
+  `1.0` and `LOG_NEAR_WHITE` at 0.8, and asks how far apart they come out - the slope at the
+  top of the range, which is exactly what a tone map flattens and what a grade cannot move,
+  because a grade scales both samples. Measured over all five encodings and grades from
+  neutral to aggressively dark: a plate CLF is 1.86 to 11.3 and a CLF with the output
+  transform baked in is 1.01 to 1.06, so `TONE_MAP_RATIO_FLOOR` is 1.4 and sits about a third
+  from each. The test fixture bakes a real ACES output transform into a 3D LUT to make the
+  failing case, which is also the only way such a CLF can exist: the output transform uses ops
+  CLF cannot express, so a session that shipped one would have had to bake it exactly the same
+  way.
 
 **What is still not checkable is which fields Ben's export actually populates.** Both defaults
 are built and both are pinned by tests, so one real EDL and one real CLF confirm or move one
@@ -437,14 +514,13 @@ it should not be re-derived.
   so the fixture's choice of starting space no longer means anything to the tool. It is named
   `CLF_SOURCE` in the fixtures rather than borrowed from `core/color.py`, so nothing reads a
   constant of the tool's as though it were a fact about the session.
-- **QC-039's probe came out of this looking weaker than it went in, and that is OQ-47.** The
-  probe feeds log white through the CLF and wants the answer above 2.0. That floor was set
+- **QC-039's probe came out of this looking weaker than it went in, and that was OQ-47.** The
+  probe fed log white through the CLF and wanted the answer above 2.0. That floor was set
   when white meant 222, which is what ACEScct white is worth; out of C-Log3 white is worth
-  **14.7**, so four stops of grade answers 0.92 and the probe cannot tell it from a display
-  rendering's 1.0. Measured, not estimated, and a ratio probe separates every case cleanly
-  (1.88 to 3.37 against 1.010 to 1.015, and invariant to how dark the grade is). **Not changed
-  here**, because it is QC-039's definition rather than this chunk's chain, and because the
-  failure is a valid grade refused rather than a bad one delivered.
+  **14.7**, so four stops of grade answers 0.92 and the probe could not tell it from a display
+  rendering's 1.0. Measured, not estimated. **Fixed on 2026-09-13** with the ratio probe below;
+  it was left alone here because it is QC-039's definition rather than this chunk's chain, and
+  because the failure direction was a valid grade refused rather than a bad one delivered.
 
 ### M4.6.1 is built: the source encoding is a per row fact
 
@@ -1086,12 +1162,212 @@ with it. **Four things settled.**
 before `addTopLevelItem`, so every line arriving while a filter was on came in visible. It
 looks like a filter that ignores new lines and nothing about it raises.
 
+### `build/mac_build.sh`: the Mac clone is one command
+
+**What it is.** A bash script that runs `docs/MAC_SETUP.md` sections 2 to 6 in order and stops
+at the first failure. `uv sync --frozen --extra dev --python 3.12`, then
+`fetch_ffmpeg.py --verify` and a fetch only if that says no, then the `PATH` export and
+`ffmpeg -version` to prove the binary execs, then `ruff check`, `ruff format --check`, `mypy`
+and `pytest`, then `build/build.py` and `build/smoke_test.py` against
+`dist/ProIngest.app/Contents/MacOS/ProIngest`. It ends by printing where the app and the dmg
+are and what the Gatekeeper situation is.
+
+**Three decisions in it.**
+
+- **`--frozen`**, which `MAC_SETUP.md` section 2 does not use and CI does. On a build machine
+  the loud failure is the right one: without it, a `pyproject.toml` that has moved ahead of
+  `uv.lock` silently resolves a dependency set nothing has proved green.
+- **It execs `ffmpeg -version` rather than trusting the verify.** The sha256 says the bytes are
+  the pinned build; it does not say this machine can run them. An Intel Mac and a quarantined
+  binary both fail here with their own error instead of as a hundred skipped media tests.
+- **It does not run `build/screenshots.py`.** That writes files into `docs/guide/images/` for a
+  person to look at and commit, which is a Mac-session task and not a build step. The script's
+  closing lines point at it rather than doing it.
+
+**It installs nothing behind your back.** A missing `uv` is an error with the one-line
+installer in it, not a `curl | sh` the script decided to run.
+
+**What cannot be checked from here.** All of it, in the sense that matters: every line is a
+line CI runs and the document already carried, but the wrapper around them has only ever been
+parsed on this machine. `tests/test_mac_build.py` covers the three failure modes that are
+silent - the executable bit, a syntax error, and a path that a rename left pointing at nothing
+- and the rest is the first line of `docs/MAC_SESSION.md`'s checklist.
+
+### The MainWindow split is built: what `REVIEW.md` deferred as S1 and S2
+
+The review's two structural findings that were left for a session of their own. S2 first,
+because one half of it was a real mismatch rather than a tidy-up.
+
+- **`qc.blocking_results(batch)`** is now the one place FR-6's "a batch scope error stops the
+  run" is decided. It was written out by hand in `main_window.run_batch` and again in
+  `__main__._print_preflight`, which is two copies of a rule about whether a delivery may go
+  ahead. Its docstring names all three scopes beside each other, since the reason the list
+  comprehension looked harmless is that the scope it filters on is the whole rule.
+- **`scan.next_turnover_id(batch)`** replaces the window's own copy of the numbering, and
+  **`scan_batch` now calls it too** rather than counting with `enumerate`. The window's version
+  said "counted past the highest in use" and started at `len(used) + 1`, so a batch holding
+  `{t1, t5}` was handed `t3`: not a collision, but not what it claimed either, and the claim is
+  the safe behaviour. It now returns `t6`. An id that is not `t` and a number is left out of the
+  count rather than refused, because a hand edited batch file carrying one still has to be able
+  to take another turnover.
+
+Then S1, one collaborator at a time.
+
+- **`ui/run_controller.py`** is the first half: the whole of a run, out of the window.
+  Pre-flight, the blocked turnovers, planning, the timer that draws the four surfaces, the
+  records coming back, the two spreadsheets, the banner, and the bounded wait that lets a
+  window close mid run without dropping what the run finished. That step alone took
+  `main_window.py` from 1394 lines to 1135, and the run's twelve methods are one collaborator
+  with the run's own state beside them.
+  - **It holds the window rather than a list of the seven things it needs.** A run touches the
+    batch, the model, the strip, the status bar, the autosaver, the Issues dock and two
+    dialogs; a constructor taking all seven is the same coupling at greater length. What the
+    boundary buys is that the run's own state - the progress fold up, the two timers, where the
+    exports went - lives beside the code that reads it.
+  - **Four of the window's methods are public now and that is the point**: `show_results`,
+    `show_issues`, `update_state` and a read only `settings`. They are what a collaborator is
+    allowed to ask for, and the module docstring says so, so the next split has a surface to
+    aim at rather than a guess.
+  - **The run's tests drive the signal rather than the slot.** `window._run_finished(...)` was
+    a call into a private method; `finish_run` emits `runner.finished` instead, which is the
+    seam the window actually listens on - a run whose results reached nothing would have passed
+    the old way.
+- **`ui/color_session.py`** is the second half: which turnover the ingest is for, the rate its
+  EDL is read at, what `core/clf.py` is handed, and the report the editor is shown, with the
+  seven strings that say it. **The dialogs stayed on the window** - `ask_edl_path`,
+  `ask_turnover`, `report_ingest` and `report_problem` are each their own method there so a
+  test can answer one, and moving them would have traded a hung suite for a tidier module.
+- **`main_window.py` is 1394 lines down to 1039**, and what is left is one subject: the frame,
+  the batch lifecycle, the scan, what is enabled, the dialogs and what the window remembers.
+- **Moving a block dropped a guard, and now two tests hold it down.** `run_batch` began
+  `if not self._batch_open or self.runner.busy or self.scanner.busy: return` and the move lost
+  it; nothing failed, because **a disabled `QAction` swallows a `trigger()`**, so every test
+  that pressed Run while a scan was going still passed. Both guards are asked of the
+  controller and of `color_session.ingest` directly now, and each was checked by deleting the
+  guard and watching the test go red. **That is the failure mode of this whole refactor**: the
+  UI tests drive the toolbar, and the toolbar is the thing that greys itself, so a guard behind
+  a greyed button is invisible to them.
+
+### M9.3 is built: the reference section, and the guide's prose is done
+
+`docs/guide/reference.md`. The layout, the toolbar, the list and its fifteen columns, the dot,
+the three In/Out displays, editing, the pane, both bottom tabs, the run, Settings, and a table
+of every shortcut. 18 tests now in `tests/test_guide.py`, 1683 in the suite. **Three things.**
+
+- **The button table is `toolbar_help.WHAT_IT_DOES` word for word, and a test says so.** That
+  module's docstring has claimed since M5.11 that the guide reads it so the two cannot drift,
+  and a markdown table cannot import a module: the test is what makes the claim true. Verbatim
+  rather than "mentions", because a paraphrase in the guide is exactly the second wording the
+  module is apart from the window to prevent. The labels beside the sentences are in the test
+  rather than in `toolbar_help.py`, since what is shared is the wording and not the button
+  text, and a second test asserts them against the window so they are not a third copy.
+- **Two claims in the first draft were wrong and the code said so.** `⌘C` does not copy in the
+  metadata pane - it has **Copy** buttons and mouse selection, deliberately, because selecting
+  an elided path copies the ellipsis - and Elem is the five type codes rather than a prose
+  list. Both were written from the spec and corrected against `ui/metadata_pane.py` and
+  `NAMING_SPEC.md` section 2.
+- **Export is described as not built**, because it is: the toolbar shows it greyed with "Not
+  built yet. A run writes both spreadsheets when it finishes." A reference guide that lists a
+  button without saying that is a guide somebody presses.
+
+### M9.1 is built: the install section
+
+`docs/guide/install.md`. What is handed over, what macOS does about it, where the app keeps
+its files, and how it is updated and removed. 11 tests now in `tests/test_guide.py`, 1676 in
+the suite. **Three things in it.**
+
+- **Gatekeeper is described as what it is rather than softened.** An unsigned app that arrived
+  through a browser is **refused**, with a dialog saying it is damaged, and there is no "open
+  anyway" to look for. The page says so plainly and gives the two routes that work - a transfer
+  that never marks it, or `xattr -dr com.apple.quarantine` once after installing - and says a
+  Developer ID would delete the whole section. That is OQ-9 and it is still the studio's
+  decision, so the page describes today rather than guessing at the answer.
+- **Two numbers in it move on their own, and both are now pinned by a test.** The dmg's
+  filename follows `proingest.__version__` and the macOS floor follows `bundle.MINIMUM_MACOS`;
+  a reader acts on both, by looking for a filename or deciding whether their machine is new
+  enough, and neither announces that it has changed.
+- **Nothing that is not built is described.** `PACKAGING.md`'s first-run section names a
+  one-time hardware-encoding notice and a crash dump file, and neither exists: `has_nvenc` is
+  dead code nothing calls (OQ-23) and nothing writes a dump. The page covers the first run that
+  actually happens, which is an empty window and two folder choosers.
+
+### M9.2 is built: the quickstart
+
+`docs/guide/quickstart.md`, and `docs/guide/` is where the guide lives because that is where
+M9.4's harness already writes its pictures. Seven steps from Add Turnover to the banner, then
+what lands, then the two things somebody stuck actually needs: why Run refuses, and where the
+log is. 4 tests in `tests/test_guide.py`, 1669 in the suite. **Five things in it are decisions.**
+
+- **The shortcuts are written the Mac's way, `⌘R`, and a test proves each one is bound.** Qt
+  maps `Ctrl` to Command on macOS by itself, so the code says `Ctrl+R` and the editor sees
+  `⌘R`; a guide for a Mac that says Ctrl is a guide to a keyboard the reader has not got. The
+  test reads them out of the page and compares `QKeySequence(f"Ctrl+{key}")` against a real
+  window's bindings, which is the only comparison that works from either platform. **It found
+  one immediately**: `⌘C` in the log section is a `QShortcut` on the tree rather than a
+  `QAction`, so the first version of the test called it undocumented.
+- **Every picture the page shows is checked against `screenshots.PICTURES`.** A renamed picture
+  is a broken image in a document that gets emailed around, and nothing says so until somebody
+  opens it. The check is on the name rather than on the file existing, because **the files are
+  deliberately not in the repo**: the shipped set comes from the Mac (M9.4), and a Linux draft
+  committed now is what the Mac line exists to prevent. `docs/MAC_SESSION.md` says to commit
+  them on the day.
+- **It names no chunk IDs and no people.** An earlier draft opened with "This is M9.2" and
+  described the trim as the one the colourist did by name. The guide is the document most likely
+  to leave the repo, and neither belongs in it.
+- **The button sentences are not restated**, which is what `ui/toolbar_help.py` is apart from
+  the window for. The quickstart names buttons and describes the flow; M9.3's button reference
+  is the page that should read that module.
+- **Writing it found `docs/WORKFLOW.md` six lines stale**, all of them the colour policy that
+  was superseded on 2026-09-12: the shooters converting to one studio standard, an ACEScct
+  timeline, the CLF starting there, and the tool applying an input transform ahead of it. Its
+  step 7 also told the colourist not to use curves or colour wheels, with a "see below" pointing
+  at the rule that says the CLF carries them - which is the whole reason the CLF is applied
+  rather than the CDL. Fixed in its own commit, and the report filenames were a simplification
+  that read like real ones.
+
+### M5.12 is built: the Output section, and the Settings page is whole
+
+The last section M5.7.2 listed and disabled. FR-12's two values - the reference mp4's x264
+rate factor and the delivered EXR's DWAA level - are editable, and **every section of the page
+is live**. 17 tests, 1665 in the suite. **Five things in it are worth not re-deriving.**
+
+- **It did not need the render job, which is what the plan said it would.** Both values are
+  read inside a worker process, and the note that stood here for two chunks said a setting
+  would have to travel on a `DeliverableJob`. It does not: they are per process, not per
+  deliverable, so they go on **the channel M5.8.3 built for the ffmpeg override** -
+  `_worker_init`'s initargs - and the whole crossing is two lines in `render.execute` and two
+  in `_worker_init`. Putting them on the job would have meant the planner reading the app
+  settings, which is a coupling it has never had.
+- **A module global in the module that applies it**, the same shape `ffmpeg._OVERRIDE` has and
+  for the same reason: `ffmpeg._CRF` with `set_reference_crf` / `current_reference_crf`, and
+  `exr._LEVEL` with `set_compression_level` / `current_compression_level`. Each also takes an
+  explicit argument that wins over the one in force (`encode_command(crf=...)`,
+  `write_frame(compression_level=...)`), which is `resolve_tool`'s rule as well: a caller with
+  an opinion states it, and everything else gets the setting rather than a constant.
+- **The defaults are read from core, not typed into the settings file's defaults.**
+  `AppSettings.reference_crf` defaults to `ffmpeg.REFERENCE_CRF` and `exr_compression_level` to
+  `exr.DWA_COMPRESSION_LEVEL`, so a settings file written before this chunk reads back as
+  exactly what the tool did before it, and moving the spec moves both. Both constants changed
+  from `"18"` and `45.0` to plain ints on the way, so the page can edit them with a spin box
+  and `str()` / `float()` happen where they are needed.
+- **The CRF is bounded 0 to 51 because that is what x264 accepts**; outside it, the encode
+  fails on the first frame. The preset stays `slow` and is **not** editable: the PRD asks for
+  quality, and the preset is a speed for a given quality. The DWAA level is bounded 0 to 200,
+  which is a judgement rather than a limit anything enforces.
+- **The rate factor is only observable in the log afterwards.** ffprobe does not surface it, so
+  the test that it reaches a spawned worker reads the logged command and lives with the other
+  channel tests in `tests/test_logsetup.py`; the compression level is in the header of the file
+  the worker wrote, so its test is in `tests/test_render.py`. **The spec still pins both**
+  (CRF 18, DWAA 45) and `docs/COLOR_AND_FORMAT.md` section 3 now says which two numbers in its
+  table are settings and that nothing else in it is.
+
 ### M5.8.3 is built: the Advanced section, and M5.8 is done
 
 The section M5.7.2 listed and disabled because logging had nowhere to be configured from.
 **Output is now the only disabled section left**, and it is disabled for the reason it always
 was: reference quality and the EXR compression level are read inside a worker, so they have to
-travel on a `DeliverableJob`.
+travel there. **M5.12 built that on 2026-09-14** and it turned out not to need the job at all,
+only the channel this chunk built; its note is above.
 
 - **`apply_to_process` is apart from `apply_values` on purpose.** One writes the settings
   objects, the other changes what the interpreter does. Merging them would mean a test of the
@@ -1205,33 +1481,120 @@ underneath, where the overlay covers them. **Seven things in it should not be re
   that knows that. Two implementations of section 4's Tab order would have drifted the first
   time one of them grew a column.
 
+### OQ-47 is built: QC-039 measures the slope at the top, not the value of white
+
+**The one open item that was a correctness bug rather than a judgement, and it is closed.**
+QC-039 refuses a CLF with a display rendering baked into it, because a display referred plate
+that claims to be linear comps wrong and looks completely normal until somebody tries to work
+on it. It probed by feeding log white through the CLF and wanting the answer above 2.0. That
+floor was calibrated when every CLF started at ACEScct, where white is worth 222; since OQ-37
+a CLF starts at whatever its clip is encoded in, and white is worth **14.7 out of C-Log3**, so
+a dark C-Log3 grade answered under the floor and the rule refused a valid delivery. C-Log3 is
+one of the three cameras named for this show.
+
+**It now compares two samples rather than one**: `LOG_WHITE` at 1.0 and `LOG_NEAR_WHITE` at
+0.8, and how far apart they come out. That is the slope of the chain at the top of the range,
+which is exactly what a tone map flattens, and it is the measurement a grade cannot move -
+a grade scales both samples and cancels. Per channel, widest channel wins, because a grade with
+per channel slopes leaves one channel with more range than the others and one channel with room
+at the top is enough.
+
+**The numbers were re-measured rather than taken from the question, and that changed one.**
+OQ-47 proposed sampling at 0.9. Over the same grades that puts the darkest legitimate plate at
+**1.35** against a display rendering's **1.016**, which no floor near 1.4 can separate; at 0.8
+the same pair is **1.86 and 1.055**. So the lower sample is 0.8 and `TONE_MAP_RATIO_FLOOR` is
+1.4, about a third from each in the scale they are separated on. Eleven tests, including the
+five encodings in play against a dark grade and four of them against a real baked output
+transform, and one that states the margin so that narrowing it fails rather than passes
+quietly. `QC_RULES.md` carries the rule's new definition, because that is where a rule's
+meaning lives.
+
+### M9.4 is built: the guide's pictures are a script, and it found a bug
+
+`python build/screenshots.py` writes seven PNGs - the empty state, the list, the metadata
+pane, the Issues dock, the Log tab, a run in progress and the Settings page - into
+`docs/guide/images`. The batch in them is the fixtures' synthetic `MELT` show, imported
+rather than reimplemented, so a model change that would break the pictures breaks the
+suite first and no real shot code or Drive path can reach a document that gets emailed
+around. The run picture is driven through `_show_run_progress`, the window's own method,
+so the strip, the status bar and the row bars agree in the picture for the same reason
+they agree in the tool; a fake clock is passed to `RunProgress` so the status line reads
+"9.4 frames/s" rather than the 50,908 that messages arriving in microseconds produce.
+
+**Two things in it are decisions rather than code.** `choose_platform` leaves macOS on
+its own cocoa plugin and forces `offscreen` everywhere else: the offscreen plugin draws
+with Qt's own Fusion style and font fallbacks, so forcing it on a Mac would take pictures
+of a tool the editor does not have, which is the whole reason the shipped set comes from
+there. And the images are **not committed** - the guide does not exist yet and the set it
+ships with is the Mac's.
+
+**It found that the status dot was never drawn at all.** Section 7 has the mechanism. It
+is fixed, with three tests that assert the view's geometry rather than the model's answer,
+and `docs/MAC_SESSION.md`'s dot line is now about whether nine pixels read at 2x rather
+than about whether anything is there.
+
 ### Next task
+
+**The repo is clone-ready on a Mac as of 2026-09-13, and is one command as of 2026-09-16.**
+`bash build/mac_build.sh` is the short route and `docs/MAC_SETUP.md` is the whole of it by
+hand: clone, `uv sync --extra dev --python 3.12`, the ffmpeg pair, the PATH line, then the
+suite, the app and the build. Two things in it are not obvious and are why the document
+exists rather than a paragraph in the README. The ffmpeg binaries can now be **put there by
+hand** - `build/fetch_ffmpeg.py --show` prints the URLs and hashes, `--from <folder>`
+installs what was downloaded or copied from another machine, `--verify` says whether what is
+installed is the pinned build - and every route verifies the same sha256, so a wrong ffmpeg
+is refused rather than quietly bundled and written into every QC log. And the media tests
+**skip rather than fail** when `shutil.which("ffmpeg")` finds nothing, so a suite run without
+the bundled folder on PATH reports green having encoded nothing: the setup doc says so twice
+for that reason. 23 tests in `tests/test_fetch_ffmpeg.py`, and the download path is still
+what CI exercises on every push.
 
 **M7 is done, and it was the thing standing in front of the Mac day.** `docs/MAC_SESSION.md`'s
 own gate said not to rent until the packaging job produced a downloadable artifact whose
 headless smoke test passed; all three of its preconditions are now ticked, so the rented day
 is bookable.
 
-What is left that this machine can still finish on its own, in the order it is worth doing:
+**Everything this machine could finish on its own is finished as of 2026-09-14.** OQ-47 closed
+on the 13th; M5.12, the guide's three pages of prose and the `MainWindow` split went in on the
+14th, and each has its note above. What remains is below, grouped by what it is actually
+waiting on, because that is the thing that decides whether a session can start it.
 
-- **OQ-47, QC-039's scene linear probe.** Pure core, and the one open item that is a
-  correctness bug rather than a judgement: the probe is calibrated on ACEScct, the CLF no
-  longer starts there, and for C-Log3 - one of the three cameras named for this show - it
-  cannot separate a valid grade from a display rendering at all. The replacement ratio probe
-  is already measured and written out in the question. It is a rule definition, so
-  `QC_RULES.md` moves with it.
-- **The Settings page's sixth section.** Output is listed and disabled because reference CRF
-  and the EXR compression level are applied inside a worker and would have to travel on the
-  render job. M5.8.3 already built that channel for the ffmpeg override and the log level, so
-  this is following a path that exists.
-- **M9.2, the quickstart, and M9.4's harness**, which builds a demo batch and grabs the
-  window: the images it takes on Linux are fine for laying the document out and the shipped
-  set is taken on the Mac. M9's button reference should read `ui/toolbar_help.py` rather than
-  restate it. **M9.1's install section is no longer blocked**, since M7 exists to describe.
-- **What `REVIEW.md` deferred**, of which the largest is the `MainWindow` split. No behaviour
-  changes there; it is a session of its own if it is wanted.
+**Waiting on a person, not on work:**
 
-**M8 still needs the real thing** and nothing here substitutes for it.
+- **Merge PR #2.** One command, cannot conflict, and it unblocks PR #3's retarget. See the
+  branch paragraph above.
+- **OQ-9, the Apple Developer ID.** Buy one, or agree a route to the editor that never marks a
+  build as downloaded. **This is the single item that blocks handover** and it is a spend
+  decision rather than a task. `docs/PACKAGING.md` has the three options in preference order.
+- **OQ-49, the guide's form.** A fixed PDF or a Google Doc they can edit. It decides whether the
+  repo's copy stays the only one, and it is what M9.5 is waiting on.
+- **OQ-44**, to whoever briefs the shooters: which metadata field carries the log name and
+  exactly what string goes in it, remembering that "S-Log3" names four colour spaces in the
+  pinned config.
+- **OQ-46**, against one real export: whether a session's CLF really does start at the source
+  encoding. If it does not and the tool converts too, it converts **twice** - nothing fails,
+  every check passes, and both images look plausible.
+
+**Nothing is left that can be done here.** `REVIEW.md`'s S1 and S2 were the last of it and
+they closed on 2026-09-14. What is still deferred there is micro-smells, performance that needs
+a real mount (S4, which is M8), or test gaps not tied to a bug; `REVIEW.md`'s last section has
+each with its reason, and none of them is worth a session on their own.
+
+**Waiting on the Mac** (`docs/MAC_SESSION.md` is the checklist and the day is bookable, since
+M7 ticked all three of its preconditions):
+
+- **The guide's images.** `docs/guide/images/` is **empty in the repo on purpose** - the shipped
+  set has to be drawn by a Mac - so all three pages have broken image links until the day.
+  `python build/screenshots.py`, then commit what it writes.
+- **Reading the guide at the window.** Whether the quickstart's seven steps are the order a
+  person actually works in, and whether the reference section describes anything that does not
+  look like that on screen, cannot be seen from here.
+- The rest of that checklist: the `.app` double-clicked, the Dock tile, Retina rendering,
+  geometry across displays.
+
+**Waiting on a real turnover and a real colour session:** the whole of **M8**, all four chunks.
+Nothing here substitutes for it, and M8.2's speed target has never been measured against media
+on a Drive mount.
 
 **The pane is where an ingest is seen without running anything**: its Colour section reads
 `source_encoding`, `source_encoding_origin` and `clf_path` off the row, so selecting a row
@@ -1263,7 +1626,7 @@ contains the conversion and one that does not is two plausible looking images an
   `macos-latest` arm64 runner on every push, against the bundled ffmpeg 9.0.1 rather than this
   machine's Ubuntu 6.1.1. `h264_videotoolbox` was confirmed to open and encode there, which
   answered half of OQ-23.
-- **41 open questions, 19 of them still open.** Closed on 2026-09-11: OQ-2, OQ-12, OQ-15, OQ-32,
+- **41 open questions, 18 of them still open** (OQ-47 closed on 2026-09-13). Closed on 2026-09-11: OQ-2, OQ-12, OQ-15, OQ-32,
   OQ-34, OQ-37, OQ-38 and OQ-40. **OQ-30 and OQ-33 each closed and reopened within the same
   day**, as the grade carrier went CLF, then CDL, then CLF again, and **OQ-19 was reopened after
   a day** by the real tracker's FPS column. New: OQ-35, OQ-36, OQ-39, OQ-41. OQ-29 is mostly
@@ -1353,7 +1716,12 @@ PDF viewer.
   now the martin-riedl.de macOS arm64 GPL build of ffmpeg 9.0.1, 132 MB for the pair
   rather than the Windows 446 MB. Two macOS traps are handled in that script and will bite
   anyone who rewrites it: Python's `zipfile` drops the exec bit, and the host answers the
-  default `Python-urllib` User-Agent with HTTP 403.
+  default `Python-urllib` User-Agent with HTTP 403. Since 2026-09-13 it also takes
+  `--show`, `--from <folder>` and `--verify`, so the pair can be put there by hand and is
+  checked against the same sha256 either way; a third trap lives in that path, which is
+  that a browser download on macOS carries `com.apple.quarantine` and a binary that
+  inherits it is killed on first exec, so the installer writes new bytes rather than
+  copying the file.
 - `mypy python_version` is 3.12, not 3.11: numpy's stubs use `type` statement syntax
   that mypy rejects under 3.11, and pytest imports numpy transitively. The runtime
   floor in `requires-python` stays 3.11, which numpy genuinely supports.
@@ -1385,7 +1753,9 @@ PDF viewer.
 | `core/qc.py` | rule registry: phase A, `RuleSettings`, `preflight`, phase B | 1416 |
 | `core/settings.py` | what the app remembers between launches, as JSON. Takes the path; never works out where it is | 111 |
 | `ui/app.py` | the QApplication, its names, the theme, and `run()` | 49 |
-| `ui/main_window.py` | UI_SPEC section 1's frame: menus and their macOS roles, toolbar, bottom dock, status bar, the three empty states and the batch page, window state, the autosaver, the batch lifecycle (New, Open, Save, the two roots, Add Turnover and Scan), the colour session ingest (which turnover, which EDL, and what it reports), and the run (pre-flight, planning, Stop, the exports, the steps it narrates and section 7's banner text), and the metadata dock with the three signals that refresh it | 1275 |
+| `ui/main_window.py` | UI_SPEC section 1's frame: menus and their macOS roles, toolbar, bottom dock, status bar, the three empty states and the batch page, window state, the autosaver, the batch lifecycle (New, Open, Save, the two roots, Add Turnover and Scan), every dialog it opens, and the metadata dock with the three signals that refresh it | 1039 |
+| `ui/color_session.py` | the window's half of PRD section 6 step 4: which turnover the ingest is for, the rate its EDL is read at, what `core/clf.py` is handed, and the report the editor is shown | 129 |
+| `ui/run_controller.py` | what one Run does either side of the pool: pre-flight, the blocked turnovers, planning, the four surfaces it reports through on a timer, applying the records, the two spreadsheets, section 7's banner text, and the bounded wait that lets a window close mid run without dropping its results | 339 |
 | `ui/shot_model.py` | the batch as a two level tree: section 2's columns, section 3's dot and tints, the In/Out display mode, what the four editable cells commit, where a given row sits, and how far a live run has got with it | 760 |
 | `ui/shot_list.py` | the view, the two line cell, the Progress column's slim bar, the search filter, the cell editor, Tab across the editable columns, the skip prompt, what is selected, and selecting a row somebody pointed at from the Issues dock | 410 |
 | `ui/batch_bar.py` | the batch name, the delivery root button, the three state In/Out toggle and the search box | 104 |
@@ -1440,11 +1810,11 @@ Entry points worth knowing:
 | M4 | QC: all rules both phases, xlsx exports, `qc` CLI | complete, 175 tests |
 | M4.5 | Colour pipeline, core only. Source log in, CLF applied, ACEScg out, the viewing LUT | complete, 111 tests |
 | M4.6 | Per shot source encoding: read from the clip metadata, the input transform table, the input transform out of the graded chains, QC-046 to QC-048 | complete, all five chunks (OQ-37 answered; OQ-46 wants confirming) |
-| M5 | UI: the list, the FR-14 metadata pane, settings, log. **No viewers** | **complete, all eleven chunks** |
+| M5 | UI: the list, the FR-14 metadata pane, settings, log. **No viewers** | **complete, all twelve chunks** |
 | M6 | ~~Stringout with burn-ins~~ | **dropped 2026-09-11**, the colour session exports it |
 | M7 | Packaging: PyInstaller app, dmg, the frozen smoke test, both CI jobs | **complete 2026-09-13, 19 tests.** Built and smoke tested on Linux before pushing; Gatekeeper is OQ-9 and still unanswered |
 | M8 | Polish, performance on a real turnover, docs | not started |
-| M9 | The user guide: install, quickstart, a section per surface, screenshots (PRD FR-17) | **new 2026-09-12**, not started, specified in section 5 |
+| M9 | The user guide: install, quickstart, a section per surface, screenshots (PRD FR-17) | **4 of 5**: the harness and all three pages of prose. M9.5 wants OQ-49 and the Mac |
 
 M4 detail. The milestone had no chunk table until M4.1; this is it:
 
@@ -1690,10 +2060,10 @@ studio keeps about the **build**, and M9 is what somebody reads to **use the too
 
 | chunk | scope | state |
 |---|---|---|
-| M9.1 | Install guide: the dmg, the quarantine bit and Gatekeeper (OQ-9), first run, where settings and logs live | needs M7 |
-| M9.2 | Quickstart: one turnover from Add Turnover to the exports, about a page | can be drafted now |
-| M9.3 | The reference guide, one section per surface: the list and its columns, editing, the Issues dock, the run, Settings, the log, the metadata pane | follows the surfaces it documents |
-| M9.4 | The screenshot harness: builds a demo batch, grabs the window, writes the files the guide references. Drafted on Linux, **shipped set taken on the Mac** | harness now, images on the Mac |
+| M9.1 | Install guide: the dmg, the quarantine bit and Gatekeeper (OQ-9), first run, where settings and logs live | **built 2026-09-14**. `docs/guide/install.md` |
+| M9.2 | Quickstart: one turnover from Add Turnover to the exports, about a page | **built 2026-09-14**, 4 tests. `docs/guide/quickstart.md`. Images wait on the Mac |
+| M9.3 | The reference guide, one section per surface: the list and its columns, editing, the Issues dock, the run, Settings, the log, the metadata pane | **built 2026-09-14**. `docs/guide/reference.md`, with the button table pinned to `ui/toolbar_help.py` by test |
+| M9.4 | The screenshot harness: builds a demo batch, grabs the window, writes the files the guide references. Drafted on Linux, **shipped set taken on the Mac** | **built 2026-09-13**, 8 tests. `python build/screenshots.py`, seven pictures. Images on the Mac |
 | M9.5 | The document itself: one source, printed to PDF and pasteable into Google Docs whole (OQ-49) | last |
 
 **Three things about M9 that are decisions rather than tasks.**
@@ -2173,6 +2543,21 @@ deleted it along with `TestSupersededDisplayEncode`.
 
 ## 7. Findings worth keeping
 
+**The status dot was never drawn, and the suite was green.** Found on 2026-09-13 by
+building M9.4's screenshot harness and looking at the picture it took. `QTreeView` takes
+its indentation out of the **first column**, not out of the row, and a shot row sits two
+indents in: one for its turnover's branch arrow and one for itself. The status column was
+30 pixels and the indent is 20, so `visualRect` for a shot's status cell came back with a
+**negative width** and Qt drew nothing - no dot in any of section 3's seven states, and
+nothing to click for section 3's "clicking the dot focuses the Issues dock" either.
+Every test that asked the *model* for the decoration got its pixmap, which is why nothing
+failed. `STATUS_WIDTH` is now derived from `INDENT` and the dot's size, `INDENT` is set on
+both views explicitly because Qt's default is the style's to choose and a Mac that
+indented further would take the room away again, and three tests assert the view's
+geometry rather than the model's answer. **The general lesson is the one M9.4 was built
+on**: a headless suite can assert everything about a widget except that it is visible, and
+a harness that takes a picture is the cheapest thing that closes that gap.
+
 **Three ways a reference encode goes wrong without failing.**
 
 - **A sequence input has no frame rate, and image2 invents 25.** Every reference built
@@ -2376,15 +2761,13 @@ Nothing blocks the next task. These are live, in rough priority order:
   repaint cheap, and an animated one needs a repaint timer and a cache key that carries a
   phase. The state is live and the colour is right; only the movement is missing.
 
-- **QC-039's probe cannot separate a dark C-Log3 grade from a display rendering (OQ-47).**
-  New 2026-09-12, found while building M4.6.2, and the most important open item because it is
-  the only one that can refuse a valid delivery. The probe wants the CLF's white above 2.0,
-  which was calibrated when white meant ACEScct's 222; out of C-Log3 white is worth 14.7, so a
-  CLF graded four stops down answers 0.92 and a display rendering answers 1.0. The direction of
-  the failure is the safe one, an error on a good CLF rather than a bad plate delivered.
-  **The fix is measured and written up in OQ-47**: `out(1.0) / out(0.9)`, which is invariant to
-  how dark the grade is and separates every encoding in play by an order of magnitude. Left
-  alone in M4.6.2 because it is QC-039's definition rather than the chain.
+- ~~QC-039's probe cannot separate a dark C-Log3 grade from a display rendering (OQ-47).~~
+  **Closed 2026-09-13.** The probe compares two samples near the top of the log range rather
+  than white against a fixed floor, and the floor is a ratio of 1.4. Its note is in section 1
+  under the M4.5 CLF decisions, the rule's own definition is in `QC_RULES.md`, and the numbers
+  were re-measured rather than taken from the question - which moved the lower sample from the
+  0.9 it proposed to 0.8, because 0.9 leaves the darkest plate grade at 1.35 against a display
+  rendering's 1.016 and no floor near 1.4 separates those.
 
 - **Where the source encoding comes from is built, and the field name is a guess.** The
   encoding is read at scan time from `Input Color Space` on the clip, or

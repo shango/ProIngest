@@ -520,11 +520,15 @@ def _worker_init(
     log_queue: MPQueue[logging.LogRecord | None],
     log_level: int,
     ffmpeg_override: Path | None,
+    reference_crf: int,
+    exr_compression_level: float,
 ) -> None:
     global _QUEUE, _CANCEL
     _QUEUE, _CANCEL = queue, cancel
     logsetup.install_worker_handler(log_queue, log_level).addFilter(_ShotFilter())
     ffmpeg.set_override(ffmpeg_override)
+    ffmpeg.set_reference_crf(reference_crf)
+    exr.set_compression_level(exr_compression_level)
 
 
 def _publish(message: Progress) -> None:
@@ -626,13 +630,27 @@ def execute(
     # setting a caller has to remember to forward is a setting that half works.
     ffmpeg_override = ffmpeg.current_override()
 
+    # The Output section's two, on the same channel and for the same reason. A worker
+    # that missed them would write a plate at one compression level and a reference at
+    # one quality while the page said another, with nothing anywhere to say so.
+    reference_crf = ffmpeg.current_reference_crf()
+    exr_compression_level = exr.current_compression_level()
+
     results: dict[int, Deliverable] = {}
     try:
         with ProcessPoolExecutor(
             max_workers=max(1, workers),
             mp_context=context,
             initializer=_worker_init,
-            initargs=(queue, cancel, log_queue, log_level, ffmpeg_override),
+            initargs=(
+                queue,
+                cancel,
+                log_queue,
+                log_level,
+                ffmpeg_override,
+                reference_crf,
+                exr_compression_level,
+            ),
         ) as pool:
             futures = {pool.submit(_worker, job): index for index, job in enumerate(jobs)}
             for future in as_completed(futures):

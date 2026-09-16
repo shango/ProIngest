@@ -10,6 +10,10 @@ is a small residue that needs a person looking at a screen, or the real turnover
 This file is that residue. It exists so that a paid Mac session is **execution, not
 exploration**. An hour of unplanned poking about costs more than the machine does.
 
+**Getting the repo running on the machine is `docs/MAC_SETUP.md`, not this file.** Do that
+first, including the ffmpeg binaries and the PATH line that stops the media tests skipping
+themselves, and start here once `python -m proingest` opens a window.
+
 **The rule, also in `CLAUDE.md`:** if you write something whose behaviour can only be
 confirmed on a Mac, add a line here in the same commit. A checklist assembled at the end from
 memory is the thing this is meant to prevent.
@@ -45,8 +49,10 @@ Do not rent for any of these. Listed because the instinct to rent is usually wro
 - [x] **The M7 packaging job produces a downloadable dmg and its headless smoke test passes.**
       Done 2026-09-13. Renting in order to discover that PyInstaller missed a hidden import is
       the expensive way to learn it, and it is now learned for free on every push.
-- [ ] Everything on the checklist below is written and pushed. Nothing on it is still in
-      progress.
+- [x] Everything on the checklist below is written and pushed. Nothing on it is still in
+      progress. **Done 2026-09-14.** `REVIEW.md`'s S1 and S2 closed on the same day and were
+      the last code this project had that did not want a Mac, so nothing is half built
+      underneath this list.
 
 ### Logistics
 
@@ -67,6 +73,12 @@ Do not rent for any of these. Listed because the instinct to rent is usually wro
 
 Append to this as M5 and M6 are built.
 
+- [ ] **`bash build/mac_build.sh` runs start to finish.** It is the first thing typed at the
+      machine and the one file here that CI never executes: the workflow does the same steps
+      as its own YAML rather than by running the script. Every line in it is a line
+      `docs/MAC_SETUP.md` documents and CI proves, so what is being checked is the wrapper -
+      that `uv` is found, that the arm64 guard passes, that the `PATH` export reaches the
+      suite, and that it ends holding a dmg.
 - [ ] **The CI-built bundle launches from the Finder.** Headlessly it already scans, renders
       and reports on every push, so what is being checked here is the half a smoke test cannot
       reach: double-click the app and get a window.
@@ -102,7 +114,11 @@ Append to this as M5 and M6 are built.
       `ui/shot_list.py`. `UI_SPEC.md` section 2.
 - [ ] **The status dot reads at a glance in all seven states.** Nine pixels, filled or hollow,
       against the row tint behind it (M5.2, `UI_SPEC.md` section 3). Amber on faint amber is
-      the pair to look at.
+      the pair to look at. **It was not drawn at all until 2026-09-13** - the tree indentation
+      took the whole of the status column's width and Qt drew nothing - so this line is now
+      about whether it reads, not whether it is there. `INDENT` is set explicitly for the same
+      reason: a style that indented further on a Mac would take the room away again, and the
+      test that holds it asserts the view's own geometry rather than a picture.
 - [ ] **The inline red on a mistyped In or Out is legible against the editor's own background.**
       The cell editor colours what was typed rather than replacing it (M5.3, `UI_SPEC.md`
       section 5), and the red is the same `#cf5a52` as the error dot, chosen against the list's
@@ -165,12 +181,23 @@ Append to this as M5 and M6 are built.
 - [ ] **Closing the window mid-run waits for the jobs in flight and says nothing.** Up to two
       minutes if a reference encode is going (M5.5). Decide whether that wants a sheet
       explaining itself, or a prompt before the close.
-- [ ] **Take the user guide's screenshots** (FR-17, M9.4). The harness builds a demo batch and
-      grabs the window, so this is running a script and collecting the files rather than posing
-      the app by hand - but the shipped set has to come from **this** machine, because a guide
+- [ ] **Take the user guide's screenshots** (FR-17, M9.4): `python build/screenshots.py`. The
+      harness builds a demo batch and grabs the window, so this is running a script and
+      collecting the files rather than posing the app by hand - but the shipped set has to come from **this** machine, because a guide
       illustrated with a Linux font stack and Linux window furniture is a guide to a tool the
       editor does not have. Budget a slot for it late in the day, after the interface has been
-      looked at and anything embarrassing has been fixed.
+      looked at and anything embarrassing has been fixed. **Commit what it writes**:
+      `docs/guide/images/` is empty in the repo on purpose, so the quickstart's images are
+      broken until this is done and a Linux draft cannot be committed by accident. The
+      quickstart references seven of them by name and `tests/test_guide.py` fails if one is
+      renamed, so what is needed here is the files rather than any editing.
+- [ ] **Read `docs/guide/` at the window** (M9.1, M9.2, M9.3) while doing the pass above. All
+      three pages were written on Linux from the specs and the code, so what they cannot know is
+      whether the quickstart's seven steps are the order a person actually works in and whether
+      the reference section describes anything that does not look like that on screen. That is
+      the one thing a document like this is wrong about, and it is not visible from here. The
+      install page's Gatekeeper section is the other half: **check what the dialog actually
+      says** when the dmg is opened after a download, because the page quotes it.
 - [ ] Metadata pane: width and section states persist, long paths elide in the middle, values
       copy. `UI_SPEC.md` section 12.
 - [ ] Dark theme and font rendering at Retina, including the IBM Plex fallback chain.

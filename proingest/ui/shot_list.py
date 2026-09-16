@@ -52,6 +52,7 @@ from proingest.ui.shot_model import (
     EDITABLE_COLUMNS,
     FROZEN_COLUMNS,
     IN,
+    INDENT,
     OUT,
     PROGRESS,
     PROGRESS_ROLE,
@@ -282,6 +283,7 @@ class FrozenColumns(QTreeView):
         self.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self.setEditTriggers(owner.editTriggers())
         self.setUniformRowHeights(True)
+        self.setIndentation(INDENT)
         self.setTabKeyNavigation(True)
         self.setAllColumnsShowFocus(True)
         self.setExpandsOnDoubleClick(False)
@@ -338,6 +340,10 @@ class ShotListView(QTreeView):
         self.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self.setUniformRowHeights(True)
+        # Explicit rather than Qt's default, because `STATUS_WIDTH` is derived from it
+        # and the default is the style's to choose: a wider one on some platform would
+        # take the status cell's width away again and the dot would stop being drawn.
+        self.setIndentation(INDENT)
         self.setEditTriggers(
             QAbstractItemView.EditTrigger.DoubleClicked
             | QAbstractItemView.EditTrigger.EditKeyPressed

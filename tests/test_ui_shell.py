@@ -31,22 +31,18 @@ from proingest.core.models import Batch, Deliverable, FrameRate, InOut, Turnover
 from proingest.core.planner import DeliverableJob
 from proingest.core.render import Progress
 from proingest.ui import app as ui_app
-from proingest.ui import paths
+from proingest.ui import color_session, paths
+from proingest.ui.color_session import INGEST_MIXED_RATES, ingest_text, turnover_labels
 from proingest.ui.main_window import (
     BOTTOM_TABS,
-    CHECKING_BATCH,
     EMPTY_STATE_TEXT,
-    INGEST_MIXED_RATES,
     NO_ROWS_TEXT,
     NO_TURNOVERS_TEXT,
-    NOTHING_TO_RENDER,
-    WRITING_REPORTS,
     MainWindow,
-    ingest_text,
-    turnover_labels,
     unsaved_question,
 )
 from proingest.ui.metadata import MIXED, NO_SELECTION, as_text
+from proingest.ui.run_controller import CHECKING_BATCH, NOTHING_TO_RENDER, WRITING_REPORTS
 from proingest.ui.run_strip import LINK_COLOR, RunStrip
 from proingest.ui.runner import RENDERING
 from proingest.ui.settings_dialog import SettingsDialog
@@ -688,9 +684,14 @@ class TestAddingAndScanningTurnovers:
         assert NO_ROWS_TEXT in window.list_empty_text.text()
         assert "#issues" in window.list_empty_text.text()
 
-    def test_the_next_turnover_id_steps_past_the_ones_in_use(self, window: DrivenWindow) -> None:
+    def test_an_added_turnover_is_numbered_past_the_ones_in_use(self, window: DrivenWindow) -> None:
+        """The numbering itself is `scan.next_turnover_id`; this is that the window asks it."""
         window.set_batch(batch(turnovers=[Turnover("t1", Path("/a")), Turnover("t3", Path("/b"))]))
-        assert window._next_turnover_id() == "t4"
+        started = stub_scanner(window)
+        window.folder_answer = Path("/a/turnover004")
+        window.action_add_turnover.trigger()
+
+        assert started == [[(Path("/a/turnover004"), "t4")]]
 
     def test_nothing_can_be_added_while_a_scan_is_running(self, window: DrivenWindow) -> None:
         window.set_batch(Batch())
@@ -871,16 +872,28 @@ class TestIngestingAColourSession:
         assert all(t.color_session_edl is None for t in window.batch.turnovers)
 
     def test_it_waits_for_a_scan_to_finish(self, window: DrivenWindow) -> None:
-        """A scan rebuilds rows, and an ingest writes onto the rows it can see now."""
-        window.set_batch(batch(row()))
+        """A scan rebuilds rows, and an ingest writes onto the rows it can see now.
+
+        Both the greyed button and the guard behind it, because a disabled `QAction`
+        swallows a `trigger()` and would pass whether the guard is there or not.
+        """
+        window.set_batch(
+            batch(
+                row(turnover_id="t1"),
+                row("mx0002_pl01", turnover_id="t2"),
+                turnovers=[turnover("t1"), turnover("t2")],
+            )
+        )
         stub_scanner(window, busy=True)
-        window._update_state()
+        window.update_state()
 
         assert not window.action_ingest.isEnabled()
+        color_session.ingest(window)
+        assert window.turnovers_asked == []
 
 
 class TestWhatAnIngestSays:
-    """`ingest_text`, which says what `--color-session` prints (`_ingest_color_session`)."""
+    """`ingest_text`, which says what `--color-session` prints (`ui/color_session.py`)."""
 
     def report(self, tmp_path: Path, **lists: list[str]) -> clf.IngestReport:
         return clf.IngestReport(edl_path=tmp_path / "MELT_FINAL_v01.edl", events=3, **lists)
@@ -1015,7 +1028,7 @@ class TestClosingWithWorkInHand:
         window.set_batch(ingested(batch(row(), delivery_root=tmp_path), tmp_path))
         started = stub_runner(window, busy=True)
         cancels: list[bool] = []
-        window.runner.cancel = lambda: cancels.append(True)  # type: ignore[method-assign]
+        window.run.runner.cancel = lambda: cancels.append(True)  # type: ignore[method-assign]
         window.action_run.trigger()
 
         def status() -> str:
@@ -1025,8 +1038,8 @@ class TestClosingWithWorkInHand:
         assert cancels == [True], "but the run was told to stop"
         assert status() == "planned"
 
-        window.runner._thread = None
-        window.runner.finished.emit(done(started[0]), True)
+        window.run.runner._thread = None
+        window.run.runner.finished.emit(done(started[0]), True)
 
         assert status() == "done", "the results were applied"
         assert core_settings.load(window._settings_path).window_geometry != "", "and then it closed"
@@ -1035,13 +1048,13 @@ class TestClosingWithWorkInHand:
         self, window: DrivenWindow, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """A wedged worker must not be a window that cannot be closed."""
-        from proingest.ui import main_window as module
+        from proingest.ui import run_controller as module
 
         monkeypatch.setattr(module, "SHUTDOWN_WAIT_MS", 1)
         window.set_batch(ingested(batch(row(), delivery_root=tmp_path), tmp_path))
         stub_runner(window, busy=True)
-        window.runner.cancel = lambda: None  # type: ignore[method-assign]
-        window.runner.shutdown = lambda: None  # type: ignore[method-assign]
+        window.run.runner.cancel = lambda: None  # type: ignore[method-assign]
+        window.run.runner.shutdown = lambda: None  # type: ignore[method-assign]
         window.action_run.trigger()
 
         assert not window.close()
@@ -1187,12 +1200,32 @@ class TestRunningABatch:
         assert not window.action_add_turnover.isEnabled()
         assert window.action_stop.isEnabled()
 
+    def test_it_refuses_to_start_on_top_of_a_scan_or_another_run(
+        self, window: DrivenWindow, tmp_path: Path
+    ) -> None:
+        """The toolbar greys Run in both states; this is the guard behind the button.
+
+        Asked of the controller rather than the action, because a disabled `QAction`
+        swallows a `trigger()` and would pass whether the guard is there or not.
+        """
+        window.set_batch(ingested(batch(row(), delivery_root=tmp_path), tmp_path))
+        started = stub_runner(window, busy=True)
+        stub_scanner(window, busy=True)
+        window.run.start()
+        assert started == []
+
+        # And a second Run on top of the first, once the scan is out of the way.
+        window.scanner._thread = None
+        window.run.start()
+        window.run.start()
+        assert len(started) == 1
+
     def test_progress_reaches_the_status_bar_and_the_rows(self, window: DrivenWindow, tmp_path: Path) -> None:
         window.set_batch(ingested(batch(row(), delivery_root=tmp_path), tmp_path))
         started = stub_runner(window, busy=True)
         window.action_run.trigger()
-        window._run_progressed(Progress(started[0][0].name, "frame", 112, 224))
-        window._show_run_progress()
+        window.run.progressed(Progress(started[0][0].name, "frame", 112, 224))
+        window.run.refresh()
 
         assert "%" in window.statusBar().currentMessage()
         assert window.progress.isVisible() or window.progress.value() > 0
@@ -1205,11 +1238,11 @@ class TestRunningABatch:
         window.set_batch(ingested(batch(row(), delivery_root=tmp_path), tmp_path))
         started = stub_runner(window, busy=True)
         window.action_run.trigger()
-        window._run_progressed(Progress(started[0][0].name, "started", 0, 100))
-        window._run_progressed(Progress(started[0][0].name, "frame", 50, 100))
-        window._show_run_progress()
+        window.run.progressed(Progress(started[0][0].name, "started", 0, 100))
+        window.run.progressed(Progress(started[0][0].name, "frame", 50, 100))
+        window.run.refresh()
 
-        percent = window._run_progress.percent  # type: ignore[union-attr]
+        percent = window.run.progress.percent  # type: ignore[union-attr]
         assert window.run_strip.state == "running"
         assert window.run_strip.bar.value() == percent
         assert window.run_strip.line.text() == f"{RENDERING} {started[0][0].name}"
@@ -1225,7 +1258,7 @@ class TestRunningABatch:
         window.run_strip.say = said.append  # type: ignore[assignment]
         started = stub_runner(window)
         window.action_run.trigger()
-        window._run_finished(done(started[0]), False)
+        finish_run(window, done(started[0]), False)
 
         assert said[0] == CHECKING_BATCH
         assert "Planning 1 shots" in said
@@ -1258,7 +1291,7 @@ class TestRunningABatch:
         stub_runner(window, busy=True)
         window.action_run.trigger()
         cancelled: list[bool] = []
-        window.runner.cancel = lambda: cancelled.append(True)  # type: ignore[method-assign]
+        window.run.runner.cancel = lambda: cancelled.append(True)  # type: ignore[method-assign]
         window.action_stop.trigger()
 
         assert cancelled == [True]
@@ -1267,7 +1300,7 @@ class TestRunningABatch:
         window.set_batch(ingested(batch(row(), delivery_root=tmp_path), tmp_path), tmp_batch_path(window))
         started = stub_runner(window)
         window.action_run.trigger()
-        window._run_finished(done(started[0]), False)
+        finish_run(window, done(started[0]), False)
 
         assert {item.status for item in window.batch.rows[0].deliverables} == {"done"}
         assert window.shot_model.state_for(window.batch.rows[0]) is RowState.DONE
@@ -1278,7 +1311,7 @@ class TestRunningABatch:
         window.set_batch(ingested(batch(row(), delivery_root=tmp_path), tmp_path))
         started = stub_runner(window)
         window.action_run.trigger()
-        window._run_finished(done(started[0]), False)
+        finish_run(window, done(started[0]), False)
 
         assert not window.run_strip.banner.isHidden()
         assert "Batch complete: 4 done, 0 failed, 0 skipped." in window.run_strip.banner.text()
@@ -1292,7 +1325,7 @@ class TestRunningABatch:
         window.set_batch(ingested(batch(row(), delivery_root=tmp_path), tmp_path))
         started = stub_runner(window)
         window.action_run.trigger()
-        window._run_finished(done(started[0], status="skipped"), True)
+        finish_run(window, done(started[0], status="skipped"), True)
 
         assert window.run_strip.banner.text().startswith("Run stopped: 0 done, 0 failed, 4 skipped.")
 
@@ -1305,7 +1338,7 @@ class TestRunningABatch:
         window.set_batch(ingested(batch(row(), delivery_root=tmp_path), tmp_path))
         started = stub_runner(window)
         window.action_run.trigger()
-        window._run_finished(done(started[0]), False)
+        finish_run(window, done(started[0]), False)
 
         assert f'style="color:{LINK_COLOR}"' in window.run_strip.banner.text()
 
@@ -1313,8 +1346,8 @@ class TestRunningABatch:
         window.set_batch(ingested(batch(row(), delivery_root=tmp_path), tmp_path))
         started = stub_runner(window)
         window.action_run.trigger()
-        window._run_finished(done(started[0]), False)
-        window._open_reports()
+        finish_run(window, done(started[0]), False)
+        window.run_strip.link_activated.emit()
 
         assert window.opened_folders == [naming.reports_dir(tmp_path, "MELT")]
 
@@ -1323,7 +1356,7 @@ class TestRunningABatch:
     ) -> None:
         """A batch whose rows have no shot code has no show to file the reports under."""
         window.set_batch(batch(row("not_a_shot_name"), delivery_root=tmp_path))
-        window._run_finished([], False)
+        finish_run(window, [], False)
 
         assert window.problems and "show" in window.problems[0][1]
         assert "No exports were written." in window.run_strip.banner.text()
@@ -1334,7 +1367,7 @@ class TestRunningABatch:
         window.set_batch(ingested(batch(row(), delivery_root=tmp_path), tmp_path))
         started = stub_runner(window)
         window.action_run.trigger()
-        window._run_finished(done(started[0]), False)
+        finish_run(window, done(started[0]), False)
         window.set_batch(Batch())
 
         assert not window.run_strip.banner.isVisible()
@@ -1392,7 +1425,7 @@ class TestTheMetadataPane:
         window.shot_list.select_row(window.batch.rows[0])
         started = stub_runner(window)
         window.action_run.trigger()
-        window._run_finished(done(started[0], status="failed"), False)
+        finish_run(window, done(started[0], status="failed"), False)
 
         assert "Results: none" not in pane_text(window)
 
@@ -1406,7 +1439,7 @@ class TestTheMetadataPane:
         window.set_batch(ingested(batch(lower, delivery_root=tmp_path), tmp_path))
         started = stub_runner(window)
         window.action_run.trigger()
-        window._run_finished(done(started[0]), False)
+        finish_run(window, done(started[0]), False)
 
         assert "QC-151" not in rules_shown(window)
 
@@ -1582,11 +1615,20 @@ def stub_runner(window: DrivenWindow, busy: bool = False) -> list[list[Deliverab
             # `busy` is "there is a thread", so a thread that was never started is the
             # smallest honest way to say so, and it goes out with the window. Set from
             # inside `start` because a runner already busy would refuse the run.
-            window.runner._thread = QThread(window.runner)
-            window._update_state()
+            window.run.runner._thread = QThread(window.run.runner)
+            window.update_state()
 
-    window.runner.start = start  # type: ignore[method-assign]
+    window.run.runner.start = start  # type: ignore[method-assign]
     return started
+
+
+def finish_run(window: DrivenWindow, written: list[Deliverable], cancelled: bool = False) -> None:
+    """The pool coming back, through the signal the window actually listens on.
+
+    Emitted rather than calling the slot, because the connection is part of what these
+    tests are about: a run whose results reached nothing would still pass otherwise.
+    """
+    window.run.runner.finished.emit(written, cancelled)
 
 
 def done(jobs: list[DeliverableJob], status: str = "done") -> list[Deliverable]:

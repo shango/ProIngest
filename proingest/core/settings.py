@@ -23,6 +23,8 @@ from pathlib import Path
 from typing import Any
 
 from proingest.core import logsetup
+from proingest.core.exr import DWA_COMPRESSION_LEVEL
+from proingest.core.ffmpeg import REFERENCE_CRF
 from proingest.core.models import DEFAULT_WORKERS
 
 log = logging.getLogger(__name__)
@@ -118,6 +120,25 @@ class AppSettings:
     wrong build of ffmpeg and nothing said.
     """
 
+    reference_crf: int = REFERENCE_CRF
+    """The x264 rate factor every reference mp4 is encoded at (FR-12, Output).
+
+    Per user rather than per batch, which is the one thing about it worth arguing with:
+    it is a delivery quality and the spec pins 18. It is here because the page is where
+    the spec's number is checked and, on a turnover that has to fit down a slow line,
+    moved for a reason someone stated. `ffmpeg.REFERENCE_CRF` is the default rather than
+    a number repeated here, so a settings file written before this field existed reads
+    back as whatever the tool would have done anyway.
+    """
+
+    exr_compression_level: int = DWA_COMPRESSION_LEVEL
+    """The DWAA level every delivered plate is written at (FR-12, Output).
+
+    Same shape and the same argument as `reference_crf`, and the same default from
+    `exr.DWA_COMPRESSION_LEVEL`. DWAA is lossy at any level (COLOR_AND_FORMAT section
+    7), so this moves how lossy rather than whether.
+    """
+
     metadata_collapsed: list[str] = field(default_factory=list)
     """Which sections of the metadata pane the editor has shut (UI_SPEC section 12.1).
 
@@ -144,6 +165,8 @@ class AppSettings:
             "color_session_folder": self.color_session_folder,
             "log_level": self.log_level,
             "ffmpeg_path": self.ffmpeg_path,
+            "reference_crf": self.reference_crf,
+            "exr_compression_level": self.exr_compression_level,
             "metadata_collapsed": list(self.metadata_collapsed),
         }
 
@@ -161,6 +184,8 @@ class AppSettings:
             color_session_folder=str(data.get("color_session_folder", "")),
             log_level=logsetup.name_of(logsetup.level_of(str(data.get("log_level", "")))),
             ffmpeg_path=str(data.get("ffmpeg_path", "")),
+            reference_crf=int(data.get("reference_crf", REFERENCE_CRF)),
+            exr_compression_level=int(data.get("exr_compression_level", DWA_COMPRESSION_LEVEL)),
             metadata_collapsed=[str(item) for item in data.get("metadata_collapsed", [])],
             unknown={key: value for key, value in data.items() if key not in known},
         )

@@ -445,10 +445,14 @@ its log handler. **Hygiene:** H1 and H2 as you asked.
 
 - **The em dash in the tracker export** (section 4). Kept at your instruction: it mirrors the
   studio sheet.
-- **S1, `MainWindow` as a god class.** A large move for no behaviour change; the tests would
-  survive it but the diff would be most of the file. Worth its own session if wanted.
-- **S2, blocked-run and turnover-numbering logic in the UI.** Small, but it moves policy between
-  layers and the CLI and window agree today. Left for the S1 session, where it belongs.
+- ~~**S1, `MainWindow` as a god class.**~~ **Done 2026-09-14**, in the session it was told it
+  would need. The run is `ui/run_controller.py` and the colour session ingest is
+  `ui/color_session.py`; `main_window.py` is 1394 lines down to 1039. No behaviour changed, and
+  the tests did survive it, though two of them had to start driving the seam rather than the
+  slot behind it. PROGRESS section 1 has the whole note.
+- ~~**S2, blocked-run and turnover-numbering logic in the UI.**~~ **Done 2026-09-14**, with S1.
+  `qc.blocking_results` and `scan.next_turnover_id`. The numbering half was the mismatch this
+  finding suspected: `{t1, t5}` was handed `t3` against a docstring that said `t6`.
 - **S4, the stat storms.** `find_lens_grid_folder` walks every frame because a test pins "found
   at any depth", and `index_directory`'s double stat is the docstring being wrong rather than the
   code. Both are performance on a mount this machine cannot measure; deferred to M8, which has the

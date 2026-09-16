@@ -311,7 +311,7 @@
   <header class="mast">
     <div class="eyebrow">
       <span>VFX turnover ingest &middot; macOS v01</span>
-      <span class="stamp">Updated <b>13 Sep 2026, 20:30 PDT</b></span>
+      <span class="stamp">Updated <b>16 Sep 2026, 12:20 PDT</b></span>
     </div>
     <h1>ProIngest Build Track</h1>
     <p class="standfirst">
@@ -328,15 +328,15 @@
       <div class="stat-l">Milestones done</div>
     </div>
     <div class="stat">
-      <div class="stat-n good">1603</div>
+      <div class="stat-n good">1694</div>
       <div class="stat-l">Tests, Linux + macOS</div>
     </div>
     <div class="stat">
-      <div class="stat-n">28<span style="color:var(--faint);font-size:17px">/52</span></div>
+      <div class="stat-n">27<span style="color:var(--faint);font-size:17px">/52</span></div>
       <div class="stat-l">Questions open</div>
     </div>
     <div class="stat">
-      <div class="stat-n good">15<span style="color:var(--faint);font-size:17px">/15</span></div>
+      <div class="stat-n good">16<span style="color:var(--faint);font-size:17px">/16</span></div>
       <div class="stat-l">Interface chunks</div>
     </div>
   </div>
@@ -679,7 +679,7 @@
         <div class="ms-body">
           <div class="ms-head">
             <span class="ms-name">User interface</span>
-            <span class="pill done">Complete &middot; 15 of 15</span>
+            <span class="pill done">Complete &middot; 16 of 16</span>
           </div>
           <p class="ms-goal">
             Main window, shot list with the keyboard model, metadata pane, validation
@@ -849,8 +849,8 @@
                 files, so a value has to travel with the work rather than be read from a settings
                 file those processes never see. That is real plumbing and its own piece of work; a
                 control that silently did nothing would be worse than a greyed one that says why.
-                <b>The advanced one went live with the log</b> (M5.8.3); output quality is the
-                only one left. <b>Nothing in it about which format a
+                <b>The advanced one went live with the log</b> (M5.8.3) and <b>output quality
+                with M5.12</b>, so every section is live. <b>Nothing in it about which format a
                 delivery is in</b>, because there is no mode - each clip names its own - and
                 <b>nothing in it about where the grading session is</b>, because that is a record
                 of what a delivery was rendered from rather than a preference.
@@ -1043,9 +1043,38 @@
               <span class="c-st"><span class="tag ok">Done</span></span>
             </div>
 
+            <div class="chunk done">
+              <span class="c-id">M5.12</span>
+              <span class="c-name">The last greyed section</span>
+              <span class="c-note">
+                <b>The settings window is whole.</b> The two output values it has shown greyed
+                since it was built - how hard the viewing copies are compressed, and how hard the
+                delivered frames are - are editable, and every section of the page is now live.
+                <b>It needed a tenth of the work the plan had budgeted for it.</b> The note that
+                stood against it for two chunks said these values would have to travel attached to
+                each individual piece of work, because they are read inside the separate processes
+                that write the files. They do not: they are the same for every file in a run, so
+                they go on <b>the channel the advanced section already built</b> for the ffmpeg
+                override, and the whole crossing is four lines. Attaching them to the work would
+                have meant the part of the tool that plans a delivery reading the user's settings,
+                which it has never had to do.
+                <b>Both stay what the specification pins</b> - the page opens on those numbers,
+                read from the code that applies them rather than written down a second time, and
+                each says what the specification is beside it. They are settings because a slow
+                line or a particular vendor can force a change to what a delivery costs, and the
+                tool should not need a rebuild for that; they are not an invitation, and nothing
+                else in that table is editable.
+                <b>The encode quality is only visible in the log afterwards</b>, since no tool
+                reads it back out of a finished video, so the test that it actually reaches a
+                worker process reads the command the tool logged. The compression level is in the
+                header of the file the worker wrote, so its test reads the file.
+              </span>
+              <span class="c-st"><span class="tag ok">Done</span></span>
+            </div>
+
           </div>
           <div class="mods">
-            <span>main_window</span><i>/</i><span>shot_model</span><i>/</i><span>shot_list</span><i>/</i><span>batch_bar</span><i>/</i><span>scanner</span><i>/</i><span>runner</span><i>/</i><span>issues</span><i>/</i><span>autosave</span><i>/</i><span>run_strip</span><i>/</i><span>metadata</span><i>/</i><span>log_view</span><i>/</i><span>toolbar_help</span><i>/</i><span>theme.qss</span>
+            <span>main_window</span><i>/</i><span>run_controller</span><i>/</i><span>color_session</span><i>/</i><span>shot_model</span><i>/</i><span>shot_list</span><i>/</i><span>batch_bar</span><i>/</i><span>scanner</span><i>/</i><span>runner</span><i>/</i><span>issues</span><i>/</i><span>autosave</span><i>/</i><span>run_strip</span><i>/</i><span>metadata</span><i>/</i><span>log_view</span><i>/</i><span>toolbar_help</span><i>/</i><span>theme.qss</span>
           </div>
           <div class="gate">
             <b>This milestone got smaller on 11 September.</b> Three frame viewers and four
@@ -1078,6 +1107,21 @@
             That is the argument for driving the real window once per chunk, and it is now the
             practice. The banner is the clearest case for it: every test about it passed, because
             they all checked the words rather than the colour.
+            <b>The window was split in three on 14 September, and nothing it does changed.</b>
+            The file that draws it had grown to 1394 lines and owned four unrelated jobs; the code
+            review had flagged it and deliberately left it for a session of its own. A run is now
+            its own piece - checking the delivery, planning it, the four surfaces it reports
+            through, the spreadsheets, and the wait that lets the window be closed mid render
+            without losing what the render finished - and so is ingesting a grading session. The
+            file is <b>1039 lines</b> and the two rules that had been written out twice each, in
+            the window and in the headless command, now live in one place apiece.
+            <b>The interesting part is what the move broke and why nothing noticed.</b> Moving the
+            run dropped the line that stops Run starting on top of a scan, and the whole suite
+            still passed: <b>the tests press the button, and a greyed button swallows a press</b>,
+            so every test that tried it was testing the greying rather than the guard. It is back,
+            both guards are now asked directly rather than through the toolbar, and each was
+            checked by deleting the guard and watching the test go red. That failure mode belongs
+            to every interface test here, not to this change.
           </div>
         </div>
       </div>
@@ -1087,7 +1131,7 @@
         <div class="ms-body">
           <div class="ms-head">
             <span class="ms-name">Packaging</span>
-            <span class="pill done">Complete &middot; 19 tests</span>
+            <span class="pill done">Complete &middot; 22 tests</span>
           </div>
           <p class="ms-goal">
             A double-clickable Mac application with the video tools inside it, on a disk image,
@@ -1184,6 +1228,31 @@
               <span class="c-st"><span class="tag ok">Done</span></span>
             </div>
 
+            <div class="chunk done">
+              <span class="c-id">M7.6</span>
+              <span class="c-name">One command from a fresh copy</span>
+              <span class="c-note">
+                <b>Clone it, run one script, and the machine ends up holding the application and
+                its disk image.</b> It installs exactly the pinned set of libraries, fetches the
+                video tools and checks them against their fingerprints, puts them where the tests
+                look for them, runs the lint, the type check and the whole suite, then builds the
+                application and drives the built thing through a demonstration delivery. It stops
+                at the first thing that fails, and running it again is safe.
+                <b>It adds no step the setup document did not already describe</b>, and none the
+                hosted machines do not already run on every change. What it removes is the chance
+                of typing six commands in the wrong order on a machine that is rented by the day.
+                Two deliberate refusals: it <b>runs the video tools once to prove they
+                execute</b>, because a fingerprint says the bytes are the right ones and not that
+                this machine can run them, and it <b>installs nothing behind your back</b> - a
+                missing package manager is an error with the one line to fix it in, not a command
+                the script decides to run for you.
+                <b>It has never been run on a Mac.</b> The hosted machines do the same steps from
+                their own recipe rather than by calling it, so running it is now the first line of
+                the Mac checklist.
+              </span>
+              <span class="c-st"><span class="tag ok">Done</span></span>
+            </div>
+
             <div class="chunk">
               <span class="c-id">OQ-9</span>
               <span class="c-name">Getting it past Gatekeeper</span>
@@ -1198,7 +1267,7 @@
             </div>
 
           </div>
-          <div class="mods"><span>build/entry.py</span><i>/</i><span>bundle.py</span><i>/</i><span>proingest.spec</span><i>/</i><span>build.py</span><i>/</i><span>smoke_test.py</span><i>/</i><span>ci.yml</span></div>
+          <div class="mods"><span>build/entry.py</span><i>/</i><span>bundle.py</span><i>/</i><span>proingest.spec</span><i>/</i><span>build.py</span><i>/</i><span>smoke_test.py</span><i>/</i><span>mac_build.sh</span><i>/</i><span>ci.yml</span></div>
           <div class="gate">
             <b>This milestone was recorded as needing a Mac and it did not.</b> Everything except
             how the app behaves once double-clicked is now exercised automatically on every change.
@@ -1284,7 +1353,7 @@
         <div class="ms-body">
           <div class="ms-head">
             <span class="ms-name">The user guide</span>
-            <span class="pill">New &middot; 0 of 5</span>
+            <span class="pill">In progress &middot; 4 of 5</span>
           </div>
           <p class="ms-goal">
             One document the editor is handed: how to install it, a quickstart, then a section on
@@ -1292,49 +1361,99 @@
           </p>
           <div class="chunks">
 
-            <div class="chunk">
+            <div class="chunk done">
               <span class="c-id">M9.1</span>
               <span class="c-name">Installing it</span>
               <span class="c-note">
-                The disk image, what macOS says the first time and what to do about it, where the
-                app keeps its settings and its logs. <b>No longer blocked</b>: the packaged app
-                and its disk image now exist, so there is something to describe.
+                <b>Written.</b> The disk image, what macOS says the first time and what to do
+                about it, where the app keeps its settings and its logs, and how it is updated
+                and removed.
+                <b>The Gatekeeper section is not softened.</b> An unsigned application that
+                arrived through a browser is <b>refused</b> - the dialog says it is damaged and
+                there is no "open anyway" worth looking for - so the page says exactly that, gives
+                the two routes that work, and says that buying a developer identity would delete
+                the whole section. That decision is still the studio's, so the page describes what
+                happens today rather than guessing at it.
+                <b>Two numbers in it move on their own and a test now pins both</b>: the disk
+                image's filename, which follows the version, and the oldest macOS it will launch
+                on. A reader acts on each of them - looking for a file, or deciding whether their
+                machine is new enough - and neither announces that it has changed.
+                <b>Nothing unbuilt is described.</b> The packaging notes promise a first-run
+                notice about hardware encoding and a crash dump file, and neither exists, so the
+                page covers the first run that actually happens: an empty window and two folder
+                choosers.
               </span>
-              <span class="c-st"><span class="tag open">Can start</span></span>
+              <span class="c-st"><span class="tag ok">Done</span></span>
             </div>
 
-            <div class="chunk">
+            <div class="chunk done">
               <span class="c-id">M9.2</span>
               <span class="c-name">Quickstart</span>
               <span class="c-note">
-                One delivery from opening the app to the finished spreadsheets, in about a page.
-                The thing somebody reads once and then does not need again.
+                <b>Written.</b> One delivery from opening the app to the finished spreadsheets,
+                in about a page: seven steps, then what lands where, then the two things somebody
+                stuck actually needs - why Run refuses, and where the log is.
+                <b>The keyboard shortcuts are written the way the Mac draws them</b>, and a test
+                proves every one of them is a key the window really binds. The toolkit maps the
+                control key to Command on a Mac by itself, so the code says one thing and the
+                editor sees another, and a guide for a Mac that prints the code's version is a
+                guide to a keyboard the reader has not got. The test caught one on its first run.
+                <b>Every picture it shows is checked against the list the screenshot script
+                declares</b>, so a renamed picture fails a test rather than leaving a hole in a
+                document that gets emailed around. The pictures themselves are deliberately
+                <b>not</b> in the repository yet: the set that ships comes from the Mac, and a
+                Linux draft committed now is exactly what that rule exists to prevent.
+                <b>Writing it found six stale lines in the workflow summary</b> - the one page
+                the project tells a new reader to open second - all of them the colour policy
+                that was replaced on 12 September, plus an instruction to the colourist not to
+                use curves, which is the whole reason the tool applies a colour file rather than
+                the short numeric grade. Fixed in its own change.
               </span>
-              <span class="c-st"><span class="tag open">Can start</span></span>
+              <span class="c-st"><span class="tag ok">Done</span></span>
             </div>
 
-            <div class="chunk">
+            <div class="chunk done">
               <span class="c-id">M9.3</span>
               <span class="c-name">A section per part of the window</span>
               <span class="c-note">
-                The list and its columns, editing a shot, the issues panel, the run, settings, the
-                log, the information panel. Written against the built tool rather than the
-                specification, and sharing its wording with the buttons' own descriptions.
+                <b>Written, and the guide's prose is finished with it.</b> The layout, the
+                toolbar, the list and its fifteen columns, what each colour of the status dot
+                means, the three ways In and Out can be read, editing a shot, the information
+                panel, both bottom tabs, the run, the settings page, and a table of every
+                keyboard shortcut.
+                <b>The button table is the buttons' own hover descriptions word for word, and a
+                test says so.</b> That wording was deliberately put in a file of its own two
+                chunks ago on the promise that the guide would share it rather than write a
+                second version - and a document cannot read a file, so the test is what makes
+                the promise true. Word for word rather than roughly, because a paraphrase is
+                exactly the second version the arrangement exists to prevent.
+                <b>Two things in the first draft were wrong and the code said so.</b> The copy
+                shortcut does not work in the information panel - it has copy buttons instead,
+                deliberately, because selecting a shortened path copies the dots rather than the
+                path - and the element column is five short codes rather than the prose list the
+                specification suggested. Both were written from the documents and corrected
+                against the build, which is the argument for writing a guide last.
               </span>
-              <span class="c-st"><span class="tag open">Follows</span></span>
+              <span class="c-st"><span class="tag ok">Done</span></span>
             </div>
 
-            <div class="chunk">
+            <div class="chunk done">
               <span class="c-id">M9.4</span>
               <span class="c-name">Screenshots, from a script</span>
               <span class="c-note">
                 <b>Taken by a harness rather than by hand</b>: it builds a demonstration delivery
                 and grabs the window, so a changed interface is a re-run instead of a re-shoot,
                 and no production shot name or drive path ends up in a document that gets emailed
-                around. The pictures that ship have to come from the Mac, because a guide showing
-                Linux window furniture is a guide to a tool the editor does not have.
+                around. Seven pictures, one per part of the window. The pictures that ship still
+                have to come from the Mac, because a guide showing Linux window furniture is a
+                guide to a tool the editor does not have, and the script knows the difference:
+                on a Mac it lets the real Mac drawing engine draw, everywhere else it draws to
+                nothing. <b>Taking the first picture found a fault nothing else could have</b>:
+                the coloured status dot beside every shot was never being drawn, and the tests
+                could not see it because they were asking the data for the dot rather than the
+                window.
               </span>
-              <span class="c-st"><span class="tag open">Needs a Mac</span></span>
+              <span class="c-st"><span class="tag ok">Done</span></span>
             </div>
 
             <div class="chunk">
@@ -1367,7 +1486,7 @@
     <h2>Open questions</h2>
     <p class="standfirst" style="margin-bottom:14px">
       The live list. Questions answered days ago and no longer affecting anything have been
-      taken off this board; none is deleted, and all 50 of them, closed ones included, stay in
+      taken off this board; none is deleted, and all 52 of them, closed ones included, stay in
       <span class="mono">docs/OPEN_QUESTIONS.md</span> with the reasoning that closed them.
       What is kept here is what is still open, what was answered in the last two days, and
       what was built to a default that one real delivery would confirm.
@@ -1398,10 +1517,10 @@
             <td><b style="color:var(--text)">Answered the same day, and it was the cheapest question on the board.</b> The grading session starts each shot's colour file from the camera's own format, or from the house format in the other mode. So the colour file is the entire conversion and the tool performs none of its own on a plate, it cannot disagree with Resolve about what a camera format is, and a camera nobody has mapped still delivers. The common working format that used to sit in between is gone from the chain</td>
             <td class="st"><span class="tag ok">Answered</span></td>
           </tr>
-          <tr>
+          <tr class="resolved">
             <td class="id">OQ-47</td>
-            <td><b style="color:var(--text)">New 12 September, found while building the fix above.</b> The check that opens each colour file and measures it can no longer tell a dark grade shot on a Canon from a colour file with the viewing transform baked in. White out of Canon's log is worth a fifteenth of what it is worth out of the format the threshold was set against, so four stops of grade lands a good file exactly where a bad one lands. Measured rather than estimated, with a replacement that compares two points near the top instead of one and separates every camera in play by an order of magnitude. It refuses a good file rather than passing a bad one, which is the safe direction, and it is one camera of the three</td>
-            <td class="st"><span class="tag hot">Measured</span></td>
+            <td><b style="color:var(--text)">Raised 12 September, answered 13 September by building the replacement.</b> The check that opens each colour file and measures it could no longer tell a dark grade shot on a Canon from a colour file with the viewing transform baked in. White out of Canon's log is worth a fifteenth of what it is worth out of the format the old threshold was set against, so a few stops of grade landed a good file exactly where a bad one lands - and it refused the good file, because that check stops a delivery. <b style="color:var(--text)">It now measures the shape of the top of the range rather than one value in it</b>: two samples near white, and how far apart they come out. A grade darkens both and cancels out, so what is left is the steepness at the top, which is precisely what a baked-in viewing transform flattens. <b style="color:var(--text)">The numbers were measured again rather than taken from this row, and one of them moved</b>: the second sample this question proposed leaves the darkest legitimate grade at 1.35 against a bad file's 1.016, which no threshold can separate; a sample slightly further down the curve puts them at 1.86 and 1.055, and the threshold sits about a third from each. Eleven tests, including every camera format in play against a dark grade and against a real baked-in viewing transform</td>
+            <td class="st"><span class="tag ok">Answered</span></td>
           </tr>
           <tr>
             <td class="id">OQ-46</td>
@@ -2198,40 +2317,44 @@
 
   <footer>
     <b>Source of truth</b> &middot; PROGRESS.md, docs/OPEN_QUESTIONS.md, PRD.md section 9<br>
-    <b>Verify</b> &middot; pytest &middot; ruff check . &amp;&amp; mypy proingest tests build &middot;
-    python build/build.py &middot; python build/smoke_test.py &lt;app&gt;<br>
-    <b>Last updated</b> &middot; 13 September 2026, 19:40 PDT. <b>The application is packaged.</b>
-    A double-clickable Mac app with the video tools inside it and a disk image beside it are now
-    built on every change by the hosted Apple Silicon machine and attached to the run, so getting
-    one is a download. A script drives the packaged app through a whole delivery - scan, a two
-    process render, both spreadsheets - and checks what landed, which is the only way to catch the
-    failures a packaged program has that a normal checkout does not. <b>All of it was built and
-    proved on the Linux machine before any of it was pushed</b>, because a missing file fails a
-    Linux build exactly as it fails a Mac one. <b>It then passed inside a real Mac application on
-    the first run</b>: 251&nbsp;MB installed, a 110&nbsp;MB disk image at about a third of the
-    budget, and the app rendered through two worker processes and wrote both spreadsheets.
-    <b>This milestone was recorded as needing a Mac and it did not</b>, and it was the gate in
-    front of the rented day: the rule was not to rent until a downloadable app existed whose
-    unattended proving run passed. That is now true, so the day is bookable.
-    <b>One library broke when frozen and it is the one that reads every delivery</b>: it finds its
-    readers by looking them up rather than importing them, and the edit list reader is registered
-    under a name that does not match the package it lives in, so only a fallback reading the
-    source off disk ever works. Everything else needed nothing. 1603 tests green.<br>
-    <b>Next</b> &middot; three things can still be finished on this machine. <b>The colour check
-    that can no longer tell a dark Canon grade from a baked-in viewing transform</b> is the one
-    that is a fault rather than a judgement, and its replacement is already measured. <b>The last
-    greyed settings section</b>, output quality, needs the value to travel to the worker processes
-    on a channel that already exists. And <b>the quickstart and the screenshot script</b> can be
-    drafted, with the pictures that ship taken on the Mac.
+    <b>Verify</b> &middot; bash build/mac_build.sh &middot; pytest &middot;
+    ruff check . &amp;&amp; mypy proingest tests build &middot; python build/build.py &middot;
+    python build/smoke_test.py &lt;app&gt;<br>
+    <b>Last updated</b> &middot; 16 September 2026, 12:20 PDT. <b>A fresh copy of the code
+    becomes a built Mac application in one command.</b> Clone it, run one script, and it installs
+    exactly the pinned set of libraries, fetches the video tools and checks them against their
+    fingerprints, puts them where the tests look for them, runs the lint, the type check and all
+    1694 tests, builds the application and its disk image, and drives the built thing through a
+    whole demonstration delivery. It stops at the first thing that fails and it is safe to run
+    again. <b>Nothing in it is new work</b>: every step is one the setup document already
+    described and the hosted machines already run on every change. What it removes is the chance
+    of typing six commands in the wrong order on a machine that is rented by the day.<br>
+    <b>The repository was already ready to be opened on a Mac</b>, and the two traps that would
+    otherwise have cost a morning are handled either way: the video tools are 132&nbsp;MB and
+    deliberately not kept in the repository, so they can be downloaded in a browser or carried
+    over from another machine and are checked against the same fingerprint whichever way they
+    arrive; and the tests that touch video <b>skip themselves</b> when they cannot find those
+    tools, so a run set up by hand can report success having encoded nothing.<br>
+    <b>The user guide's screenshots are a script</b> rather than somebody pressing a key, so a
+    changed interface is a re-run instead of a re-shoot and nothing from a real production can
+    reach a document that gets emailed around. It draws on a Mac only, because a guide
+    illustrated on Linux is a guide to a tool the editor does not have - which is why the
+    pictures are the one part of the guide that is waiting on the machine. Taking the first one
+    found that the coloured status dot beside every shot <b>had never been drawn at all</b>:
+    every test asked the data whether there was a dot, and none asked the window whether it had
+    drawn one. Fixed, with three tests that ask the window.<br>
+    <b>The guide's prose is finished</b> - the quickstart, the install section and the reference
+    section - and <b>the window has been split into the three jobs it was doing</b>, which was
+    the last thing on the list that could be done away from a Mac. Nothing the tool does changed.<br>
+    <b>Next</b> &middot; nothing at all on this machine. The polish pass, the proving run and the
+    guide's last part all want the Mac or a real delivery.
     <b>Two questions want asking before a real delivery depends on them</b>: which field the
     shooters write their camera's format into and exactly what they write, and whether a grading
     session's colour file really does contain the conversion - because if the tool also converts,
     it converts twice and nothing fails. <b>One decision wants making before handover</b>: an
-    Apple Developer ID, or a route to the editor that never marks a build as downloaded. The
-    other, the name the application identifies itself by, was settled the same day it was raised
-    - it names nobody connected to the production, and the only rule now is not to change it once
-    a build has reached the editor.
+    Apple Developer ID, or a route to the editor that never marks a build as downloaded.
   </footer>
 
 </div>
 
+</body></html>

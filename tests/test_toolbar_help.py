@@ -199,7 +199,7 @@ class TestTheWindowSaysTheRightOne:
     def test_an_ingested_session_takes_the_warning_off(self, window: DrivenWindow, tmp_path: Path) -> None:
         window.set_batch(batch(row()))
         window.batch.turnovers[0].color_session_edl = tmp_path / "final.edl"
-        window._update_state()
+        window.update_state()
         expected = f"{help_.WHAT_IT_DOES[help_.RUN]}  {native(window.action_run)}"
         assert window.action_run.toolTip() == expected
 

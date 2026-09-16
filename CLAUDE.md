@@ -32,13 +32,17 @@ The docs are the spec. `PROGRESS.md` is the state. When code and docs disagree, 
 
 ## Commands
 ```
+bash build/mac_build.sh      # a fresh Mac clone: environment, ffmpeg, checks, app, dmg (docs/MAC_SETUP.md)
 uv sync --extra dev          # installs exactly what uv.lock pins; or: pip install -e .[dev]
 pytest
 ruff check . && ruff format --check . && mypy proingest tests build
 python -m proingest          # run the app
 python build/fetch_ffmpeg.py # the bundled binaries, untracked (macOS only)
+python build/fetch_ffmpeg.py --verify        # are they the pinned build
+python build/fetch_ffmpeg.py --from ~/Downloads  # install ones downloaded by hand
 python build/build.py        # PyInstaller app; a dmg too on macOS (see docs/PACKAGING.md)
 python build/smoke_test.py dist/ProIngest/ProIngest   # drive a frozen build end to end
+python build/screenshots.py   # the user guide's pictures; the shipped set is taken on a Mac
 ```
 
 ## Definition of done for a feature
