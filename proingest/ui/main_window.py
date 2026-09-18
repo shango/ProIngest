@@ -59,6 +59,7 @@ from proingest.core.models import (
 from proingest.ui import color_session, metadata, settings_form, toolbar_help
 from proingest.ui.autosave import AutoSaver
 from proingest.ui.batch_bar import BatchBar
+from proingest.ui.deliverables import DeliverablesDock
 from proingest.ui.issues import IssuesDock
 from proingest.ui.log_view import LogView
 from proingest.ui.metadata_pane import MetadataPane
@@ -919,6 +920,10 @@ class MainWindow(QMainWindow):
         from anything that might have changed a value without counting how often.
         """
         rows = self.shot_list.selected_rows()
+        # The Deliverables tab reads the same selection and changes for the same
+        # reasons - a selection, a commit, a run writing statuses back - so it is
+        # redrawn here rather than from a fourth set of signals that would drift.
+        self.deliverables.show_rows(rows)
         if rows:
             sections = metadata.describe(rows, self.batch, self._camdata)
             summary = metadata.selection_summary(len(rows)) if len(rows) > 1 else ""
@@ -963,7 +968,7 @@ class MainWindow(QMainWindow):
         self.refresh_metadata()
 
     def _build_bottom_dock(self) -> None:
-        """Issues (M5.4) and Log (M5.8.2), then Deliverables, still to come."""
+        """Issues (M5.4), Log (M5.8.2) and Deliverables (2026-09-17), section 1's three."""
         dock = QDockWidget("Details", self)
         dock.setObjectName("bottom_dock")
         dock.setAllowedAreas(Qt.DockWidgetArea.BottomDockWidgetArea)
@@ -973,15 +978,11 @@ class MainWindow(QMainWindow):
         self.issues = IssuesDock(tabs)
         self.issues.row_activated.connect(self.shot_list.select_row)
         self.log_view = LogView(tabs)
-        built = {"Issues": self.issues, "Log": self.log_view}
+        self.deliverables = DeliverablesDock(tabs)
+        self.deliverables.path_activated.connect(self.open_folder)
+        built = {"Issues": self.issues, "Log": self.log_view, "Deliverables": self.deliverables}
         for name in BOTTOM_TABS:
-            widget = built.get(name)
-            if widget is not None:
-                tabs.addTab(widget, name)
-                continue
-            placeholder = QLabel(f"No {name.lower()} yet", tabs)
-            placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            tabs.addTab(placeholder, name)
+            tabs.addTab(built[name], name)
         dock.setWidget(tabs)
 
         self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, dock)

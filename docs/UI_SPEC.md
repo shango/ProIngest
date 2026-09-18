@@ -137,6 +137,26 @@ The second tab of the same dock, built in M5.8.2 against PRD FR-13. Table: time,
 - **The panel is bounded and the file is not.** It keeps the last `MAX_LINES`; the complete record is the rotating file in `~/Library/Logs/ProIngest` (PACKAGING.md). A hidden line ages out with the rest, so a filter can never be the thing that makes the window grow.
 - **It follows the tail only when it is already at the tail.** Somebody who has scrolled up is reading something.
 
+## 6.2 Deliverables tab
+
+The third tab of the same dock, built 2026-09-17 against section 1's layout, which had listed it
+from the start. Table, for the **selected rows**: shot, deliverable name, kind, resolution,
+version, status, frames, size, the rule IDs it failed, and the path. Read only, like the metadata
+pane: a deliverable is written by a run and by nothing else.
+
+- **It answers what the list and the Issues dock do not.** The Progress column says how many of
+  a row's outputs have landed and the dock says which failed a check; this says *what* a row
+  delivers, where each one went and at which version, which is the question somebody asks
+  before opening a Finder window.
+- **Double-click opens the folder the file is in.** A path in a table is something a person can
+  read and cannot type.
+- **It is redrawn with the metadata pane**, from the same selection and for the same reasons,
+  so a finished run reaches it the moment the statuses are written back. It is not redrawn on
+  the run's five-a-second timer: a status of `rendering` appears on the next selection change or
+  when the run ends, and the row's own bar is the live surface.
+- **A selected shot with nothing planned says so** in one line, so an empty table under a shot
+  that has never run reads as not yet rather than as broken.
+
 ## 7. Run and progress
 
 - Run opens no dialog if the delivery root is set; otherwise it prompts once.

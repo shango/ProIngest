@@ -304,6 +304,10 @@ Treat it as a working session with the editor rather than a delivery.
       buttons once a path is set. The property flip is tested; that the stylesheet re-reads
       it after the unpolish/polish pair, and that amber reads as "unfinished" rather than
       "wrong" on the dark bar, is a judgement for a screen.
+- [ ] **Select a delivered shot and read the Deliverables tab** (2026-09-17). Ten columns
+      with the path stretched; what a test cannot judge is whether the widths suit a real path
+      on a Drive mount and whether the status colours read against the dock. Double-click a
+      line: Finder should open the shot's delivery folder.
 - [ ] **Hover every toolbar button on the real window and read the tooltips.** Written and
       measured offscreen on Linux, where the shortcut renders as `Ctrl+R` and on the Mac it is
       `⌘R`, so every line is shorter there than the width test assumes. What a test cannot

@@ -27,11 +27,11 @@ from PySide6.QtWidgets import (
 
 from proingest.core import batchfile, clf, naming
 from proingest.core import settings as core_settings
-from proingest.core.models import Batch, Deliverable, FrameRate, InOut, Turnover
+from proingest.core.models import Batch, Deliverable, FrameRate, InOut, QCResult, Turnover
 from proingest.core.planner import DeliverableJob
 from proingest.core.render import Progress
 from proingest.ui import app as ui_app
-from proingest.ui import color_session, paths
+from proingest.ui import color_session, deliverables, paths
 from proingest.ui.batch_bar import NO_DELIVERY_ROOT
 from proingest.ui.color_session import INGEST_MIXED_RATES, ingest_text, turnover_labels
 from proingest.ui.main_window import (
@@ -57,6 +57,7 @@ from tests.fixtures import color as color_fixtures
 from tests.fixtures.batches import (
     RATE_24,
     batch,
+    delivered,
     fail,
     ingested,
     media,
@@ -321,10 +322,10 @@ class TestTheLayout:
         names = [window.bottom_tabs.tabText(i) for i in range(window.bottom_tabs.count())]
         assert names == list(BOTTOM_TABS)
 
-    def test_the_log_tab_is_the_log_panel_rather_than_a_placeholder(self, window: DrivenWindow) -> None:
-        """M5.8.2. Deliverables is still the placeholder and is the tab left to build."""
+    def test_every_tab_is_its_panel_and_none_is_a_placeholder(self, window: DrivenWindow) -> None:
+        assert window.bottom_tabs.widget(BOTTOM_TABS.index("Issues")) is window.issues
         assert window.bottom_tabs.widget(BOTTOM_TABS.index("Log")) is window.log_view
-        assert isinstance(window.bottom_tabs.widget(BOTTOM_TABS.index("Deliverables")), QLabel)
+        assert window.bottom_tabs.widget(BOTTOM_TABS.index("Deliverables")) is window.deliverables
 
     def test_the_status_bar_progress_is_hidden_until_a_run(self, window: DrivenWindow) -> None:
         assert window.progress.isHidden()
@@ -1551,6 +1552,69 @@ class TestExportWithoutARun:
         window.action_export.trigger()
         assert window.run_strip.state == "empty"
         assert not (tmp_path / "MELT").exists()
+
+
+class TestTheDeliverablesTab:
+    """Section 6.2: what the selected shot delivers, where, and in what state."""
+
+    def test_it_is_empty_until_a_shot_is_selected(self, window: DrivenWindow) -> None:
+        window.set_batch(batch(delivered(row())))
+        assert window.deliverables.count == 0
+
+    def test_it_lists_the_selected_shot_s_deliverables(self, window: DrivenWindow) -> None:
+        window.set_batch(batch(delivered(row(), status="done")))
+        window.shot_list.select_row(window.batch.rows[0])
+
+        assert window.deliverables.count == 2
+        first = window.deliverables.topLevelItem(0)
+        assert first is not None
+        assert first.text(deliverables.COLUMNS.index("Shot")) == "MELT0001"
+        assert first.text(deliverables.COLUMNS.index("Kind")) == "raw_dir"
+        assert first.text(deliverables.COLUMNS.index("Status")) == "done"
+        assert first.text(deliverables.COLUMNS.index("Ver")) == "v01"
+
+    def test_a_failed_check_is_named_by_its_rule(self, window: DrivenWindow) -> None:
+        built = batch(delivered(row(), status="failed"))
+        built.rows[0].deliverables[0].qc.append(QCResult("QC-104", "error", "deliverable", "short"))
+        window.set_batch(built)
+        window.shot_list.select_row(built.rows[0])
+        first = window.deliverables.topLevelItem(0)
+        assert first is not None
+        assert first.text(deliverables.COLUMNS.index("Failed")) == "QC-104"
+
+    def test_a_shot_that_has_never_run_says_so_rather_than_showing_nothing(
+        self, window: DrivenWindow
+    ) -> None:
+        window.set_batch(batch(row()))
+        window.shot_list.select_row(window.batch.rows[0])
+        assert window.deliverables.count == 0
+        note = window.deliverables.topLevelItem(0)
+        assert note is not None and note.text(0) == deliverables.NO_DELIVERABLES
+
+    def test_it_follows_a_run_writing_statuses_back(self, window: DrivenWindow) -> None:
+        """The same refresh the metadata pane gets, so a finished run reaches it."""
+        window.set_batch(batch(delivered(row(), status="planned")))
+        window.shot_list.select_row(window.batch.rows[0])
+        window.batch.rows[0].deliverables[0].status = "done"
+        window.show_results()
+        first = window.deliverables.topLevelItem(0)
+        assert first is not None
+        assert first.text(deliverables.COLUMNS.index("Status")) == "done"
+
+    def test_double_clicking_a_line_opens_its_folder(self, window: DrivenWindow) -> None:
+        window.set_batch(batch(delivered(row())))
+        window.shot_list.select_row(window.batch.rows[0])
+        first = window.deliverables.topLevelItem(0)
+        assert first is not None
+        window.deliverables.itemDoubleClicked.emit(first, 0)
+        assert window.opened_folders == [Path("/delivery")]
+
+    def test_sizes_read_as_a_person_reads_them(self) -> None:
+        assert deliverables.size_text(0) == ""
+        assert deliverables.size_text(512) == "512 B"
+        assert deliverables.size_text(12_300) == "12 KB"
+        assert deliverables.size_text(1_234_000) == "1.2 MB"
+        assert deliverables.size_text(64_000_000_000) == "64 GB"
 
 
 class TestTheMetadataPane:

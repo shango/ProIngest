@@ -15,7 +15,7 @@ Five things, and they do not move:
   and the In/Out display buttons.
 - **The shot list** in the middle, which is where the work happens.
 - **The metadata pane** on the right, read only. **⌘I** hides and shows it.
-- **The tabs** along the bottom: Issues and Log.
+- **The tabs** along the bottom: Issues, Log and Deliverables.
 
 ## The toolbar
 
@@ -191,6 +191,18 @@ Time, level, shot and message, over a filter bar: a minimum level, a search box,
   complete record is the rotating file in `~/Library/Logs/ProIngest`, which Settings names.
 - It follows the newest line **only when it is already at the bottom**, because somebody who has
   scrolled up is reading something.
+
+## The Deliverables tab
+
+What the selected shot delivers: one line per output - the two EXR sequences, the two mp4s, the
+wav, each side file - with its kind, resolution, version, status, frame count, size, the rule
+numbers it failed if any, and the path. Select several shots and it lists all of theirs.
+
+- **Read only.** A run writes deliverables; nothing else does.
+- **Double-click a line to open the folder it is in.**
+- A shot that has never run shows one line saying so rather than an empty table.
+- It updates when the selection changes and when a run finishes. During a run the row's own
+  progress bar in the list is the live view.
 
 ## The run
 

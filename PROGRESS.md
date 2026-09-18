@@ -10,16 +10,18 @@ commit.
 
 **State at 2026-09-16. Every feature milestone is built, and so is packaging.** M1 to M4
 complete, M4.5 all four chunks, M4.6 all five, **M5 all twelve**, **M7**, and **M9.4**.
-**1697 tests**, `ruff`, `ruff format` and `mypy --strict` clean over `proingest tests build`.
+**1726 tests**, `ruff`, `ruff format` and `mypy --strict` clean over `proingest tests build`.
 What is left is **M8 polish** (needs a real turnover and a real colour session) and the rest
 of **M9, the user guide**.
 
-**This session, 2026-09-17, is a UX pass on the branch `ux/first-run-and-discovery`, one
-commit per item, none pushed yet.** The user looked at the window and asked for six things;
-the note "UX pass, 2026-09-17" below tracks each one as it lands. Built so far: **New batch
-opens the turnover chooser straight away**, the empty list has an Add Turnover button, and
-**Export writes both spreadsheets without a run**, the delivery root is amber until set, **Run refuses in a dialog when nothing would render**, and **a colour session exported by
-convention is found by the scan and offered** (OQ-53, the convention Ben has to agree to).
+**This session, 2026-09-17, was a UX pass on the branch `ux/first-run-and-discovery`, one
+commit per item, all six built and none pushed yet.** The user looked at the window and asked
+for six things; the note "UX pass, 2026-09-17" below has each. **New batch opens the turnover
+chooser straight away**, the empty list has an Add Turnover button, **Export writes both
+spreadsheets without a run**, the delivery root is amber until set, **Run refuses in a dialog
+when nothing would render**, **a colour session exported by convention is found by the scan
+and offered** (OQ-53, the convention Ben has to agree to), and **the Deliverables tab exists**.
+The toolbar has no dead button and the bottom dock no placeholder left. **1726 tests.**
 
 **The session before, 2026-09-16, was about getting the tool onto a Mac and then onto the editor's
 Mac, and it was driven by somebody running out of time on a rented box.** Nothing about what the
@@ -220,12 +222,19 @@ are being built, each its own commit on `ux/first-run-and-discovery`:
    help. The CLI's `run --color-session` does not discover; it is pointed at an EDL as
    before. Tests: `TestFindSession` in `tests/test_clf.py` and
    `TestASessionFoundBesideTheTurnover` in `tests/test_ui_shell.py`.
-6. The Deliverables tab.
+6. **The Deliverables tab. Built.** `ui/deliverables.py`, a `QTreeWidget` like the Issues
+   dock and for its reason: for the selected rows, one line per deliverable with shot, name,
+   kind, res, version, status (coloured as the list's dot is), frames, size, the rule IDs it
+   failed and the path; double-click opens the folder. Redrawn from `refresh_metadata`, so
+   it changes exactly when the pane does, including when a run writes statuses back; not on
+   the run's timer. A selected shot with nothing planned shows one line saying so. UI_SPEC
+   section 6.2, the reference's "The Deliverables tab", and a `docs/MAC_SESSION.md` line for
+   the widths and colours. Tests: `TestTheDeliverablesTab` in `tests/test_ui_shell.py`.
 
 ### First five minutes
 
 ```
-.venv/bin/python -m pytest tests/ -q          # 1683, about 90 seconds
+.venv/bin/python -m pytest tests/ -q          # 1726, about 90 seconds
 .venv/bin/python -m ruff check . && .venv/bin/python -m ruff format --check . && .venv/bin/python -m mypy proingest tests build
 ```
 
