@@ -10,7 +10,7 @@ It replaces the previous file of the same name, which closed on the Mac scripts.
 ## The one paragraph version
 
 **The user opened the window and asked for six things, and all six are built**, one commit each
-on `ux/first-run-and-discovery`, pushed and opened as a PR against `main`. New batch opens the
+on `ux/first-run-and-discovery`, **merged into `main` as PR #7**, CI green, branch deleted. New batch opens the
 turnover chooser straight away; Export writes both spreadsheets without a run; the delivery root
 button is amber until set; Run refuses in a dialog when nothing would render; **a colour session
 exported by convention is found by the scan and offered** (OQ-53); and the Deliverables tab is
@@ -20,9 +20,8 @@ republished, version 64.
 
 ## What a new session should know first
 
-**The branch is `ux/first-run-and-discovery` and it is not merged.** Seven commits plus this
-one. CI has not yet run on it as of writing; check the PR before trusting green. Once merged,
-`main` carries everything and the branch can be deleted.
+**`main` carries everything.** PR #7 merged on 17 September as a merge commit, CI green on all
+four jobs (run 35308641062), and the branch is deleted. A fresh clone needs no checkout.
 
 **The colour session convention is a default, not an agreement.** `clf.find_session` looks for
 `<Settings "Ingest opens at" folder>/<turnover folder name>/` first, then
@@ -55,7 +54,6 @@ hits the held-back dialog instead.
 
 `PROGRESS.md` section 1's "Next task" is the list and it is current. In one line each:
 
-- **This PR:** watch CI, merge, delete the branch.
 - **A person:** tell the colourist the convention (OQ-53) and ask OQ-44 and OQ-46; OQ-9, the
   developer identity; OQ-49, the guide's form.
 - **The Mac:** `docs/MAC_SESSION.md`, which gained two lines this session: the amber delivery
