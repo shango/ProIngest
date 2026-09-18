@@ -409,3 +409,10 @@ of where the answers came from. Nothing reads the package again (`core/clf.py`).
 - **The rules re-run afterwards**, because the ingest moves In and Out on the rows it matched and
   the durations the thresholds judge have changed. QC-008 and QC-009 are pre-flight and clear at
   the next Run.
+- **A session exported by convention is offered after the scan** (2026-09-17, OQ-53). When a
+  turnover's rows land, `clf.find_session` looks for a folder named as the turnover folder is,
+  first under the Settings folder the chooser opens at, then in `_color` beside the turnover; it
+  has to hold exactly one `.edl`, at any depth. Found, and the turnover has rows with media and
+  no session yet, a Yes/No dialog names the folder and Yes runs the same ingest the button does.
+  Two `.edl` files is no offer rather than a guess, since choosing between them is choosing a
+  cut. Asked rather than done because an ingest overwrites a trim on the rows.

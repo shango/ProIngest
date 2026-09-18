@@ -625,6 +625,9 @@ class MainWindow(QMainWindow):
         self.show_results()
         self.autosave.schedule()
         self.update_state()
+        # Last, with the rows on the model: a session exported by convention is offered
+        # now rather than left for a toolbar button the editor has to know to press.
+        color_session.offer_found(self, turnover)
 
     def _scan_finished(self) -> None:
         self.progress.setVisible(False)
@@ -809,6 +812,17 @@ class MainWindow(QMainWindow):
         if not accepted:
             return None
         return turnovers[names.index(chosen)]
+
+    def ask_ingest_found(self, turnover: Turnover, folder: Path) -> bool:
+        """A session found beside the turnover: ingest it now, or not (section 15)."""
+        answer = QMessageBox.question(
+            self,
+            color_session.SESSION_FOUND_TITLE,
+            color_session.SESSION_FOUND.format(name=turnover.folder.name, folder=folder),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.Yes,
+        )
+        return answer == QMessageBox.StandardButton.Yes
 
     def report_ingest(self, text: str) -> None:
         """What the ingest did. A modal, because it is the answer to one just opened.

@@ -58,9 +58,12 @@ QC log.
 Every edit re-checks that row and saves itself a moment later, so there is nothing to remember
 to press. **⌘S** names the batch file the first time.
 
-**4. Ingest the colour session.** Select the turnover (or any shot under it), press **Ingest
-Colour Session**, and point at the session's final `.edl`. One turnover at a time: another one
-can still be waiting on colour while this one delivers.
+**4. Ingest the colour session.** If the colourist exported it by the convention - a folder
+named exactly as the turnover folder, inside a `_color` folder beside the turnovers, holding
+the final `.edl` and the `.clf` files - the scan finds it and asks whether to ingest it. Say
+yes. Otherwise select the turnover (or any shot under it), press **Ingest Colour Session**,
+and point at the session's final `.edl`. One turnover at a time: another one can still be
+waiting on colour while this one delivers.
 
 What it writes onto the rows: the approved In and Out from the trim the colourist and the AD sat through,
 the CDL as the readable record, and which `.clf` each shot is graded with. It then tells you how

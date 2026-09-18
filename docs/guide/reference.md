@@ -42,6 +42,13 @@ toolbar shows everything from the first launch rather than hiding what cannot be
 ingested, because it will run: it refuses every turnover and writes nothing, which is correct
 and looks exactly like a dead button. Its tooltip says so first.
 
+**Ingest Colour Session is the by-hand route.** A scan looks for the turnover's session
+first: a folder named exactly as the turnover folder, inside the folder Settings' "Ingest opens
+at" names, or else inside `_color` beside the turnovers, holding one final `.edl` and the
+`.clf` files. Found, it asks whether to ingest it; a folder with two `.edl` files in it is not
+guessed between and the button is the answer. Ingesting twice reads the newer export over the
+older one, and the report says which rows changed.
+
 **Export writes the two spreadsheets without rendering anything.** A run writes them when it
 finishes too; Export is for the batch as it stands now - after a scan, to hand the QC log
 round before anything is delivered, or after an edit, to refresh them. It re-runs every check

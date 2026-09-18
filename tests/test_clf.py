@@ -783,3 +783,54 @@ class TestShotColorFromRow:
     def test_a_row_naming_no_encoding_gets_a_chain_that_names_none(self, tmp_path: Path) -> None:
         """Renderable where the CLF is the whole chain, and QC-046 where it is not."""
         assert clf.shot_color(row()).source_encoding is None
+
+
+class TestFindSession:
+    """OQ-53: a session exported by convention is found without a chooser."""
+
+    def turnover(self, tmp_path: Path) -> Path:
+        folder = tmp_path / "turnovers" / "turnover001_02_23_2026_danielluckett"
+        folder.mkdir(parents=True)
+        return folder
+
+    def edl_in(self, folder: Path) -> Path:
+        folder.mkdir(parents=True, exist_ok=True)
+        return edl(folder)
+
+    def test_it_looks_in_the_color_folder_beside_the_turnover(self, tmp_path: Path) -> None:
+        folder = self.turnover(tmp_path)
+        written = self.edl_in(tmp_path / "turnovers" / "_color" / folder.name)
+        assert clf.find_session(folder) == written
+
+    def test_the_edl_may_sit_in_a_subfolder(self, tmp_path: Path) -> None:
+        folder = self.turnover(tmp_path)
+        written = self.edl_in(tmp_path / "turnovers" / "_color" / folder.name / "exports")
+        assert clf.find_session(folder) == written
+
+    def test_the_settings_folder_is_looked_in_first(self, tmp_path: Path) -> None:
+        folder = self.turnover(tmp_path)
+        self.edl_in(tmp_path / "turnovers" / "_color" / folder.name)
+        preferred = self.edl_in(tmp_path / "sessions" / folder.name)
+        assert clf.find_session(folder, tmp_path / "sessions") == preferred
+
+    def test_a_settings_folder_with_nothing_for_this_turnover_falls_through(self, tmp_path: Path) -> None:
+        folder = self.turnover(tmp_path)
+        beside = self.edl_in(tmp_path / "turnovers" / "_color" / folder.name)
+        (tmp_path / "sessions").mkdir()
+        assert clf.find_session(folder, tmp_path / "sessions") == beside
+
+    def test_nothing_by_convention_is_none(self, tmp_path: Path) -> None:
+        assert clf.find_session(self.turnover(tmp_path)) is None
+
+    def test_two_edls_is_none_rather_than_a_guess(self, tmp_path: Path) -> None:
+        """Choosing between two cuts is choosing a cut; the editor points at the right one."""
+        folder = self.turnover(tmp_path)
+        session = tmp_path / "turnovers" / "_color" / folder.name
+        self.edl_in(session)
+        (session / "MELT_FINAL_v02.edl").write_text(FINAL_EDL)
+        assert clf.find_session(folder) is None
+
+    def test_a_folder_named_for_another_turnover_is_not_this_one_s(self, tmp_path: Path) -> None:
+        folder = self.turnover(tmp_path)
+        self.edl_in(tmp_path / "turnovers" / "_color" / "turnover002_02_24_2026_danielluckett")
+        assert clf.find_session(folder) is None

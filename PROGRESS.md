@@ -18,7 +18,8 @@ of **M9, the user guide**.
 commit per item, none pushed yet.** The user looked at the window and asked for six things;
 the note "UX pass, 2026-09-17" below tracks each one as it lands. Built so far: **New batch
 opens the turnover chooser straight away**, the empty list has an Add Turnover button, and
-**Export writes both spreadsheets without a run**, the delivery root is amber until set, and **Run refuses in a dialog when nothing would render**.
+**Export writes both spreadsheets without a run**, the delivery root is amber until set, **Run refuses in a dialog when nothing would render**, and **a colour session exported by
+convention is found by the scan and offered** (OQ-53, the convention Ben has to agree to).
 
 **The session before, 2026-09-16, was about getting the tool onto a Mac and then onto the editor's
 Mac, and it was driven by somebody running out of time on a rented box.** Nothing about what the
@@ -206,7 +207,19 @@ are being built, each its own commit on `ux/first-run-and-discovery`:
    errors holding it (`_held_back_reasons`), then brings up the Issues tab. The partial
    case is unchanged: a status bar line, and the ready turnovers deliver. UI_SPEC section
    7 and the quickstart's "When Run refuses" say so.
-5. Colour session discovery: a session folder found by convention is offered after a scan.
+5. **Colour session discovery. Built, to a convention that wants a word with Ben (OQ-53).**
+   `clf.find_session(turnover_folder, settings_folder)` looks for a folder named exactly as
+   the turnover folder, first under the Settings folder the chooser opens at, then in
+   `_color` beside the turnovers, and wants exactly one `.edl` in it at any depth; two is
+   None rather than a guess, logged. `MainWindow._take_scanned` ends by calling
+   `color_session.offer_found`, which asks `ask_ingest_found` (a Yes/No naming the folder)
+   for a turnover with rows with media and no session yet, and Yes runs `ingest_edl`, the
+   half of the ingest the toolbar route now shares. Asked rather than done because an
+   ingest overwrites a trim. The convention is in `docs/WORKFLOW.md` as Ben's step 9a, in
+   UI_SPEC section 15, in the quickstart's step 4, the reference, and the Settings field's
+   help. The CLI's `run --color-session` does not discover; it is pointed at an EDL as
+   before. Tests: `TestFindSession` in `tests/test_clf.py` and
+   `TestASessionFoundBesideTheTurnover` in `tests/test_ui_shell.py`.
 6. The Deliverables tab.
 
 ### First five minutes
