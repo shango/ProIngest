@@ -50,6 +50,22 @@ assert the status bar line has to give its batch a session first.** `test_a_batc
 is the example: it is about skipped rows planning nothing, and without `ingested(...)` it now
 hits the held-back dialog instead.
 
+## After the merge: pulling a build
+
+The user asked for the `gh` command to fetch the disk image CI builds, and then could not find
+it, because it lands on the **WSL side**, not in Windows Downloads. Both things worth keeping:
+
+```
+gh run download -R shango/ProIngest -n ProIngest-macos-arm64 -D ~/Downloads \
+  $(gh run list -R shango/ProIngest --branch main --status success --limit 1 --json databaseId -q '.[0].databaseId')
+```
+
+`gh` unpacks the zip, so what arrives is the bare `ProIngest-0.2.0.dmg`. On this machine that is
+`/home/sgold/Downloads/`, reachable from Windows as `\\wsl$\<distro>\home\sgold\Downloads\`;
+pass `-D /mnt/c/Users/<you>/Downloads` to land it on the Windows side instead. A file `gh`
+downloads carries no quarantine mark. The one from run 35314948016 (the merge of PR #8, `main`
+at b882269) is sitting in `~/Downloads` here now, 115 MB, and has not yet reached a Mac.
+
 ## What is next
 
 `PROGRESS.md` section 1's "Next task" is the list and it is current. In one line each:
