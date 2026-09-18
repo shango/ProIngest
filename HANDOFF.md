@@ -1,89 +1,63 @@
-# Session close, 16 September 2026 (the Mac, and getting a build to a person)
+# Session close, 17 September 2026 (the UX pass, and where the colour session lives)
 
 **This file is disposable and it is not the handoff record.** `PROGRESS.md` section 1 is, and it
 is written to be picked up cold. This is a note about what one session did, kept because context
 is being cleared. Delete it once it has been read. **If it disagrees with `PROGRESS.md` or the
 docs, they win.**
 
-It replaces the previous file of the same name, which closed on the `MainWindow` split.
+It replaces the previous file of the same name, which closed on the Mac scripts.
 
 ## The one paragraph version
 
-**No behaviour changed and no core code was touched.** The session was about getting the tool
-onto a Mac and then onto the editor's Mac, driven by somebody working against a rented-box
-clock. Two shell scripts: **`build/mac_build.sh`**, which is a fresh clone to a built app and
-dmg in one command, and **`ProIngest.command`**, which is the same folder run without building
-anything. **All five PRs are merged and `main` carries everything** - a fresh clone needs no
-`git checkout`. **1697 tests**, `ruff`, `ruff format` and `mypy --strict` clean, CI green on
-`main` (run 35144687967). Build Track republished, version 63.
+**The user opened the window and asked for six things, and all six are built**, one commit each
+on `ux/first-run-and-discovery`, pushed and opened as a PR against `main`. New batch opens the
+turnover chooser straight away; Export writes both spreadsheets without a run; the delivery root
+button is amber until set; Run refuses in a dialog when nothing would render; **a colour session
+exported by convention is found by the scan and offered** (OQ-53); and the Deliverables tab is
+built. Nothing about what the tool renders changed. **Version bumped to 0.2.0**, the first bump
+since scaffolding. **1726 tests**, `ruff`, `ruff format` and `mypy --strict` clean. Build Track
+republished, version 64.
 
 ## What a new session should know first
 
-**`main` is the branch.** PRs #2 through #5 all merged on 16 September. `m7/packaging`,
-`m9/guide-and-settings`, `docs/post-merge-state` and `m7/command-launcher` still exist on the
-remote, fully merged, and deleting them is safe.
+**The branch is `ux/first-run-and-discovery` and it is not merged.** Seven commits plus this
+one. CI has not yet run on it as of writing; check the PR before trusting green. Once merged,
+`main` carries everything and the branch can be deleted.
 
-**A Mac needs one command.** `git clone`, then `bash build/mac_build.sh` to build or
-`./ProIngest.command` to just run it. `docs/MAC_SETUP.md` section 0 is the first and 0.5 is the
-second; the rest of that document is the same thing by hand and is what to read when a step
-fails.
+**The colour session convention is a default, not an agreement.** `clf.find_session` looks for
+`<Settings "Ingest opens at" folder>/<turnover folder name>/` first, then
+`<turnover parent>/_color/<turnover folder name>/`, and wants exactly one `.edl` in it at any
+depth. `docs/WORKFLOW.md` step 9a tells the colourist to export there. Nobody has told the
+colourist yet. If they cannot write beside the turnovers, the Settings folder is the override and
+needs no code. OQ-53 has the reasoning; UI_SPEC section 15 has the mechanism.
 
-**Neither script has ever run on macOS.** Everything in them is a line CI runs and the document
-already carried, but the wrappers have only ever been parsed here. `docs/MAC_SESSION.md` opens
-with them.
+**The CLI does not discover.** `proingest run --color-session <edl>` is pointed at an EDL as it
+always was. Parity was deliberately left out of scope; it is a small change if wanted.
+
+**A version bump touches four files and the lock.** `pyproject.toml`, `proingest/__init__.py`,
+`docs/guide/install.md` (the dmg name; `tests/test_guide.py` pins it to `__version__`),
+`build/build.py`'s docstring, then `uv lock`, because CI installs with `--frozen` and fails if
+the lock's project version has fallen behind.
 
 ## The two things worth not re-deriving
 
-**GitHub does not retarget a stacked PR when its base merges. It does it when the base branch is
-deleted.** This repository does not delete on merge, so PR #3 sat pointing at `m7/packaging`
-after #2 went in, and `PROGRESS.md` had said for two days that it would sort itself out. Worse,
-**`gh pr edit --base` fails on this repository** with a Projects (classic) GraphQL deprecation
-error that has nothing to do with the base branch. The REST call works:
+**Inserting a test class in the middle of another one silently steals its tests.** Adding a new
+`class Test...` block after one method of `TestRunningABatch` moved every following method into
+the new class. Nothing failed; the names in the failure output were simply wrong. New classes go
+before the next `class` line, and `grep -n "^class "` before committing is cheap.
 
-```
-gh api -X PATCH repos/shango/ProIngest/pulls/<n> -f base=main
-```
-
-**An `.app` is a folder.** The question "can it run from a downloaded folder rather than an
-executable" took half an hour to answer because both sides meant different things by folder.
-macOS draws a bundle as a single icon, so the folder that runs with nothing installed is
-`dist/ProIngest.app` and there was never a third thing to build. `docs/MAC_SETUP.md` section 0.5
-is now a table of the two, and the distinction it turns on is that `ProIngest.command` needs
-`uv` and a network on first use and the app needs neither.
-
-## Handing a build to the editor
-
-`PROGRESS.md` section 5 has the full list under "Getting a build to the editor: what is actually
-known". The three that cost the most:
-
-- **Quarantine is applied by the receiving app**, so the file's history before it reaches their
-  Mac is irrelevant. `gh` and `curl` do not set it; browsers and AirDrop do; `scp`, `rsync`, USB
-  and mounted shares do not.
-- **A zip drops the executable bit and symlinks**, which destroys an `.app` and makes the
-  launcher unrunnable - but **a dmg inside a zip is safe**, because it is one opaque file. That
-  is the distinction that matters when a build goes on Drive.
-- **The dialog says the app is damaged and the default button deletes it.** Instructions sent
-  with a build have to say Cancel before they say anything else. A walkthrough was written for
-  the editor in chat this session and **was deliberately not committed** - the user said it was
-  fine as it was. `docs/guide/install.md` covers the refusal but assumes a bare dmg, mentions no
-  zip and does not warn about that button. Worth folding in when OQ-49 settles the guide's form.
+**Every place that decides a turnover cannot run now shows a dialog, and a test that used to
+assert the status bar line has to give its batch a session first.** `test_a_batch_that_plans_nothing_says_so_rather_than_starting`
+is the example: it is about skipped rows planning nothing, and without `ingested(...)` it now
+hits the held-back dialog instead.
 
 ## What is next
 
 `PROGRESS.md` section 1's "Next task" is the list and it is current. In one line each:
 
-- **A person:** OQ-9, which is now the whole of the handover problem; OQ-49, the guide's form;
-  and asking OQ-44 and OQ-46.
-- **This machine:** nothing.
-- **The Mac:** `docs/MAC_SESSION.md`, which now opens with three lines this session added - the
-  two scripts, and whether a dmg arriving through the **Google Drive mount** carries quarantine.
-  That last one is ten seconds and decides whether the editor ever has to open Terminal.
+- **This PR:** watch CI, merge, delete the branch.
+- **A person:** tell the colourist the convention (OQ-53) and ask OQ-44 and OQ-46; OQ-9, the
+  developer identity; OQ-49, the guide's form.
+- **The Mac:** `docs/MAC_SESSION.md`, which gained two lines this session: the amber delivery
+  root button, and the Deliverables tab's widths and colours.
 - **A real turnover and a real colour session:** the whole of M8.
-
-## One loose end that is not a task
-
-The user dropped a sample export folder in the repo root, `TEST0001/`, on 16 September. **Eight
-of its nine folders are exactly what the tool already writes.** The ninth is `TEST0001_lidar`,
-and lidar is an explicit v01 non-goal in `PRD.md`. The user said the sample was information
-rather than a request, so nothing was built. It is untracked and git cannot commit empty
-directories, so it exists on that machine only; `PROGRESS.md` section 5 has the detail.
