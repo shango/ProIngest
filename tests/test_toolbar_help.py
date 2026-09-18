@@ -146,9 +146,12 @@ class TestWhyItIsUnavailable:
         assert note(help_.NEW, state, enabled=False) == help_.RUN_FIRST
         assert note(help_.OPEN, state, enabled=False) == help_.RUN_FIRST
 
-    def test_export_says_it_is_not_built_rather_than_inventing_a_reason(self) -> None:
-        for state in every_state():
-            assert note(help_.EXPORT, state, enabled=False) == help_.EXPORT_UNBUILT
+    def test_export_wants_rows_the_way_run_does(self) -> None:
+        """Both report on the batch, so both are greyed until there is a batch to report on."""
+        assert note(help_.EXPORT, ToolbarState(), enabled=False) == help_.NO_BATCH
+        assert note(help_.EXPORT, ToolbarState(batch_open=True), enabled=False) == help_.NO_ROWS_TO_EXPORT
+        busy = ToolbarState(batch_open=True, has_rows=True, rendering=True)
+        assert note(help_.EXPORT, busy, enabled=False) == help_.RENDERING
 
 
 class TestTheNoteOnAnEnabledRun:

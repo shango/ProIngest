@@ -170,6 +170,7 @@ class MainWindow(QMainWindow):
         self.action_toggle_skip = self._action("Skip Shot", QKeySequence("Ctrl+K"))
         self.action_toggle_skip.triggered.connect(lambda: self.shot_list.toggle_skip())
         self.action_export = self._action("Export")
+        self.action_export.triggered.connect(lambda: self.run.export_reports())
         self.action_cycle_display = self._action("Cycle In/Out display", QKeySequence("Ctrl+T"))
         self.action_cycle_display.triggered.connect(self._cycle_display_mode)
         self.action_find = self._action("Find", QKeySequence.StandardKey.Find)
@@ -654,6 +655,7 @@ class MainWindow(QMainWindow):
         self.action_new.setEnabled(not running)
         self.action_open.setEnabled(not running)
         self.action_run.setEnabled(open_batch and not busy and bool(self.batch.rows))
+        self.action_export.setEnabled(open_batch and not busy and bool(self.batch.rows))
         self.action_stop.setEnabled(running and not self.run.cancelled)
         self._refresh_tooltips(open_batch=open_batch, scanning=scanning, running=running)
 

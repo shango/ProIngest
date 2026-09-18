@@ -71,9 +71,9 @@ RUN_FIRST = "A run is going; stop it before swapping the batch under it."
 NOTHING_UNSCANNED = "Every turnover already has shots."
 NO_ROWS_TO_INGEST = "Nothing to write onto yet; scan a turnover first."
 NO_ROWS_TO_RUN = "Add a turnover first."
+NO_ROWS_TO_EXPORT = "Nothing to report on yet; add a turnover first."
 NOT_RUNNING = "No run is going."
 ALREADY_STOPPING = "Already stopping; the deliverables in flight are finishing."
-EXPORT_UNBUILT = "Not built yet. A run writes both spreadsheets when it finishes."
 
 NO_SESSION = "No colour session ingested yet, so a run would write nothing (QC-008)."
 """The one note on a button that is **enabled**, and the reason section 1 wanted these.
@@ -115,8 +115,6 @@ def note(key: str, state: ToolbarState, enabled: bool) -> str:
 
     if key in (NEW, OPEN):
         return RUN_FIRST
-    if key == EXPORT:
-        return EXPORT_UNBUILT
     if key == STOP:
         return ALREADY_STOPPING if state.rendering else NOT_RUNNING
     if not state.batch_open:
@@ -131,6 +129,8 @@ def note(key: str, state: ToolbarState, enabled: bool) -> str:
         return NO_ROWS_TO_INGEST
     if key == RUN and not state.has_rows:
         return NO_ROWS_TO_RUN
+    if key == EXPORT and not state.has_rows:
+        return NO_ROWS_TO_EXPORT
     return ""
 
 

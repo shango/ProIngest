@@ -1150,6 +1150,53 @@ class TestRunningABatch:
         window.action_run.trigger()
         assert started == []
 
+
+class TestExportWithoutARun:
+    """Export: both spreadsheets from the batch as it stands, and no worker started."""
+
+    def test_it_is_greyed_until_there_are_rows(self, window: DrivenWindow) -> None:
+        assert not window.action_export.isEnabled()
+        window.set_batch(Batch())
+        assert not window.action_export.isEnabled()
+        window.set_batch(batch(row()))
+        assert window.action_export.isEnabled()
+
+    def test_it_writes_both_files_and_the_banner_names_the_folder(
+        self, window: DrivenWindow, tmp_path: Path
+    ) -> None:
+        window.set_batch(batch(row(), delivery_root=tmp_path))
+        started = stub_runner(window)
+        window.action_export.trigger()
+
+        reports = tmp_path / "MELT" / "_reports"
+        names = sorted(path.name for path in reports.iterdir())
+        assert [name.split("_")[0] for name in names] == ["qc", "shot"]
+        assert started == []
+        assert window.run_strip.state == "done"
+        assert str(reports) in window.run_strip.banner.text()
+        assert str(reports) in window.statusBar().currentMessage()
+
+    def test_the_banner_link_opens_that_folder(self, window: DrivenWindow, tmp_path: Path) -> None:
+        window.set_batch(batch(row(), delivery_root=tmp_path))
+        window.action_export.trigger()
+        window.run_strip.banner.linkActivated.emit("#reports")
+        assert window.opened_folders == [tmp_path / "MELT" / "_reports"]
+
+    def test_a_batch_with_no_delivery_root_is_asked_for_one(
+        self, window: DrivenWindow, tmp_path: Path
+    ) -> None:
+        window.set_batch(batch(row(), delivery_root=None))
+        window.folder_answer = tmp_path
+        window.action_export.trigger()
+        assert window.batch.delivery_root == tmp_path
+        assert (tmp_path / "MELT" / "_reports").is_dir()
+
+    def test_refusing_writes_nothing_and_says_nothing(self, window: DrivenWindow, tmp_path: Path) -> None:
+        window.set_batch(batch(row(), delivery_root=None))
+        window.action_export.trigger()
+        assert window.run_strip.state == "empty"
+        assert not (tmp_path / "MELT").exists()
+
     def test_a_batch_scope_error_stops_the_run_and_says_so(
         self, window: DrivenWindow, tmp_path: Path
     ) -> None:

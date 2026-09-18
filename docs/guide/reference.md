@@ -42,8 +42,11 @@ toolbar shows everything from the first launch rather than hiding what cannot be
 ingested, because it will run: it refuses every turnover and writes nothing, which is correct
 and looks exactly like a dead button. Its tooltip says so first.
 
-**Export is not built.** A run writes both spreadsheets when it finishes, which is the only way
-to get them today.
+**Export writes the two spreadsheets without rendering anything.** A run writes them when it
+finishes too; Export is for the batch as it stands now - after a scan, to hand the QC log
+round before anything is delivered, or after an edit, to refresh them. It re-runs every check
+first, asks for the delivery root if there is none, and the banner above the list says where
+the files went.
 
 ## The shot list
 

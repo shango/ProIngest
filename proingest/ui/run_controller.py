@@ -77,8 +77,16 @@ def banner_text(written: Sequence[Deliverable], reports: Path | None, cancelled:
     text = f"{head}: {counts['done']} done, {counts['failed']} failed, {counts['skipped']} skipped."
     if reports is None:
         return f"{text} No exports were written."
-    link = f'<a href="#reports" style="color:{LINK_COLOR}">{reports}</a>'
-    return f"{text} Exports written to {link}"
+    return f"{text} Exports written to {_reports_link(reports)}"
+
+
+def export_banner_text(reports: Path) -> str:
+    """The banner after Export alone: where the two spreadsheets went, and nothing else."""
+    return f"Exports written to {_reports_link(reports)}"
+
+
+def _reports_link(reports: Path) -> str:
+    return f'<a href="#reports" style="color:{LINK_COLOR}">{reports}</a>'
 
 
 class RunController(QObject):
@@ -207,6 +215,37 @@ class RunController(QObject):
         self._timer.start()
         window.update_state()
         self.runner.start(jobs, window.settings.workers)
+
+    def export_reports(self) -> None:
+        """Export: both spreadsheets from the batch as it stands, with no render (FR-10).
+
+        What `proingest qc <batch>` does from the command line, and for the same reason
+        the rules re-run first: the log has to describe the batch as it is now, not as
+        it was when it was last scanned. Phase B is re-applied from what a run recorded,
+        so a batch that has never run reports every deliverable as not there, which is
+        the true answer. The banner is the run's, minus the counts a run would have.
+        """
+        window = self._window
+        if not window.batch_open or self.runner.busy or window.scanner.busy:
+            return
+        batch = window.batch
+        if batch.delivery_root is None:
+            window.choose_delivery_root()
+            if batch.delivery_root is None:
+                return
+        qc.apply_batch_rules(batch, qc.settings_for(batch))
+        qc.preflight(batch)
+        qc.apply_phase_b(batch)
+        window.shot_model.refresh_rows()
+        window.show_results()
+        window.autosave.schedule()
+        reports = self._write_reports(batch)
+        if reports is None:
+            return
+        self._reports_folder = reports
+        text = export_banner_text(reports)
+        window.run_strip.show_banner(text)
+        window.statusBar().showMessage(re.sub(r"<[^>]+>", "", text))
 
     def _held_back_text(self, held_back: frozenset[str]) -> str:
         """What the status bar says about the turnovers this run will not touch."""

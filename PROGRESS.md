@@ -17,7 +17,8 @@ of **M9, the user guide**.
 **This session, 2026-09-17, is a UX pass on the branch `ux/first-run-and-discovery`, one
 commit per item, none pushed yet.** The user looked at the window and asked for six things;
 the note "UX pass, 2026-09-17" below tracks each one as it lands. Built so far: **New batch
-opens the turnover chooser straight away**, and the empty list has an Add Turnover button.
+opens the turnover chooser straight away**, the empty list has an Add Turnover button, and
+**Export writes both spreadsheets without a run**.
 
 **The session before, 2026-09-16, was about getting the tool onto a Mac and then onto the editor's
 Mac, and it was driven by somebody running out of time on a rented box.** Nothing about what the
@@ -185,7 +186,13 @@ are being built, each its own commit on `ux/first-run-and-discovery`:
    helper the first empty state's two buttons now use. UI_SPEC section 10 and the quickstart's
    step 1 say so. Tests: `TestTheBatchLifecycle` in `tests/test_ui_shell.py`, and
    `DrivenWindow.folders_asked` records which chooser opened.
-2. Export writes both spreadsheets without a run.
+2. **Export writes both spreadsheets without a run. Built.** `RunController.export_reports`
+   does what `proingest qc <batch>` does: re-runs the rules, pre-flight and phase B so the
+   log describes the batch as it is now, asks for the delivery root if there is none, writes
+   through the run's own `_write_reports`, and shows the run strip's banner with the folder
+   link and no counts (`export_banner_text`). Enabled exactly when Run is; the tooltip's
+   note is `NO_ROWS_TO_EXPORT` and `EXPORT_UNBUILT` is gone. The guide's reference says what
+   it is for. Tests: `TestExportWithoutARun` in `tests/test_ui_shell.py`.
 3. The batch bar's delivery root is flagged while it is unset.
 4. Run asks before starting when nothing would render.
 5. Colour session discovery: a session folder found by convention is offered after a scan.
