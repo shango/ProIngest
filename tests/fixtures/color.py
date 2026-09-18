@@ -1,9 +1,10 @@
 """A colour session's exports, built at test time rather than committed.
 
-Same rule as the media fixtures: a CLF typed out by hand is a second implementation of
+Same rule as the media fixtures: a cube typed out by hand is a second implementation of
 a transform, and the point of a fixture here is to have OpenColorIO answer what it
-would actually load. COLOR_AND_FORMAT section 1 specifies what the session exports, and
-`plate_clf` is a file shaped like it.
+would actually load. COLOR_AND_FORMAT section 1 specifies what the session exports: an
+EDL carrying the CDL (`make_session`) and, for a shot that needed more than the wheels,
+a grade-only cube out of the ACEScct session (`plate_clf`, `plate_cube`).
 """
 
 from __future__ import annotations
@@ -28,15 +29,11 @@ move when it did.
 """
 
 UNGRADED = clf.ShotColor(source_encoding=SOURCE_ENCODING)
-"""The chain a row with no CLF renders through: the source encoding to ACEScg, no grade."""
+"""The chain a row with no grade renders through: the source encoding to ACEScg."""
 
-CLF_SOURCE = "ACEScct"
-"""Where these fixture CLFs start, which the tool no longer needs to know.
-
-A real session's CLF starts at whatever its clip is encoded in (OQ-37), and since the
-tool applies the CLF alone, which log a fixture picks is free. ACEScct because the
-numeric anchors in the colour tests are ACEScct code values.
-"""
+CLF_SOURCE = color.WORKING_SPACE
+"""Where a session's cube starts and ends: the timeline space of the session it came
+out of, which is ACEScct by the standard decided on 2026-09-18."""
 
 
 def write_clf(path: Path, *transforms: ocio.Transform) -> Path:
@@ -50,25 +47,21 @@ def write_clf(path: Path, *transforms: ocio.Transform) -> Path:
     return path
 
 
-def plate_clf(path: Path) -> Path:
-    """What the session is specified to export: source encoding in, a primary, ACEScg out.
+GRADE = ocio.CDLTransform(slope=[1.4, 1.0, 0.7], offset=[0.0] * 3, power=[1.0] * 3, sat=1.1)
+"""The grade in every fixture cube. It lifts red and drops blue hard enough that a plate
+it was not applied to is obvious in one pixel."""
 
-    The grade lifts red and drops blue hard enough that a plate it was not applied to is
-    obvious in one pixel.
-    """
-    return write_clf(
-        path,
-        ocio.CDLTransform(slope=[1.4, 1.0, 0.7], offset=[0.0] * 3, power=[1.0] * 3, sat=1.1),
-        ocio.ColorSpaceTransform(src=CLF_SOURCE, dst=color.PLATE_SPACE),
-    )
+
+def plate_clf(path: Path) -> Path:
+    """What Generate LUT writes out of an ACEScct session: the grade alone, log in, log out."""
+    return write_clf(path, GRADE)
 
 
 def display_clf(path: Path, size: int = 9) -> Path:
-    """A CLF with the ACES output transform baked into it, which is QC-039's failure.
+    """A cube with the ACES output transform baked into it, which is QC-039's failure.
 
-    Sampled into a 3D LUT because that is the only way such a CLF exists: the output
-    transform uses ops CLF cannot express, so a session that exported one would have had
-    to bake it, exactly as here.
+    What Generate LUT writes when the viewing transform sits on the clip rather than the
+    timeline. Sampled into a 3D LUT because that is what a cube is.
     """
     view = ocio.DisplayViewTransform(src=CLF_SOURCE, display=color.DISPLAY, view=color.VIEW)
     cpu = color.config().getProcessor(view).getDefaultCPUProcessor()
@@ -82,11 +75,12 @@ def display_clf(path: Path, size: int = 9) -> Path:
 
 
 def make_session(folder: Path, shots: int = 1, frames: int = 4) -> Path:
-    """A colour session package for the `media.make_turnover` fixture: an EDL and a CLF each.
+    """A colour session package for the `media.make_turnover` fixture: an EDL with a CDL per event.
 
     A run needs one (QC-008), so the tests that are about anything else still have to
     have one. It is written to match the fixture turnover exactly: one event per shot at
-    the media's own `01:00:00:00`, and a CLF named after the shot the way OQ-33 expects.
+    the media's own `01:00:00:00`, with the CDL that is the grade. No cube, because the
+    standard package has none; a test about the override writes its own `plate_clf`.
     """
     folder.mkdir(parents=True, exist_ok=True)
     edl = folder / "MELT_FINAL_v01.edl"
@@ -100,27 +94,21 @@ def make_session(folder: Path, shots: int = 1, frames: int = 4) -> Path:
             "*ASC_SOP (1.020000 0.990000 1.010000)(0.001000 -0.002000 0.000000)(0.980000 1.000000 1.020000)",
             "*ASC_SAT 1.050000",
         ]
-        plate_clf(folder / f"{shot}_grade_v01.clf")
     edl.write_text("\n".join(events) + "\n")
     return edl
 
 
 def plate_cube(path: Path, size: int = 17) -> Path:
-    """What Resolve's Generate LUT writes: the plate chain sampled onto a 3D `.cube` (OQ-54).
+    """What Resolve's Generate LUT writes: the grade sampled onto a 3D `.cube` (OQ-54).
 
     The same grade as `plate_clf`, so a test can swap one for the other. Red varies fastest,
     which is the cube format's order, and the values are the processor's own, so the probe
     that judges a CLF judges this the same way.
     """
-    group = ocio.GroupTransform()
-    group.appendTransform(
-        ocio.CDLTransform(slope=[1.4, 1.0, 0.7], offset=[0.0] * 3, power=[1.0] * 3, sat=1.1)
-    )
-    group.appendTransform(ocio.ColorSpaceTransform(src=CLF_SOURCE, dst=color.PLATE_SPACE))
     steps = np.linspace(0.0, 1.0, size, dtype=np.float32)
     b, g, r = np.meshgrid(steps, steps, steps, indexing="ij")
     pixels = np.stack([r, g, b], axis=-1).reshape(1, -1, 3).astype(np.float32)
-    color.apply(pixels, color.processor(group))
+    color.apply(pixels, color.processor(GRADE))
     lines = [f"LUT_3D_SIZE {size}", "DOMAIN_MIN 0.0 0.0 0.0", "DOMAIN_MAX 1.0 1.0 1.0"]
     lines += [f"{px[0]:.6f} {px[1]:.6f} {px[2]:.6f}" for px in pixels[0]]
     path.parent.mkdir(parents=True, exist_ok=True)

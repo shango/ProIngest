@@ -10,9 +10,29 @@ commit.
 
 **State at 2026-09-16. Every feature milestone is built, and so is packaging.** M1 to M4
 complete, M4.5 all four chunks, M4.6 all five, **M5 all twelve**, **M7**, and **M9.4**.
-**1730 tests**, `ruff`, `ruff format` and `mypy --strict` clean over `proingest tests build`.
+**1739 tests**, `ruff`, `ruff format` and `mypy --strict` clean over `proingest tests build`.
 What is left is **M8 polish** (needs a real turnover and a real colour session) and the rest
 of **M9, the user guide**.
+
+**2026-09-18, later: the grade is the CDL in the final EDL, applied in ACEScct, and the cube
+is the exception.** The user decided it, after the cube correction below: Resolve's CDL export
+carries the primaries of **node one** and nothing else, so the colourist grades in node one of a
+**colour managed** session whose timeline is **ACEScct** by standard, Resolve converts each clip
+into ACEScct from its `Input Color Space`, and the tool does the same from the same metadata,
+applies the CDL, and converts to ACEScg. That reverses OQ-37 and decides OQ-46: the tool
+converts on both sides of the grade again, and the input transform table is load bearing on
+every plate, so **QC-046 and QC-047 are errors everywhere**. A `.cube` from Generate LUT out of
+that same session is the clip's node graph, ACEScct in and out, and where one names a shot it
+**takes the CDL's place**; it is how a curve reaches a plate. The chain is
+`ShotColor.plate_transforms` and nowhere else. **QC-039 measures a step, not a ratio**, through
+the cube alone in ACEScct, floor 0.07, because a grade-only cube is log in and log out and the
+ratio would have refused every one. `color.WORKING_SPACE` is a constant shown read-only in
+Settings, not a setting: a value that disagreed with the session grades wrong silently.
+`docs/COLOUR_SESSION_EXPORT.md` is rewritten for the colourist (a managed session, the wheels in
+node one, Offset rather than Lift, Luma Mix 0, a cube only when the wheels could not do it) and
+**OQ-55 is the test export**, which now has four things to show rather than one. Branch
+`color/cdl-in-acescct`. The note "The grade is the CDL, applied in ACEScct" below has the
+detail and the reasoning. **1739 tests.**
 
 **2026-09-18: the per-shot grade file is a `.cube`, not a CLF, because Resolve writes no
 CLF.** The user pointed out there was no evidence Resolve exports one, and there is none: the
@@ -168,8 +188,9 @@ delivered header.
 **Nothing is left that can be finished on this machine.** M8 wants a real turnover and a real
 colour session; M9's shipped screenshots want the Mac; the rest is questions for a person.
 "Next task" below groups them by what each is waiting on. **Of the two open questions that were
-about correctness rather than scope, OQ-47 closed on 2026-09-13**, which leaves OQ-46 - and
-that one is a question to ask a person, not a thing to build.
+about correctness rather than scope, OQ-47 closed on 2026-09-13**, and OQ-46 was decided by the
+user on 2026-09-18; what is left of it is OQ-55, the test export, which is a thing to ask a
+person for rather than a thing to build.
 
 **One of the three things added to the plan on 2026-09-12 is still unbuilt**: the user guide
 itself (PRD FR-17, the new M9), though **M9.4's harness now takes its pictures**. The other two
@@ -189,6 +210,52 @@ frame in place. **Both ends of that sentence were overtaken on 2026-09-12**: ACE
 from the chain and the input transform no longer runs ahead of a CLF, **which M4.6.2 built on
 2026-09-12**. The composition machinery is untouched and is what the whole thing still rests on. **The display referred block it kept under a fence
 is gone**, deleted with its tests in M4.5.4 as planned.
+
+### The grade is the CDL, applied in ACEScct, 2026-09-18: the carrier decided
+
+**What the user decided.** The colourist's session is colour managed, ACES 1.3, timeline
+ACEScct, each clip's Input Color Space set to its camera encoding. The grade is exported once
+per turnover as the CDL lines on the final EDL's events, from Timelines > Export > CDL. The tool
+reads the clip's encoding from its metadata, converts into ACEScct, applies the CDL, converts
+to ACEScg. The user's words: "The grade file is now just a CDL for trims and color adjustments
+and metadata on the files indicating which input transform to use. So, I will make ACEScct the
+standard for the colorists batch session colorspace."
+
+**Why this and not the cube.** Resolve's manual: the CDL export writes only the primary
+corrections in the first node of each clip. The morning's export page had a Color Space
+Transform in node one so that a cube would contain the whole conversion, which would have made
+the CDL identity; the two setups are mutually exclusive. The CDL route matches how a colourist
+actually works (managed), needs one export per turnover instead of one per shot, has no naming
+and no pairing for the normal case, is exact arithmetic and readable, and removes the "does the
+cube contain the conversion" risk. What it costs: the metadata field is load bearing on every
+plate, the tool has to know the working space, and the grade is limited to the wheels of node
+one (Gain to slope, Gamma to power, Offset to offset, Lift approximated, Luma Mix 0). The cube
+covers the shot that needs more.
+
+**What moved in code.** `color.WORKING_SPACE`, `color.to_working`, `color.from_working`,
+`color.cdl_transform` (OpenColorIO's default no-clamp style, OQ-55); `ShotColor.plate_transforms`
+builds `[to_working, cube or CDL, from_working]` or the one leg; `clf.has_grade(row)` is the one
+definition graded shares across the ingest report, QC-008, QC-009 and QC-048; `load_clf` probes
+`is_grade_only` by the step at the top of ACEScct through the cube alone
+(`TONE_MAP_STEP_FLOOR = 0.07`; identity 0.2, slope 0.5 gives 0.1, display renderings 0.02 to
+0.04 across every encoding in play, measured on 2026-09-18); QC-046 and QC-047 block every row
+the tool transforms; QC-048 names the three legs; the EXR `proingest/cdl_note` reads `applied in
+ACEScct, between the source encoding and ACEScg`, or the old record-only text where a cube took
+the CDL's place; the Settings page shows the working space read-only; the CLI prints events,
+CDLs and cubes. `tests/fixtures/color.make_session` writes no cube, `plate_clf` is grade-only,
+and every test row fixture names an encoding. **Do not** rename `core/clf.py`, `clf_path` or the
+`proingest/clf` attributes: schema for a word.
+
+**Why the probe changed shape.** The ratio measurement (OQ-47) was right while a cube ended in
+scene linear, where an offset in log becomes a scale that cancels in a ratio. A grade-only cube
+is log in and log out: identity gives 1.0 over 0.8, which is 1.25, under the 1.4 floor, so the
+old probe would have refused every correct cube. In log space an offset moves both samples
+together and a difference is what it cannot move. Pushing the probe through the tool's linear
+leg instead was considered and rejected: the exponential leg turns a display rendering's 0.02
+step into a ratio of 1.8 and passes it.
+
+**What has not been seen.** Nothing about this chain has come out of a real session. OQ-55
+lists the four facts it rests on and the one export that shows all of them.
 
 ### The grade file is a cube, 2026-09-18: what Resolve actually exports
 
@@ -279,7 +346,7 @@ are being built, each its own commit on `ux/first-run-and-discovery`:
 ### First five minutes
 
 ```
-.venv/bin/python -m pytest tests/ -q          # 1730, about 100 seconds
+.venv/bin/python -m pytest tests/ -q          # 1739, about 100 seconds
 .venv/bin/python -m ruff check . && .venv/bin/python -m ruff format --check . && .venv/bin/python -m mypy proingest tests build
 ```
 
@@ -1771,9 +1838,11 @@ waiting on, because that is the thing that decides whether a session can start i
 - **OQ-44**, to whoever briefs the shooters: which metadata field carries the log name and
   exactly what string goes in it, remembering that "S-Log3" names four colour spaces in the
   pinned config.
-- **OQ-46**, against one real export: whether a session's CLF really does start at the source
-  encoding. If it does not and the tool converts too, it converts **twice** - nothing fails,
-  every check passes, and both images look plausible.
+- **OQ-55**, against one real export: one shot graded with the wheels in node one of an ACEScct
+  session, its EDL, its stringout and a cube of the same clip. The tool renders it both ways and
+  each reference is compared to the stringout. It checks the four things the CDL chain rests on
+  (the timeline space, the CDL round trip and clamp style, the camera transforms agreeing with
+  Resolve's, the cube being the grade alone), none of which has been seen from a real session.
 
 **Nothing is left that can be done here.** `REVIEW.md`'s S1 and S2 were the last of it and
 they closed on 2026-09-14. What is still deferred there is micro-smells, performance that needs

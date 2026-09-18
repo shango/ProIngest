@@ -100,12 +100,13 @@ CDL_ATTRIBUTES = (
 """The CDL from the final EDL, as numbers and as the lines it was written on.
 
 Both forms, because the numbers are what a tool reads and the verbatim text is what a
-human compares against the session. Neither was applied to these pixels, and
-`proingest/cdl_note` says so in the file: the CLF is the transform and the CDL is its
-readable record (COLOR_AND_FORMAT section 1, EXR metadata).
+human compares against the session. `proingest/cdl_note` says which of two things it is
+in this file: the grade these pixels were given, in ACEScct, or the readable record of
+a grade a cube named in `proingest/clf` applied instead (COLOR_AND_FORMAT section 1).
 """
 
-CDL_NOTE = "record only; the grade file named in proingest/clf is what was applied"
+CDL_NOTE_APPLIED = f"applied in {color.WORKING_SPACE}, between the source encoding and {color.PLATE_SPACE}"
+CDL_NOTE_RECORD = "record only; the grade file named in proingest/clf is what was applied"
 
 RGB_CHANNELS = "RGB"
 RGBA_CHANNELS = "RGBA"
@@ -256,11 +257,11 @@ def _colour_channel_names(channels: Any, path: Path) -> tuple[str, ...]:
 def provenance(shot_color: clf.ShotColor, loaded_clf: clf.LoadedClf | None = None) -> dict[str, Any]:
     """The header's account of how these pixels got here. COLOR_AND_FORMAT section 1.
 
-    A graded plate is only auditable if the file says what was done to it, and the two
-    things that identify a grade are the CLF's hash and the source encoding it started
-    from. An attribute is written or absent, never written empty: a reader that finds
-    no `proingest/clf` knows the frame is ungraded, where an empty one would only mean
-    somebody lost the filename. The source encoding follows the same rule: a clip whose
+    A graded plate is only auditable if the file says what was done to it: the source
+    encoding it started from, the CDL it was given, and the hash of any cube that took
+    the CDL's place. An attribute is written or absent, never written empty: a reader
+    that finds no `proingest/clf` knows no cube was involved, where an empty one would
+    only mean somebody lost the filename. The source encoding follows the same rule: a clip whose
     metadata named none (QC-046) leaves the attribute out rather than claiming a guess.
     """
     header: dict[str, Any] = {}
@@ -280,7 +281,7 @@ def provenance(shot_color: clf.ShotColor, loaded_clf: clf.LoadedClf | None = Non
         header[saturation] = float(cdl.saturation)
         header[sop] = cdl.sop_text
         header[sat] = cdl.sat_text
-        header[note] = CDL_NOTE
+        header[note] = CDL_NOTE_RECORD if loaded_clf is not None else CDL_NOTE_APPLIED
     return header
 
 

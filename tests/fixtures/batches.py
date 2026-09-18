@@ -51,11 +51,16 @@ def row(
     record_in: int = 0,
     **kwargs: object,
 ) -> ShotRow:
-    """One scanned row, trimmed to 8-231 the way a turnover arrives."""
+    """One scanned row, trimmed to 8-231 the way a turnover arrives.
+
+    It names a source encoding because a real clip does, and since 2026-09-18 a plate
+    without one is QC-046 as an error rather than a line of provenance.
+    """
     built = ShotRow(
         turnover_id=turnover_id,
         clip_name=clip_name,
         identity=naming.parse_clip_name(clip_name),
+        source_encoding="ACEScct",
         media=media(path=Path(f"/turnover/{clip_name}.mov")),
         record_in=record_in,
         record_out=record_in + 223,

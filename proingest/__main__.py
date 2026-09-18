@@ -57,7 +57,7 @@ def main(argv: list[str] | None = None) -> int:
         "--color-session",
         type=Path,
         metavar="EDL",
-        help="the colour session's final EDL; its folder is searched for the grade files (.cube or .clf)",
+        help="the colour session's final EDL, whose events carry the CDL; any cubes beside it are found too",
     )
 
     qc_parser = subparsers.add_parser("qc", help="write the QC log and shot tracker for a batch")
@@ -259,7 +259,8 @@ def _ingest_color_session(batch: Batch, edl_path: Path | None) -> None:
     if len({str(rate) for rate in rates}) > 1:
         print(f"note: the batch carries more than one rate; reading the EDL at {rates[0]}")
     session = clf.load_session(edl_path, rates[0])
-    print(f"colour session: {len(session.events)} events, {len(session.clfs)} shots with a grade file")
+    with_cdl = sum(event.cdl is not None for event in session.events)
+    print(f"colour session: {len(session.events)} events, {with_cdl} with a CDL, {len(session.clfs)} cubes")
     for turnover in batch.turnovers:
         report = clf.ingest(turnover, batch.rows_for(turnover.turnover_id), session)
         print(f"  {turnover.turnover_id}: {report.counts}")

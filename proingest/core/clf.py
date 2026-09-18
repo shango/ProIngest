@@ -1,17 +1,18 @@
-"""The colour session package: the final EDL, and the grade file that goes with each row.
+"""The colour session package: the final EDL, its CDL per event, and any cube beside it.
 
-**"CLF" throughout this module means the per-shot grade file, and since 2026-09-18 that
-file is a `.cube` from Resolve's Generate LUT** (OQ-54): Resolve reads CLF and does not
-write it. The names stay because the mechanism is unchanged - OpenColorIO loads either
-through the same `FileTransform`, the file is paired by the shot code in its name, and
-QC-039 probes it the same way - and a rename across the batch file's `clf_path`, the EXR
-header's `proingest/clf` and the QC log would be a schema change for a word.
+COLOR_AND_FORMAT section 1. Colour is decided before the tool runs. Ben's session exports
+an updated final EDL, and this module is where it is read: the conform, the approved
+In/Out, and the **ASC CDL on each event, which is the grade** (decided 2026-09-18,
+OQ-46). `core/color.py` supplies the legs either side of it, into ACEScct and out to
+ACEScg, and this module supplies the middle.
 
-COLOR_AND_FORMAT section 1. Colour is finished before the tool runs. Ben's session
-exports an updated final EDL and one CLF per shot, and this module is where both are
-read: the EDL for the conform, the approved In/Out and the CDL, and the CLF matched to
-a row, loaded, hashed and probed. `core/color.py` supplies the transforms either side
-of it and this module supplies the middle.
+**"CLF" throughout this module means the per-shot grade file, which is optional and is a
+`.cube` from Resolve's Generate LUT** (OQ-54). Out of the same ACEScct session that cube
+is the clip's whole node graph, ACEScct in and out, and where one names a shot it takes
+the CDL's place in the chain: it is how a grade that needed more than the wheels, a
+curve or a second node, reaches the plate. The names stay because a rename across the
+batch file's `clf_path`, the EXR header's `proingest/clf` and the QC log would be a
+schema change for a word.
 
 **The EDL is parsed here rather than through `core/timeline.py`.** That module reads the
 shooters' timeline through otio, which is the right tool for a conform and the wrong one
@@ -53,10 +54,10 @@ from proingest.core.models import (
 log = logging.getLogger(__name__)
 
 GRADE_EXTENSIONS = (".cube", ".clf")
-"""What a per-shot grade file may be. A `.cube` is what Resolve's Generate LUT writes, and
-since 2026-09-18 it is what the session is asked for (OQ-54); a `.clf` is accepted in the
-same role for a session that has a way to make one. OpenColorIO loads either through the
-same `FileTransform`, so nothing past the index cares which. The module keeps its name."""
+"""What a per-shot grade file may be. A `.cube` is what Resolve's Generate LUT writes
+(OQ-54); a `.clf` is accepted in the same role for a session that has a way to make one.
+OpenColorIO loads either through the same `FileTransform`, so nothing past the index
+cares which. The file is optional: the CDL is the grade, and a cube overrides it."""
 
 MATCH_FIELD = "FROM CLIP NAME"
 """The EDL field an event is matched on (OQ-30).
@@ -67,58 +68,29 @@ is the fallback, because Resolve populates reel names differently depending on e
 settings and a reel is not required to be unique.
 """
 
-TONE_MAP_RATIO_FLOOR = 1.4
-"""How much brighter the top of the log range must come out than a shade below it, for
-QC-039 to call a CLF scene linear.
+TONE_MAP_STEP_FLOOR = 0.07
+"""QC-039's floor: how far apart the two probe samples must still be after the cube.
 
-**A ratio rather than an absolute, since 2026-09-13 (OQ-47).** The probe used to compare
-white against a fixed floor of 2.0, which worked while every CLF started at ACEScct and
-white was always worth 222. Since OQ-37 a CLF starts at whatever the clip is encoded in
-and white is worth 222 out of ACEScct and BMD Film Gen 5, 100 out of DaVinci
-Intermediate, 38.4 out of S-Log3 and **14.7 out of C-Log3**; four stops of grade scales
-that, so a C-Log3 CLF graded four stops down answered 0.92 and the probe called it a
-display rendering. C-Log3 is one of the three cameras named for this show.
+The probe pushes ACEScct `LOG_WHITE` and `LOG_NEAR_WHITE` through the cube alone and
+measures the step between them, per channel, widest channel deciding. A grade-only cube
+out of an ACEScct session is log in and log out, so the step is 0.2 for a neutral grade,
+scales with the slope, and is untouched by an offset. A display rendering's whole job is
+to close that gap: the ACES SDR video output transform leaves 0.02 to 0.04 of it out of
+every encoding in play. 0.07 is a slope of 0.35, a far heavier contrast change than any
+colourist means by a grade, and not far off twice the widest display rendering measured.
 
-A ratio is the measurement that does not move. An exposure change in the grade scales
-both samples and cancels exactly - 3.368 at neutral, at two stops down and at four - and
-what is left is the slope of the chain at the top of the range, which is precisely what
-a tone map flattens.
-
-Measured across all five encodings in play, with grades from neutral to aggressively
-dark and contrasty (`out(1.0) / out(0.8)`):
-
-| chain | ratio |
-|---|---|
-| a plate CLF, any encoding, any grade measured | 1.86 to 11.3 |
-| the same with the ACES output transform baked in | 1.01 to 1.06 |
-
-1.4 sits about a third above the highest display rendering and a third below the lowest
-plate, in the log scale the two are separated on. The old floor is gone rather than
-loosened: no absolute value can straddle five encodings whose whites differ by a factor
-of fifteen.
+A step rather than the ratio QC-039 used until 2026-09-18 (OQ-47): a ratio was the right
+measurement while a grade file ended in scene linear, where an offset in log becomes a
+scale. In log space an offset moves both samples together, so a ratio would read a dark
+grade as a tone map; a difference is the thing an offset cannot move.
 """
 
 LOG_WHITE = 1.0
-"""The probe's upper sample: the top of the log encoding, where a tone map is unmissable.
-
-Whichever log the CLF starts at. It was named for ACEScct, which was the only thing a
-CLF could start at before 2026-09-12; the value is 1.0 for the same reason under every
-camera log, which is that the top of the code range is where a display rendering is
-forced to give itself away.
-"""
-
-_CRUSHED = 1e-9
-"""Below this the probe's lower sample is not a number to divide by."""
+"""The probe's upper sample: the top of ACEScct, where a tone map is unmissable."""
 
 LOG_NEAR_WHITE = 0.8
-"""The probe's lower sample, which is what makes the measurement a ratio (OQ-47).
-
-0.8 rather than the 0.9 the question proposed, and the difference is not cosmetic: over
-the same set of grades the 0.9 pair puts the lowest plate at 1.35 against a highest
-display rendering of 1.016, which no floor of 1.4 can separate, while the 0.8 pair puts
-them at 1.86 and 1.055. Far enough down the curve to have leverage, far enough from
-middle grey to still be about the top end.
-"""
+"""The probe's lower sample. Far enough down the curve to have leverage, far enough from
+middle grey to still be about the top end. The step between the two is what is measured."""
 
 
 class ColorSessionError(RuntimeError):
@@ -168,7 +140,7 @@ class ConformEvent:
 
 @dataclass(frozen=True)
 class LoadedClf:
-    """A CLF that OpenColorIO has accepted, with what the EXR header needs to say.
+    """A cube that OpenColorIO has accepted, with what the EXR header needs to say.
 
     `digest` is what identifies the grade: a CLF re-exported and redelivered gets a new
     one, so deliverables rendered from the old version stay findable afterwards. It is
@@ -179,7 +151,9 @@ class LoadedClf:
     path: Path
     digest: str
     transform: ocio.FileTransform
-    is_scene_linear: bool
+    is_grade_only: bool
+    """It leaves the top of ACEScct open the way a grade does, rather than flattening it
+    the way a display rendering does (QC-039, `_probe_grade_only`)."""
 
 
 @dataclass(frozen=True)
@@ -196,16 +170,16 @@ class ShotColor:
     a digest taken at render time, which is the one that describes what was applied.
 
     The default is a shot with no grade and no encoding resolved for it, which is the
-    honest starting point rather than a usable chain: a row with no CLF renders through
-    the input transform alone, and that needs an encoding the clip's metadata names.
+    honest starting point rather than a usable chain: every chain starts at the encoding
+    the clip's metadata names, and a shot with no grade renders through that leg alone.
     """
 
     source_encoding: str | None = None
     """The colour space the input transform starts at, resolved from what the clip named.
 
     None where the clip's metadata named no encoding, or named one the input transform
-    table could not resolve (QC-046, QC-047). That is renderable on a graded row, since
-    the CLF is the whole chain there, and it is not renderable on any other.
+    table could not resolve (QC-046, QC-047). Nothing renders without it: the grade is
+    applied in ACEScct and this is what gets the clip there.
     """
 
     source_encoding_origin: SourceEncodingOrigin | None = None
@@ -221,28 +195,37 @@ class ShotColor:
     cdl: CDL | None = None
 
     def load(self) -> LoadedClf | None:
-        """The CLF, loaded hashed and probed, or None when the shot has no grade."""
+        """The cube, loaded hashed and probed, or None when the shot has none."""
         return load_clf(self.clf_path) if self.clf_path is not None else None
 
     def plate_transforms(self, clf: LoadedClf | None) -> list[ocio.Transform]:
-        """The plate branch: the CLF alone, or the source encoding to ACEScg where there is none.
+        """The plate branch: into ACEScct, the grade, out to ACEScg. One leg with no grade.
 
-        **The tool applies no input transform ahead of a CLF** (OQ-37, answered
-        2026-09-12). The colourist starts each shot's CLF at whatever that clip is
-        encoded in and ends it in linear ACEScg (QC-039), so the CLF is the entire
-        transform and anything applied either side of it converts twice. That is a
-        plausible looking wrong image rather than an error, which is why this returns
-        the transforms a chain contains rather than leaving the rule to a caller.
-        COLOR_AND_FORMAT section 1 states the same thing as a table.
+        **The grade means something only in ACEScct** (OQ-46, decided 2026-09-18). It is
+        the primaries of node one in a session whose timeline is ACEScct, so the tool gets
+        the clip there from the encoding its metadata names and carries the result on to
+        ACEScg. A cube from the same session is that grade with the clip's whole node
+        graph in it, ACEScct in and out, and takes the CDL's place. Either leg applied in
+        a different space is a plausible looking wrong image rather than an error, which
+        is why this returns the transforms a chain contains rather than leaving the rule
+        to a caller. COLOR_AND_FORMAT section 1 states the same thing as a table.
         """
-        if clf is not None:
-            return [clf.transform]
         if self.source_encoding is None:
             raise ClfError(
-                "no grade file and no source encoding: nothing turns these pixels into "
-                f"{color.PLATE_SPACE}. QC-046 and QC-047 report this before a render"
+                f"no source encoding: nothing turns these pixels into {color.WORKING_SPACE} "
+                f"for the grade, or into {color.PLATE_SPACE}. QC-046 and QC-047 report this "
+                "before a render"
             )
-        return [color.input_transform(self.source_encoding)]
+        grade: ocio.Transform | None
+        if clf is not None:
+            grade = clf.transform
+        elif self.cdl is not None:
+            grade = color.cdl_transform(self.cdl)
+        else:
+            grade = None
+        if grade is None:
+            return [color.input_transform(self.source_encoding)]
+        return [color.to_working(self.source_encoding), grade, color.from_working()]
 
     def view_transforms(self, clf: LoadedClf | None) -> list[ocio.Transform]:
         """The view branch: the plate branch, then the ACES output transform to sRGB.
@@ -260,8 +243,7 @@ def resolved_encoding(row: ShotRow) -> str | None:
     without one. None covers both a clip that named no encoding (QC-046) and one whose
     name the input transform table could not resolve (QC-047); the chain treats them
     identically, since neither gives it anything to convert with, and the rules are
-    where the difference is reported. An unresolvable name is not raised here because a
-    graded row renders correctly without it: the CLF is the whole chain.
+    where the difference is reported rather than here.
     """
     if row.source_encoding is None:
         return None
@@ -269,6 +251,15 @@ def resolved_encoding(row: ShotRow) -> str | None:
         return color.resolve_encoding(row.source_encoding)
     except color.ColorError:
         return None
+
+
+def has_grade(row: ShotRow) -> bool:
+    """Whether the session left this row a grade: a CDL on its event, or a cube naming it.
+
+    One definition, because the ingest report, QC-008, QC-009 and QC-048 all ask it and
+    the answer has to be the same one the chain gives.
+    """
+    return row.cdl is not None or row.clf_path is not None
 
 
 DEFAULT_SHOT_COLOR = ShotColor()
@@ -281,7 +272,7 @@ pixels is given a real one, and a row that cannot be given one is what QC-046 re
 
 @dataclass(frozen=True)
 class ColorSession:
-    """The package: one final EDL, and the CLFs delivered beside it."""
+    """The package: one final EDL, and any cubes delivered beside it."""
 
     edl_path: Path
     events: list[ConformEvent]
@@ -301,7 +292,7 @@ class ColorSession:
         return self._event_by_reel(row)
 
     def clf_for(self, shot_code: str) -> Path | None:
-        """The CLF for a shot, or None when the session delivered none (QC-009)."""
+        """The cube for a shot, or None when the session delivered none, which is usual."""
         found = self.clfs.get(shot_code, [])
         if len(found) > 1:
             names = ", ".join(path.name for path in found)
@@ -376,10 +367,10 @@ def find_session(turnover_folder: Path, color_session_folder: Path | None = None
 def load_session(
     edl_path: Path, rate: FrameRate, show_pattern: str = naming.DEFAULT_SHOW_PATTERN
 ) -> ColorSession:
-    """Read the final EDL and index the CLFs delivered with it.
+    """Read the final EDL and index any cubes delivered with it.
 
     The editor points at the EDL (PRD section 6), so the package is whatever sits in
-    the folder around it; CLFs are found recursively because Resolve is as likely to
+    the folder around it; cubes are found recursively because Resolve is as likely to
     export them into a subfolder as beside it.
     """
     events = read_final_edl(edl_path, rate)
@@ -402,19 +393,21 @@ class IngestReport:
     events: int
     matched: list[str] = field(default_factory=list)
     graded: list[str] = field(default_factory=list)
+    """Rows the session left a grade for: a CDL on the event, or a cube (`has_grade`)."""
+
     overwritten: list[str] = field(default_factory=list)
     """Rows whose one-off trim the approved In/Out replaced. PRD section 6 step 4: the
     session's cut wins and the tool says so, rather than keeping a trim the AD never saw."""
 
     unmatched: list[str] = field(default_factory=list)
     ambiguous: list[str] = field(default_factory=list)
-    """Rows whose shot code more than one CLF names. Left ungraded rather than resolved,
-    because picking either one is picking a grade (`AmbiguousClfError`)."""
+    """Rows whose shot code more than one cube names. Left to the CDL rather than
+    resolved, because picking either one is picking a grade (`AmbiguousClfError`)."""
 
     @property
     def counts(self) -> str:
         """What the ingest did, in the one phrase every surface says it in."""
-        return f"{len(self.matched)} rows matched, {len(self.graded)} with a grade file"
+        return f"{len(self.matched)} rows matched, {len(self.graded)} graded"
 
     def notices(self) -> list[tuple[str, list[str]]]:
         """The three lists a person acts on, labelled, and only where there is anything.
@@ -425,7 +418,7 @@ class IngestReport:
         lists = (
             ("no event", self.unmatched),
             ("trim overwritten by the approved cut", self.overwritten),
-            ("more than one grade file names the shot", self.ambiguous),
+            ("more than one cube names the shot", self.ambiguous),
         )
         return [(label, sorted(names)) for label, names in lists if names]
 
@@ -434,7 +427,7 @@ def ingest(turnover: Turnover, rows: list[ShotRow], session: ColorSession) -> In
     """Write what the colour session says onto a turnover and its rows. PRD section 6 step 4.
 
     **The session is read once, here, and never again.** What it said travels on the
-    model afterwards - the approved In/Out, the CDL and the CLF path - so a batch
+    model afterwards - the approved In/Out, the CDL and any cube's path - so a batch
     reopened after the package has been archived plans the same grade, and the planner
     needs no session at all. The turnover keeps the EDL's location as the record of
     where the answers came from.
@@ -467,7 +460,7 @@ def ingest(turnover: Turnover, rows: list[ShotRow], session: ColorSession) -> In
         except AmbiguousClfError:
             row.clf_path = None
             report.ambiguous.append(row.clip_name)
-        if row.clf_path is not None:
+        if has_grade(row):
             report.graded.append(row.clip_name)
     return report
 
@@ -477,8 +470,8 @@ def shot_color(row: ShotRow) -> ShotColor:
 
     One definition, and the only one since the session is ingested rather than carried:
     a planned row and a reopened batch resolve their colour the same way, from the four
-    fields ingest filled in. A row nothing was ingested for carries no CLF, which renders
-    through the input transform alone and is QC-009.
+    fields ingest filled in. A row nothing was ingested for carries no grade, which
+    renders through the input transform alone and is QC-009.
     """
     return ShotColor(
         source_encoding=resolved_encoding(row),
@@ -491,10 +484,9 @@ def shot_color(row: ShotRow) -> ShotColor:
 def index_clfs(folder: Path, show_pattern: str = naming.DEFAULT_SHOW_PATTERN) -> dict[str, list[Path]]:
     """Every grade file under `folder`, `.cube` or `.clf`, by the shot code in its filename (OQ-33).
 
-    A CLF names its shot and that is the whole convention. Anything else in the
+    A cube names its shot and that is the whole convention. Anything else in the
     filename is the session's business, and a file naming no shot at all is not an
-    error here: it is simply not the CLF for any row, and the row that wanted one
-    reports QC-009.
+    error here: it is simply not the cube for any row, and the row grades by its CDL.
     """
     pattern = re.compile(rf"(?P<code>{show_pattern}\d{{4}})")
     found: dict[str, list[Path]] = {}
@@ -506,11 +498,11 @@ def index_clfs(folder: Path, show_pattern: str = naming.DEFAULT_SHOW_PATTERN) ->
 
 
 def load_clf(path: Path) -> LoadedClf:
-    """Load, hash and probe one CLF.
+    """Load, hash and probe one cube.
 
-    Loading and probing happen together because a CLF that loads and lands in the wrong
-    place is worse than one that does not load at all: the second stops a render and the
-    first finishes one that looks right.
+    Loading and probing happen together because a cube that loads and has a display
+    rendering in it is worse than one that does not load at all: the second stops a
+    render and the first finishes one that looks right.
     """
     if not path.is_file():
         raise ClfError(f"{path} does not exist")
@@ -523,7 +515,7 @@ def load_clf(path: Path) -> LoadedClf:
         path=path,
         digest=clf_digest(path),
         transform=transform,
-        is_scene_linear=_probe_scene_linear(cpu),
+        is_grade_only=_probe_grade_only(cpu),
     )
 
 
@@ -671,15 +663,15 @@ def _triple(match: re.Match[str]) -> tuple[float, float, float]:
     return float(match["a"]), float(match["b"]), float(match["c"])
 
 
-def _probe_scene_linear(cpu: ocio.CPUProcessor) -> bool:
-    """Whether a CLF lands in scene linear, or has a display rendering in it (QC-039).
+def _probe_grade_only(cpu: ocio.CPUProcessor) -> bool:
+    """Whether a cube is a grade alone, or has a display rendering baked into it (QC-039).
 
     Probed rather than trusted, because the filename cannot say and the failure is
-    invisible: a display referred plate that claims to be linear looks completely normal
-    until someone tries to comp it. What it catches is a tone map, which is what every
-    output transform and film emulation ends with, and what it measures is how much
-    **room is left at the top**: two samples near the top of the log range, and how far
-    apart they come out. A tone map's whole job is to close that gap.
+    invisible: a plate with a display rendering in it, under a header claiming linear
+    ACEScg, looks completely normal until someone tries to comp it. What it catches is a
+    tone map, which is what every output transform and film emulation ends with, and what
+    it measures is how much **room is left at the top**: two samples near the top of
+    ACEScct, and how far apart they still are. A tone map's whole job is to close that gap.
 
     Per channel, and the widest channel decides. A grade with per channel slopes leaves
     one channel with more range than the others, and one channel with room at the top is
@@ -688,8 +680,4 @@ def _probe_scene_linear(cpu: ocio.CPUProcessor) -> bool:
     samples = np.array([[[LOG_WHITE] * 3, [LOG_NEAR_WHITE] * 3]], dtype=np.float32)
     color.apply(samples, cpu)
     white, near = samples[0, 0], samples[0, 1]
-    # A chain that crushes the shade below white to nothing has not tone mapped it: it
-    # is a very dark grade, and dividing by it would say the opposite. QC-039 is an
-    # error, so the tie goes to letting the render happen.
-    open_top = near <= _CRUSHED
-    return bool(np.any(open_top | (white > near * TONE_MAP_RATIO_FLOOR)))
+    return bool(np.any(white - near >= TONE_MAP_STEP_FLOOR))

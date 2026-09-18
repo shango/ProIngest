@@ -335,7 +335,7 @@ it is hidden rather than shown empty.
 | Frame rate | timeline rate (authoritative), rate stated by the media, and an explicit disagreement note when they differ. COLOR_AND_FORMAT section 5 explains why the timeline wins; QC-026 is the rule |
 | Range | record In/Out, source In/Out in frames and timecode, turnover snapshot In/Out, current In/Out, duration, max available out, and whether the editor has moved it off the snapshot (QC-035) |
 | Audio | path, sample rate, channels, bit depth, duration in samples and in frames, and the sync difference against the video range (QC-043) |
-| Colour | source encoding as the shooter wrote it, which carrier named it, and the grade file the colour session delivered. **Added 2026-09-12 with M5.6**: M4.6 put all three on the row after this table was written, none has a column in the list, and the encoding is shown verbatim because the string is what has to be corrected when it is wrong |
+| Colour | source encoding as the shooter wrote it, which carrier named it, and any cube the colour session delivered in place of the CDL. **Added 2026-09-12 with M5.6**: M4.6 put all three on the row after this table was written, none has a column in the list, and the encoding is shown verbatim because the string is what has to be corrected when it is wrong |
 | Side files | HDRI path, camData path, and the parsed camData key/values once OQ-11 is settled. This is the single most useful thing in the pane for an AD sitting with the editor, because it is the only place lens, filter and camera body ever appear. **The pane never reads the file itself**: the parsed pairs arrive through a lookup the window caches per batch, because the pane redraws on every arrow key and a turnover sits on a Drive mount |
 | Turnover | number, date, shooter, folder, timeline file. Shown alone when a turnover group header is the selection |
 | QC | count by severity with the rule IDs, each clicking through to that row in the Issues dock. **Built across the whole selection rather than merged field by field**, unlike every other section: two rows with different problems agree on nothing, so a merge would reduce this to "mixed", which is the one answer that helps nobody |
@@ -408,7 +408,7 @@ four formats (section 5).
 
 The toolbar action that does PRD section 6 step 4, built in M5.7.3. The editor points at the
 colour session's final EDL; the tool writes what it says onto one turnover's rows - the approved
-In/Out, the CDL and the grade file per shot - and keeps the EDL's location on the turnover as the record
+In/Out, the CDL that is the grade, and any cube per shot - and keeps the EDL's location on the turnover as the record
 of where the answers came from. Nothing reads the package again (`core/clf.py`).
 
 - **One turnover at a time**, because that is the scope the session is recorded at (OQ-50) and
@@ -425,7 +425,7 @@ of where the answers came from. Nothing reads the package again (`core/clf.py`).
   (FR-5). The one-off trim made *after* an ingest is the supported one, and QC-045 reports it.
 - **The report says what `proingest run --color-session` prints**: the counts, and the three
   lists a person acts on - rows with no event, trims the approved cut replaced, and shot codes
-  more than one grade file names. The labels live on `IngestReport` so the two surfaces cannot drift.
+  more than one cube names. The labels live on `IngestReport` so the two surfaces cannot drift.
 - **The rules re-run afterwards**, because the ingest moves In and Out on the rows it matched and
   the durations the thresholds judge have changed. QC-008 and QC-009 are pre-flight and clear at
   the next Run.

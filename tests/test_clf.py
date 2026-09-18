@@ -1,9 +1,9 @@
-"""The colour session package: the final EDL, and the CLF per row (M4.5.2).
+"""The colour session package: the final EDL with the CDL per event, and any cube (M4.5.2).
 
 COLOR_AND_FORMAT section 1. Two failures are what these tests exist for and neither
 looks like a failure: a row conformed from a neighbour's event delivers the wrong
-frames, and a row paired with a neighbour's CLF delivers the wrong grade under the
-right filename. So the matching tests mostly ask what does **not** match, and the CLF
+frames, and a row paired with a neighbour's cube delivers the wrong grade under the
+right filename. So the matching tests mostly ask what does **not** match, and the cube
 tests ask a written file what it actually does to a pixel rather than what it is called.
 """
 
@@ -19,6 +19,7 @@ import pytest
 
 from proingest.core import clf, color, naming
 from proingest.core.models import (
+    CDL,
     FrameRate,
     InOut,
     MediaInfo,
@@ -33,17 +34,22 @@ RATE_24 = FrameRate(24)
 ACESCCT_MID_GREY = 0.413588
 """The ACEScct encoding of 0.18 scene linear, as `tests/test_color.py` derives it."""
 
-CLF_SOURCE = "ACEScct"
-"""Where the CLFs written here start.
+CLF_SOURCE = color.WORKING_SPACE
+"""Where a cube starts and ends: the session's timeline space, ACEScct by the standard
+decided on 2026-09-18. The tool's own legs get the clip there and carry the result on."""
 
-A real session's CLF starts at whatever its clip is encoded in (OQ-37), and the tool
-applies the CLF alone, so which log a fixture picks is free. ACEScct because the
-anchors here are ACEScct code values, and because a CLF that starts somewhere the
-`ShotColor` does not name is exactly the case `test_the_tool_converts_nothing_ahead_of_a_clf`
-needs."""
+ONE_STOP_UP = CDL(
+    slope=(1.0, 1.0, 1.0),
+    offset=(1 / 17.52,) * 3,
+    power=(1.0, 1.0, 1.0),
+    saturation=1.0,
+    sop_text="*ASC_SOP (1.0 1.0 1.0)(0.0571 0.0571 0.0571)(1.0 1.0 1.0)",
+    sat_text="*ASC_SAT 1.0",
+)
+"""A CDL that opens the plate by one stop: `1 / 17.52` of the ACEScct range."""
 
 UNGRADED = clf.ShotColor(source_encoding="ACEScct")
-"""A row the session delivered no CLF for, in a clip whose metadata named ACEScct.
+"""A row the session left no grade for, in a clip whose metadata named ACEScct.
 
 The encoding has to be stated now that no default stands in for one (M4.6.1), and
 ACEScct keeps the numeric anchors here where they were.
@@ -113,13 +119,12 @@ def write_clf(path: Path, *transforms: ocio.Transform) -> Path:
     return path
 
 
+GRADE = ocio.CDLTransform(slope=[1.05, 1.0, 0.95], offset=[0.0, 0.0, 0.0], power=[1.0, 1.0, 1.0], sat=1.1)
+
+
 def plate_clf(path: Path) -> Path:
-    """What the colour session is specified to export: source encoding in, ACEScg out."""
-    return write_clf(
-        path,
-        ocio.CDLTransform(slope=[1.05, 1.0, 0.95], offset=[0.0, 0.0, 0.0], power=[1.0, 1.0, 1.0], sat=1.1),
-        ocio.ColorSpaceTransform(src=CLF_SOURCE, dst=color.PLATE_SPACE),
-    )
+    """What Generate LUT writes out of an ACEScct session: the grade alone, log in, log out."""
+    return write_clf(path, GRADE)
 
 
 def display_clf(path: Path, size: int = 9) -> Path:
@@ -140,22 +145,13 @@ def display_clf(path: Path, size: int = 9) -> Path:
     return write_clf(path, lut)
 
 
-def probed(path: Path) -> tuple[float, float]:
-    """The two numbers `_probe_scene_linear` works from, for the tests that are about
-    the margin rather than about the verdict: white, and white over the shade below it."""
+def probe_step(path: Path) -> float:
+    """The number `_probe_grade_only` works from: how far apart the two top samples still
+    are after the cube, widest channel."""
     cpu = color.processor(ocio.FileTransform(src=str(path), interpolation=color.INTERPOLATION))
     samples = np.array([[[clf.LOG_WHITE] * 3, [clf.LOG_NEAR_WHITE] * 3]], dtype=np.float32)
     color.apply(samples, cpu)
-    white, near = samples[0, 0], samples[0, 1]
-    return float(np.max(white)), float(np.max(white / near))
-
-
-def probe_white(path: Path) -> float:
-    return probed(path)[0]
-
-
-def probe_ratio(path: Path) -> float:
-    return probed(path)[1]
+    return float(np.max(samples[0, 0] - samples[0, 1]))
 
 
 class TestReadFinalEdl:
@@ -390,26 +386,28 @@ class TestLoadClf:
         )
         assert clf.load_clf(regraded).digest != first
 
-    def test_a_clf_that_lands_in_scene_linear_passes(self, tmp_path: Path) -> None:
-        assert clf.load_clf(plate_clf(tmp_path / "MELT0001.clf")).is_scene_linear
+    def test_a_grade_only_cube_passes(self, tmp_path: Path) -> None:
+        assert clf.load_clf(plate_clf(tmp_path / "MELT0001.clf")).is_grade_only
 
     def test_a_baked_display_rendering_is_caught(self, tmp_path: Path) -> None:
         """QC-039. The file is well formed and the filename says nothing (COLOR_AND_FORMAT 1)."""
-        assert not clf.load_clf(display_clf(tmp_path / "MELT0002.clf")).is_scene_linear
+        assert not clf.load_clf(display_clf(tmp_path / "MELT0002.clf")).is_grade_only
 
     def test_a_dark_grade_is_not_mistaken_for_a_display_rendering(self, tmp_path: Path) -> None:
-        """Four stops down still answers 13.9 at white, where a display render answers 1.
+        """Four stops down leaves the step at the top exactly where it was.
 
-        The offset is in ACEScct, which is where a CLF's grade lives: four stops is
-        `4 / 17.52` of the log range, and the same number as a slope would be a far
-        heavier change than any colourist means by it.
+        The offset is in ACEScct, where the grade lives: four stops is `4 / 17.52` of the
+        range, and an offset moves both probe samples together. That is the whole reason
+        the probe measures a difference and not a ratio.
         """
-        dark = write_clf(
-            tmp_path / "MELT0003.clf",
-            ocio.CDLTransform(offset=[-4 / 17.52] * 3, sat=1.0),
-            ocio.ColorSpaceTransform(src=CLF_SOURCE, dst=color.PLATE_SPACE),
-        )
-        assert clf.load_clf(dark).is_scene_linear
+        dark = write_clf(tmp_path / "MELT0003.clf", ocio.CDLTransform(offset=[-4 / 17.52] * 3, sat=1.0))
+        assert clf.load_clf(dark).is_grade_only
+        assert probe_step(dark) == pytest.approx(clf.LOG_WHITE - clf.LOG_NEAR_WHITE, abs=1e-3)
+
+    def test_a_grade_that_halves_the_contrast_still_passes(self, tmp_path: Path) -> None:
+        """Slope 0.5 in log is a brutal grade and it still leaves twice the display's step."""
+        flat = write_clf(tmp_path / "MELT0004.clf", ocio.CDLTransform(slope=[0.5] * 3))
+        assert clf.load_clf(flat).is_grade_only
 
     @pytest.mark.parametrize(
         "encoding",
@@ -421,38 +419,17 @@ class TestLoadClf:
             "CanonLog3 CinemaGamut D55",
         ],
     )
-    def test_a_dark_grade_survives_the_probe_whatever_the_clip_was_shot_on(
-        self, tmp_path: Path, encoding: str
-    ) -> None:
-        """OQ-47, and the reason the probe is a ratio.
-
-        A CLF starts at whatever its clip is encoded in, and white is worth 222 out of
-        ACEScct but **14.7 out of C-Log3**, so the old fixed floor of 2.0 called a
-        four stops down C-Log3 grade a display rendering - one of the three cameras
-        named for this show, and QC-039 is an error, so that refused a valid delivery.
-        """
-        dark = write_clf(
-            tmp_path / f"{encoding.split()[0]}.clf",
-            ocio.CDLTransform(offset=[-4 / 17.52] * 3, sat=1.0),
-            ocio.ColorSpaceTransform(src=encoding, dst=color.PLATE_SPACE),
-        )
-        assert clf.load_clf(dark).is_scene_linear
-
-    @pytest.mark.parametrize(
-        "encoding",
-        [
-            "ACEScct",
-            "DaVinci Intermediate WideGamut",
-            "S-Log3 S-Gamut3.Cine",
-            "CanonLog3 CinemaGamut D55",
-        ],
-    )
     def test_a_display_rendering_is_caught_whatever_the_clip_was_shot_on(
         self, tmp_path: Path, encoding: str
     ) -> None:
-        """The other half of the same question: the ratio has to stay under the floor
-        for every encoding, not only the one the fixtures use."""
-        view = ocio.DisplayViewTransform(src=encoding, display="sRGB - Display", view="ACES 1.0 - SDR Video")
+        """A viewing transform left on the clip in a session that was fed camera log
+        rather than ACEScct: the cube still flattens the top, and the step still says so."""
+        view = ocio.GroupTransform()
+        view.appendTransform(ocio.ColorSpaceTransform(src=color.WORKING_SPACE, dst=encoding))
+        view.appendTransform(ocio.ColorSpaceTransform(src=encoding, dst=color.WORKING_SPACE))
+        view.appendTransform(
+            ocio.DisplayViewTransform(src=color.WORKING_SPACE, display=color.DISPLAY, view=color.VIEW)
+        )
         cpu = color.config().getProcessor(view).getDefaultCPUProcessor()
         size = 9
         lut = ocio.Lut3DTransform(gridSize=size, interpolation=color.INTERPOLATION)
@@ -462,45 +439,16 @@ class TestLoadClf:
                     sample = [value / (size - 1) for value in (red, green, blue)]
                     lut.setValue(red, green, blue, *cpu.applyRGB(sample))
         baked = write_clf(tmp_path / f"{encoding.split()[0]}_display.clf", lut)
-        assert not clf.load_clf(baked).is_scene_linear
-
-    def test_a_dark_grade_moves_white_under_the_old_floor_and_barely_moves_the_ratio(
-        self, tmp_path: Path
-    ) -> None:
-        """Why a ratio was the shape to reach for, and the exact failure OQ-47 records.
-
-        Darkening a C-Log3 grade takes white from 14.7 to 1.7, straight under the fixed
-        floor of 2.0 the probe used to compare against, which is how QC-039 came to
-        refuse a valid CLF. A grade scales both samples, so the ratio between them
-        barely moves: the top of the range keeps its slope however dark the delivery is,
-        and slope is what a tone map flattens. Exactly invariant for a grade authored in
-        the grading space; authored in the camera's own log, as here, the curve's own
-        shape lets it drift a few percent.
-        """
-        old_fixed_floor = 2.0
-        whites, ratios = [], []
-        for index, offset in enumerate((0.0, -0.114, -0.228, -0.342)):
-            path = write_clf(
-                tmp_path / f"exposure{index}.clf",
-                ocio.CDLTransform(offset=[offset] * 3, sat=1.0),
-                ocio.ColorSpaceTransform(src="CanonLog3 CinemaGamut D55", dst=color.PLATE_SPACE),
-            )
-            whites.append(probe_white(path))
-            ratios.append(probe_ratio(path))
-
-        assert max(whites) / min(whites) > 8
-        assert min(whites) < old_fixed_floor
-        assert max(ratios) / min(ratios) < 1.15
-        assert min(ratios) > clf.TONE_MAP_RATIO_FLOOR
+        assert not clf.load_clf(baked).is_grade_only
 
     def test_the_floor_sits_between_the_two_populations(self, tmp_path: Path) -> None:
-        """The margin, stated as a test rather than only in a docstring: a plate CLF and
-        a CLF with the output transform in it are an order of magnitude apart on this
-        measurement, and the floor is roughly a third away from each."""
-        plate = probe_ratio(plate_clf(tmp_path / "plate.clf"))
-        display = probe_ratio(display_clf(tmp_path / "display.clf"))
-        assert display < clf.TONE_MAP_RATIO_FLOOR < plate
-        assert display * 1.25 < clf.TONE_MAP_RATIO_FLOOR < plate / 1.25
+        """The margin, stated as a test rather than only in a docstring: a grade-only cube
+        and one with the output transform in it are far apart on this measurement, and
+        the floor is at least half again away from each."""
+        plate = probe_step(plate_clf(tmp_path / "plate.clf"))
+        display = probe_step(display_clf(tmp_path / "display.clf"))
+        assert display < clf.TONE_MAP_STEP_FLOOR < plate
+        assert display * 1.5 < clf.TONE_MAP_STEP_FLOOR < plate / 1.5
 
     def test_a_file_that_is_not_a_clf_is_refused(self, tmp_path: Path) -> None:
         """QC-019: colour that is unknown is worse than colour that is missing."""
@@ -527,10 +475,10 @@ class TestShotColor:
     """What rides on a render job: a path, a colour space name and the CDL.
 
     The failure these guard against is the one COLOR_AND_FORMAT section 1 warns about
-    under the chain diagram: converting to ACEScg twice, once in the CLF and once
-    outside it. It raises nothing and looks like a grade. So these ask **which**
-    transforms a chain contains as well as what it does to a pixel, because the two
-    arrangements agree on a pixel whenever the tool's own leg happens to be identity.
+    under the chain diagram: a grade applied in the wrong space, or a conversion applied
+    twice. It raises nothing and looks like a grade. So these ask **which** transforms a
+    chain contains as well as what it does to a pixel, because two arrangements agree on
+    a pixel whenever the tool's own leg happens to be identity.
     """
 
     def applied(self, shot_color: clf.ShotColor, value: float) -> float:
@@ -550,14 +498,35 @@ class TestShotColor:
         """ACEScct mid grey is 0.18 scene linear, and nothing else is."""
         assert self.applied(UNGRADED, ACESCCT_MID_GREY) == pytest.approx(0.18, abs=1e-3)
 
-    def test_a_graded_plate_chain_is_the_clf_and_nothing_else(self, tmp_path: Path) -> None:
-        """OQ-37: the CLF starts at the source encoding, so it is the whole transform."""
+    def test_a_cube_sits_between_the_two_legs(self, tmp_path: Path) -> None:
+        """Into ACEScct from the clip's encoding, the cube, out to ACEScg."""
         shot_color = clf.ShotColor(
             source_encoding="S-Log3 S-Gamut3.Cine", clf_path=plate_clf(tmp_path / "MELT0001.clf")
         )
         loaded = shot_color.load()
         assert loaded is not None
-        assert shot_color.plate_transforms(loaded) == [loaded.transform]
+        legs_in, grade, legs_out = shot_color.plate_transforms(loaded)
+        assert (legs_in.getSrc(), legs_in.getDst()) == ("S-Log3 S-Gamut3.Cine", color.WORKING_SPACE)
+        assert grade is loaded.transform
+        assert (legs_out.getSrc(), legs_out.getDst()) == (color.WORKING_SPACE, color.PLATE_SPACE)
+
+    def test_the_cdl_sits_in_the_same_slot_when_there_is_no_cube(self) -> None:
+        shot_color = clf.ShotColor(source_encoding="S-Log3 S-Gamut3.Cine", cdl=ONE_STOP_UP)
+        legs_in, grade, legs_out = shot_color.plate_transforms(None)
+        assert isinstance(grade, ocio.CDLTransform)
+        assert grade.getOffset() == pytest.approx([1 / 17.52] * 3)
+        assert legs_in.getDst() == legs_out.getSrc() == color.WORKING_SPACE
+
+    def test_a_cube_takes_the_cdl_s_place(self, tmp_path: Path) -> None:
+        """Never both: the cube out of the session already has the grade in it."""
+        shot_color = clf.ShotColor(
+            source_encoding="ACEScct", clf_path=plate_clf(tmp_path / "MELT0001.clf"), cdl=ONE_STOP_UP
+        )
+        loaded = shot_color.load()
+        assert loaded is not None
+        transforms = shot_color.plate_transforms(loaded)
+        assert len(transforms) == 3
+        assert transforms[1] is loaded.transform
 
     def test_an_ungraded_plate_chain_is_one_leg_to_acescg(self) -> None:
         """The aux still's chain, and every row the session has no grade for."""
@@ -565,16 +534,12 @@ class TestShotColor:
         assert len(transforms) == 1
         assert transforms[0].getDst() == color.PLATE_SPACE
 
-    def test_a_graded_row_renders_even_though_its_clip_named_no_encoding(self, tmp_path: Path) -> None:
-        """The CLF is the whole chain, so the string is provenance there and nothing more.
-
-        This is why QC-046 is not an error on a graded plate: the row renders correctly
-        without it, and what it costs is a line of the EXR header.
-        """
-        shot_color = clf.ShotColor(clf_path=plate_clf(tmp_path / "MELT0001.clf"))
-        loaded = shot_color.load()
-        assert loaded is not None
-        assert shot_color.plate_transforms(loaded) == [loaded.transform]
+    def test_a_graded_row_with_no_encoding_is_refused(self, tmp_path: Path) -> None:
+        """The grade is applied in ACEScct and the encoding is what gets the clip there,
+        so a graded row cannot render without it. QC-046 is an error on every plate."""
+        shot_color = clf.ShotColor(clf_path=plate_clf(tmp_path / "MELT0001.clf"), cdl=ONE_STOP_UP)
+        with pytest.raises(clf.ClfError, match="no source encoding"):
+            shot_color.plate_transforms(shot_color.load())
 
     def test_no_clf_and_no_encoding_is_refused_rather_than_guessed(self) -> None:
         """The one chain that cannot be built. Nothing turns those pixels into ACEScg.
@@ -586,24 +551,20 @@ class TestShotColor:
         with pytest.raises(clf.ClfError, match="no source encoding"):
             clf.DEFAULT_SHOT_COLOR.plate_transforms(None)
 
-    def test_the_tool_converts_nothing_ahead_of_a_clf(self, tmp_path: Path) -> None:
-        """The trap, in numbers: a source encoding that is not where the CLF starts.
+    def test_the_cdl_is_applied_in_acescct_whatever_the_clip_was_shot_on(self) -> None:
+        """One stop up in ACEScct doubles the plate, from a camera log as from ACEScct.
 
-        The CLF here converts ACEScct to ACEScg and nothing else. Applying an S-Log3
-        leg ahead of it, which is what the chain did before M4.6.2, reads the same
-        pixel as S-Log3, lands it somewhere else entirely, and hands the CLF a value it
-        converts a second time. Nothing raises and the result looks like a grade.
+        S-Log3 puts 18% grey at 10 bit code 420. Applied in the camera's own log instead,
+        the same offset would be a different number of stops and nothing would say so.
         """
-        path = write_clf(
-            tmp_path / "MELT0001.clf",
-            ocio.ColorSpaceTransform(src=CLF_SOURCE, dst=color.PLATE_SPACE),
-        )
-        shot_color = clf.ShotColor(source_encoding="S-Log3 S-Gamut3.Cine", clf_path=path)
-        assert self.applied(shot_color, ACESCCT_MID_GREY) == pytest.approx(0.18, abs=1e-3)
+        shot_color = clf.ShotColor(source_encoding="S-Log3 S-Gamut3.Cine", cdl=ONE_STOP_UP)
+        assert self.applied(shot_color, 420 / 1023) == pytest.approx(0.36, abs=2e-3)
+        from_acescct = clf.ShotColor(source_encoding="ACEScct", cdl=ONE_STOP_UP)
+        assert self.applied(from_acescct, ACESCCT_MID_GREY) == pytest.approx(0.36, abs=1e-3)
 
-    def test_the_grade_in_the_clf_is_what_reaches_the_plate(self, tmp_path: Path) -> None:
+    def test_the_grade_in_the_cube_is_what_reaches_the_plate(self, tmp_path: Path) -> None:
         """The fixture lifts red and drops blue, so an ungraded chain cannot pass this."""
-        shot_color = clf.ShotColor(clf_path=plate_clf(tmp_path / "MELT0001.clf"))
+        shot_color = clf.ShotColor(source_encoding="ACEScct", clf_path=plate_clf(tmp_path / "MELT0001.clf"))
         loaded = shot_color.load()
         pixels = np.array([[[ACESCCT_MID_GREY] * 3]], dtype=np.float32)
         color.apply(pixels, color.processor(*shot_color.plate_transforms(loaded)))
@@ -628,14 +589,14 @@ class TestShotColor:
         assert view[: len(plate)] == plate
         assert len(view) == len(plate) + 1
 
-    def test_a_graded_view_branch_is_the_clf_and_the_output_transform(self, tmp_path: Path) -> None:
-        """Two transforms, which is what `view_lut` bakes into a shot's cube."""
-        shot_color = clf.ShotColor(clf_path=plate_clf(tmp_path / "MELT0001.clf"))
+    def test_a_graded_view_branch_is_the_three_legs_and_the_output_transform(self, tmp_path: Path) -> None:
+        """Four transforms, which is what `view_lut` bakes into a shot's viewing cube."""
+        shot_color = clf.ShotColor(source_encoding="ACEScct", clf_path=plate_clf(tmp_path / "MELT0001.clf"))
         loaded = shot_color.load()
         assert loaded is not None
         view = shot_color.view_transforms(loaded)
-        assert view[0] is loaded.transform
-        assert len(view) == 2
+        assert view[1] is loaded.transform
+        assert len(view) == 4
 
     def test_no_clf_path_loads_nothing(self) -> None:
         assert clf.DEFAULT_SHOT_COLOR.load() is None
@@ -719,6 +680,15 @@ class TestIngest:
         report = clf.ingest(turnover, [scanned], clf.load_session(edl(tmp_path), RATE_24))
         assert report.ambiguous == ["MELT0001_pl01"]
         assert scanned.clf_path is None
+
+    def test_a_row_with_a_cdl_and_no_cube_counts_as_graded(self, tmp_path: Path) -> None:
+        """The CDL is the grade; the cube is the exception (decided 2026-09-18)."""
+        scanned = row()
+        turnover = Turnover(turnover_id="turnover001", folder=tmp_path)
+        report = clf.ingest(turnover, [scanned], clf.load_session(edl(tmp_path), RATE_24))
+        assert scanned.clf_path is None
+        assert report.graded == ["MELT0001_pl01"]
+        assert report.counts == "1 rows matched, 1 graded"
 
     def test_it_counts_what_it_matched_and_what_it_graded(self, tmp_path: Path) -> None:
         plate_clf(tmp_path / "MELT0001_grade.clf")
@@ -844,10 +814,10 @@ class TestACubeInTheClfRole:
         written = color_fixtures.plate_cube(tmp_path / "MELT0001_grade_v01.cube")
         assert clf.index_clfs(tmp_path) == {"MELT0001": [written]}
 
-    def test_a_cube_loads_and_lands_in_scene_linear(self, tmp_path: Path) -> None:
-        """The same probe that judges a CLF: a sampled plate chain still climbs at the top."""
+    def test_a_cube_loads_and_is_a_grade_alone(self, tmp_path: Path) -> None:
+        """The same probe that judges a CLF: a sampled grade still leaves the top open."""
         loaded = clf.load_clf(color_fixtures.plate_cube(tmp_path / "MELT0001_grade_v01.cube"))
-        assert loaded.is_scene_linear
+        assert loaded.is_grade_only
         assert loaded.digest
 
     def test_a_cube_and_a_clf_naming_one_shot_is_ambiguous(self, tmp_path: Path) -> None:

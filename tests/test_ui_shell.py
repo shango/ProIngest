@@ -758,10 +758,10 @@ class TestIngestingAColourSession:
     stubbed ingest would assert the wiring and nothing about the answer.
     """
 
-    def test_it_writes_the_approved_cut_the_cdl_and_the_clf_onto_the_rows(
+    def test_it_writes_the_approved_cut_and_the_cdl_onto_the_rows(
         self, window: DrivenWindow, tmp_path: Path
     ) -> None:
-        """The three things the session says, on the model where a later run reads them."""
+        """What the session says, on the model where a later run reads them."""
         window.set_batch(batch(row()))
         window.edl_answer = color_fixtures.make_session(tmp_path / "session")
         window.action_ingest.trigger()
@@ -769,8 +769,8 @@ class TestIngestingAColourSession:
         ingested_row = window.batch.rows[0]
         assert ingested_row.approved == InOut(0, 3)
         assert ingested_row.current == InOut(0, 3)
-        assert ingested_row.clf_path is not None
         assert ingested_row.cdl is not None
+        assert ingested_row.clf_path is None
 
     def test_the_turnover_keeps_where_the_answers_came_from(
         self, window: DrivenWindow, tmp_path: Path
@@ -961,14 +961,14 @@ class TestASessionFoundBesideTheTurnover:
             (found.folder.name, tmp_path / "turnovers" / "_color" / found.folder.name)
         ]
         assert found.color_session_edl is not None
-        assert window.batch.rows[0].clf_path is not None
+        assert window.batch.rows[0].cdl is not None
         assert len(window.ingest_reports) == 1
 
     def test_no_changes_nothing(self, window: DrivenWindow, tmp_path: Path) -> None:
         found = self.scanned(window, tmp_path)
         assert window.found_asked
         assert found.color_session_edl is None
-        assert window.batch.rows[0].clf_path is None
+        assert window.batch.rows[0].cdl is None
 
     def test_nothing_by_convention_asks_nothing(self, window: DrivenWindow, tmp_path: Path) -> None:
         self.scanned(window, tmp_path, session=False)
@@ -1002,7 +1002,7 @@ class TestASessionFoundBesideTheTurnover:
         self.scanned(window, tmp_path, session=False)
         window.edl_answer = color_fixtures.make_session(tmp_path / "session")
         window.action_ingest.trigger()
-        assert window.batch.rows[0].clf_path is not None
+        assert window.batch.rows[0].cdl is not None
 
 
 class TestWhatAnIngestSays:
@@ -1013,7 +1013,7 @@ class TestWhatAnIngestSays:
 
     def test_it_opens_with_the_turnover_and_what_the_ingest_did(self, tmp_path: Path) -> None:
         text = ingest_text(self.report(tmp_path, matched=["a", "b"], graded=["a"]), "turnover001", [RATE_24])
-        assert text.splitlines()[0] == "turnover001: 2 rows matched, 1 with a grade file"
+        assert text.splitlines()[0] == "turnover001: 2 rows matched, 1 graded"
         assert "MELT_FINAL_v01.edl, which holds 3 events" in text
 
     def test_it_says_nothing_about_the_lists_that_are_empty(self, tmp_path: Path) -> None:
@@ -1634,6 +1634,7 @@ class TestTheMetadataPane:
             "Source media",
             "Frame rate",
             "Range",
+            "Colour",
             "Turnover",
             "QC",
         ]

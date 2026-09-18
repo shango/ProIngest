@@ -17,6 +17,7 @@ import pytest
 
 from proingest.core import naming, qc, render
 from proingest.core.models import (
+    CDL,
     AudioInfo,
     Batch,
     Deliverable,
@@ -499,11 +500,11 @@ class TestSourceEncodingRule:
     def test_a_resolvable_encoding_raises_nothing(self) -> None:
         assert qc.check_source_encoding(row(source_encoding="C-Log3")) == []
 
-    def test_a_plate_that_names_none_is_qc_046_info(self) -> None:
-        """The CLF is the whole chain there, so what is lost is a line of provenance."""
+    def test_a_plate_that_names_none_is_qc_046_error(self) -> None:
+        """The grade is applied in ACEScct and this is what gets the clip there."""
         results = qc.check_source_encoding(row(source_encoding=None))
         assert ids(results) == ["QC-046"]
-        assert results[0].severity == "info"
+        assert results[0].severity == "error"
 
     def test_an_aux_still_that_names_none_is_qc_046_error(self) -> None:
         """The one picture the tool converts on its own authority, so it cannot be delivered."""
@@ -511,10 +512,10 @@ class TestSourceEncodingRule:
         assert ids(results) == ["QC-046"]
         assert results[0].severity == "error"
 
-    def test_a_plate_naming_something_unresolvable_is_qc_047_warning(self) -> None:
+    def test_a_plate_naming_something_unresolvable_is_qc_047_error(self) -> None:
         results = qc.check_source_encoding(row(source_encoding="S-Log3"))
         assert ids(results) == ["QC-047"]
-        assert results[0].severity == "warning"
+        assert results[0].severity == "error"
 
     def test_an_aux_still_naming_something_unresolvable_is_qc_047_error(self) -> None:
         results = qc.check_source_encoding(self.chart(source_encoding="Arri LogC9"))
@@ -536,17 +537,22 @@ class TestSourceEncodingRule:
 class TestColorChain:
     """QC-048: what the row was rendered through, recorded rather than inferred (OQ-46)."""
 
-    def test_a_graded_row_names_its_clf(self) -> None:
-        graded = row(source_encoding="ACEScct")
-        graded.clf_path = Path("/session/MELT0001_grade.clf")
+    def test_a_row_with_a_cdl_names_the_three_legs(self) -> None:
+        graded = row(source_encoding="C-Log3")
+        graded.cdl = CDL((1.0,) * 3, (0.0,) * 3, (1.0,) * 3, 1.0, "", "")
         results = qc.check_color_chain(graded)
         assert ids(results) == ["QC-048"]
         assert results[0].severity == "info"
-        assert "MELT0001_grade.clf alone" in results[0].message
+        assert "CanonLog3 CinemaGamut D55 to ACEScct, the CDL, ACEScct to ACEScg" in results[0].message
+
+    def test_a_row_with_a_cube_says_it_took_the_cdl_s_place(self) -> None:
+        graded = row(source_encoding="ACEScct")
+        graded.clf_path = Path("/session/MELT0001_grade.clf")
+        assert "MELT0001_grade.clf in place of the CDL" in qc.check_color_chain(graded)[0].message
 
     def test_an_ungraded_row_names_the_input_transform(self) -> None:
         message = qc.check_color_chain(row(source_encoding="C-Log3"))[0].message
-        assert "no grade file" in message
+        assert "no grade" in message
         assert "CanonLog3 CinemaGamut D55 to ACEScg" in message
 
     def test_an_aux_still_says_it_is_never_graded(self) -> None:
@@ -559,7 +565,7 @@ class TestColorChain:
 
     def test_a_row_with_neither_says_so(self) -> None:
         message = qc.check_color_chain(row(source_encoding=None))[0].message
-        assert "no grade file and no source encoding" in message
+        assert "no source encoding: nothing to render through" in message
 
     def test_it_is_recorded_by_a_preflight(self, tmp_path: Path) -> None:
         """Here rather than with the model rules: the CLF is resolved by the planner."""
@@ -853,7 +859,7 @@ class TestColorSessionRule:
         batch = ingested_batch(tmp_path, row())
         results = qc.check_color_session(batch.turnovers[0], batch.rows)
         assert ids(results) == ["QC-008"]
-        assert "no grade file for any row" in results[0].message
+        assert "no CDL and no cube for any row" in results[0].message
 
     def test_one_graded_row_is_enough_to_satisfy_it(self, tmp_path: Path) -> None:
         graded, ungraded = row(), row(clip_name="MELT0002_pl01")
