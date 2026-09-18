@@ -15,7 +15,7 @@ Five things, and they do not move:
   and the In/Out display buttons.
 - **The shot list** in the middle, which is where the work happens.
 - **The metadata pane** on the right, read only. **⌘I** hides and shows it.
-- **The tabs** along the bottom: Issues and Log.
+- **The tabs** along the bottom: Issues, Log and Deliverables.
 
 ## The toolbar
 
@@ -42,8 +42,18 @@ toolbar shows everything from the first launch rather than hiding what cannot be
 ingested, because it will run: it refuses every turnover and writes nothing, which is correct
 and looks exactly like a dead button. Its tooltip says so first.
 
-**Export is not built.** A run writes both spreadsheets when it finishes, which is the only way
-to get them today.
+**Ingest Colour Session is the by-hand route.** A scan looks for the turnover's session
+first: a folder named exactly as the turnover folder, inside the folder Settings' "Ingest opens
+at" names, or else inside `_color` beside the turnovers, holding one final `.edl` and the
+`.clf` files. Found, it asks whether to ingest it; a folder with two `.edl` files in it is not
+guessed between and the button is the answer. Ingesting twice reads the newer export over the
+older one, and the report says which rows changed.
+
+**Export writes the two spreadsheets without rendering anything.** A run writes them when it
+finishes too; Export is for the batch as it stands now - after a scan, to hand the QC log
+round before anything is delivered, or after an edit, to refresh them. It re-runs every check
+first, asks for the delivery root if there is none, and the banner above the list says where
+the files went.
 
 ## The shot list
 
@@ -181,6 +191,18 @@ Time, level, shot and message, over a filter bar: a minimum level, a search box,
   complete record is the rotating file in `~/Library/Logs/ProIngest`, which Settings names.
 - It follows the newest line **only when it is already at the bottom**, because somebody who has
   scrolled up is reading something.
+
+## The Deliverables tab
+
+What the selected shot delivers: one line per output - the two EXR sequences, the two mp4s, the
+wav, each side file - with its kind, resolution, version, status, frame count, size, the rule
+numbers it failed if any, and the path. Select several shots and it lists all of theirs.
+
+- **Read only.** A run writes deliverables; nothing else does.
+- **Double-click a line to open the folder it is in.**
+- A shot that has never run shows one line saying so rather than an empty table.
+- It updates when the selection changes and when a run finishes. During a run the row's own
+  progress bar in the list is the live view.
 
 ## The run
 

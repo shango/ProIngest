@@ -59,6 +59,7 @@ from proingest.core.models import (
 from proingest.ui import color_session, metadata, settings_form, toolbar_help
 from proingest.ui.autosave import AutoSaver
 from proingest.ui.batch_bar import BatchBar
+from proingest.ui.deliverables import DeliverablesDock
 from proingest.ui.issues import IssuesDock
 from proingest.ui.log_view import LogView
 from proingest.ui.metadata_pane import MetadataPane
@@ -170,6 +171,7 @@ class MainWindow(QMainWindow):
         self.action_toggle_skip = self._action("Skip Shot", QKeySequence("Ctrl+K"))
         self.action_toggle_skip.triggered.connect(lambda: self.shot_list.toggle_skip())
         self.action_export = self._action("Export")
+        self.action_export.triggered.connect(lambda: self.run.export_reports())
         self.action_cycle_display = self._action("Cycle In/Out display", QKeySequence("Ctrl+T"))
         self.action_cycle_display.triggered.connect(self._cycle_display_mode)
         self.action_find = self._action("Find", QKeySequence.StandardKey.Find)
@@ -381,7 +383,7 @@ class MainWindow(QMainWindow):
         return self._settings
 
     def new_batch(self) -> None:
-        """An empty batch with no file, waiting for a turnover (section 10).
+        """An empty batch with no file, and the turnover chooser straight away (section 10).
 
         It takes a **copy** of the rule thresholds in Settings rather than reading them
         as it goes, for the reason UI_SPEC section 13 gives for the two roots: what a
@@ -394,6 +396,10 @@ class MainWindow(QMainWindow):
         if self._settings.rules:
             batch.settings_overrides[qc.RULES_OVERRIDE_KEY] = self._app_rules().to_dict()
         self.set_batch(batch)
+        # A new batch has exactly one next step, so it is asked for here rather than
+        # left as a second empty screen with a toolbar button somewhere above it.
+        # Cancelling leaves the batch on section 10's "Add a turnover folder" page.
+        self.add_turnover()
 
     def open_batch(self) -> None:
         """Read a `.pibatch`, back it up, and check that its two roots are still there."""
@@ -620,6 +626,9 @@ class MainWindow(QMainWindow):
         self.show_results()
         self.autosave.schedule()
         self.update_state()
+        # Last, with the rows on the model: a session exported by convention is offered
+        # now rather than left for a toolbar button the editor has to know to press.
+        color_session.offer_found(self, turnover)
 
     def _scan_finished(self) -> None:
         self.progress.setVisible(False)
@@ -650,6 +659,7 @@ class MainWindow(QMainWindow):
         self.action_new.setEnabled(not running)
         self.action_open.setEnabled(not running)
         self.action_run.setEnabled(open_batch and not busy and bool(self.batch.rows))
+        self.action_export.setEnabled(open_batch and not busy and bool(self.batch.rows))
         self.action_stop.setEnabled(running and not self.run.cancelled)
         self._refresh_tooltips(open_batch=open_batch, scanning=scanning, running=running)
 
@@ -712,13 +722,7 @@ class MainWindow(QMainWindow):
         button_row = QVBoxLayout(buttons)
         button_row.setSpacing(8)
         for text, action in (("New batch", self.action_new), ("Open batch...", self.action_open)):
-            button = QPushButton(text, buttons)
-            button.clicked.connect(action.trigger)
-            # The action is the authority on whether the thing can be done at all, and it
-            # follows it both ways: the chunk that enables New has one line to change, not two.
-            button.setEnabled(action.isEnabled())
-            action.changed.connect(lambda a=action, b=button: b.setEnabled(a.isEnabled()))
-            button_row.addWidget(button)
+            button_row.addWidget(self._button_for(text, action, buttons))
         layout.addWidget(buttons, alignment=Qt.AlignmentFlag.AlignCenter)
         return central
 
@@ -726,19 +730,39 @@ class MainWindow(QMainWindow):
         """Section 10's other two states, which are states of an open batch.
 
         One label rather than two pages: the two differ by a sentence, and a stack of
-        near identical widgets is two places to change the wording in.
+        near identical widgets is two places to change the wording in. The button under
+        it is the one thing either state wants next, so neither is a dead end.
         """
         central = QWidget(self)
         central.setObjectName("list_empty_state")
         layout = QVBoxLayout(central)
         layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.setSpacing(16)
 
         self.list_empty_text = QLabel(NO_TURNOVERS_TEXT, central)
         self.list_empty_text.setObjectName("list_empty_state_text")
         self.list_empty_text.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.list_empty_text.linkActivated.connect(self.show_issues)
         layout.addWidget(self.list_empty_text)
+        layout.addWidget(
+            self._button_for("Add Turnover...", self.action_add_turnover, central),
+            alignment=Qt.AlignmentFlag.AlignCenter,
+        )
         return central
+
+    @staticmethod
+    def _button_for(text: str, action: QAction, parent: QWidget) -> QPushButton:
+        """A button that triggers a toolbar action and is greyed exactly when it is.
+
+        The action is the authority on whether the thing can be done at all, and the
+        button follows it both ways: the code that enables Add Turnover has one line to
+        change, not two.
+        """
+        button = QPushButton(text, parent)
+        button.clicked.connect(action.trigger)
+        button.setEnabled(action.isEnabled())
+        action.changed.connect(lambda: button.setEnabled(action.isEnabled()))
+        return button
 
     def show_issues(self) -> None:
         """Bring the Issues tab up, which is where the link in section 10 points."""
@@ -789,6 +813,17 @@ class MainWindow(QMainWindow):
         if not accepted:
             return None
         return turnovers[names.index(chosen)]
+
+    def ask_ingest_found(self, turnover: Turnover, folder: Path) -> bool:
+        """A session found beside the turnover: ingest it now, or not (section 15)."""
+        answer = QMessageBox.question(
+            self,
+            color_session.SESSION_FOUND_TITLE,
+            color_session.SESSION_FOUND.format(name=turnover.folder.name, folder=folder),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.Yes,
+        )
+        return answer == QMessageBox.StandardButton.Yes
 
     def report_ingest(self, text: str) -> None:
         """What the ingest did. A modal, because it is the answer to one just opened.
@@ -885,6 +920,10 @@ class MainWindow(QMainWindow):
         from anything that might have changed a value without counting how often.
         """
         rows = self.shot_list.selected_rows()
+        # The Deliverables tab reads the same selection and changes for the same
+        # reasons - a selection, a commit, a run writing statuses back - so it is
+        # redrawn here rather than from a fourth set of signals that would drift.
+        self.deliverables.show_rows(rows)
         if rows:
             sections = metadata.describe(rows, self.batch, self._camdata)
             summary = metadata.selection_summary(len(rows)) if len(rows) > 1 else ""
@@ -929,7 +968,7 @@ class MainWindow(QMainWindow):
         self.refresh_metadata()
 
     def _build_bottom_dock(self) -> None:
-        """Issues (M5.4) and Log (M5.8.2), then Deliverables, still to come."""
+        """Issues (M5.4), Log (M5.8.2) and Deliverables (2026-09-17), section 1's three."""
         dock = QDockWidget("Details", self)
         dock.setObjectName("bottom_dock")
         dock.setAllowedAreas(Qt.DockWidgetArea.BottomDockWidgetArea)
@@ -939,15 +978,11 @@ class MainWindow(QMainWindow):
         self.issues = IssuesDock(tabs)
         self.issues.row_activated.connect(self.shot_list.select_row)
         self.log_view = LogView(tabs)
-        built = {"Issues": self.issues, "Log": self.log_view}
+        self.deliverables = DeliverablesDock(tabs)
+        self.deliverables.path_activated.connect(self.open_folder)
+        built = {"Issues": self.issues, "Log": self.log_view, "Deliverables": self.deliverables}
         for name in BOTTOM_TABS:
-            widget = built.get(name)
-            if widget is not None:
-                tabs.addTab(widget, name)
-                continue
-            placeholder = QLabel(f"No {name.lower()} yet", tabs)
-            placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            tabs.addTab(placeholder, name)
+            tabs.addTab(built[name], name)
         dock.setWidget(tabs)
 
         self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, dock)

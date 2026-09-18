@@ -10,11 +10,21 @@ commit.
 
 **State at 2026-09-16. Every feature milestone is built, and so is packaging.** M1 to M4
 complete, M4.5 all four chunks, M4.6 all five, **M5 all twelve**, **M7**, and **M9.4**.
-**1697 tests**, `ruff`, `ruff format` and `mypy --strict` clean over `proingest tests build`.
+**1726 tests**, `ruff`, `ruff format` and `mypy --strict` clean over `proingest tests build`.
 What is left is **M8 polish** (needs a real turnover and a real colour session) and the rest
 of **M9, the user guide**.
 
-**This session, 2026-09-16, was about getting the tool onto a Mac and then onto the editor's
+**This session, 2026-09-17, was a UX pass on the branch `ux/first-run-and-discovery`, one
+commit per item, all six built, pushed and opened as a PR against `main`. The version is
+0.2.0**, the first bump since scaffolding, and `HANDOFF.md` is this session's disposable note. The user looked at the window and asked
+for six things; the note "UX pass, 2026-09-17" below has each. **New batch opens the turnover
+chooser straight away**, the empty list has an Add Turnover button, **Export writes both
+spreadsheets without a run**, the delivery root is amber until set, **Run refuses in a dialog
+when nothing would render**, **a colour session exported by convention is found by the scan
+and offered** (OQ-53, the convention Ben has to agree to), and **the Deliverables tab exists**.
+The toolbar has no dead button and the bottom dock no placeholder left. **1726 tests.**
+
+**The session before, 2026-09-16, was about getting the tool onto a Mac and then onto the editor's
 Mac, and it was driven by somebody running out of time on a rented box.** Nothing about what the
 tool does changed. Two shell scripts, both merged, and everything anybody learned about handing a
 build over is written down rather than left in a chat.
@@ -167,10 +177,65 @@ from the chain and the input transform no longer runs ahead of a CLF, **which M4
 2026-09-12**. The composition machinery is untouched and is what the whole thing still rests on. **The display referred block it kept under a fence
 is gone**, deleted with its tests in M4.5.4 as planned.
 
+### UX pass, 2026-09-17: six things the user asked for after looking at the window
+
+The user's own words for the first one: New batch "creates a batch, but one still needs to
+add turnovers, I think that seems like a bad or confusing flow". The six, in the order they
+are being built, each its own commit on `ux/first-run-and-discovery`:
+
+1. **New batch opens the Add Turnover chooser straight away. Built.** `new_batch` calls
+   `add_turnover` after `set_batch`; cancelling lands on section 10's "Add a turnover folder
+   to begin", which now has an **Add Turnover...** button under it (and under "No clips found"
+   too) that follows the toolbar action both ways through `MainWindow._button_for`, the same
+   helper the first empty state's two buttons now use. UI_SPEC section 10 and the quickstart's
+   step 1 say so. Tests: `TestTheBatchLifecycle` in `tests/test_ui_shell.py`, and
+   `DrivenWindow.folders_asked` records which chooser opened.
+2. **Export writes both spreadsheets without a run. Built.** `RunController.export_reports`
+   does what `proingest qc <batch>` does: re-runs the rules, pre-flight and phase B so the
+   log describes the batch as it is now, asks for the delivery root if there is none, writes
+   through the run's own `_write_reports`, and shows the run strip's banner with the folder
+   link and no counts (`export_banner_text`). Enabled exactly when Run is; the tooltip's
+   note is `NO_ROWS_TO_EXPORT` and `EXPORT_UNBUILT` is gone. The guide's reference says what
+   it is for. Tests: `TestExportWithoutARun` in `tests/test_ui_shell.py`.
+3. **The batch bar's delivery root is amber while it is unset. Built.** A dynamic property
+   `unset` on the button, read by `theme.qss` as `#delivery_root[unset="true"]`, flipped in
+   `BatchBar.show_delivery_root` with the unpolish/polish pair a stylesheet needs to re-read
+   a property. The label gained an ellipsis and a tooltip saying Run asks for it. Section 13
+   and the quickstart's step 5 say so; `docs/MAC_SESSION.md` has the line, because whether
+   amber reads as unfinished rather than wrong is a question for a screen.
+4. **Run refuses in a dialog when nothing would render. Built.** Not a confirmation: with
+   every turnover held back there is nothing to confirm. `RunController.start` compares
+   `qc.blocked_turnovers` against the turnovers that have rows and, when it covers them,
+   reports `NOTHING_WOULD_RENDER` with each turnover's folder name and the turnover scope
+   errors holding it (`_held_back_reasons`), then brings up the Issues tab. The partial
+   case is unchanged: a status bar line, and the ready turnovers deliver. UI_SPEC section
+   7 and the quickstart's "When Run refuses" say so.
+5. **Colour session discovery. Built, to a convention that wants a word with Ben (OQ-53).**
+   `clf.find_session(turnover_folder, settings_folder)` looks for a folder named exactly as
+   the turnover folder, first under the Settings folder the chooser opens at, then in
+   `_color` beside the turnovers, and wants exactly one `.edl` in it at any depth; two is
+   None rather than a guess, logged. `MainWindow._take_scanned` ends by calling
+   `color_session.offer_found`, which asks `ask_ingest_found` (a Yes/No naming the folder)
+   for a turnover with rows with media and no session yet, and Yes runs `ingest_edl`, the
+   half of the ingest the toolbar route now shares. Asked rather than done because an
+   ingest overwrites a trim. The convention is in `docs/WORKFLOW.md` as Ben's step 9a, in
+   UI_SPEC section 15, in the quickstart's step 4, the reference, and the Settings field's
+   help. The CLI's `run --color-session` does not discover; it is pointed at an EDL as
+   before. Tests: `TestFindSession` in `tests/test_clf.py` and
+   `TestASessionFoundBesideTheTurnover` in `tests/test_ui_shell.py`.
+6. **The Deliverables tab. Built.** `ui/deliverables.py`, a `QTreeWidget` like the Issues
+   dock and for its reason: for the selected rows, one line per deliverable with shot, name,
+   kind, res, version, status (coloured as the list's dot is), frames, size, the rule IDs it
+   failed and the path; double-click opens the folder. Redrawn from `refresh_metadata`, so
+   it changes exactly when the pane does, including when a run writes statuses back; not on
+   the run's timer. A selected shot with nothing planned shows one line saying so. UI_SPEC
+   section 6.2, the reference's "The Deliverables tab", and a `docs/MAC_SESSION.md` line for
+   the widths and colours. Tests: `TestTheDeliverablesTab` in `tests/test_ui_shell.py`.
+
 ### First five minutes
 
 ```
-.venv/bin/python -m pytest tests/ -q          # 1683, about 90 seconds
+.venv/bin/python -m pytest tests/ -q          # 1726, about 90 seconds
 .venv/bin/python -m ruff check . && .venv/bin/python -m ruff format --check . && .venv/bin/python -m mypy proingest tests build
 ```
 

@@ -311,7 +311,7 @@
   <header class="mast">
     <div class="eyebrow">
       <span>VFX turnover ingest &middot; macOS v01</span>
-      <span class="stamp">Updated <b>16 Sep 2026, 16:40 PDT</b></span>
+      <span class="stamp">Updated <b>17 Sep 2026, 21:34 PDT</b></span>
     </div>
     <h1>ProIngest Build Track</h1>
     <p class="standfirst">
@@ -328,15 +328,15 @@
       <div class="stat-l">Milestones done</div>
     </div>
     <div class="stat">
-      <div class="stat-n good">1697</div>
+      <div class="stat-n good">1726</div>
       <div class="stat-l">Tests, Linux + macOS</div>
     </div>
     <div class="stat">
-      <div class="stat-n">27<span style="color:var(--faint);font-size:17px">/52</span></div>
+      <div class="stat-n">28<span style="color:var(--faint);font-size:17px">/53</span></div>
       <div class="stat-l">Questions open</div>
     </div>
     <div class="stat">
-      <div class="stat-n good">16<span style="color:var(--faint);font-size:17px">/16</span></div>
+      <div class="stat-n good">17<span style="color:var(--faint);font-size:17px">/17</span></div>
       <div class="stat-l">Interface chunks</div>
     </div>
   </div>
@@ -679,7 +679,7 @@
         <div class="ms-body">
           <div class="ms-head">
             <span class="ms-name">User interface</span>
-            <span class="pill done">Complete &middot; 16 of 16</span>
+            <span class="pill done">Complete &middot; 17 of 17</span>
           </div>
           <p class="ms-goal">
             Main window, shot list with the keyboard model, metadata pane, validation
@@ -1072,9 +1072,38 @@
               <span class="c-st"><span class="tag ok">Done</span></span>
             </div>
 
+            <div class="chunk done">
+              <span class="c-id">M5.13</span>
+              <span class="c-name">The pass after somebody used it</span>
+              <span class="c-note">
+                <b>Asked for on 17 September, after the user opened the window and found the
+                first thing it does confusing</b>: New batch made an empty batch and then showed a
+                second empty screen, with the button for the only next step somewhere in the
+                toolbar. Six things, each its own change. <b>New batch now opens the folder
+                chooser straight away</b>, and the empty list has the button on it. <b>Export
+                works</b>: the one greyed button on the toolbar now writes both spreadsheets from
+                the batch as it stands, with no render. <b>The delivery folder button is amber
+                until one is set</b>, because it is the one thing Run stops to ask about. <b>Run
+                says why in a dialog</b> when every delivery is held back, instead of starting and
+                doing nothing, which is what a batch with no grading session used to look like.
+                <b>The bottom panel's last empty tab is built</b>: every output the selected shot
+                delivers, where it went, at what version and in what state, with a double-click
+                opening the folder.
+                <b>And the grading session is found rather than pointed at.</b> The colourist
+                will export each delivery's edit list and colour files into a folder of their
+                own; if that folder is named exactly as the delivery's folder is, and sits in a
+                <span class="mono">_color</span> folder beside the deliveries or under the folder
+                the settings name, the scan finds it and asks whether to ingest it. One click,
+                and the button remains for anything exported somewhere else. The convention is
+                written down as a question for the colourist rather than a fact, because
+                nobody has asked them yet.
+              </span>
+              <span class="c-st"><span class="tag ok">Done</span></span>
+            </div>
+
           </div>
           <div class="mods">
-            <span>main_window</span><i>/</i><span>run_controller</span><i>/</i><span>color_session</span><i>/</i><span>shot_model</span><i>/</i><span>shot_list</span><i>/</i><span>batch_bar</span><i>/</i><span>scanner</span><i>/</i><span>runner</span><i>/</i><span>issues</span><i>/</i><span>autosave</span><i>/</i><span>run_strip</span><i>/</i><span>metadata</span><i>/</i><span>log_view</span><i>/</i><span>toolbar_help</span><i>/</i><span>theme.qss</span>
+            <span>main_window</span><i>/</i><span>run_controller</span><i>/</i><span>color_session</span><i>/</i><span>deliverables</span><i>/</i><span>shot_model</span><i>/</i><span>shot_list</span><i>/</i><span>batch_bar</span><i>/</i><span>scanner</span><i>/</i><span>runner</span><i>/</i><span>issues</span><i>/</i><span>autosave</span><i>/</i><span>run_strip</span><i>/</i><span>metadata</span><i>/</i><span>log_view</span><i>/</i><span>toolbar_help</span><i>/</i><span>theme.qss</span>
           </div>
           <div class="gate">
             <b>This milestone got smaller on 11 September.</b> Three frame viewers and four
@@ -1513,7 +1542,7 @@
     <h2>Open questions</h2>
     <p class="standfirst" style="margin-bottom:14px">
       The live list. Questions answered days ago and no longer affecting anything have been
-      taken off this board; none is deleted, and all 52 of them, closed ones included, stay in
+      taken off this board; none is deleted, and all 53 of them, closed ones included, stay in
       <span class="mono">docs/OPEN_QUESTIONS.md</span> with the reasoning that closed them.
       What is kept here is what is still open, what was answered in the last two days, and
       what was built to a default that one real delivery would confirm.
@@ -1524,6 +1553,11 @@
           <tr><th>ID</th><th>Question</th><th>State</th></tr>
         </thead>
         <tbody>
+          <tr>
+            <td class="id">OQ-53</td>
+            <td><b style="color:var(--text)">New 17 September, out of asking where the colourist's exports will live.</b> The user described the flow: a fresh Resolve session, each delivery imported from the shared drive as its own timeline, and the edit list and colour files saved into a folder made for the session. The tool's file chooser copes with any location, but a location known in advance lets the scan find the session and offer it, which removes the one step an editor has to know to do. <b style="color:var(--text)">Built to a default the same day</b>: a folder named exactly as the delivery's folder, inside <span class="mono">_color</span> beside the deliveries or under the folder the settings name, holding one edit list. Two edit lists in it is no offer rather than a guess, because choosing between them is choosing a cut. What still wants settling with the colourist: that they export one timeline per delivery into a folder of that name, and whether they can write beside the deliveries at all. If not, the settings folder is the answer and needs no code</td>
+            <td class="st"><span class="tag open">Built</span></td>
+          </tr>
           <tr class="resolved">
             <td class="id">OQ-52</td>
             <td><b style="color:var(--text)">Raised and answered on 13 September, out of packaging.</b> What name the application identifies itself by to macOS. The specification said to use the studio's name and <b style="color:var(--text)">the studio is not to be named in anything that ships</b>. That turned out to cost nothing, because the question rested on a wrong premise: the name only has to be <b style="color:var(--text)">unique and permanent</b>, not descriptive, and <b style="color:var(--text)">Apple does not check that whoever registers one owns the web address inside it</b>. It is now built from the project's own code repository, which is unique, genuinely controlled, and names nobody connected to the production. <b style="color:var(--text)">The half that still binds is not changing it afterwards</b>: macOS files folder permissions under that name, so a later change means the editor is asked again for every folder they have already approved. Settings and logs are unaffected, being filed under the application's visible name instead</td>
@@ -1712,6 +1746,27 @@
 
   <section>
     <h2>Corrections made to the spec</h2>
+      <div class="note">
+        <h3>The first thing the tool does was the first thing its user found confusing</h3>
+        <p>
+          The interface was built chunk by chunk against a written specification, and every
+          chunk was driven once in the real window before it was committed. The user's first
+          session with it still opened on a flow nobody had noticed: press New batch, get an
+          empty batch, and be shown a second empty screen whose only next step is a button in
+          the toolbar. Every test about that screen passed, because every test asked whether the
+          right words were on it.
+        </p>
+        <p>
+          <b>Fixed in an afternoon, along with the four other things a fresh pair of eyes found
+          in the same look</b>: a toolbar button that had been greyed since the window was built,
+          an empty tab in the bottom panel, a run over a batch with no grading session that
+          looked exactly like a dead button, and a delivery folder setting that gave no sign it
+          was still unset. None of them was a fault in anything that renders. All of them were
+          the tool waiting for something without saying so, which is the failure a specification
+          written by the builder is least able to see, and the argument for the pass with the
+          editor that M8 has always had first on its list.
+        </p>
+      </div>
       <div class="note">
         <h3>The review movie milestone was withdrawn, and one thing is given up with it</h3>
         <p>
@@ -2347,55 +2402,29 @@
     <b>Verify</b> &middot; bash build/mac_build.sh &middot; pytest &middot;
     ruff check . &amp;&amp; mypy proingest tests build &middot; python build/build.py &middot;
     python build/smoke_test.py &lt;app&gt;<br>
-    <b>Last updated</b> &middot; 16 September 2026, 16:40 PDT. <b>The tool can now be started
-    from the folder as well as built into an application</b>, and everything about getting a
-    build onto somebody else's Mac has been worked out and written down. Double-clicking one file
-    in the folder prepares it on the first run and opens the window; it is for somebody who has a
-    package manager and a network, and the application remains the thing that runs on a machine
-    with nothing installed. <b>An application on a Mac is a folder</b>, which is the answer to the
-    question that prompted this and was worth half an hour to establish.
-    <b>The awkward part is not technical.</b> The download mark macOS refuses an unsigned
-    application over is applied by whatever <i>receives</i> the file, so relaying a build through
-    another computer or a shared drive changes nothing; a zip archive quietly destroys an
-    application by dropping the pieces it is made of, although a disk image inside a zip is safe;
-    and the dialog the editor meets calls the application <b>damaged</b> and offers to move it to
-    the Trash as its default button, so anybody following it deletes the build and reports that it
-    arrived broken. One line in a terminal clears the mark. <b>None of this goes away until a
-    developer identity is bought</b>, which is the decision at the bottom of this page and is now
-    the whole of the handover problem.<br>
-    <b>A fresh copy of the code
-    becomes a built Mac application in one command.</b> Clone it, run one script, and it installs
-    exactly the pinned set of libraries, fetches the video tools and checks them against their
-    fingerprints, puts them where the tests look for them, runs the lint, the type check and all
-    1697 tests, builds the application and its disk image, and drives the built thing through a
-    whole demonstration delivery. It stops at the first thing that fails and it is safe to run
-    again. <b>Nothing in it is new work</b>: every step is one the setup document already
-    described and the hosted machines already run on every change. What it removes is the chance
-    of typing six commands in the wrong order on a machine that is rented by the day.<br>
-    <b>The repository was already ready to be opened on a Mac</b>, and the two traps that would
-    otherwise have cost a morning are handled either way: the video tools are 132&nbsp;MB and
-    deliberately not kept in the repository, so they can be downloaded in a browser or carried
-    over from another machine and are checked against the same fingerprint whichever way they
-    arrive; and the tests that touch video <b>skip themselves</b> when they cannot find those
-    tools, so a run set up by hand can report success having encoded nothing.<br>
-    <b>The user guide's screenshots are a script</b> rather than somebody pressing a key, so a
-    changed interface is a re-run instead of a re-shoot and nothing from a real production can
-    reach a document that gets emailed around. It draws on a Mac only, because a guide
-    illustrated on Linux is a guide to a tool the editor does not have - which is why the
-    pictures are the one part of the guide that is waiting on the machine. Taking the first one
-    found that the coloured status dot beside every shot <b>had never been drawn at all</b>:
-    every test asked the data whether there was a dot, and none asked the window whether it had
-    drawn one. Fixed, with three tests that ask the window.<br>
-    <b>The guide's prose is finished</b> - the quickstart, the install section and the reference
-    section - and <b>the window has been split into the three jobs it was doing</b>, which was
-    the last thing on the list that could be done away from a Mac. Nothing the tool does changed.<br>
-    <b>Next</b> &middot; nothing at all on this machine. The polish pass, the proving run and the
-    guide's last part all want the Mac or a real delivery.
-    <b>Two questions want asking before a real delivery depends on them</b>: which field the
-    shooters write their camera's format into and exactly what they write, and whether a grading
-    session's colour file really does contain the conversion - because if the tool also converts,
-    it converts twice and nothing fails. <b>One decision wants making before handover</b>: an
-    Apple Developer ID, or a route to the editor that never marks a build as downloaded.
+    <b>Last updated</b> &middot; 17 September 2026, 21:34 PDT. <b>The user opened the window
+    and asked for six things, and all six are built</b>, one change each, on a branch that is
+    not yet merged: New batch opens the folder chooser straight away; Export writes both
+    spreadsheets without a render; the delivery folder button is amber until it is set; Run
+    explains itself in a dialog when nothing would render; the bottom panel's Deliverables tab
+    exists; and <b>the grading session is found beside the delivery and offered</b>, so the
+    normal case is one click rather than a file chooser. The toolbar has no greyed-forever
+    button and the bottom panel no placeholder left. 1726 tests.<br>
+    <b>Where the colourist's exports go is now a convention rather than a mystery</b>: a folder
+    named exactly as the delivery's folder, in <span class="mono">_color</span> beside the
+    deliveries on the shared drive, holding the edit list and the colour files. That is written
+    into the workflow page as their step and into the open questions as OQ-53, because it is a
+    default the tool was built to and not yet something he has agreed to. Nothing else about
+    what the tool applies changed.<br>
+    <b>Next</b> &middot; merge the branch, then the same three things as before: the polish pass,
+    the proving run and the guide's last part all want the Mac or a real delivery.
+    <b>Three questions want asking before a real delivery depends on them</b>: where the
+    colourist will save each delivery's exports and what they will name the folder (OQ-53); which
+    field the shooters write their camera's format into and exactly what they write; and whether
+    a grading session's colour file really does contain the conversion - because if the tool also
+    converts, it converts twice and nothing fails. <b>One decision wants making before
+    handover</b>: an Apple Developer ID, or a route to the editor that never marks a build as
+    downloaded.
   </footer>
 
 </div>

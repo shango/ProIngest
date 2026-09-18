@@ -24,6 +24,7 @@ candidate. It matches or it reports nothing matched, and QC-009 is what fires.
 from __future__ import annotations
 
 import hashlib
+import logging
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -41,6 +42,8 @@ from proingest.core.models import (
     SourceEncodingOrigin,
     Turnover,
 )
+
+log = logging.getLogger(__name__)
 
 CLF_EXTENSION = ".clf"
 
@@ -314,6 +317,49 @@ class ColorSession:
             and first <= event.source_in <= event.source_out <= last
         ]
         return matched[0] if len(matched) == 1 else None
+
+
+SESSION_FOLDER = "_color"
+"""The folder beside the turnovers that a session is looked for in (OQ-53).
+
+`<source root>/_color/<turnover folder name>/` holds the final EDL and the CLFs Ben
+exported for that turnover. Named like `_reports` and `_turnovers` in the delivery, so
+it sorts to the top and cannot be mistaken for a turnover by anyone, including the
+scan, which never looks at a sibling folder.
+"""
+
+
+def session_folders(turnover_folder: Path, color_session_folder: Path | None = None) -> list[Path]:
+    """Where a turnover's session is looked for, most specific first (OQ-53).
+
+    Under the folder Settings names when it names one, then in the `_color` folder
+    beside the turnover; in both, a folder named exactly as the turnover folder is.
+    The turnover's own name is the convention because it is the one string the
+    editor, Ben and the tool already share.
+    """
+    roots = [color_session_folder] if color_session_folder else []
+    roots.append(turnover_folder.parent / SESSION_FOLDER)
+    return [root / turnover_folder.name for root in roots]
+
+
+def find_session(turnover_folder: Path, color_session_folder: Path | None = None) -> Path | None:
+    """The final EDL exported for this turnover, found by convention, or None.
+
+    The first of `session_folders` that exists is the answer, and it has to hold exactly
+    one `.edl`, at any depth: two is a folder nobody has tidied, and choosing between
+    them is choosing a cut, so it is None and the editor points at the right one
+    (`Ingest Colour Session`). The CLFs are not looked for here; `load_session` indexes
+    them under the EDL's folder as it always has.
+    """
+    for folder in session_folders(turnover_folder, color_session_folder):
+        if not folder.is_dir():
+            continue
+        edls = sorted(path for path in folder.rglob("*.edl") if path.is_file())
+        if len(edls) == 1:
+            return edls[0]
+        log.info("%s holds %d .edl files, so no session was offered for it", folder, len(edls))
+        return None
+    return None
 
 
 def load_session(

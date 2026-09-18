@@ -137,6 +137,26 @@ The second tab of the same dock, built in M5.8.2 against PRD FR-13. Table: time,
 - **The panel is bounded and the file is not.** It keeps the last `MAX_LINES`; the complete record is the rotating file in `~/Library/Logs/ProIngest` (PACKAGING.md). A hidden line ages out with the rest, so a filter can never be the thing that makes the window grow.
 - **It follows the tail only when it is already at the tail.** Somebody who has scrolled up is reading something.
 
+## 6.2 Deliverables tab
+
+The third tab of the same dock, built 2026-09-17 against section 1's layout, which had listed it
+from the start. Table, for the **selected rows**: shot, deliverable name, kind, resolution,
+version, status, frames, size, the rule IDs it failed, and the path. Read only, like the metadata
+pane: a deliverable is written by a run and by nothing else.
+
+- **It answers what the list and the Issues dock do not.** The Progress column says how many of
+  a row's outputs have landed and the dock says which failed a check; this says *what* a row
+  delivers, where each one went and at which version, which is the question somebody asks
+  before opening a Finder window.
+- **Double-click opens the folder the file is in.** A path in a table is something a person can
+  read and cannot type.
+- **It is redrawn with the metadata pane**, from the same selection and for the same reasons,
+  so a finished run reaches it the moment the statuses are written back. It is not redrawn on
+  the run's five-a-second timer: a status of `rendering` appears on the next selection change or
+  when the run ends, and the row's own bar is the live surface.
+- **A selected shot with nothing planned says so** in one line, so an empty table under a shot
+  that has never run reads as not yet rather than as broken.
+
 ## 7. Run and progress
 
 - Run opens no dialog if the delivery root is set; otherwise it prompts once.
@@ -144,6 +164,7 @@ The second tab of the same dock, built in M5.8.2 against PRD FR-13. Table: time,
 - Status bar shows overall percent, jobs running, throughput (frames/s), and ETA.
 - Stop finishes in-flight frames, discards `.part` outputs, and leaves rows in their previous state.
 - On completion a non-modal banner above the list reads "Batch complete: 27 done, 1 failed, 2 skipped. Exports written to ...". Click opens the folder.
+- **A run that would render nothing does not start** (2026-09-17). When every turnover with rows is held back by a turnover scope error, which is usually QC-008 on a batch nobody has ingested a session into, Run opens a dialog naming each turnover and the rule holding it, and brings up the Issues tab. It used to start, plan nothing and say so in the status bar, which is the correct refusal and reads as a dead button. One turnover held back beside one that is ready is still a status bar line, and the ready one delivers.
 
 **Two things about a stopped run that this list said too simply** (M5.5, 2026-09-12). The
 records of a stopped run **are** applied to the rows, because a job that finished before Stop
@@ -227,8 +248,13 @@ Built in M5.7.2. What that settled, beyond the layout:
 ## 10. Empty and first-run states
 
 - No batch open: centered text "New batch or open one", with the two buttons.
-- Batch with no turnovers: "Add a turnover folder to begin".
-- After Scan with zero rows: "No clips found in timeline" plus a link to the Issues dock.
+- **New batch opens the Add Turnover chooser straight away** (2026-09-17). A new batch has
+  exactly one next step, and a second empty screen with the button for it somewhere in the
+  toolbar read as the tool waiting for nothing. Cancelling the chooser lands on the next state.
+- Batch with no turnovers: "Add a turnover folder to begin", with an Add Turnover button under
+  it that follows the toolbar action.
+- After Scan with zero rows: "No clips found in timeline" plus a link to the Issues dock. The
+  same button stays under it.
 
 ## 11. macOS details
 
@@ -351,7 +377,7 @@ OQ-25.
 | root | chosen where | what it means |
 |---|---|---|
 | Source root | toolbar, `Add Turnover` | The folder turnovers are added from. The chooser opens here, and the turnover folder the editor picks beneath it is what gets scanned and indexed |
-| Delivery root | batch bar, click the path | Where `<show>/<shot>/` is written, and where the tracker and QC spreadsheets land |
+| Delivery root | batch bar, click the path | Where `<show>/<shot>/` is written, and where the tracker and QC spreadsheets land. **Drawn amber while there is none** (2026-09-17): it is the one thing Run stops to ask about, so it reads as unfinished before then |
 
 - Both are remembered **per batch**, so reopening a `.pibatch` restores them and a second batch
   on another drive does not disturb the first.
@@ -403,3 +429,10 @@ of where the answers came from. Nothing reads the package again (`core/clf.py`).
 - **The rules re-run afterwards**, because the ingest moves In and Out on the rows it matched and
   the durations the thresholds judge have changed. QC-008 and QC-009 are pre-flight and clear at
   the next Run.
+- **A session exported by convention is offered after the scan** (2026-09-17, OQ-53). When a
+  turnover's rows land, `clf.find_session` looks for a folder named as the turnover folder is,
+  first under the Settings folder the chooser opens at, then in `_color` beside the turnover; it
+  has to hold exactly one `.edl`, at any depth. Found, and the turnover has rows with media and
+  no session yet, a Yes/No dialog names the folder and Yes runs the same ingest the button does.
+  Two `.edl` files is no offer rather than a guess, since choosing between them is choosing a
+  cut. Asked rather than done because an ingest overwrites a trim on the rows.

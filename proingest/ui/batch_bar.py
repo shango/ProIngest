@@ -29,9 +29,11 @@ from proingest.ui.shot_model import DisplayMode
 
 SEARCH_PLACEHOLDER = "Search shot code"
 
-NO_DELIVERY_ROOT = "Set delivery root"
+NO_DELIVERY_ROOT = "Set delivery root..."
 """What the delivery root button says when the batch has none yet. Not a path shaped
 placeholder: a greyed out example path reads as a value that is already set."""
+
+NO_DELIVERY_ROOT_TIP = "Where the show folder and the spreadsheets go. Run asks for it if it is not set."
 
 
 class BatchBar(QWidget):
@@ -91,7 +93,14 @@ class BatchBar(QWidget):
         tooltip carries it as well so a bar squeezed narrow still answers the question.
         """
         self.delivery_root.setText(str(root) if root else NO_DELIVERY_ROOT)
-        self.delivery_root.setToolTip(str(root) if root else "")
+        self.delivery_root.setToolTip(str(root) if root else NO_DELIVERY_ROOT_TIP)
+        # Amber while there is nothing to deliver into (theme.qss): it is the one thing
+        # Run will stop to ask about, so it should read as unfinished before then. A
+        # dynamic property is not re-read by the stylesheet until the widget is
+        # re-polished, hence the two calls.
+        self.delivery_root.setProperty("unset", root is None)
+        self.delivery_root.style().unpolish(self.delivery_root)
+        self.delivery_root.style().polish(self.delivery_root)
 
     def show_display_mode(self, mode: DisplayMode) -> None:
         """Follow the model, so Ctrl+T and the buttons cannot end up disagreeing."""

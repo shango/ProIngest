@@ -25,7 +25,8 @@ Three things have to exist, and only the third one usually does not.
 
 ![The window before a batch is open](images/empty-state.png)
 
-**1. Add the turnover.** Press **Add Turnover** and pick the turnover's own folder. The scan
+**1. Add the turnover.** Press **New batch** and pick the turnover's own folder in the chooser
+that opens; **Add Turnover** in the toolbar is the same chooser for the next one. The scan
 starts immediately - you do not press Scan afterwards, and Scan is for something else. It runs
 in the background, so the window stays usable, and the shots appear grouped under the folder's
 name as they are found.
@@ -57,9 +58,12 @@ QC log.
 Every edit re-checks that row and saves itself a moment later, so there is nothing to remember
 to press. **⌘S** names the batch file the first time.
 
-**4. Ingest the colour session.** Select the turnover (or any shot under it), press **Ingest
-Colour Session**, and point at the session's final `.edl`. One turnover at a time: another one
-can still be waiting on colour while this one delivers.
+**4. Ingest the colour session.** If the colourist exported it by the convention - a folder
+named exactly as the turnover folder, inside a `_color` folder beside the turnovers, holding
+the final `.edl` and the `.clf` files - the scan finds it and asks whether to ingest it. Say
+yes. Otherwise select the turnover (or any shot under it), press **Ingest Colour Session**,
+and point at the session's final `.edl`. One turnover at a time: another one can still be
+waiting on colour while this one delivers.
 
 What it writes onto the rows: the approved In and Out from the trim the colourist and the AD sat through,
 the CDL as the readable record, and which `.clf` each shot is graded with. It then tells you how
@@ -70,9 +74,9 @@ says nothing about, trims the approved cut overwrote, and shots that more than o
 one. Trimming again afterwards is allowed; it is what step 3 is for, and any row that moved is
 flagged in the QC log as delivered at something other than what was approved (QC-045).
 
-**5. Say where it goes.** In the bar above the list, click **Set delivery root** - it shows
-the path once there is one - and pick the folder. It is remembered with the batch, so reopening a
-`.pibatch` months later restores it.
+**5. Say where it goes.** In the bar above the list, click **Set delivery root...** and pick the
+folder. The button is amber until there is one and shows the path after that. It is remembered
+with the batch, so reopening a `.pibatch` months later restores it.
 
 **6. Run.** **⌘R**. It plans the batch, works out which version this run writes, and renders
 through several worker processes at once.
@@ -112,8 +116,11 @@ finished is deleted, so a crash never leaves something that looks complete.
 
 The commonest one is not a fault. **A turnover with no colour session ingested renders
 nothing** (QC-008) - the plates would be missing the approved look, and delivering them
-ungraded is worse than delivering them late. Run says so in its tooltip before you press it
-rather than after.
+ungraded is worse than delivering them late. Run says so in its tooltip before you press it,
+and if every turnover in the batch is in that state it opens a dialog naming each one and the
+rule holding it back, then brings up the Issues tab, rather than starting a run that does
+nothing. One turnover waiting on colour beside one that is ready is only a line in the status
+bar, and the ready one delivers.
 
 Otherwise: hover any greyed button and it says why it is greyed. That is what the tooltips are
 for, and it is usually the whole answer.

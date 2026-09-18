@@ -23,6 +23,7 @@ one-line version, for checking that everyone means the same thing.
 | 7 | Trim each shot with the AD, and grade it **primary only**: no windows, no qualifiers, no tracked secondaries. Curves and log wheels are fine, and rule 4 says why. | the approved cut and the approved look |
 | 8 | Export the updated final edit list. | **final `.edl`**: timecode, shot IDs, the approved In/Out, and the CDL as `*ASC_SOP` / `*ASC_SAT` lines |
 | 9 | Export the grade per shot as a transform, **starting from the encoding the clip arrived in**. | **one `.clf` per shot**, `source encoding in > grade > linear ACEScg out`, with **no display rendering in it**. This is the whole of what the tool applies |
+| 9a | Save the EDL and the CLFs for each turnover in a folder **named exactly as that turnover's folder**, inside `_color` beside the turnovers on the mount (OQ-53). | the tool finds it when the turnover is scanned and offers to ingest it; anywhere else, the editor points at the EDL |
 | 10 | Export the stringout with the look and burn-ins. | ProRes QT. **The tool no longer builds one**, and it is what the tool's references get checked against |
 
 ## Tool

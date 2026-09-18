@@ -27,11 +27,12 @@ from PySide6.QtWidgets import (
 
 from proingest.core import batchfile, clf, naming
 from proingest.core import settings as core_settings
-from proingest.core.models import Batch, Deliverable, FrameRate, InOut, Turnover
+from proingest.core.models import Batch, Deliverable, FrameRate, InOut, QCResult, Turnover
 from proingest.core.planner import DeliverableJob
 from proingest.core.render import Progress
 from proingest.ui import app as ui_app
-from proingest.ui import color_session, paths
+from proingest.ui import color_session, deliverables, paths
+from proingest.ui.batch_bar import NO_DELIVERY_ROOT
 from proingest.ui.color_session import INGEST_MIXED_RATES, ingest_text, turnover_labels
 from proingest.ui.main_window import (
     BOTTOM_TABS,
@@ -42,7 +43,12 @@ from proingest.ui.main_window import (
     unsaved_question,
 )
 from proingest.ui.metadata import MIXED, NO_SELECTION, as_text
-from proingest.ui.run_controller import CHECKING_BATCH, NOTHING_TO_RENDER, WRITING_REPORTS
+from proingest.ui.run_controller import (
+    CHECKING_BATCH,
+    NOTHING_TO_RENDER,
+    NOTHING_WOULD_RENDER,
+    WRITING_REPORTS,
+)
 from proingest.ui.run_strip import LINK_COLOR, RunStrip
 from proingest.ui.runner import RENDERING
 from proingest.ui.settings_dialog import SettingsDialog
@@ -51,6 +57,7 @@ from tests.fixtures import color as color_fixtures
 from tests.fixtures.batches import (
     RATE_24,
     batch,
+    delivered,
     fail,
     ingested,
     media,
@@ -75,6 +82,7 @@ class DrivenWindow(MainWindow):
         super().__init__(settings_path)
         self.problems: list[tuple[str, str]] = []
         self.folder_answer: Path | None = None
+        self.folders_asked: list[str] = []
         self.open_answer: Path | None = None
         self.save_answer: Path | None = None
         self.save_asked: list[str] = []
@@ -86,6 +94,8 @@ class DrivenWindow(MainWindow):
         changes nothing, so a test that only wanted the page open gets a Cancel."""
 
         self.edl_answer: Path | None = None
+        self.found_answer = False
+        self.found_asked: list[tuple[str, Path]] = []
         self.turnover_answer: Turnover | None = None
         self.turnovers_asked: list[list[str]] = []
         self.ingest_reports: list[str] = []
@@ -100,6 +110,7 @@ class DrivenWindow(MainWindow):
         self.problems.append((title, text))
 
     def ask_folder(self, title: str, start: Path | None) -> Path | None:
+        self.folders_asked.append(title)
         return self.folder_answer
 
     def ask_open_path(self) -> Path | None:
@@ -117,6 +128,10 @@ class DrivenWindow(MainWindow):
 
     def ask_edl_path(self) -> Path | None:
         return self.edl_answer
+
+    def ask_ingest_found(self, turnover: Turnover, folder: Path) -> bool:
+        self.found_asked.append((turnover.folder.name, folder))
+        return self.found_answer
 
     def ask_turnover(self, turnovers: Sequence[Turnover]) -> Turnover | None:
         self.turnovers_asked.append([t.turnover_id for t in turnovers])
@@ -307,10 +322,10 @@ class TestTheLayout:
         names = [window.bottom_tabs.tabText(i) for i in range(window.bottom_tabs.count())]
         assert names == list(BOTTOM_TABS)
 
-    def test_the_log_tab_is_the_log_panel_rather_than_a_placeholder(self, window: DrivenWindow) -> None:
-        """M5.8.2. Deliverables is still the placeholder and is the tab left to build."""
+    def test_every_tab_is_its_panel_and_none_is_a_placeholder(self, window: DrivenWindow) -> None:
+        assert window.bottom_tabs.widget(BOTTOM_TABS.index("Issues")) is window.issues
         assert window.bottom_tabs.widget(BOTTOM_TABS.index("Log")) is window.log_view
-        assert isinstance(window.bottom_tabs.widget(BOTTOM_TABS.index("Deliverables")), QLabel)
+        assert window.bottom_tabs.widget(BOTTOM_TABS.index("Deliverables")) is window.deliverables
 
     def test_the_status_bar_progress_is_hidden_until_a_run(self, window: DrivenWindow) -> None:
         assert window.progress.isHidden()
@@ -463,11 +478,34 @@ class TestTheBatchLifecycle:
         assert window.action_new.isEnabled()
         assert window.action_open.isEnabled()
 
-    def test_new_opens_an_empty_batch_asking_for_a_turnover(self, window: DrivenWindow) -> None:
+    def test_new_opens_the_turnover_chooser_straight_away(self, window: DrivenWindow, tmp_path: Path) -> None:
+        """A new batch has one next step, so it is asked for rather than left to a button."""
+        started = stub_scanner(window)
+        window.folder_answer = tmp_path / "source" / "turnover001"
+        window.action_new.trigger()
+        assert window.folders_asked == ["Add Turnover"]
+        assert started == [[(tmp_path / "source" / "turnover001", "t1")]]
+
+    def test_cancelling_that_chooser_leaves_an_empty_batch_asking_for_one(self, window: DrivenWindow) -> None:
         window.action_new.trigger()
         assert window.pages.currentIndex() == 1
         assert window.list_pages.currentIndex() == 1
         assert window.list_empty_text.text() == NO_TURNOVERS_TEXT
+
+    def test_the_empty_list_has_an_add_turnover_button_that_follows_the_action(
+        self, window: DrivenWindow
+    ) -> None:
+        """Section 10: neither of the open batch's empty states is a dead end."""
+        page = window.findChild(QWidget, "list_empty_state")
+        assert page is not None
+        button = next(b for b in page.findChildren(QPushButton) if b.text() == "Add Turnover...")
+        assert not button.isEnabled()
+        window.action_new.trigger()
+        assert button.isEnabled()
+        started = stub_scanner(window)
+        window.folder_answer = Path("/a/turnover001")
+        button.click()
+        assert started == [[(Path("/a/turnover001"), "t1")]]
 
     def test_a_new_batch_has_no_file_until_it_is_saved(self, window: DrivenWindow) -> None:
         window.action_new.trigger()
@@ -576,6 +614,16 @@ class TestTheTwoRoots:
         assert window.batch.delivery_root == tmp_path
         assert window.batch_bar.delivery_root.text() == str(tmp_path)
         assert window.autosave.pending
+
+    def test_the_button_is_flagged_while_there_is_no_root(self, window: DrivenWindow, tmp_path: Path) -> None:
+        """Amber until set: it is the one thing Run will stop to ask about."""
+        window.set_batch(batch(row(), delivery_root=None))
+        button = window.batch_bar.delivery_root
+        assert button.text() == NO_DELIVERY_ROOT
+        assert button.property("unset") is True
+        window.folder_answer = tmp_path
+        button.click()
+        assert button.property("unset") is False
 
     def test_a_root_that_has_gone_missing_is_reported_and_the_chooser_reopens(
         self, window: DrivenWindow, tmp_path: Path
@@ -892,6 +940,71 @@ class TestIngestingAColourSession:
         assert window.turnovers_asked == []
 
 
+class TestASessionFoundBesideTheTurnover:
+    """OQ-53: a scan that finds a session by convention offers it, and one click ingests it."""
+
+    def scanned(self, window: DrivenWindow, tmp_path: Path, *, session: bool = True) -> Turnover:
+        folder = tmp_path / "turnovers" / "turnover001_02_23_2026_danielluckett"
+        folder.mkdir(parents=True)
+        if session:
+            color_fixtures.make_session(tmp_path / "turnovers" / "_color" / folder.name)
+        found = Turnover("t1", folder)
+        window.set_batch(Batch())
+        window._take_scanned(found, [row(turnover_id="t1")], {})
+        return found
+
+    def test_the_scan_offers_it_and_yes_ingests_it(self, window: DrivenWindow, tmp_path: Path) -> None:
+        window.found_answer = True
+        found = self.scanned(window, tmp_path)
+
+        assert window.found_asked == [
+            (found.folder.name, tmp_path / "turnovers" / "_color" / found.folder.name)
+        ]
+        assert found.color_session_edl is not None
+        assert window.batch.rows[0].clf_path is not None
+        assert len(window.ingest_reports) == 1
+
+    def test_no_changes_nothing(self, window: DrivenWindow, tmp_path: Path) -> None:
+        found = self.scanned(window, tmp_path)
+        assert window.found_asked
+        assert found.color_session_edl is None
+        assert window.batch.rows[0].clf_path is None
+
+    def test_nothing_by_convention_asks_nothing(self, window: DrivenWindow, tmp_path: Path) -> None:
+        self.scanned(window, tmp_path, session=False)
+        assert window.found_asked == []
+
+    def test_a_turnover_already_ingested_is_not_asked_again(
+        self, window: DrivenWindow, tmp_path: Path
+    ) -> None:
+        folder = tmp_path / "turnovers" / "turnover001"
+        folder.mkdir(parents=True)
+        color_fixtures.make_session(tmp_path / "turnovers" / "_color" / folder.name)
+        window.set_batch(Batch())
+        window._take_scanned(
+            Turnover("t1", folder, color_session_edl=tmp_path / "elsewhere.edl"), [row(turnover_id="t1")], {}
+        )
+        assert window.found_asked == []
+
+    def test_the_settings_folder_is_looked_in_first(self, window: DrivenWindow, tmp_path: Path) -> None:
+        window.settings.color_session_folder = str(tmp_path / "sessions")
+        folder = tmp_path / "turnovers" / "turnover001"
+        folder.mkdir(parents=True)
+        color_fixtures.make_session(tmp_path / "sessions" / folder.name)
+        window.set_batch(Batch())
+        window._take_scanned(Turnover("t1", folder), [row(turnover_id="t1")], {})
+        assert window.found_asked == [(folder.name, tmp_path / "sessions" / folder.name)]
+
+    def test_the_toolbar_route_still_works_with_nothing_found(
+        self, window: DrivenWindow, tmp_path: Path
+    ) -> None:
+        """Ingest Colour Session is the same ingest, pointed at by hand."""
+        self.scanned(window, tmp_path, session=False)
+        window.edl_answer = color_fixtures.make_session(tmp_path / "session")
+        window.action_ingest.trigger()
+        assert window.batch.rows[0].clf_path is not None
+
+
 class TestWhatAnIngestSays:
     """`ingest_text`, which says what `--color-session` prints (`ui/color_session.py`)."""
 
@@ -1157,6 +1270,22 @@ class TestRunningABatch:
         assert started == []
         assert "QC-008" in [result.rule_id for result in window.batch.turnovers[0].qc]
 
+    def test_a_run_that_would_render_nothing_says_why_in_a_dialog(
+        self, window: DrivenWindow, tmp_path: Path
+    ) -> None:
+        """Every turnover held back: a dialog naming each and its rule, not a status line."""
+        window.set_batch(batch(row(), delivery_root=tmp_path))
+        window.bottom_dock.setVisible(False)
+        window.action_run.trigger()
+
+        assert len(window.problems) == 1
+        title, text = window.problems[0]
+        assert title == NOTHING_WOULD_RENDER
+        assert text.startswith(window.batch.turnovers[0].folder.name)
+        assert "QC-008" in text
+        assert window.run_strip.state == "empty"
+        assert not window.bottom_dock.isHidden()
+
     def test_the_turnovers_that_are_ready_still_render(self, window: DrivenWindow, tmp_path: Path) -> None:
         """What turnover scope buys: one waits on colour while the other delivers."""
         ready, waiting = turnover("turnover001"), turnover("turnover002")
@@ -1179,7 +1308,11 @@ class TestRunningABatch:
     def test_a_batch_that_plans_nothing_says_so_rather_than_starting(
         self, window: DrivenWindow, tmp_path: Path
     ) -> None:
-        window.set_batch(batch(row(skipped=True, skip_reason="not needed"), delivery_root=tmp_path))
+        # A session, so the turnover is not held back: this is about rows that plan
+        # nothing, and a turnover that cannot run at all is the dialog above.
+        window.set_batch(
+            ingested(batch(row(skipped=True, skip_reason="not needed"), delivery_root=tmp_path), tmp_path)
+        )
         started = stub_runner(window)
         window.action_run.trigger()
 
@@ -1372,6 +1505,116 @@ class TestRunningABatch:
 
         assert not window.run_strip.banner.isVisible()
         assert window.run_strip.state == "empty"
+
+
+class TestExportWithoutARun:
+    """Export: both spreadsheets from the batch as it stands, and no worker started."""
+
+    def test_it_is_greyed_until_there_are_rows(self, window: DrivenWindow) -> None:
+        assert not window.action_export.isEnabled()
+        window.set_batch(Batch())
+        assert not window.action_export.isEnabled()
+        window.set_batch(batch(row()))
+        assert window.action_export.isEnabled()
+
+    def test_it_writes_both_files_and_the_banner_names_the_folder(
+        self, window: DrivenWindow, tmp_path: Path
+    ) -> None:
+        window.set_batch(batch(row(), delivery_root=tmp_path))
+        started = stub_runner(window)
+        window.action_export.trigger()
+
+        reports = tmp_path / "MELT" / "_reports"
+        names = sorted(path.name for path in reports.iterdir())
+        assert [name.split("_")[0] for name in names] == ["qc", "shot"]
+        assert started == []
+        assert window.run_strip.state == "done"
+        assert str(reports) in window.run_strip.banner.text()
+        assert str(reports) in window.statusBar().currentMessage()
+
+    def test_the_banner_link_opens_that_folder(self, window: DrivenWindow, tmp_path: Path) -> None:
+        window.set_batch(batch(row(), delivery_root=tmp_path))
+        window.action_export.trigger()
+        window.run_strip.banner.linkActivated.emit("#reports")
+        assert window.opened_folders == [tmp_path / "MELT" / "_reports"]
+
+    def test_a_batch_with_no_delivery_root_is_asked_for_one(
+        self, window: DrivenWindow, tmp_path: Path
+    ) -> None:
+        window.set_batch(batch(row(), delivery_root=None))
+        window.folder_answer = tmp_path
+        window.action_export.trigger()
+        assert window.batch.delivery_root == tmp_path
+        assert (tmp_path / "MELT" / "_reports").is_dir()
+
+    def test_refusing_writes_nothing_and_says_nothing(self, window: DrivenWindow, tmp_path: Path) -> None:
+        window.set_batch(batch(row(), delivery_root=None))
+        window.action_export.trigger()
+        assert window.run_strip.state == "empty"
+        assert not (tmp_path / "MELT").exists()
+
+
+class TestTheDeliverablesTab:
+    """Section 6.2: what the selected shot delivers, where, and in what state."""
+
+    def test_it_is_empty_until_a_shot_is_selected(self, window: DrivenWindow) -> None:
+        window.set_batch(batch(delivered(row())))
+        assert window.deliverables.count == 0
+
+    def test_it_lists_the_selected_shot_s_deliverables(self, window: DrivenWindow) -> None:
+        window.set_batch(batch(delivered(row(), status="done")))
+        window.shot_list.select_row(window.batch.rows[0])
+
+        assert window.deliverables.count == 2
+        first = window.deliverables.topLevelItem(0)
+        assert first is not None
+        assert first.text(deliverables.COLUMNS.index("Shot")) == "MELT0001"
+        assert first.text(deliverables.COLUMNS.index("Kind")) == "raw_dir"
+        assert first.text(deliverables.COLUMNS.index("Status")) == "done"
+        assert first.text(deliverables.COLUMNS.index("Ver")) == "v01"
+
+    def test_a_failed_check_is_named_by_its_rule(self, window: DrivenWindow) -> None:
+        built = batch(delivered(row(), status="failed"))
+        built.rows[0].deliverables[0].qc.append(QCResult("QC-104", "error", "deliverable", "short"))
+        window.set_batch(built)
+        window.shot_list.select_row(built.rows[0])
+        first = window.deliverables.topLevelItem(0)
+        assert first is not None
+        assert first.text(deliverables.COLUMNS.index("Failed")) == "QC-104"
+
+    def test_a_shot_that_has_never_run_says_so_rather_than_showing_nothing(
+        self, window: DrivenWindow
+    ) -> None:
+        window.set_batch(batch(row()))
+        window.shot_list.select_row(window.batch.rows[0])
+        assert window.deliverables.count == 0
+        note = window.deliverables.topLevelItem(0)
+        assert note is not None and note.text(0) == deliverables.NO_DELIVERABLES
+
+    def test_it_follows_a_run_writing_statuses_back(self, window: DrivenWindow) -> None:
+        """The same refresh the metadata pane gets, so a finished run reaches it."""
+        window.set_batch(batch(delivered(row(), status="planned")))
+        window.shot_list.select_row(window.batch.rows[0])
+        window.batch.rows[0].deliverables[0].status = "done"
+        window.show_results()
+        first = window.deliverables.topLevelItem(0)
+        assert first is not None
+        assert first.text(deliverables.COLUMNS.index("Status")) == "done"
+
+    def test_double_clicking_a_line_opens_its_folder(self, window: DrivenWindow) -> None:
+        window.set_batch(batch(delivered(row())))
+        window.shot_list.select_row(window.batch.rows[0])
+        first = window.deliverables.topLevelItem(0)
+        assert first is not None
+        window.deliverables.itemDoubleClicked.emit(first, 0)
+        assert window.opened_folders == [Path("/delivery")]
+
+    def test_sizes_read_as_a_person_reads_them(self) -> None:
+        assert deliverables.size_text(0) == ""
+        assert deliverables.size_text(512) == "512 B"
+        assert deliverables.size_text(12_300) == "12 KB"
+        assert deliverables.size_text(1_234_000) == "1.2 MB"
+        assert deliverables.size_text(64_000_000_000) == "64 GB"
 
 
 class TestTheMetadataPane:
