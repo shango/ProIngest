@@ -15,8 +15,8 @@ What is left is **M8 polish** (needs a real turnover and a real colour session) 
 of **M9, the user guide**.
 
 **This session, 2026-09-17, was a UX pass on the branch `ux/first-run-and-discovery`, one
-commit per item, all six built, pushed and opened as a PR against `main`. The version is
-0.2.0**, the first bump since scaffolding, and `HANDOFF.md` is this session's disposable note. The user looked at the window and asked
+commit per item, all six built and **merged into `main` as PR #7** with CI green on all four
+jobs (run 35308641062). The version is 0.2.0**, the first bump since scaffolding, and `HANDOFF.md` is this session's disposable note. The user looked at the window and asked
 for six things; the note "UX pass, 2026-09-17" below has each. **New batch opens the turnover
 chooser straight away**, the empty list has an Add Turnover button, **Export writes both
 spreadsheets without a run**, the delivery root is amber until set, **Run refuses in a dialog
