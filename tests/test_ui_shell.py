@@ -75,6 +75,7 @@ class DrivenWindow(MainWindow):
         super().__init__(settings_path)
         self.problems: list[tuple[str, str]] = []
         self.folder_answer: Path | None = None
+        self.folders_asked: list[str] = []
         self.open_answer: Path | None = None
         self.save_answer: Path | None = None
         self.save_asked: list[str] = []
@@ -100,6 +101,7 @@ class DrivenWindow(MainWindow):
         self.problems.append((title, text))
 
     def ask_folder(self, title: str, start: Path | None) -> Path | None:
+        self.folders_asked.append(title)
         return self.folder_answer
 
     def ask_open_path(self) -> Path | None:
@@ -463,11 +465,34 @@ class TestTheBatchLifecycle:
         assert window.action_new.isEnabled()
         assert window.action_open.isEnabled()
 
-    def test_new_opens_an_empty_batch_asking_for_a_turnover(self, window: DrivenWindow) -> None:
+    def test_new_opens_the_turnover_chooser_straight_away(self, window: DrivenWindow, tmp_path: Path) -> None:
+        """A new batch has one next step, so it is asked for rather than left to a button."""
+        started = stub_scanner(window)
+        window.folder_answer = tmp_path / "source" / "turnover001"
+        window.action_new.trigger()
+        assert window.folders_asked == ["Add Turnover"]
+        assert started == [[(tmp_path / "source" / "turnover001", "t1")]]
+
+    def test_cancelling_that_chooser_leaves_an_empty_batch_asking_for_one(self, window: DrivenWindow) -> None:
         window.action_new.trigger()
         assert window.pages.currentIndex() == 1
         assert window.list_pages.currentIndex() == 1
         assert window.list_empty_text.text() == NO_TURNOVERS_TEXT
+
+    def test_the_empty_list_has_an_add_turnover_button_that_follows_the_action(
+        self, window: DrivenWindow
+    ) -> None:
+        """Section 10: neither of the open batch's empty states is a dead end."""
+        page = window.findChild(QWidget, "list_empty_state")
+        assert page is not None
+        button = next(b for b in page.findChildren(QPushButton) if b.text() == "Add Turnover...")
+        assert not button.isEnabled()
+        window.action_new.trigger()
+        assert button.isEnabled()
+        started = stub_scanner(window)
+        window.folder_answer = Path("/a/turnover001")
+        button.click()
+        assert started == [[(Path("/a/turnover001"), "t1")]]
 
     def test_a_new_batch_has_no_file_until_it_is_saved(self, window: DrivenWindow) -> None:
         window.action_new.trigger()

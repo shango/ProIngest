@@ -14,7 +14,12 @@ complete, M4.5 all four chunks, M4.6 all five, **M5 all twelve**, **M7**, and **
 What is left is **M8 polish** (needs a real turnover and a real colour session) and the rest
 of **M9, the user guide**.
 
-**This session, 2026-09-16, was about getting the tool onto a Mac and then onto the editor's
+**This session, 2026-09-17, is a UX pass on the branch `ux/first-run-and-discovery`, one
+commit per item, none pushed yet.** The user looked at the window and asked for six things;
+the note "UX pass, 2026-09-17" below tracks each one as it lands. Built so far: **New batch
+opens the turnover chooser straight away**, and the empty list has an Add Turnover button.
+
+**The session before, 2026-09-16, was about getting the tool onto a Mac and then onto the editor's
 Mac, and it was driven by somebody running out of time on a rented box.** Nothing about what the
 tool does changed. Two shell scripts, both merged, and everything anybody learned about handing a
 build over is written down rather than left in a chat.
@@ -166,6 +171,25 @@ frame in place. **Both ends of that sentence were overtaken on 2026-09-12**: ACE
 from the chain and the input transform no longer runs ahead of a CLF, **which M4.6.2 built on
 2026-09-12**. The composition machinery is untouched and is what the whole thing still rests on. **The display referred block it kept under a fence
 is gone**, deleted with its tests in M4.5.4 as planned.
+
+### UX pass, 2026-09-17: six things the user asked for after looking at the window
+
+The user's own words for the first one: New batch "creates a batch, but one still needs to
+add turnovers, I think that seems like a bad or confusing flow". The six, in the order they
+are being built, each its own commit on `ux/first-run-and-discovery`:
+
+1. **New batch opens the Add Turnover chooser straight away. Built.** `new_batch` calls
+   `add_turnover` after `set_batch`; cancelling lands on section 10's "Add a turnover folder
+   to begin", which now has an **Add Turnover...** button under it (and under "No clips found"
+   too) that follows the toolbar action both ways through `MainWindow._button_for`, the same
+   helper the first empty state's two buttons now use. UI_SPEC section 10 and the quickstart's
+   step 1 say so. Tests: `TestTheBatchLifecycle` in `tests/test_ui_shell.py`, and
+   `DrivenWindow.folders_asked` records which chooser opened.
+2. Export writes both spreadsheets without a run.
+3. The batch bar's delivery root is flagged while it is unset.
+4. Run asks before starting when nothing would render.
+5. Colour session discovery: a session folder found by convention is offered after a scan.
+6. The Deliverables tab.
 
 ### First five minutes
 

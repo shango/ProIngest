@@ -381,7 +381,7 @@ class MainWindow(QMainWindow):
         return self._settings
 
     def new_batch(self) -> None:
-        """An empty batch with no file, waiting for a turnover (section 10).
+        """An empty batch with no file, and the turnover chooser straight away (section 10).
 
         It takes a **copy** of the rule thresholds in Settings rather than reading them
         as it goes, for the reason UI_SPEC section 13 gives for the two roots: what a
@@ -394,6 +394,10 @@ class MainWindow(QMainWindow):
         if self._settings.rules:
             batch.settings_overrides[qc.RULES_OVERRIDE_KEY] = self._app_rules().to_dict()
         self.set_batch(batch)
+        # A new batch has exactly one next step, so it is asked for here rather than
+        # left as a second empty screen with a toolbar button somewhere above it.
+        # Cancelling leaves the batch on section 10's "Add a turnover folder" page.
+        self.add_turnover()
 
     def open_batch(self) -> None:
         """Read a `.pibatch`, back it up, and check that its two roots are still there."""
@@ -712,13 +716,7 @@ class MainWindow(QMainWindow):
         button_row = QVBoxLayout(buttons)
         button_row.setSpacing(8)
         for text, action in (("New batch", self.action_new), ("Open batch...", self.action_open)):
-            button = QPushButton(text, buttons)
-            button.clicked.connect(action.trigger)
-            # The action is the authority on whether the thing can be done at all, and it
-            # follows it both ways: the chunk that enables New has one line to change, not two.
-            button.setEnabled(action.isEnabled())
-            action.changed.connect(lambda a=action, b=button: b.setEnabled(a.isEnabled()))
-            button_row.addWidget(button)
+            button_row.addWidget(self._button_for(text, action, buttons))
         layout.addWidget(buttons, alignment=Qt.AlignmentFlag.AlignCenter)
         return central
 
@@ -726,19 +724,39 @@ class MainWindow(QMainWindow):
         """Section 10's other two states, which are states of an open batch.
 
         One label rather than two pages: the two differ by a sentence, and a stack of
-        near identical widgets is two places to change the wording in.
+        near identical widgets is two places to change the wording in. The button under
+        it is the one thing either state wants next, so neither is a dead end.
         """
         central = QWidget(self)
         central.setObjectName("list_empty_state")
         layout = QVBoxLayout(central)
         layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.setSpacing(16)
 
         self.list_empty_text = QLabel(NO_TURNOVERS_TEXT, central)
         self.list_empty_text.setObjectName("list_empty_state_text")
         self.list_empty_text.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.list_empty_text.linkActivated.connect(self.show_issues)
         layout.addWidget(self.list_empty_text)
+        layout.addWidget(
+            self._button_for("Add Turnover...", self.action_add_turnover, central),
+            alignment=Qt.AlignmentFlag.AlignCenter,
+        )
         return central
+
+    @staticmethod
+    def _button_for(text: str, action: QAction, parent: QWidget) -> QPushButton:
+        """A button that triggers a toolbar action and is greyed exactly when it is.
+
+        The action is the authority on whether the thing can be done at all, and the
+        button follows it both ways: the code that enables Add Turnover has one line to
+        change, not two.
+        """
+        button = QPushButton(text, parent)
+        button.clicked.connect(action.trigger)
+        button.setEnabled(action.isEnabled())
+        action.changed.connect(lambda: button.setEnabled(action.isEnabled()))
+        return button
 
     def show_issues(self) -> None:
         """Bring the Issues tab up, which is where the link in section 10 points."""

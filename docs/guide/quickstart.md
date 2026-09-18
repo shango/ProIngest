@@ -25,7 +25,8 @@ Three things have to exist, and only the third one usually does not.
 
 ![The window before a batch is open](images/empty-state.png)
 
-**1. Add the turnover.** Press **Add Turnover** and pick the turnover's own folder. The scan
+**1. Add the turnover.** Press **New batch** and pick the turnover's own folder in the chooser
+that opens; **Add Turnover** in the toolbar is the same chooser for the next one. The scan
 starts immediately - you do not press Scan afterwards, and Scan is for something else. It runs
 in the background, so the window stays usable, and the shots appear grouped under the folder's
 name as they are found.

@@ -227,8 +227,13 @@ Built in M5.7.2. What that settled, beyond the layout:
 ## 10. Empty and first-run states
 
 - No batch open: centered text "New batch or open one", with the two buttons.
-- Batch with no turnovers: "Add a turnover folder to begin".
-- After Scan with zero rows: "No clips found in timeline" plus a link to the Issues dock.
+- **New batch opens the Add Turnover chooser straight away** (2026-09-17). A new batch has
+  exactly one next step, and a second empty screen with the button for it somewhere in the
+  toolbar read as the tool waiting for nothing. Cancelling the chooser lands on the next state.
+- Batch with no turnovers: "Add a turnover folder to begin", with an Add Turnover button under
+  it that follows the toolbar action.
+- After Scan with zero rows: "No clips found in timeline" plus a link to the Issues dock. The
+  same button stays under it.
 
 ## 11. macOS details
 
