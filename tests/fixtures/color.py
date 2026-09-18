@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import numpy as np
 import PyOpenColorIO as ocio
 
 from proingest.core import clf, color
@@ -102,3 +103,26 @@ def make_session(folder: Path, shots: int = 1, frames: int = 4) -> Path:
         plate_clf(folder / f"{shot}_grade_v01.clf")
     edl.write_text("\n".join(events) + "\n")
     return edl
+
+
+def plate_cube(path: Path, size: int = 17) -> Path:
+    """What Resolve's Generate LUT writes: the plate chain sampled onto a 3D `.cube` (OQ-54).
+
+    The same grade as `plate_clf`, so a test can swap one for the other. Red varies fastest,
+    which is the cube format's order, and the values are the processor's own, so the probe
+    that judges a CLF judges this the same way.
+    """
+    group = ocio.GroupTransform()
+    group.appendTransform(
+        ocio.CDLTransform(slope=[1.4, 1.0, 0.7], offset=[0.0] * 3, power=[1.0] * 3, sat=1.1)
+    )
+    group.appendTransform(ocio.ColorSpaceTransform(src=CLF_SOURCE, dst=color.PLATE_SPACE))
+    steps = np.linspace(0.0, 1.0, size, dtype=np.float32)
+    b, g, r = np.meshgrid(steps, steps, steps, indexing="ij")
+    pixels = np.stack([r, g, b], axis=-1).reshape(1, -1, 3).astype(np.float32)
+    color.apply(pixels, color.processor(group))
+    lines = [f"LUT_3D_SIZE {size}", "DOMAIN_MIN 0.0 0.0 0.0", "DOMAIN_MAX 1.0 1.0 1.0"]
+    lines += [f"{px[0]:.6f} {px[1]:.6f} {px[2]:.6f}" for px in pixels[0]]
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("\n".join(lines) + "\n")
+    return path

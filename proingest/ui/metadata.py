@@ -309,7 +309,7 @@ def _colour_fields(row: ShotRow) -> list[Field]:
         if row.source_encoding_origin:
             fields.append(Field("Named by", row.source_encoding_origin))
     if row.clf_path is not None:
-        fields.append(Field("CLF", str(row.clf_path), is_path=True))
+        fields.append(Field("Grade file", str(row.clf_path), is_path=True))
     return fields
 
 

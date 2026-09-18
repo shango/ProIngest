@@ -263,8 +263,8 @@ Treat it as a working session with the editor rather than a delivery.
       status bar names the turnover; whether that is enough, or whether Run should say it
       itself, is a judgement to make in front of the real window rather than from a test.
 - [ ] **Ingest one real session from the window and read the report.** How many rows matched,
-      how many got a CLF, and the three lists a person acts on: no event, trim overwritten, more
-      than one CLF naming the shot. It is the first time `clf.ingest` meets an EDL it did not
+      how many got a grade file, and the three lists a person acts on: no event, trim overwritten, more
+      than one grade file naming the shot. It is the first time `clf.ingest` meets an EDL it did not
       write. Watch whether a modal is the right place for it, or whether a long list of
       unmatched rows wants somewhere it can be read twice. OQ-31.
 - [ ] **Look at `Ingest Colour Session` in the toolbar.** Its label is two and a half times the

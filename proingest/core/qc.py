@@ -816,7 +816,7 @@ def check_color_session(turnover: Turnover, rows: list[ShotRow]) -> list[QCResul
                 "QC-008",
                 "error",
                 "turnover",
-                f"{edl.name} was ingested but delivered no CLF for any row in this turnover",
+                f"{edl.name} was ingested but delivered no grade file for any row in this turnover",
             )
         ]
     return []
@@ -840,7 +840,7 @@ def check_clf(row: ShotRow, has_session: bool) -> list[QCResult]:
                 "QC-009",
                 "error",
                 "row",
-                "the colour session delivered no CLF for this shot; it would render ungraded",
+                "the colour session delivered no grade file for this shot; it would render ungraded",
             )
         ]
     if not row.clf_path.is_file():
@@ -849,7 +849,7 @@ def check_clf(row: ShotRow, has_session: bool) -> list[QCResult]:
                 "QC-009",
                 "error",
                 "row",
-                f"the CLF this row was ingested with, {row.clf_path}, is no longer there",
+                f"the grade file this row was ingested with, {row.clf_path}, is no longer there",
             )
         ]
     return []
@@ -925,10 +925,13 @@ def check_color_chain(row: ShotRow) -> list[QCResult]:
                 "QC-048",
                 "info",
                 "row",
-                f"no CLF: rendered through the input transform alone, {encoding} to {color.PLATE_SPACE}",
+                f"no grade file: rendered through the input transform alone, "
+                f"{encoding} to {color.PLATE_SPACE}",
             )
         ]
-    return [QCResult("QC-048", "info", "row", "no CLF and no source encoding: nothing to render through")]
+    return [
+        QCResult("QC-048", "info", "row", "no grade file and no source encoding: nothing to render through")
+    ]
 
 
 def check_hdri_header(row: ShotRow) -> list[QCResult]:

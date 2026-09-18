@@ -140,7 +140,7 @@ class TestWhatOneRowSays:
         sections = describe([graded], batch(graded))
         assert value(sections, "Colour", "Source encoding") == "Sony S-Log3/S-Gamut3.Cine"
         assert value(sections, "Colour", "Named by") == "clip metadata"
-        assert value(sections, "Colour", "CLF") == "/session/MELT0001.clf"
+        assert value(sections, "Colour", "Grade file") == "/session/MELT0001.clf"
 
     def test_a_row_with_no_colour_facts_has_no_colour_section(self) -> None:
         assert "Colour" not in titles(describe([row()], batch(row())))
@@ -278,7 +278,7 @@ class TestMoreThanOneRow:
 
     def test_a_field_only_one_row_has_is_a_disagreement(self) -> None:
         rows = [row(clf_path=Path("/session/a.clf")), row("MELT0002_pl01")]
-        assert value(describe(rows, batch(*rows)), "Colour", "CLF") == MIXED
+        assert value(describe(rows, batch(*rows)), "Colour", "Grade file") == MIXED
 
     def test_qc_is_counted_across_the_selection_rather_than_merged(self) -> None:
         """Two rows with different problems agree on nothing, and `mixed` would be the

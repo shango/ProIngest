@@ -10,9 +10,22 @@ commit.
 
 **State at 2026-09-16. Every feature milestone is built, and so is packaging.** M1 to M4
 complete, M4.5 all four chunks, M4.6 all five, **M5 all twelve**, **M7**, and **M9.4**.
-**1726 tests**, `ruff`, `ruff format` and `mypy --strict` clean over `proingest tests build`.
+**1730 tests**, `ruff`, `ruff format` and `mypy --strict` clean over `proingest tests build`.
 What is left is **M8 polish** (needs a real turnover and a real colour session) and the rest
 of **M9, the user guide**.
+
+**2026-09-18: the per-shot grade file is a `.cube`, not a CLF, because Resolve writes no
+CLF.** The user pointed out there was no evidence Resolve exports one, and there is none: the
+Resolve manual lists CLF among the LUT formats it reads, and Generate LUT writes 17, 33 or 65
+point `.cube` files and nothing else. Every colour document had assumed a CLF per shot since
+2026-09-11. The mechanism did not move, so the code change is one tuple
+(`clf.GRADE_EXTENSIONS`) and the user-facing word: OpenColorIO loads a cube through the same
+file transform, the pairing by shot code is unchanged, and QC-039 probes it the same way. The
+identifiers (`core/clf.py`, `clf_path`, `proingest/clf`) keep their names, and the module
+docstring says why. **`docs/COLOUR_SESSION_EXPORT.md` is new and is the page to hand the
+colourist**: three files per turnover, the folder, and the Resolve setup that makes a cube
+contain the whole conversion. **OQ-54** records it and wants one test export. The note
+"The grade file is a cube" below has the detail. **1730 tests.**
 
 **This session, 2026-09-17, was a UX pass on the branch `ux/first-run-and-discovery`, one
 commit per item, all six built and **merged into `main` as PR #7** with CI green on all four
@@ -177,6 +190,37 @@ from the chain and the input transform no longer runs ahead of a CLF, **which M4
 2026-09-12**. The composition machinery is untouched and is what the whole thing still rests on. **The display referred block it kept under a fence
 is gone**, deleted with its tests in M4.5.4 as planned.
 
+### The grade file is a cube, 2026-09-18: what Resolve actually exports
+
+The user: "I have no evidence that Resolve exports a .clf file type." Checked against the
+Resolve 18.6 manual and user forums rather than memory: **Resolve reads CLF and does not write
+it.** Generate LUT, on a Color page clip, writes a 17, 33 or 65 point `.cube`. Resolve writes
+no `.cdl` or `.ccc` either; the CDL travels as comment lines in an EDL from Timelines > Export
+> CDL, which is what the tool always read, so that half of the assumption held. Resolve 19 and
+20 export AMF, and whether a look comes out beside it as CLF is unconfirmed; not relied on.
+
+**What changed.** `clf.GRADE_EXTENSIONS = (".cube", ".clf")` and `index_clfs` takes either;
+`tests/fixtures/color.plate_cube` samples the plate grade onto a real 17 point cube so the
+tests load, probe and ingest one; and every user-facing "CLF" is now "grade file": the QC log
+column, the metadata pane label, the ingest report, the QC messages, the CLI. The EXR
+attribute names `proingest/clf` and `proingest/clf_hash` are unchanged, being a written
+contract, and `exr.CDL_NOTE` now says "the grade file named in proingest/clf". Docs: every
+normative "CLF" in `COLOR_AND_FORMAT.md`, `WORKFLOW.md`, `PRD.md`, `UI_SPEC.md`, `QC_RULES.md`
+and the guide reads "grade file", with a dated section at the top of COLOR_AND_FORMAT saying
+why; the history rows in OPEN_QUESTIONS and QC_RULES keep the word and gain a dated note
+(OQ-31, 33, 40, 46, 53).
+
+**What a cube contains is the whole risk, and the export page is the answer.** Generate LUT
+bakes the clip's node graph and nothing outside it, so the contract (source encoding in,
+linear ACEScg out, no display rendering) is met only by a session set up for it: DaVinci YRGB
+unmanaged, a Color Space Transform from the clip's encoding to ACEScct as the first node, one
+from ACEScct to ACES AP1 linear as the last, and the viewing transform on the timeline node,
+never the clip. A session run colour managed yields a grade-only cube and the tool would have
+to convert around it, which is OQ-46's double-conversion risk. **One test export settles it**,
+and it answers OQ-54, OQ-31, OQ-33 and OQ-46 together. There is no separate CDL file to name:
+the EDL is named `<turnover folder name>_final_v01.edl` and a re-export replaces it, because
+the discovery wants exactly one EDL in the folder.
+
 ### UX pass, 2026-09-17: six things the user asked for after looking at the window
 
 The user's own words for the first one: New batch "creates a batch, but one still needs to
@@ -235,7 +279,7 @@ are being built, each its own commit on `ux/first-run-and-discovery`:
 ### First five minutes
 
 ```
-.venv/bin/python -m pytest tests/ -q          # 1726, about 90 seconds
+.venv/bin/python -m pytest tests/ -q          # 1730, about 100 seconds
 .venv/bin/python -m ruff check . && .venv/bin/python -m ruff format --check . && .venv/bin/python -m mypy proingest tests build
 ```
 

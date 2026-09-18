@@ -17,7 +17,7 @@ Three things have to exist, and only the third one usually does not.
   local disk, and ProIngest does not care which.
 - **Somewhere to deliver to.** Any folder you can write into. The show and shot folders are
   made under it.
-- **The colour session's exports**: the final `.edl` and one `.clf` per shot. **Nothing final
+- **The colour session's exports**: the final `.edl` and one `.cube` per shot. **Nothing final
   renders without them** and that is deliberate, not a limitation - see "When Run refuses"
   below. Scanning and checking a turnover works fine before they arrive.
 
@@ -60,15 +60,15 @@ to press. **⌘S** names the batch file the first time.
 
 **4. Ingest the colour session.** If the colourist exported it by the convention - a folder
 named exactly as the turnover folder, inside a `_color` folder beside the turnovers, holding
-the final `.edl` and the `.clf` files - the scan finds it and asks whether to ingest it. Say
+the final `.edl` and the `.cube` files - the scan finds it and asks whether to ingest it. Say
 yes. Otherwise select the turnover (or any shot under it), press **Ingest Colour Session**,
 and point at the session's final `.edl`. One turnover at a time: another one can still be
 waiting on colour while this one delivers.
 
 What it writes onto the rows: the approved In and Out from the trim the colourist and the AD sat through,
-the CDL as the readable record, and which `.clf` each shot is graded with. It then tells you how
-many shots matched, how many got a CLF, and the three lists worth looking at - shots the session
-says nothing about, trims the approved cut overwrote, and shots that more than one CLF claims.
+the CDL as the readable record, and which `.cube` each shot is graded with. It then tells you how
+many shots matched, how many got a grade file, and the three lists worth looking at - shots the session
+says nothing about, trims the approved cut overwrote, and shots that more than one grade file claims.
 
 **The approved cut wins over a trim you already made**, and the report names the rows that lost
 one. Trimming again afterwards is allowed; it is what step 3 is for, and any row that moved is

@@ -1,4 +1,11 @@
-"""The colour session package: the final EDL, and the CLF that goes with each row.
+"""The colour session package: the final EDL, and the grade file that goes with each row.
+
+**"CLF" throughout this module means the per-shot grade file, and since 2026-09-18 that
+file is a `.cube` from Resolve's Generate LUT** (OQ-54): Resolve reads CLF and does not
+write it. The names stay because the mechanism is unchanged - OpenColorIO loads either
+through the same `FileTransform`, the file is paired by the shot code in its name, and
+QC-039 probes it the same way - and a rename across the batch file's `clf_path`, the EXR
+header's `proingest/clf` and the QC log would be a schema change for a word.
 
 COLOR_AND_FORMAT section 1. Colour is finished before the tool runs. Ben's session
 exports an updated final EDL and one CLF per shot, and this module is where both are
@@ -45,7 +52,11 @@ from proingest.core.models import (
 
 log = logging.getLogger(__name__)
 
-CLF_EXTENSION = ".clf"
+GRADE_EXTENSIONS = (".cube", ".clf")
+"""What a per-shot grade file may be. A `.cube` is what Resolve's Generate LUT writes, and
+since 2026-09-18 it is what the session is asked for (OQ-54); a `.clf` is accepted in the
+same role for a session that has a way to make one. OpenColorIO loads either through the
+same `FileTransform`, so nothing past the index cares which. The module keeps its name."""
 
 MATCH_FIELD = "FROM CLIP NAME"
 """The EDL field an event is matched on (OQ-30).
@@ -228,7 +239,7 @@ class ShotColor:
             return [clf.transform]
         if self.source_encoding is None:
             raise ClfError(
-                "no CLF and no source encoding: nothing turns these pixels into "
+                "no grade file and no source encoding: nothing turns these pixels into "
                 f"{color.PLATE_SPACE}. QC-046 and QC-047 report this before a render"
             )
         return [color.input_transform(self.source_encoding)]
@@ -294,7 +305,7 @@ class ColorSession:
         found = self.clfs.get(shot_code, [])
         if len(found) > 1:
             names = ", ".join(path.name for path in found)
-            raise AmbiguousClfError(f"{len(found)} CLFs name {shot_code}: {names}")
+            raise AmbiguousClfError(f"{len(found)} grade files name {shot_code}: {names}")
         return found[0] if found else None
 
     def _event_by_reel(self, row: ShotRow) -> ConformEvent | None:
@@ -403,7 +414,7 @@ class IngestReport:
     @property
     def counts(self) -> str:
         """What the ingest did, in the one phrase every surface says it in."""
-        return f"{len(self.matched)} rows matched, {len(self.graded)} with a CLF"
+        return f"{len(self.matched)} rows matched, {len(self.graded)} with a grade file"
 
     def notices(self) -> list[tuple[str, list[str]]]:
         """The three lists a person acts on, labelled, and only where there is anything.
@@ -414,7 +425,7 @@ class IngestReport:
         lists = (
             ("no event", self.unmatched),
             ("trim overwritten by the approved cut", self.overwritten),
-            ("more than one CLF names the shot", self.ambiguous),
+            ("more than one grade file names the shot", self.ambiguous),
         )
         return [(label, sorted(names)) for label, names in lists if names]
 
@@ -478,7 +489,7 @@ def shot_color(row: ShotRow) -> ShotColor:
 
 
 def index_clfs(folder: Path, show_pattern: str = naming.DEFAULT_SHOW_PATTERN) -> dict[str, list[Path]]:
-    """Every CLF under `folder`, by the shot code in its filename (OQ-33).
+    """Every grade file under `folder`, `.cube` or `.clf`, by the shot code in its filename (OQ-33).
 
     A CLF names its shot and that is the whole convention. Anything else in the
     filename is the session's business, and a file naming no shot at all is not an
@@ -487,7 +498,7 @@ def index_clfs(folder: Path, show_pattern: str = naming.DEFAULT_SHOW_PATTERN) ->
     """
     pattern = re.compile(rf"(?P<code>{show_pattern}\d{{4}})")
     found: dict[str, list[Path]] = {}
-    for path in sorted(folder.rglob(f"*{CLF_EXTENSION}")):
+    for path in sorted(p for p in folder.rglob("*") if p.suffix.lower() in GRADE_EXTENSIONS):
         match = pattern.search(path.stem)
         if match is not None:
             found.setdefault(match["code"], []).append(path)

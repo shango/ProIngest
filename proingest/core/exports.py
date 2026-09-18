@@ -104,12 +104,12 @@ SHOTS_HEADERS = (
     "Turnover", "Clip name", "Shot code", "Elem", "Source", "FPS", "Res",
     "Delivered In", "Delivered Out", "Delivered In TC", "Delivered Out TC",
     "Final In", "Final Out", "Duration", "Max available", "Audio", "Edited",
-    "Source encoding", "CLF",
+    "Source encoding", "Grade file",
     "Skip reason", "Warnings", "Errors",
 )  # fmt: skip
 """The QC log's own columns, QC_RULES "QC log structure".
 
-The CLF column names the grade the row was rendered through, and it is the filename
+The Grade file column names the grade the row was rendered through, and it is the filename
 rather than the path: the session's folder is the same for every row, and the name is
 what a reader compares against `proingest/clf` in a delivered EXR header. Empty means
 the row rendered ungraded, which is QC-009 once the rules are wired.

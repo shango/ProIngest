@@ -311,7 +311,7 @@
   <header class="mast">
     <div class="eyebrow">
       <span>VFX turnover ingest &middot; macOS v01</span>
-      <span class="stamp">Updated <b>17 Sep 2026, 23:22 PDT</b></span>
+      <span class="stamp">Updated <b>18 Sep 2026, 10:27 PDT</b></span>
     </div>
     <h1>ProIngest Build Track</h1>
     <p class="standfirst">
@@ -328,11 +328,11 @@
       <div class="stat-l">Milestones done</div>
     </div>
     <div class="stat">
-      <div class="stat-n good">1726</div>
+      <div class="stat-n good">1730</div>
       <div class="stat-l">Tests, Linux + macOS</div>
     </div>
     <div class="stat">
-      <div class="stat-n">28<span style="color:var(--faint);font-size:17px">/53</span></div>
+      <div class="stat-n">29<span style="color:var(--faint);font-size:17px">/54</span></div>
       <div class="stat-l">Questions open</div>
     </div>
     <div class="stat">
@@ -1542,7 +1542,7 @@
     <h2>Open questions</h2>
     <p class="standfirst" style="margin-bottom:14px">
       The live list. Questions answered days ago and no longer affecting anything have been
-      taken off this board; none is deleted, and all 53 of them, closed ones included, stay in
+      taken off this board; none is deleted, and all 54 of them, closed ones included, stay in
       <span class="mono">docs/OPEN_QUESTIONS.md</span> with the reasoning that closed them.
       What is kept here is what is still open, what was answered in the last two days, and
       what was built to a default that one real delivery would confirm.
@@ -1553,6 +1553,11 @@
           <tr><th>ID</th><th>Question</th><th>State</th></tr>
         </thead>
         <tbody>
+          <tr>
+            <td class="id">OQ-54</td>
+            <td><b style="color:var(--text)">New 18 September, and it corrects a premise a week old.</b> The user asked for evidence that Resolve exports a colour file in the format every colour document assumed, and there is none: Resolve <b style="color:var(--text)">reads</b> that format and <b style="color:var(--text)">writes</b> a plain 3D lookup table, at 17, 33 or 65 points, from its Generate LUT command. The readable grade record was never in doubt; Resolve puts it inside the exported edit list, which is what the tool reads. <b style="color:var(--text)">Answered to a default the same day</b>: the per-shot grade file is a 65 point lookup table named with the shot code, the tool accepts it in the same role with a one line change, and nothing else in the chain moved because the colour engine loads either format the same way and the check that refuses a baked-in viewing transform judges either the same way. <b style="color:var(--text)">What a lookup table contains depends on how the session is set up</b>, and that is the risk: it captures the clip's node graph and nothing outside it. A new page for the colourist says exactly how to set the session up so the table is the whole conversion, and one shot exported that way is what confirms it</td>
+            <td class="st"><span class="tag hot">Confirm</span></td>
+          </tr>
           <tr>
             <td class="id">OQ-53</td>
             <td><b style="color:var(--text)">New 17 September, out of asking where the colourist's exports will live.</b> The user described the flow: a fresh Resolve session, each delivery imported from the shared drive as its own timeline, and the edit list and colour files saved into a folder made for the session. The tool's file chooser copes with any location, but a location known in advance lets the scan find the session and offer it, which removes the one step an editor has to know to do. <b style="color:var(--text)">Built to a default the same day</b>: a folder named exactly as the delivery's folder, inside <span class="mono">_color</span> beside the deliveries or under the folder the settings name, holding one edit list. Two edit lists in it is no offer rather than a guess, because choosing between them is choosing a cut. What still wants settling with the colourist: that they export one timeline per delivery into a folder of that name, and whether they can write beside the deliveries at all. If not, the settings folder is the answer and needs no code</td>
@@ -1746,6 +1751,27 @@
 
   <section>
     <h2>Corrections made to the spec</h2>
+      <div class="note">
+        <h3>The colour session was specified to export a file Resolve cannot write</h3>
+        <p>
+          Since 11 September every colour document said the grading session delivers one
+          colour transform file per shot in the Academy's exchange format, and the whole chain
+          was built to apply it. On 18 September the user asked for evidence that Resolve exports
+          that format. <b>There is none.</b> Resolve reads it and writes only a plain lookup
+          table. The question had even been written down a week earlier as something one real
+          session would settle, and the chain was built ahead of the answer.
+        </p>
+        <p>
+          <b>It cost one line of code and a page for the colourist</b>, because the mechanism
+          never depended on the format: the colour engine loads a lookup table the same way, the
+          file is paired to its shot by the shot code in its name, and the check that refuses a
+          baked-in viewing transform judges a table exactly as it judged the other. What the
+          format change does expose is that a lookup table captures only what is inside the
+          clip's node graph, so whether it contains the whole conversion is now a fact about how
+          the session is set up rather than a property of the file. That setup is written down
+          for the colourist, and one shot exported through it is the test that confirms it.
+        </p>
+      </div>
       <div class="note">
         <h3>The first thing the tool does was the first thing its user found confusing</h3>
         <p>
@@ -2402,7 +2428,13 @@
     <b>Verify</b> &middot; bash build/mac_build.sh &middot; pytest &middot;
     ruff check . &amp;&amp; mypy proingest tests build &middot; python build/build.py &middot;
     python build/smoke_test.py &lt;app&gt;<br>
-    <b>Last updated</b> &middot; 17 September 2026, 23:22 PDT. <b>The user opened the window
+    <b>Last updated</b> &middot; 18 September 2026, 10:27 PDT. <b>The per-shot grade file is a plain lookup
+    table, not the exchange format every colour document had assumed</b>, because Resolve reads
+    that format and does not write it. One line of code, a dated correction at the top of the
+    colour document, a new page telling the colourist exactly what to export and how to set the
+    session up so the table is the whole conversion, and a question (OQ-54) that one test export
+    answers. Nothing about what the tool renders changed.<br>
+    <b>17 September.</b> <b>The user opened the window
     and asked for six things, and all six are built</b>, one change each, merged into
     <span class="mono">main</span> as PR #7 with CI green: New batch opens the folder chooser straight away; Export writes both
     spreadsheets without a render; the delivery folder button is amber until it is set; Run
