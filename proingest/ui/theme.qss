@@ -177,6 +177,13 @@ QHeaderView::section {
   color: #eef1f5;
 }
 
+/* The delivery root while there is none: amber, the warning colour, because it is the
+   one thing Run stops to ask about. A path, once set, draws like the other flat buttons. */
+#delivery_root[unset="true"] {
+  color: #cf9a3a;
+  border: 1px solid #cf9a3a;
+}
+
 QLineEdit {
   background: #1b1e23;
   border: 1px solid #262a31;

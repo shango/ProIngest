@@ -356,7 +356,7 @@ OQ-25.
 | root | chosen where | what it means |
 |---|---|---|
 | Source root | toolbar, `Add Turnover` | The folder turnovers are added from. The chooser opens here, and the turnover folder the editor picks beneath it is what gets scanned and indexed |
-| Delivery root | batch bar, click the path | Where `<show>/<shot>/` is written, and where the tracker and QC spreadsheets land |
+| Delivery root | batch bar, click the path | Where `<show>/<shot>/` is written, and where the tracker and QC spreadsheets land. **Drawn amber while there is none** (2026-09-17): it is the one thing Run stops to ask about, so it reads as unfinished before then |
 
 - Both are remembered **per batch**, so reopening a `.pibatch` restores them and a second batch
   on another drive does not disturb the first.

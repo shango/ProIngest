@@ -18,7 +18,7 @@ of **M9, the user guide**.
 commit per item, none pushed yet.** The user looked at the window and asked for six things;
 the note "UX pass, 2026-09-17" below tracks each one as it lands. Built so far: **New batch
 opens the turnover chooser straight away**, the empty list has an Add Turnover button, and
-**Export writes both spreadsheets without a run**.
+**Export writes both spreadsheets without a run**, and the delivery root is amber until set.
 
 **The session before, 2026-09-16, was about getting the tool onto a Mac and then onto the editor's
 Mac, and it was driven by somebody running out of time on a rented box.** Nothing about what the
@@ -193,7 +193,12 @@ are being built, each its own commit on `ux/first-run-and-discovery`:
    link and no counts (`export_banner_text`). Enabled exactly when Run is; the tooltip's
    note is `NO_ROWS_TO_EXPORT` and `EXPORT_UNBUILT` is gone. The guide's reference says what
    it is for. Tests: `TestExportWithoutARun` in `tests/test_ui_shell.py`.
-3. The batch bar's delivery root is flagged while it is unset.
+3. **The batch bar's delivery root is amber while it is unset. Built.** A dynamic property
+   `unset` on the button, read by `theme.qss` as `#delivery_root[unset="true"]`, flipped in
+   `BatchBar.show_delivery_root` with the unpolish/polish pair a stylesheet needs to re-read
+   a property. The label gained an ellipsis and a tooltip saying Run asks for it. Section 13
+   and the quickstart's step 5 say so; `docs/MAC_SESSION.md` has the line, because whether
+   amber reads as unfinished rather than wrong is a question for a screen.
 4. Run asks before starting when nothing would render.
 5. Colour session discovery: a session folder found by convention is offered after a scan.
 6. The Deliverables tab.

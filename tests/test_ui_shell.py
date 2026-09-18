@@ -32,6 +32,7 @@ from proingest.core.planner import DeliverableJob
 from proingest.core.render import Progress
 from proingest.ui import app as ui_app
 from proingest.ui import color_session, paths
+from proingest.ui.batch_bar import NO_DELIVERY_ROOT
 from proingest.ui.color_session import INGEST_MIXED_RATES, ingest_text, turnover_labels
 from proingest.ui.main_window import (
     BOTTOM_TABS,
@@ -601,6 +602,16 @@ class TestTheTwoRoots:
         assert window.batch.delivery_root == tmp_path
         assert window.batch_bar.delivery_root.text() == str(tmp_path)
         assert window.autosave.pending
+
+    def test_the_button_is_flagged_while_there_is_no_root(self, window: DrivenWindow, tmp_path: Path) -> None:
+        """Amber until set: it is the one thing Run will stop to ask about."""
+        window.set_batch(batch(row(), delivery_root=None))
+        button = window.batch_bar.delivery_root
+        assert button.text() == NO_DELIVERY_ROOT
+        assert button.property("unset") is True
+        window.folder_answer = tmp_path
+        button.click()
+        assert button.property("unset") is False
 
     def test_a_root_that_has_gone_missing_is_reported_and_the_chooser_reopens(
         self, window: DrivenWindow, tmp_path: Path

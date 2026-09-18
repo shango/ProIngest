@@ -298,6 +298,12 @@ Treat it as a working session with the editor rather than a delivery.
       Settings page's Advanced section (M5.8.3) reaches a render's worker processes, and the
       only proof so far is a symlinked binary in a temp folder on Linux. Worth doing once
       against a real build, because the bundled pair is what every other test uses.
+- [ ] **Open a new batch and look at the batch bar's delivery root button.** It is drawn
+      amber with an amber border while the batch has no root (`theme.qss`,
+      `#delivery_root[unset="true"]`, 2026-09-17), and should draw like the other flat
+      buttons once a path is set. The property flip is tested; that the stylesheet re-reads
+      it after the unpolish/polish pair, and that amber reads as "unfinished" rather than
+      "wrong" on the dark bar, is a judgement for a screen.
 - [ ] **Hover every toolbar button on the real window and read the tooltips.** Written and
       measured offscreen on Linux, where the shortcut renders as `Ctrl+R` and on the Mac it is
       `⌘R`, so every line is shorter there than the width test assumes. What a test cannot

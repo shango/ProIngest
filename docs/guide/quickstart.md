@@ -71,9 +71,9 @@ says nothing about, trims the approved cut overwrote, and shots that more than o
 one. Trimming again afterwards is allowed; it is what step 3 is for, and any row that moved is
 flagged in the QC log as delivered at something other than what was approved (QC-045).
 
-**5. Say where it goes.** In the bar above the list, click **Set delivery root** - it shows
-the path once there is one - and pick the folder. It is remembered with the batch, so reopening a
-`.pibatch` months later restores it.
+**5. Say where it goes.** In the bar above the list, click **Set delivery root...** and pick the
+folder. The button is amber until there is one and shows the path after that. It is remembered
+with the batch, so reopening a `.pibatch` months later restores it.
 
 **6. Run.** **⌘R**. It plans the batch, works out which version this run writes, and renders
 through several worker processes at once.
