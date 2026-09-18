@@ -43,7 +43,12 @@ from proingest.ui.main_window import (
     unsaved_question,
 )
 from proingest.ui.metadata import MIXED, NO_SELECTION, as_text
-from proingest.ui.run_controller import CHECKING_BATCH, NOTHING_TO_RENDER, WRITING_REPORTS
+from proingest.ui.run_controller import (
+    CHECKING_BATCH,
+    NOTHING_TO_RENDER,
+    NOTHING_WOULD_RENDER,
+    WRITING_REPORTS,
+)
 from proingest.ui.run_strip import LINK_COLOR, RunStrip
 from proingest.ui.runner import RENDERING
 from proingest.ui.settings_dialog import SettingsDialog
@@ -1161,53 +1166,6 @@ class TestRunningABatch:
         window.action_run.trigger()
         assert started == []
 
-
-class TestExportWithoutARun:
-    """Export: both spreadsheets from the batch as it stands, and no worker started."""
-
-    def test_it_is_greyed_until_there_are_rows(self, window: DrivenWindow) -> None:
-        assert not window.action_export.isEnabled()
-        window.set_batch(Batch())
-        assert not window.action_export.isEnabled()
-        window.set_batch(batch(row()))
-        assert window.action_export.isEnabled()
-
-    def test_it_writes_both_files_and_the_banner_names_the_folder(
-        self, window: DrivenWindow, tmp_path: Path
-    ) -> None:
-        window.set_batch(batch(row(), delivery_root=tmp_path))
-        started = stub_runner(window)
-        window.action_export.trigger()
-
-        reports = tmp_path / "MELT" / "_reports"
-        names = sorted(path.name for path in reports.iterdir())
-        assert [name.split("_")[0] for name in names] == ["qc", "shot"]
-        assert started == []
-        assert window.run_strip.state == "done"
-        assert str(reports) in window.run_strip.banner.text()
-        assert str(reports) in window.statusBar().currentMessage()
-
-    def test_the_banner_link_opens_that_folder(self, window: DrivenWindow, tmp_path: Path) -> None:
-        window.set_batch(batch(row(), delivery_root=tmp_path))
-        window.action_export.trigger()
-        window.run_strip.banner.linkActivated.emit("#reports")
-        assert window.opened_folders == [tmp_path / "MELT" / "_reports"]
-
-    def test_a_batch_with_no_delivery_root_is_asked_for_one(
-        self, window: DrivenWindow, tmp_path: Path
-    ) -> None:
-        window.set_batch(batch(row(), delivery_root=None))
-        window.folder_answer = tmp_path
-        window.action_export.trigger()
-        assert window.batch.delivery_root == tmp_path
-        assert (tmp_path / "MELT" / "_reports").is_dir()
-
-    def test_refusing_writes_nothing_and_says_nothing(self, window: DrivenWindow, tmp_path: Path) -> None:
-        window.set_batch(batch(row(), delivery_root=None))
-        window.action_export.trigger()
-        assert window.run_strip.state == "empty"
-        assert not (tmp_path / "MELT").exists()
-
     def test_a_batch_scope_error_stops_the_run_and_says_so(
         self, window: DrivenWindow, tmp_path: Path
     ) -> None:
@@ -1240,6 +1198,22 @@ class TestExportWithoutARun:
         assert started == []
         assert "QC-008" in [result.rule_id for result in window.batch.turnovers[0].qc]
 
+    def test_a_run_that_would_render_nothing_says_why_in_a_dialog(
+        self, window: DrivenWindow, tmp_path: Path
+    ) -> None:
+        """Every turnover held back: a dialog naming each and its rule, not a status line."""
+        window.set_batch(batch(row(), delivery_root=tmp_path))
+        window.bottom_dock.setVisible(False)
+        window.action_run.trigger()
+
+        assert len(window.problems) == 1
+        title, text = window.problems[0]
+        assert title == NOTHING_WOULD_RENDER
+        assert text.startswith(window.batch.turnovers[0].folder.name)
+        assert "QC-008" in text
+        assert window.run_strip.state == "empty"
+        assert not window.bottom_dock.isHidden()
+
     def test_the_turnovers_that_are_ready_still_render(self, window: DrivenWindow, tmp_path: Path) -> None:
         """What turnover scope buys: one waits on colour while the other delivers."""
         ready, waiting = turnover("turnover001"), turnover("turnover002")
@@ -1262,7 +1236,11 @@ class TestExportWithoutARun:
     def test_a_batch_that_plans_nothing_says_so_rather_than_starting(
         self, window: DrivenWindow, tmp_path: Path
     ) -> None:
-        window.set_batch(batch(row(skipped=True, skip_reason="not needed"), delivery_root=tmp_path))
+        # A session, so the turnover is not held back: this is about rows that plan
+        # nothing, and a turnover that cannot run at all is the dialog above.
+        window.set_batch(
+            ingested(batch(row(skipped=True, skip_reason="not needed"), delivery_root=tmp_path), tmp_path)
+        )
         started = stub_runner(window)
         window.action_run.trigger()
 
@@ -1455,6 +1433,53 @@ class TestExportWithoutARun:
 
         assert not window.run_strip.banner.isVisible()
         assert window.run_strip.state == "empty"
+
+
+class TestExportWithoutARun:
+    """Export: both spreadsheets from the batch as it stands, and no worker started."""
+
+    def test_it_is_greyed_until_there_are_rows(self, window: DrivenWindow) -> None:
+        assert not window.action_export.isEnabled()
+        window.set_batch(Batch())
+        assert not window.action_export.isEnabled()
+        window.set_batch(batch(row()))
+        assert window.action_export.isEnabled()
+
+    def test_it_writes_both_files_and_the_banner_names_the_folder(
+        self, window: DrivenWindow, tmp_path: Path
+    ) -> None:
+        window.set_batch(batch(row(), delivery_root=tmp_path))
+        started = stub_runner(window)
+        window.action_export.trigger()
+
+        reports = tmp_path / "MELT" / "_reports"
+        names = sorted(path.name for path in reports.iterdir())
+        assert [name.split("_")[0] for name in names] == ["qc", "shot"]
+        assert started == []
+        assert window.run_strip.state == "done"
+        assert str(reports) in window.run_strip.banner.text()
+        assert str(reports) in window.statusBar().currentMessage()
+
+    def test_the_banner_link_opens_that_folder(self, window: DrivenWindow, tmp_path: Path) -> None:
+        window.set_batch(batch(row(), delivery_root=tmp_path))
+        window.action_export.trigger()
+        window.run_strip.banner.linkActivated.emit("#reports")
+        assert window.opened_folders == [tmp_path / "MELT" / "_reports"]
+
+    def test_a_batch_with_no_delivery_root_is_asked_for_one(
+        self, window: DrivenWindow, tmp_path: Path
+    ) -> None:
+        window.set_batch(batch(row(), delivery_root=None))
+        window.folder_answer = tmp_path
+        window.action_export.trigger()
+        assert window.batch.delivery_root == tmp_path
+        assert (tmp_path / "MELT" / "_reports").is_dir()
+
+    def test_refusing_writes_nothing_and_says_nothing(self, window: DrivenWindow, tmp_path: Path) -> None:
+        window.set_batch(batch(row(), delivery_root=None))
+        window.action_export.trigger()
+        assert window.run_strip.state == "empty"
+        assert not (tmp_path / "MELT").exists()
 
 
 class TestTheMetadataPane:

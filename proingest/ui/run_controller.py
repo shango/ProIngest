@@ -44,6 +44,14 @@ CLOSING_AFTER_RUN = "Stopping the run, then closing..."
 
 HELD_BACK = "{count} turnovers are held back by an error; see the Issues dock"
 HELD_BACK_ONE = "{name} is held back by an error; see the Issues dock"
+NOTHING_WOULD_RENDER = "Nothing would render"
+"""The title of the dialog Run opens when every turnover is held back.
+
+A run in that state used to start, plan nothing and say so in the status bar, which is
+the correct refusal and reads as a dead button (docs/MAC_SESSION.md). The commonest
+cause is a batch nobody has ingested a colour session into (QC-008), and the dialog
+says so, per turnover, in the rule's own words.
+"""
 
 CHECKING_BATCH = "Checking the batch"
 PLANNING = "Planning {count} shots"
@@ -186,6 +194,11 @@ class RunController(QObject):
             return
 
         held_back = qc.blocked_turnovers(batch)
+        if held_back and held_back >= {row.turnover_id for row in batch.rows}:
+            strip.clear()
+            window.report_problem(NOTHING_WOULD_RENDER, self._held_back_reasons(held_back))
+            window.show_issues()
+            return
         if held_back:
             window.statusBar().showMessage(self._held_back_text(held_back))
 
@@ -246,6 +259,17 @@ class RunController(QObject):
         text = export_banner_text(reports)
         window.run_strip.show_banner(text)
         window.statusBar().showMessage(re.sub(r"<[^>]+>", "", text))
+
+    def _held_back_reasons(self, held_back: frozenset[str]) -> str:
+        """Every turnover this run would skip, each with the errors holding it back."""
+        lines = []
+        for turnover in self._window.batch.turnovers:
+            if turnover.turnover_id not in held_back:
+                continue
+            errors = [r for r in turnover.qc if r.severity == "error" and r.scope == "turnover"]
+            lines.append(turnover.folder.name)
+            lines.extend(f"  {result.rule_id}: {result.message}" for result in errors)
+        return "\n".join(lines)
 
     def _held_back_text(self, held_back: frozenset[str]) -> str:
         """What the status bar says about the turnovers this run will not touch."""

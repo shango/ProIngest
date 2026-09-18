@@ -18,7 +18,7 @@ of **M9, the user guide**.
 commit per item, none pushed yet.** The user looked at the window and asked for six things;
 the note "UX pass, 2026-09-17" below tracks each one as it lands. Built so far: **New batch
 opens the turnover chooser straight away**, the empty list has an Add Turnover button, and
-**Export writes both spreadsheets without a run**, and the delivery root is amber until set.
+**Export writes both spreadsheets without a run**, the delivery root is amber until set, and **Run refuses in a dialog when nothing would render**.
 
 **The session before, 2026-09-16, was about getting the tool onto a Mac and then onto the editor's
 Mac, and it was driven by somebody running out of time on a rented box.** Nothing about what the
@@ -199,7 +199,13 @@ are being built, each its own commit on `ux/first-run-and-discovery`:
    a property. The label gained an ellipsis and a tooltip saying Run asks for it. Section 13
    and the quickstart's step 5 say so; `docs/MAC_SESSION.md` has the line, because whether
    amber reads as unfinished rather than wrong is a question for a screen.
-4. Run asks before starting when nothing would render.
+4. **Run refuses in a dialog when nothing would render. Built.** Not a confirmation: with
+   every turnover held back there is nothing to confirm. `RunController.start` compares
+   `qc.blocked_turnovers` against the turnovers that have rows and, when it covers them,
+   reports `NOTHING_WOULD_RENDER` with each turnover's folder name and the turnover scope
+   errors holding it (`_held_back_reasons`), then brings up the Issues tab. The partial
+   case is unchanged: a status bar line, and the ready turnovers deliver. UI_SPEC section
+   7 and the quickstart's "When Run refuses" say so.
 5. Colour session discovery: a session folder found by convention is offered after a scan.
 6. The Deliverables tab.
 

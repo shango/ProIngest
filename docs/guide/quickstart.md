@@ -113,8 +113,11 @@ finished is deleted, so a crash never leaves something that looks complete.
 
 The commonest one is not a fault. **A turnover with no colour session ingested renders
 nothing** (QC-008) - the plates would be missing the approved look, and delivering them
-ungraded is worse than delivering them late. Run says so in its tooltip before you press it
-rather than after.
+ungraded is worse than delivering them late. Run says so in its tooltip before you press it,
+and if every turnover in the batch is in that state it opens a dialog naming each one and the
+rule holding it back, then brings up the Issues tab, rather than starting a run that does
+nothing. One turnover waiting on colour beside one that is ready is only a line in the status
+bar, and the ready one delivers.
 
 Otherwise: hover any greyed button and it says why it is greyed. That is what the tooltips are
 for, and it is usually the whole answer.
