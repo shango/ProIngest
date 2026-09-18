@@ -170,7 +170,7 @@ class TestQcLogSheets:
         path = tmp_path / "log.xlsx"
         exports.write_qc_log(Batch(name="b", rows=[graded]), path)
         header, values = sheet_rows(path, "Shots")
-        assert dict(zip(header, values, strict=True))["CLF"] == "MELT0001_grade_v02.clf"
+        assert dict(zip(header, values, strict=True))["Grade file"] == "MELT0001_grade_v02.clf"
 
     def test_the_shots_sheet_names_the_encoding_the_clip_asked_for(self, tmp_path: Path) -> None:
         """Verbatim, because what QC-047 needs corrected is the string somebody typed."""
@@ -188,7 +188,7 @@ class TestQcLogSheets:
     def test_an_ungraded_row_leaves_the_clf_column_empty(self, log: Path) -> None:
         """openpyxl reads an empty string back as None; either way the cell says nothing."""
         header, values = sheet_rows(log, "Shots")
-        assert not dict(zip(header, values, strict=True))["CLF"]
+        assert not dict(zip(header, values, strict=True))["Grade file"]
 
     def test_one_deliverables_row_each(self, log: Path) -> None:
         assert len(sheet_rows(log, "Deliverables")) == 8

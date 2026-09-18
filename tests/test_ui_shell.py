@@ -1013,7 +1013,7 @@ class TestWhatAnIngestSays:
 
     def test_it_opens_with_the_turnover_and_what_the_ingest_did(self, tmp_path: Path) -> None:
         text = ingest_text(self.report(tmp_path, matched=["a", "b"], graded=["a"]), "turnover001", [RATE_24])
-        assert text.splitlines()[0] == "turnover001: 2 rows matched, 1 with a CLF"
+        assert text.splitlines()[0] == "turnover001: 2 rows matched, 1 with a grade file"
         assert "MELT_FINAL_v01.edl, which holds 3 events" in text
 
     def test_it_says_nothing_about_the_lists_that_are_empty(self, tmp_path: Path) -> None:

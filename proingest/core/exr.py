@@ -105,7 +105,7 @@ human compares against the session. Neither was applied to these pixels, and
 readable record (COLOR_AND_FORMAT section 1, EXR metadata).
 """
 
-CDL_NOTE = "record only; the CLF named in proingest/clf is what was applied"
+CDL_NOTE = "record only; the grade file named in proingest/clf is what was applied"
 
 RGB_CHANNELS = "RGB"
 RGBA_CHANNELS = "RGBA"

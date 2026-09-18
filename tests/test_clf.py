@@ -26,6 +26,7 @@ from proingest.core.models import (
     SourceEncodingOrigin,
     Turnover,
 )
+from tests.fixtures import color as color_fixtures
 
 RATE_24 = FrameRate(24)
 
@@ -346,7 +347,7 @@ class TestClfIndex:
         assert clf.index_clfs(tmp_path) == {}
 
     def test_other_files_are_ignored(self, tmp_path: Path) -> None:
-        (tmp_path / "MELT0001.cube").touch()
+        (tmp_path / "MELT0001.dctl").touch()
         assert clf.index_clfs(tmp_path) == {}
 
     def test_a_row_with_no_clf_gets_none(self, tmp_path: Path) -> None:
@@ -834,3 +835,31 @@ class TestFindSession:
         folder = self.turnover(tmp_path)
         self.edl_in(tmp_path / "turnovers" / "_color" / "turnover002_02_24_2026_danielluckett")
         assert clf.find_session(folder) is None
+
+
+class TestACubeInTheClfRole:
+    """OQ-54: Resolve writes `.cube`, not CLF, and the tool takes either as the grade file."""
+
+    def test_a_cube_is_indexed_by_the_shot_code_in_its_name(self, tmp_path: Path) -> None:
+        written = color_fixtures.plate_cube(tmp_path / "MELT0001_grade_v01.cube")
+        assert clf.index_clfs(tmp_path) == {"MELT0001": [written]}
+
+    def test_a_cube_loads_and_lands_in_scene_linear(self, tmp_path: Path) -> None:
+        """The same probe that judges a CLF: a sampled plate chain still climbs at the top."""
+        loaded = clf.load_clf(color_fixtures.plate_cube(tmp_path / "MELT0001_grade_v01.cube"))
+        assert loaded.is_scene_linear
+        assert loaded.digest
+
+    def test_a_cube_and_a_clf_naming_one_shot_is_ambiguous(self, tmp_path: Path) -> None:
+        """Two files, two grades, and choosing either is choosing a grade."""
+        plate_clf(tmp_path / "MELT0001_grade_v01.clf")
+        color_fixtures.plate_cube(tmp_path / "MELT0001_grade_v02.cube")
+        session = clf.ColorSession(edl_path=tmp_path / "x.edl", events=[], clfs=clf.index_clfs(tmp_path))
+        with pytest.raises(clf.AmbiguousClfError):
+            session.clf_for("MELT0001")
+
+    def test_the_session_ingests_a_cube_onto_the_row(self, tmp_path: Path) -> None:
+        color_fixtures.plate_cube(tmp_path / "MELT0001_grade_v01.cube")
+        session = clf.load_session(edl(tmp_path), RATE_24)
+        found = session.clf_for("MELT0001")
+        assert found is not None and found.suffix == ".cube"

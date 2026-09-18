@@ -50,6 +50,15 @@ assert the status bar line has to give its batch a session first.** `test_a_batc
 is the example: it is about skipped rows planning nothing, and without `ingested(...)` it now
 hits the held-back dialog instead.
 
+## 18 September: the grade file is a cube
+
+The user pointed out there is no evidence Resolve exports CLF, and there is none: it reads CLF
+and writes `.cube` (Generate LUT, 17/33/65 point). `docs/COLOUR_SESSION_EXPORT.md` is the page
+to hand the colourist, `docs/COLOR_AND_FORMAT.md` opens with the dated reason, OQ-54 is the
+question, and the code accepts `.cube` beside `.clf` (`clf.GRADE_EXTENSIONS`). Identifiers keep
+the CLF name; user-facing strings say "grade file". **One test export from Ben settles what a
+cube contains**, and nothing about the chain should be changed again before that export exists.
+
 ## After the merge: pulling a build
 
 The user asked for the `gh` command to fetch the disk image CI builds, and then could not find

@@ -299,7 +299,7 @@ class TestColorSession:
                 str(self.session(tmp_path)),
             ]
         )
-        assert "colour session: 1 events, 1 shots with a CLF" in capsys.readouterr().out
+        assert "colour session: 1 events, 1 shots with a grade file" in capsys.readouterr().out
 
         frame = next((delivery / "MELT" / "MELT0001" / "MELT0001_pl01_raw_4k_v01").iterdir())
         with OpenEXR.File(str(frame)) as handle:

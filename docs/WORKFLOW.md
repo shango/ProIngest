@@ -22,8 +22,8 @@ one-line version, for checking that everyone means the same thing.
 | 6 | Take the AD meeting's decisions into a Resolve session set to ACES 1.3. | nothing yet, this is setup |
 | 7 | Trim each shot with the AD, and grade it **primary only**: no windows, no qualifiers, no tracked secondaries. Curves and log wheels are fine, and rule 4 says why. | the approved cut and the approved look |
 | 8 | Export the updated final edit list. | **final `.edl`**: timecode, shot IDs, the approved In/Out, and the CDL as `*ASC_SOP` / `*ASC_SAT` lines |
-| 9 | Export the grade per shot as a transform, **starting from the encoding the clip arrived in**. | **one `.clf` per shot**, `source encoding in > grade > linear ACEScg out`, with **no display rendering in it**. This is the whole of what the tool applies |
-| 9a | Save the EDL and the CLFs for each turnover in a folder **named exactly as that turnover's folder**, inside `_color` beside the turnovers on the mount (OQ-53). | the tool finds it when the turnover is scanned and offers to ingest it; anywhere else, the editor points at the EDL |
+| 9 | Export the grade per shot with Generate LUT, from a node graph whose first and last nodes are the Color Space Transforms **from the encoding the clip arrived in** and **to linear ACEScg** (`COLOUR_SESSION_EXPORT.md`). | **one 65 point `.cube` per shot**, named with the shot code, `source encoding in > grade > linear ACEScg out`, with **no display rendering in it**. This is the whole of what the tool applies. **Not a CLF: Resolve writes none** (2026-09-18) |
+| 9a | Save the EDL and the cubes for each turnover in a folder **named exactly as that turnover's folder**, inside `_color` beside the turnovers on the mount (OQ-53). | the tool finds it when the turnover is scanned and offers to ingest it; anywhere else, the editor points at the EDL |
 | 10 | Export the stringout with the look and burn-ins. | ProRes QT. **The tool no longer builds one**, and it is what the tool's references get checked against |
 
 ## Tool
@@ -32,10 +32,10 @@ one-line version, for checking that everyone means the same thing.
 |---|---|---|
 | 12 | Scan the turnover: parse the timeline, match media, probe it, find audio and side files. | the shot list |
 | 13 | Run pre-flight checks on every row and block the ones that cannot be delivered. | QC-0xx results |
-| 14 | Read Ben's final EDL for the conform, and pair each row with its CLF. | approved In/Out, a CDL on record and a CLF to apply, or QC-008 / QC-009 |
+| 14 | Read Ben's final EDL for the conform, and pair each row with its grade file. | approved In/Out, a CDL on record and a grade file to apply, or QC-008 / QC-009 |
 | 15 | Let the editor check the list and make the occasional one-off trim not worth a trip back to Resolve. | QC-045 on any row that moved |
-| 16 | Apply the CLF and nothing before it, then write the graded plates. | 4k and HD EXR, ACEScg, DWAA 45, frames from 1001 (OQ-35) |
-| 17 | Bake the CLF and the ACES output transform into one LUT and encode the references with it. | 4k and HD H.264 mp4, sRGB |
+| 16 | Apply the grade file and nothing before it, then write the graded plates. | 4k and HD EXR, ACEScg, DWAA 45, frames from 1001 (OQ-35) |
+| 17 | Bake the grade file and the ACES output transform into one LUT and encode the references with it. | 4k and HD H.264 mp4, sRGB |
 | 18 | Copy audio and side files, renamed to spec. | wav, HDRI, camData, stills |
 | 19 | Verify every deliverable the moment it lands, and keep any that fails for inspection. | QC-1xx results |
 | 20 | Write the spreadsheets. | `shot_tracker_<batch>_<date>.xlsx` and `qc_ingest_log_<batch>_<date>.xlsx`, under `<delivery root>/<show>/_reports/` |
@@ -53,18 +53,18 @@ writes is either a deliverable named from the spec or a report about one.
    and its In/Out editing exists for the one-off trim that is not worth a new EDL for.
 2. **Nothing final renders before step 14.** Steps 12 and 13 work without Ben; steps 16 onward
    do not.
-3. **The tool applies no input transform ahead of a CLF** (2026-09-12). The CLF starts at the
+3. **The tool applies no input transform ahead of a grade file** (2026-09-12). The grade file starts at the
    source encoding, so it is the whole conversion and doing one first converts twice - which
    looks like a grade decision and passes every check. The tool's own input transform table is
-   used on the one deliverable that never gets a CLF, the ungraded reference still, and on any
+   used on the one deliverable that never gets a grade file, the ungraded reference still, and on any
    row the session did not grade.
-4. **The CLF is applied, the CDL is recorded.** Both come from Ben's session and they are not
-   duplicates: the CLF carries everything a primary grade can contain including curves and
+4. **The grade file is applied, the CDL is recorded.** Both come from Ben's session and they are not
+   duplicates: the grade file carries everything a primary grade can contain including curves and
    wheels, and the CDL is the readable version for anyone without an OCIO install. Where they
-   differ, the CLF is what is in the pixels.
-5. **The CLF must end in scene linear ACEScg.** A display rendering inside it produces a plate
+   differ, the grade file is what is in the pixels.
+5. **The grade file must end in scene linear ACEScg.** A display rendering inside it produces a plate
    that comps wrong and looks perfectly normal (QC-039).
-6. **A trim does not disturb the grade.** A CLF is one static transform for the whole shot, so
+6. **A trim does not disturb the grade.** A grade file is one static transform for the whole shot, so
    moving In or Out carries it unchanged. Extending into the handles does apply the approved
    grade to frames Ben never saw, which is why step 15 is for one-offs.
 
@@ -74,11 +74,11 @@ writes is either a deliverable named from the spec or a report about one.
   goes in it. The tool reads `Input Color Space`, and "S-Log3" on its own names four colour
   spaces in the pinned config, so the instruction to the shooters has to ask for the gamut too.
   **OQ-39 dissolved on 2026-09-12**: there is no studio standard encoding and no mode.
-- **OQ-46**, step 9: whether a real session's CLF really does start at the source encoding. If
+- **OQ-46**, step 9: whether a real session's grade file really does start at the source encoding. If
   it does not and the tool converts as well, it converts twice, nothing fails, and both images
   look plausible. One real export settles it.
 - **OQ-30**, step 14: which EDL field identifies an event, so a neighbouring shot's conform is
   never used. Wants one real EDL out of the session.
-- **OQ-33**, step 14: what pairs a CLF with a shot, a filename convention or a sidecar. Same
+- **OQ-33**, step 14: what pairs a grade file with a shot, a filename convention or a sidecar. Same
   failure mode as OQ-30 and it wants the same one real export to answer it.
 - **OQ-35**, step 16: EXR frame numbers from 1001, or derived from source timecode.

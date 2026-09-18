@@ -546,7 +546,7 @@ class TestColorChain:
 
     def test_an_ungraded_row_names_the_input_transform(self) -> None:
         message = qc.check_color_chain(row(source_encoding="C-Log3"))[0].message
-        assert "no CLF" in message
+        assert "no grade file" in message
         assert "CanonLog3 CinemaGamut D55 to ACEScg" in message
 
     def test_an_aux_still_says_it_is_never_graded(self) -> None:
@@ -559,7 +559,7 @@ class TestColorChain:
 
     def test_a_row_with_neither_says_so(self) -> None:
         message = qc.check_color_chain(row(source_encoding=None))[0].message
-        assert "no CLF and no source encoding" in message
+        assert "no grade file and no source encoding" in message
 
     def test_it_is_recorded_by_a_preflight(self, tmp_path: Path) -> None:
         """Here rather than with the model rules: the CLF is resolved by the planner."""
@@ -853,7 +853,7 @@ class TestColorSessionRule:
         batch = ingested_batch(tmp_path, row())
         results = qc.check_color_session(batch.turnovers[0], batch.rows)
         assert ids(results) == ["QC-008"]
-        assert "no CLF for any row" in results[0].message
+        assert "no grade file for any row" in results[0].message
 
     def test_one_graded_row_is_enough_to_satisfy_it(self, tmp_path: Path) -> None:
         graded, ungraded = row(), row(clip_name="MELT0002_pl01")
