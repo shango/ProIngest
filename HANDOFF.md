@@ -1,22 +1,57 @@
-# Session close, 17 September 2026 (the UX pass, and where the colour session lives)
+# Session close, 18 September 2026 (the grade file is a cube, and the thread is open)
 
 **This file is disposable and it is not the handoff record.** `PROGRESS.md` section 1 is, and it
-is written to be picked up cold. This is a note about what one session did, kept because context
-is being cleared. Delete it once it has been read. **If it disagrees with `PROGRESS.md` or the
-docs, they win.**
+is written to be picked up cold. This is a note about what one session did and where it stopped,
+kept because context is being cleared. Delete it once it has been read. **If it disagrees with
+`PROGRESS.md` or the docs, they win.**
 
-It replaces the previous file of the same name, which closed on the Mac scripts.
+## Resume here: the colour session's exports
 
-## The one paragraph version
+**The open thread.** On 18 September the user pointed out there is no evidence Resolve exports
+a `.clf`, and there is none: Resolve reads CLF and writes `.cube` through Generate LUT (17, 33
+or 65 point), and writes no `.cdl` or `.ccc` either, the CDL travelling as comment lines inside
+an EDL from Timelines > Export > CDL. Every colour document since 11 September had assumed a CLF
+per shot. **PR #10, merged**, corrected it: the tool accepts `.cube` beside `.clf`
+(`clf.GRADE_EXTENSIONS`), every user-facing "CLF" reads "grade file", and
+**`docs/COLOUR_SESSION_EXPORT.md` is the page to hand the colourist**. OQ-54 is the question.
+The user said they will return to work more on this.
 
-**The user opened the window and asked for six things, and all six are built**, one commit each
-on `ux/first-run-and-discovery`, **merged into `main` as PR #7**, CI green, branch deleted. New batch opens the
-turnover chooser straight away; Export writes both spreadsheets without a run; the delivery root
-button is amber until set; Run refuses in a dialog when nothing would render; **a colour session
-exported by convention is found by the scan and offered** (OQ-53); and the Deliverables tab is
-built. Nothing about what the tool renders changed. **Version bumped to 0.2.0**, the first bump
-since scaffolding. **1726 tests**, `ruff`, `ruff format` and `mypy --strict` clean. Build Track
-republished, version 64.
+**What is settled.** The three files per turnover (final EDL with the CDL in it, one 65 point
+cube per shot named with the shot code, the stringout), the folder they go in
+(`_color/<turnover folder name>/` beside the turnovers, OQ-53), and that the EDL is named
+`<turnover folder name>_final_v01.edl` and a re-export replaces it, because the discovery wants
+exactly one EDL in the folder. There is no separate CDL file to name.
+
+**What is not settled, and is the whole risk.** Generate LUT bakes the clip's node graph and
+nothing outside it, so whether a cube starts at the camera encoding and ends in linear ACEScg
+depends on how the session is set up. The export page asks for DaVinci YRGB unmanaged, a Color
+Space Transform from the clip's encoding to ACEScct as the first node, one from ACEScct to ACES
+AP1 linear as the last, and the viewing transform on the timeline node, never the clip. Two
+things about that are unverified: **whether Generate LUT really bakes Color Space Transform
+nodes** (the 18.6 manual's "Exporting LUTs" page says it does, alongside Primaries and Custom
+Curves; that page returned 404 when fetched directly and was read through search snippets), and
+**whether Ben will work that way** rather than colour managed in ACES. A managed session gives a
+grade-only cube, ACEScct in and out, and the tool would then have to convert around it, which
+is the double conversion OQ-46 is about.
+
+**The next step is not code.** One shot graded in the export page's setup, its cube and its EDL
+handed over. Ingest it into a scratch batch, check QC-039 passes and that the reference matches
+the stringout. That answers OQ-54, OQ-31, OQ-33 and OQ-46 together. If it turns out Ben works
+colour managed, the work is to reinstate the ACEScct leg around the cube in `core/color.py`,
+which the 12 September session deleted and `COLOR_AND_FORMAT.md` describes; the input
+transform table is still there because the aux still uses it.
+
+**Things a returning session might be tempted to do and should not.** Do not rename
+`core/clf.py`, `ShotRow.clf_path` or the `proingest/clf` EXR attributes; the module docstring
+says why, and it is a schema change for a word. Do not change the chain again before a real
+export exists: it has been rewritten three times on assumptions, and this is the fourth.
+
+## The rest of the session, in one paragraph
+
+Before the cube thread, the same day: the UX pass (PR #7, six items, version 0.2.0) was merged,
+two docs PRs followed it (#8, #9), and a 0.2.0 dmg was pulled with `gh` and sits in
+`~/Downloads` on the WSL side, not yet on a Mac. **1730 tests**, `ruff`, `ruff format` and
+`mypy --strict` clean, CI green on `main`. Build Track at version 66.
 
 ## What a new session should know first
 
@@ -49,15 +84,6 @@ before the next `class` line, and `grep -n "^class "` before committing is cheap
 assert the status bar line has to give its batch a session first.** `test_a_batch_that_plans_nothing_says_so_rather_than_starting`
 is the example: it is about skipped rows planning nothing, and without `ingested(...)` it now
 hits the held-back dialog instead.
-
-## 18 September: the grade file is a cube
-
-The user pointed out there is no evidence Resolve exports CLF, and there is none: it reads CLF
-and writes `.cube` (Generate LUT, 17/33/65 point). `docs/COLOUR_SESSION_EXPORT.md` is the page
-to hand the colourist, `docs/COLOR_AND_FORMAT.md` opens with the dated reason, OQ-54 is the
-question, and the code accepts `.cube` beside `.clf` (`clf.GRADE_EXTENSIONS`). Identifiers keep
-the CLF name; user-facing strings say "grade file". **One test export from Ben settles what a
-cube contains**, and nothing about the chain should be changed again before that export exists.
 
 ## After the merge: pulling a build
 
