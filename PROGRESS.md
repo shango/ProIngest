@@ -14,6 +14,23 @@ complete, M4.5 all four chunks, M4.6 all five, **M5 all twelve**, **M7**, and **
 What is left is **M8 polish** (needs a real turnover and a real colour session) and the rest
 of **M9, the user guide**.
 
+**2026-09-19: a review the user asked for found the plan misaligned with the real workflow,
+and nothing is to be built on an assumption from here.** Read `docs/REVIEW_2026-09-19.md`
+first: it is the whole session on one page. The user stated that **the shooters deliver
+camera-native files, never ProRes 4444 or EXR** (OQ-56, reversing OQ-3 and the premise of
+COLOR_AND_FORMAT section 2, QC-020 and QC-021), that **they export nothing for the tool and
+there is no OTIO** (OQ-57: the scan has to be rebuilt from Ben's EDL and the folder), that clip
+names carry extensions (OQ-62), that 4:2:0 is allowed with a warning, and that a **per-turnover
+default input transform** is required (OQ-59, two decisions pending). A code audit found the
+decode asserts no range or matrix and QC-018 was never built (OQ-60), the approved cut is
+dropped silently without media timecode (OQ-65), and four smaller items (OQ-63, OQ-64, OQ-66,
+OQ-67). Researched and confirmed: Resolve's CDL export is node one only; ffmpeg decodes every
+compressed camera codec and no RAW; Sony and Canon record their log full range. **Nothing was
+built this session**, deliberately: the respec waits on one real trimmed clip the user is
+sending (OQ-58, OQ-61, OQ-62). PR #12, the CDL-in-ACEScct chain, is green and unmerged; its
+docs still describe ProRes sources and an OTIO scan. The memory `verified-facts-only` records
+the rule. **1739 tests.**
+
 **2026-09-18, later: the grade is the CDL in the final EDL, applied in ACEScct, and the cube
 is the exception.** The user decided it, after the cube correction below: Resolve's CDL export
 carries the primaries of **node one** and nothing else, so the colourist grades in node one of a
@@ -1838,6 +1855,9 @@ waiting on, because that is the thing that decides whether a session can start i
 - **OQ-44**, to whoever briefs the shooters: which metadata field carries the log name and
   exactly what string goes in it, remembering that "S-Log3" names four colour spaces in the
   pinned config.
+- **The clip (OQ-58, OQ-61, OQ-62) and the two OQ-59 decisions**, before any of the respec, the
+  EDL-only scan or the turnover default is started. `docs/REVIEW_2026-09-19.md` lists what to
+  probe on the clip and what to ask Ben and the shooters.
 - **OQ-55**, against one real export: one shot graded with the wheels in node one of an ACEScct
   session, its EDL, its stringout and a cube of the same clip. The tool renders it both ways and
   each reference is compared to the stringout. It checks the four things the CDL chain rests on

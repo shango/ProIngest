@@ -311,7 +311,7 @@
   <header class="mast">
     <div class="eyebrow">
       <span>VFX turnover ingest &middot; macOS v01</span>
-      <span class="stamp">Updated <b>18 Sep 2026, 12:35 PDT</b></span>
+      <span class="stamp">Updated <b>19 Sep 2026, 10:03 PDT</b></span>
     </div>
     <h1>ProIngest Build Track</h1>
     <p class="standfirst">
@@ -332,7 +332,7 @@
       <div class="stat-l">Tests, Linux + macOS</div>
     </div>
     <div class="stat">
-      <div class="stat-n">29<span style="color:var(--faint);font-size:17px">/55</span></div>
+      <div class="stat-n warn">41<span style="color:var(--faint);font-size:17px">/67</span></div>
       <div class="stat-l">Questions open</div>
     </div>
     <div class="stat">
@@ -1547,7 +1547,7 @@
     <h2>Open questions</h2>
     <p class="standfirst" style="margin-bottom:14px">
       The live list. Questions answered days ago and no longer affecting anything have been
-      taken off this board; none is deleted, and all 55 of them, closed ones included, stay in
+      taken off this board; none is deleted, and all 67 of them, closed ones included, stay in
       <span class="mono">docs/OPEN_QUESTIONS.md</span> with the reasoning that closed them.
       What is kept here is what is still open, what was answered in the last two days, and
       what was built to a default that one real delivery would confirm.
@@ -1558,6 +1558,31 @@
           <tr><th>ID</th><th>Question</th><th>State</th></tr>
         </thead>
         <tbody>
+          <tr>
+            <td class="id">OQ-56</td>
+            <td><b style="color:var(--text)">New 19 September, and it reverses a premise the format checks were built on.</b> The shooters deliver camera-native files, whatever their cameras shoot, trimmed in Resolve. Every colour and format document, and two of the checks, assumed a ProRes 4444 intermediate. Researched: the video tools decode every common compressed camera codec and <b style="color:var(--text)">no RAW format at all</b>, so nothing RAW may reach a delivery and a Blackmagic camera must record ProRes or DNx. <b style="color:var(--text)">Decided</b>: 4:2:0 sources are allowed with a warning. Still wanted: the exact cameras and modes</td>
+            <td class="st"><span class="tag hot">Ask</span></td>
+          </tr>
+          <tr>
+            <td class="id">OQ-57</td>
+            <td><b style="color:var(--text)">New 19 September: there is no timeline file from the shooters, and never was going to be.</b> The tool's whole shot list is built from one, exported by the shooters; they export nothing for the tool. The colourist's edit list with the grade in it, a right-click export, is the only timeline the tool will see, and it carries enough: clip names, the trims, the grade. What it cannot carry is each clip's camera format, which is OQ-58. Rebuilding the shot list on the edit list is a redesign of the scan rather than a setting, and waits on the clip</td>
+            <td class="st"><span class="tag hot">Redesign</span></td>
+          </tr>
+          <tr>
+            <td class="id">OQ-58</td>
+            <td><b style="color:var(--text)">New 19 September.</b> Without a timeline file, where does each clip's camera format come from? Sony and Canon write it into the camera file itself, and Resolve reads exactly that; whether Resolve's trim keeps it and whether the tool can read it is what one real clip answers. The fallback is a second export from the colourist, unverified, and behind both a table and the per-delivery default of OQ-59</td>
+            <td class="st"><span class="tag hot">Clip</span></td>
+          </tr>
+          <tr>
+            <td class="id">OQ-59</td>
+            <td><b style="color:var(--text)">Required 19 September.</b> A per-delivery default camera format, chosen by the editor from a list, for a shooter who left it out. The clip's own metadata comes first, the default second, and a shot rendered through the default says so in the report and in the file. Two decisions are the user's: whether the default overrides a name the tool cannot resolve, or only fills a blank (the proposed answer, since a misspelt Sony clip falling back to a Canon default is the silent wrong plate the table exists to prevent); and whether a delivery is always one camera</td>
+            <td class="st"><span class="tag hot">Decide</span></td>
+          </tr>
+          <tr>
+            <td class="id">OQ-60</td>
+            <td><b style="color:var(--text)">New 19 September, from the code audit.</b> The decode asserts no signal range and no colour matrix, and the check the documents describe for it was never built. Camera-native log from Sony and Canon is recorded full range and flagged, so the default decode is probably right; it still has to be asserted rather than hoped, with the check built. Seven smaller audit findings are OQ-61 to OQ-67</td>
+            <td class="st"><span class="tag open">Build</span></td>
+          </tr>
           <tr>
             <td class="id">OQ-55</td>
             <td><b style="color:var(--text)">New 18 September, and it is the one export to ask the colourist for.</b> The chain decided today rests on four facts that no real session has yet shown: that the session's timeline is set to the common working format the tool replays the grade in, and not its near twin, which would grade the shadows differently with nothing failing; that Resolve's export of the grade off the first node reproduces the wheels closely enough, given that one wheel is approximated and the tool does not clamp where the written standard says to; that the tool's conversion for each camera lands where Resolve's own does, since the two now convert the same clip independently and would disagree silently; and that a lookup table generated from a clip in that session is the grade alone. <b style="color:var(--text)">One shot answers all four</b>: graded with the wheels in the first node, handed over as the edit list, the stringout and a lookup table of the same clip. The tool renders it both ways and each reference is compared to the stringout. The colourist's page ends with this brief</td>
@@ -1761,6 +1786,35 @@
 
   <section>
     <h2>Corrections made to the spec</h2>
+      <div class="note">
+        <h3>A review found the plan a week out of step with the workflow, and set a rule</h3>
+        <p>
+          The user suspected the plan and the real workflow had drifted, and asked for a pass over
+          everything looking for assumptions. An audit of the code and a day of research found
+          that <b>the whole format side of the specification rested on an intermediate the shooters
+          never make</b>: every colour and format document, and two checks, were built to ProRes
+          4444 delivered full range. The shooters leave footage as their cameras record it and
+          trim it in Resolve. And <b>the timeline file the scan is built on was never going to be
+          exported</b>: the shooters hand consolidated timelines to the colourist and nothing to the
+          tool. The colourist's edit list with the grade in it is the only timeline the tool will
+          ever see.
+        </p>
+        <p>
+          <b>What the reversal costs and saves.</b> The format checks are rebased on real cameras,
+          4:2:0 becomes a warning by decision, RAW of any kind is refused because the video tools
+          cannot read it, and the scan has to be rebuilt on the edit list. In exchange the tool has
+          one author for every input, the colourist, and nothing for the shooters to export or get
+          wrong. What the edit list cannot carry, each clip's camera format, most likely lives in
+          the camera file itself, which one real clip will show.
+        </p>
+        <p>
+          <b>The rule that came out of it: only verified facts go into the plan.</b> An assumption is
+          researched to a source, asked of the user, or written as a question with an owner, and
+          nothing is built on it while it is open. Nothing was built this session, deliberately;
+          the next work waits on one trimmed camera file. <span class="mono">docs/REVIEW_2026-09-19.md</span>
+          is the whole review on one page, with the ledger of what is verified and by whom.
+        </p>
+      </div>
       <div class="note">
         <h3>The grade carrier was decided a third time, and this time by how Resolve exports</h3>
         <p>
@@ -2479,7 +2533,14 @@
     <b>Verify</b> &middot; bash build/mac_build.sh &middot; pytest &middot;
     ruff check . &amp;&amp; mypy proingest tests build &middot; python build/build.py &middot;
     python build/smoke_test.py &lt;app&gt;<br>
-    <b>Last updated</b> &middot; 18 September 2026, 12:35 PDT. <b>The grade is the short numeric one in the edit
+    <b>Last updated</b> &middot; 19 September 2026, 10:03 PDT. <b>A review found the plan out of step with the
+    workflow</b>: the shooters deliver camera-native files, not the ProRes 4444 the format side
+    of the specification was built to, and they export no timeline file; the colourist's edit
+    list with the grade in it is the only timeline the tool will see. Twelve questions (OQ-56 to
+    OQ-67) record what that reverses, what a code audit found underneath, and what one real
+    trimmed clip will answer. Nothing built, by rule: only verified facts from here.
+    <span class="mono">docs/REVIEW_2026-09-19.md</span> is the page to read. 1739 tests.<br>
+    <b>18 September, afternoon</b> &middot; 18 September 2026, 12:35 PDT. <b>The grade is the short numeric one in the edit
     list, applied in the common working format, and the lookup table is the exception</b>, decided
     by the user after the morning's correction below and built the same day: the tool converts
     each clip into the working format from the name in its own metadata, applies the grade, and
