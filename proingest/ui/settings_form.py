@@ -186,6 +186,16 @@ def sections() -> tuple[Section, ...]:
                     "change what a reference looks like (OQ-29).",
                 ),
                 Field(
+                    "readonly.working_space",
+                    "Working space",
+                    "readonly",
+                    "Where the colour session's CDL is applied: the timeline colour space "
+                    "the session is set to, by standard. The tool converts each clip into "
+                    "it from the encoding its metadata names, applies the CDL, and carries "
+                    "the result to ACEScg. A session set to anything else grades wrong "
+                    "without an error, so this is a standard rather than a setting.",
+                ),
+                Field(
                     "readonly.output_transform",
                     "Output transform",
                     "readonly",
@@ -290,10 +300,11 @@ def sections() -> tuple[Section, ...]:
 
 
 def readonly_values() -> dict[str, str]:
-    """The Colour section's three read-only lines, read from core rather than copied."""
+    """The Colour section's four read-only lines, read from core rather than copied."""
     table = "\n".join(f"{written} = {space}" for written, space in sorted(color.INPUT_TRANSFORMS.items()))
     return {
         "readonly.config": color.BUILTIN_CONFIG,
+        "readonly.working_space": color.WORKING_SPACE,
         "readonly.output_transform": f"{color.VIEW} on {color.DISPLAY}",
         "readonly.input_transforms": table,
         "readonly.log_file": str(paths.log_dir() / logsetup.LOG_FILENAME),

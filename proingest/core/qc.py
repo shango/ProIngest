@@ -640,16 +640,15 @@ def check_aux_still(row: ShotRow) -> list[QCResult]:
 def check_source_encoding(row: ShotRow) -> list[QCResult]:
     """QC-046 and QC-047: the clip named no source encoding, or named one that does not resolve.
 
-    **An error only where the tool converts on its own authority**, which is the aux
-    still: a colour chart is delivered ungraded, never gets the CLF, and a mis-converted
-    one still looks exactly like a chart. Everywhere else the CLF is the whole chain
-    (OQ-37), so the string is provenance and blocking a plate over it would be a rule
-    that gets switched off.
+    **An error on every row the tool transforms**, which since 2026-09-18 is every plate
+    as well as the aux still: the grade is applied in ACEScct and this name is what gets
+    the clip there, so a wrong one grades the wrong pixels and a missing one renders
+    nothing. Info on a BTS frame, which is copied byte for byte.
 
     QC-047 quotes what was written and says what it could not be resolved to, because
     the fix is somebody retyping a field rather than anything in the tool.
     """
-    blocking = delivers_aux_still(row)
+    blocking = is_picture_row(row) or delivers_aux_still(row)
     if row.source_encoding is None:
         return [
             QCResult(
@@ -810,40 +809,40 @@ def check_color_session(turnover: Turnover, rows: list[ShotRow]) -> list[QCResul
                 "until the session's final EDL is ingested for this turnover",
             )
         ]
-    if not any(row.clf_path is not None for row in rows):
+    if not any(clf.has_grade(row) for row in rows):
         return [
             QCResult(
                 "QC-008",
                 "error",
                 "turnover",
-                f"{edl.name} was ingested but delivered no grade file for any row in this turnover",
+                f"{edl.name} was ingested but carried no CDL and no cube for any row in this turnover",
             )
         ]
     return []
 
 
 def check_clf(row: ShotRow, has_session: bool) -> list[QCResult]:
-    """QC-009: this row has no usable CLF, and an ungraded plate is the wrong pixels.
+    """QC-009: this row has no usable grade, and an ungraded plate is the wrong pixels.
 
     Silent until a session has been ingested for the turnover, because with none the
     whole turnover is QC-008 and repeating it per row would bury it, and silent on an
-    aux still and a BTS frame, which are delivered ungraded by design and owe no CLF
+    aux still and a BTS frame, which are delivered ungraded by design and owe no grade
     (`is_picture_row`). Two states report the same way because they cost the same thing:
-    the session matched no CLF to this shot (OQ-33), and the CLF it matched is no longer
-    on the disk.
+    the session left this shot neither a CDL nor a cube (OQ-33), and the cube it left is
+    no longer on the disk.
     """
     if not has_session or not is_picture_row(row):
         return []
-    if row.clf_path is None:
+    if not clf.has_grade(row):
         return [
             QCResult(
                 "QC-009",
                 "error",
                 "row",
-                "the colour session delivered no grade file for this shot; it would render ungraded",
+                "the colour session left no CDL and no cube for this shot; it would render ungraded",
             )
         ]
-    if not row.clf_path.is_file():
+    if row.clf_path is not None and not row.clf_path.is_file():
         return [
             QCResult(
                 "QC-009",
@@ -856,15 +855,15 @@ def check_clf(row: ShotRow, has_session: bool) -> list[QCResult]:
 
 
 def check_clf_loads(row: ShotRow, cache: dict[Path, list[QCResult]]) -> list[QCResult]:
-    """QC-019 and QC-039: the CLF is there but will not load, or is not scene linear.
+    """QC-019 and QC-039: the cube is there but will not load, or is not a grade alone.
 
-    Both are errors and they fail in opposite directions. A CLF that will not load
-    stops a render, which is loud. A CLF with a display rendering in it finishes one,
+    Both are errors and they fail in opposite directions. A cube that will not load
+    stops a render, which is loud. A cube with a display rendering in it finishes one,
     and the result is a display referred EXR claiming to be linear ACEScg, which nothing
     downstream notices until a comp is wrong (COLOR_AND_FORMAT section 1).
 
-    `cache` is keyed by path because the elements of one shot share its CLF, and loading
-    a CLF builds an OCIO processor and probes it: doing that four times per shot is the
+    `cache` is keyed by path because the elements of one shot share its cube, and loading
+    one builds an OCIO processor and probes it: doing that four times per shot is the
     difference between a pre-flight that is free and one the editor waits on.
     """
     path = row.clf_path
@@ -876,20 +875,21 @@ def check_clf_loads(row: ShotRow, cache: dict[Path, list[QCResult]]) -> list[QCR
 
 
 def _probe_clf(path: Path) -> list[QCResult]:
-    """Load one CLF and say what is wrong with it, or nothing."""
+    """Load one cube and say what is wrong with it, or nothing."""
     try:
         loaded = clf.load_clf(path)
     except clf.ClfError as exc:
         return [QCResult("QC-019", "error", "row", str(exc))]
-    if not loaded.is_scene_linear:
+    if not loaded.is_grade_only:
         return [
             QCResult(
                 "QC-039",
                 "error",
                 "row",
-                f"{path.name} appears to contain a display rendering: its output at the top "
-                f"of the log range is not scene linear {color.PLATE_SPACE}. A plate rendered "
-                f"through it would be display referred and would claim to be linear",
+                f"{path.name} appears to contain a display rendering: it flattens the top of "
+                f"the {color.WORKING_SPACE} range where a grade would leave it open. A plate "
+                f"rendered through it would be display referred and would claim to be linear "
+                f"{color.PLATE_SPACE}",
             )
         ]
     return []
@@ -898,14 +898,12 @@ def _probe_clf(path: Path) -> list[QCResult]:
 def check_color_chain(row: ShotRow) -> list[QCResult]:
     """QC-048: which colour chain this row is about to be rendered through.
 
-    **Not a check and deliberately not one** (OQ-46). The tool cannot tell from the
-    pixels whether a session's CLF already contains the conversion from the source
-    encoding, and a rule that guessed would be silently wrong in one direction or the
-    other. What it can do is say what it did, so a delivery that turns out to have been
-    double converted is identifiable afterwards rather than re-derived from a setting
-    nobody wrote down.
+    **Not a check and deliberately not one** (OQ-46). It says what the tool did, so a
+    delivery that turns out to have been graded in the wrong space, or through a cube
+    nobody remembers exporting, is identifiable afterwards rather than re-derived from a
+    setting nobody wrote down.
 
-    Here rather than with the model rules because the CLF is resolved by the planner,
+    Here rather than with the model rules because the chain is resolved by the planner,
     which runs immediately before a render: a row's chain is a fact about the run that
     is about to happen, not about the batch as it was scanned.
     """
@@ -917,21 +915,23 @@ def check_color_chain(row: ShotRow) -> list[QCResult]:
             else "nothing: no source encoding resolved"
         )
         return [QCResult("QC-048", "info", "row", f"aux still rendered through {chain}")]
+    if encoding is None:
+        return [QCResult("QC-048", "info", "row", "no source encoding: nothing to render through")]
+    legs = f"{encoding} to {color.WORKING_SPACE}, {{grade}}, {color.WORKING_SPACE} to {color.PLATE_SPACE}"
     if row.clf_path is not None:
-        return [QCResult("QC-048", "info", "row", f"rendered through {row.clf_path.name} alone")]
-    if encoding is not None:
+        grade = f"{row.clf_path.name} in place of the CDL"
+    elif row.cdl is not None:
+        grade = "the CDL"
+    else:
         return [
             QCResult(
                 "QC-048",
                 "info",
                 "row",
-                f"no grade file: rendered through the input transform alone, "
-                f"{encoding} to {color.PLATE_SPACE}",
+                f"no grade: rendered through the input transform alone, {encoding} to {color.PLATE_SPACE}",
             )
         ]
-    return [
-        QCResult("QC-048", "info", "row", "no grade file and no source encoding: nothing to render through")
-    ]
+    return [QCResult("QC-048", "info", "row", f"rendered through {legs.format(grade=grade)}")]
 
 
 def check_hdri_header(row: ShotRow) -> list[QCResult]:

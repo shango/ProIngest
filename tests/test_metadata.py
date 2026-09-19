@@ -143,7 +143,8 @@ class TestWhatOneRowSays:
         assert value(sections, "Colour", "Grade file") == "/session/MELT0001.clf"
 
     def test_a_row_with_no_colour_facts_has_no_colour_section(self) -> None:
-        assert "Colour" not in titles(describe([row()], batch(row())))
+        bare = row(source_encoding=None)
+        assert "Colour" not in titles(describe([bare], batch(bare)))
 
     def test_audio_reports_its_own_length_against_the_picture(self) -> None:
         sounded = with_sides(row())
@@ -250,7 +251,8 @@ class TestTheEdgeStates:
         assert value(sections, "Turnover", "QC-054") == "no lens grid folder"
 
     def test_a_section_with_nothing_in_it_is_dropped(self) -> None:
-        assert "Colour" not in titles(describe([row()], batch(row())))
+        bare = row(source_encoding=None)
+        assert "Colour" not in titles(describe([bare], batch(bare)))
 
 
 class TestMoreThanOneRow:

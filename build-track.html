@@ -311,7 +311,7 @@
   <header class="mast">
     <div class="eyebrow">
       <span>VFX turnover ingest &middot; macOS v01</span>
-      <span class="stamp">Updated <b>18 Sep 2026, 10:27 PDT</b></span>
+      <span class="stamp">Updated <b>19 Sep 2026, 10:03 PDT</b></span>
     </div>
     <h1>ProIngest Build Track</h1>
     <p class="standfirst">
@@ -328,11 +328,11 @@
       <div class="stat-l">Milestones done</div>
     </div>
     <div class="stat">
-      <div class="stat-n good">1730</div>
+      <div class="stat-n good">1739</div>
       <div class="stat-l">Tests, Linux + macOS</div>
     </div>
     <div class="stat">
-      <div class="stat-n">29<span style="color:var(--faint);font-size:17px">/54</span></div>
+      <div class="stat-n warn">41<span style="color:var(--faint);font-size:17px">/67</span></div>
       <div class="stat-l">Questions open</div>
     </div>
     <div class="stat">
@@ -670,6 +670,11 @@
             to the same Sony format, and one resolves to nothing at all.
             <b>This did not hold up the interface</b>, and it made the interface work slightly
             smaller rather than larger: there is no mode, so there is no control for one.
+            <b>Reversed on 18 September, by how Resolve actually exports.</b> The grade is the short
+            numeric one carried on each event of the edit list, applied in the common working
+            format, so the tool converts every plate into that format itself again and the format
+            table is load bearing on every shot. The two reports that were errors only on a
+            reference still are errors everywhere. OQ-46 and the note under Corrections say why.
           </div>
         </div>
       </div>
@@ -1542,7 +1547,7 @@
     <h2>Open questions</h2>
     <p class="standfirst" style="margin-bottom:14px">
       The live list. Questions answered days ago and no longer affecting anything have been
-      taken off this board; none is deleted, and all 54 of them, closed ones included, stay in
+      taken off this board; none is deleted, and all 67 of them, closed ones included, stay in
       <span class="mono">docs/OPEN_QUESTIONS.md</span> with the reasoning that closed them.
       What is kept here is what is still open, what was answered in the last two days, and
       what was built to a default that one real delivery would confirm.
@@ -1554,9 +1559,39 @@
         </thead>
         <tbody>
           <tr>
-            <td class="id">OQ-54</td>
-            <td><b style="color:var(--text)">New 18 September, and it corrects a premise a week old.</b> The user asked for evidence that Resolve exports a colour file in the format every colour document assumed, and there is none: Resolve <b style="color:var(--text)">reads</b> that format and <b style="color:var(--text)">writes</b> a plain 3D lookup table, at 17, 33 or 65 points, from its Generate LUT command. The readable grade record was never in doubt; Resolve puts it inside the exported edit list, which is what the tool reads. <b style="color:var(--text)">Answered to a default the same day</b>: the per-shot grade file is a 65 point lookup table named with the shot code, the tool accepts it in the same role with a one line change, and nothing else in the chain moved because the colour engine loads either format the same way and the check that refuses a baked-in viewing transform judges either the same way. <b style="color:var(--text)">What a lookup table contains depends on how the session is set up</b>, and that is the risk: it captures the clip's node graph and nothing outside it. A new page for the colourist says exactly how to set the session up so the table is the whole conversion, and one shot exported that way is what confirms it</td>
+            <td class="id">OQ-56</td>
+            <td><b style="color:var(--text)">New 19 September, and it reverses a premise the format checks were built on.</b> The shooters deliver camera-native files, whatever their cameras shoot, trimmed in Resolve. Every colour and format document, and two of the checks, assumed a ProRes 4444 intermediate. Researched: the video tools decode every common compressed camera codec and <b style="color:var(--text)">no RAW format at all</b>, so nothing RAW may reach a delivery and a Blackmagic camera must record ProRes or DNx. <b style="color:var(--text)">Decided</b>: 4:2:0 sources are allowed with a warning. Still wanted: the exact cameras and modes</td>
+            <td class="st"><span class="tag hot">Ask</span></td>
+          </tr>
+          <tr>
+            <td class="id">OQ-57</td>
+            <td><b style="color:var(--text)">New 19 September: there is no timeline file from the shooters, and never was going to be.</b> The tool's whole shot list is built from one, exported by the shooters; they export nothing for the tool. The colourist's edit list with the grade in it, a right-click export, is the only timeline the tool will see, and it carries enough: clip names, the trims, the grade. What it cannot carry is each clip's camera format, which is OQ-58. Rebuilding the shot list on the edit list is a redesign of the scan rather than a setting, and waits on the clip</td>
+            <td class="st"><span class="tag hot">Redesign</span></td>
+          </tr>
+          <tr>
+            <td class="id">OQ-58</td>
+            <td><b style="color:var(--text)">New 19 September.</b> Without a timeline file, where does each clip's camera format come from? Sony and Canon write it into the camera file itself, and Resolve reads exactly that; whether Resolve's trim keeps it and whether the tool can read it is what one real clip answers. The fallback is a second export from the colourist, unverified, and behind both a table and the per-delivery default of OQ-59</td>
+            <td class="st"><span class="tag hot">Clip</span></td>
+          </tr>
+          <tr>
+            <td class="id">OQ-59</td>
+            <td><b style="color:var(--text)">Required 19 September.</b> A per-delivery default camera format, chosen by the editor from a list, for a shooter who left it out. The clip's own metadata comes first, the default second, and a shot rendered through the default says so in the report and in the file. Two decisions are the user's: whether the default overrides a name the tool cannot resolve, or only fills a blank (the proposed answer, since a misspelt Sony clip falling back to a Canon default is the silent wrong plate the table exists to prevent); and whether a delivery is always one camera</td>
+            <td class="st"><span class="tag hot">Decide</span></td>
+          </tr>
+          <tr>
+            <td class="id">OQ-60</td>
+            <td><b style="color:var(--text)">New 19 September, from the code audit.</b> The decode asserts no signal range and no colour matrix, and the check the documents describe for it was never built. Camera-native log from Sony and Canon is recorded full range and flagged, so the default decode is probably right; it still has to be asserted rather than hoped, with the check built. Seven smaller audit findings are OQ-61 to OQ-67</td>
+            <td class="st"><span class="tag open">Build</span></td>
+          </tr>
+          <tr>
+            <td class="id">OQ-55</td>
+            <td><b style="color:var(--text)">New 18 September, and it is the one export to ask the colourist for.</b> The chain decided today rests on four facts that no real session has yet shown: that the session's timeline is set to the common working format the tool replays the grade in, and not its near twin, which would grade the shadows differently with nothing failing; that Resolve's export of the grade off the first node reproduces the wheels closely enough, given that one wheel is approximated and the tool does not clamp where the written standard says to; that the tool's conversion for each camera lands where Resolve's own does, since the two now convert the same clip independently and would disagree silently; and that a lookup table generated from a clip in that session is the grade alone. <b style="color:var(--text)">One shot answers all four</b>: graded with the wheels in the first node, handed over as the edit list, the stringout and a lookup table of the same clip. The tool renders it both ways and each reference is compared to the stringout. The colourist's page ends with this brief</td>
             <td class="st"><span class="tag hot">Confirm</span></td>
+          </tr>
+          <tr>
+            <td class="id">OQ-54</td>
+            <td><b style="color:var(--text)">New 18 September, and it corrects a premise a week old.</b> The user asked for evidence that Resolve exports a colour file in the format every colour document assumed, and there is none: Resolve <b style="color:var(--text)">reads</b> that format and <b style="color:var(--text)">writes</b> a plain 3D lookup table, at 17, 33 or 65 points, from its Generate LUT command. The readable grade record was never in doubt; Resolve puts it inside the exported edit list, which is what the tool reads. <b style="color:var(--text)">Answered to a default the same day</b>: the per-shot grade file is a 65 point lookup table named with the shot code, the tool accepts it in the same role with a one line change, and nothing else in the chain moved because the colour engine loads either format the same way and the check that refuses a baked-in viewing transform judges either the same way. <b style="color:var(--text)">What a lookup table contains depends on how the session is set up</b>, and that is the risk: it captures the clip's node graph and nothing outside it. <b style="color:var(--text)">Superseded in part later the same day</b>: the grade is the short numeric one in the edit list (OQ-46), the session is colour managed rather than set up so a table contains the conversion, and <b style="color:var(--text)">a lookup table is now the exception</b>, generated only for a shot the wheels could not do and taking the numeric grade's place for that shot. What stands is the fact: Resolve writes tables and not the exchange format, and the tool takes either in that role. The test export is OQ-55</td>
+            <td class="st"><span class="tag open">Built</span></td>
           </tr>
           <tr>
             <td class="id">OQ-53</td>
@@ -1578,20 +1613,20 @@
             <td><b style="color:var(--text)">New 12 September, with the user guide.</b> A PDF and a Google Doc are two different products: a PDF reads the same for everyone and cannot be edited, a Doc can be corrected and shared by link and then drifts from the copy in the repo that nobody can regenerate. The plan is one source with the pictures embedded, which prints to PDF and pastes into a Doc whole. What the answer changes is whether the studio's copy becomes the real one. Worth settling before the first hand-over rather than after</td>
             <td class="st"><span class="tag open">New</span></td>
           </tr>
-          <tr class="resolved">
+          <tr>
             <td class="id">OQ-37</td>
-            <td><b style="color:var(--text)">Answered the same day, and it was the cheapest question on the board.</b> The grading session starts each shot's colour file from the camera's own format, or from the house format in the other mode. So the colour file is the entire conversion and the tool performs none of its own on a plate, it cannot disagree with Resolve about what a camera format is, and a camera nobody has mapped still delivers. The common working format that used to sit in between is gone from the chain</td>
-            <td class="st"><span class="tag ok">Answered</span></td>
+            <td><b style="color:var(--text)">Answered 12 September, reversed 18 September.</b> The answer was that the grading session starts each shot's colour file from the camera's own format, so the file is the entire conversion and the tool performs none of its own. That was right for a colour file and is wrong for the grade as it is now delivered: the short numeric grade means something only in the working format it was set in, so <b style="color:var(--text)">the tool converts on every plate again</b>, into that format and out of it, and the common working format is back in the chain as a standard the session is set to</td>
+            <td class="st"><span class="tag hot">Reversed</span></td>
           </tr>
           <tr class="resolved">
             <td class="id">OQ-47</td>
-            <td><b style="color:var(--text)">Raised 12 September, answered 13 September by building the replacement.</b> The check that opens each colour file and measures it could no longer tell a dark grade shot on a Canon from a colour file with the viewing transform baked in. White out of Canon's log is worth a fifteenth of what it is worth out of the format the old threshold was set against, so a few stops of grade landed a good file exactly where a bad one lands - and it refused the good file, because that check stops a delivery. <b style="color:var(--text)">It now measures the shape of the top of the range rather than one value in it</b>: two samples near white, and how far apart they come out. A grade darkens both and cancels out, so what is left is the steepness at the top, which is precisely what a baked-in viewing transform flattens. <b style="color:var(--text)">The numbers were measured again rather than taken from this row, and one of them moved</b>: the second sample this question proposed leaves the darkest legitimate grade at 1.35 against a bad file's 1.016, which no threshold can separate; a sample slightly further down the curve puts them at 1.86 and 1.055, and the threshold sits about a third from each. Eleven tests, including every camera format in play against a dark grade and against a real baked-in viewing transform</td>
+            <td><b style="color:var(--text)">Raised 12 September, answered 13 September by building the replacement.</b> The check that opens each colour file and measures it could no longer tell a dark grade shot on a Canon from a colour file with the viewing transform baked in. White out of Canon's log is worth a fifteenth of what it is worth out of the format the old threshold was set against, so a few stops of grade landed a good file exactly where a bad one lands - and it refused the good file, because that check stops a delivery. <b style="color:var(--text)">It now measures the shape of the top of the range rather than one value in it</b>: two samples near white, and how far apart they come out. A grade darkens both and cancels out, so what is left is the steepness at the top, which is precisely what a baked-in viewing transform flattens. <b style="color:var(--text)">The numbers were measured again rather than taken from this row, and one of them moved</b>: the second sample this question proposed leaves the darkest legitimate grade at 1.35 against a bad file's 1.016, which no threshold can separate; a sample slightly further down the curve puts them at 1.86 and 1.055, and the threshold sits about a third from each. Eleven tests, including every camera format in play against a dark grade and against a real baked-in viewing transform. <b style="color:var(--text)">Changed shape again on 18 September with the carrier</b>: a lookup table now comes out of the session in the working format at both ends, so the ratio would have refused every correct one. The check measures how far apart the two samples still are, measured against every camera format in play, and the threshold sits well clear of both populations</td>
             <td class="st"><span class="tag ok">Answered</span></td>
           </tr>
-          <tr>
+          <tr class="resolved">
             <td class="id">OQ-46</td>
-            <td><b style="color:var(--text)">New 12 September, and the one open risk.</b> Whether a given session's colour file really does contain the conversion. If the tool also converts, it converts <b>twice</b>: nothing fails, every check passes, and the result looks like a grade decision rather than a defect. Both readings of what was said are reasonable and the format table gets built either way; what moves is whether it is applied ahead of the colour file. Confirm against one real export, and until then the tool records which chain it used rather than inferring it</td>
-            <td class="st"><span class="tag hot">Confirm</span></td>
+            <td><b style="color:var(--text)">New 12 September as the one open risk, decided by the user on 18 September.</b> The question was whether a session's colour file contains the conversion from the camera's format, because if the tool also converts, it converts twice and nothing fails. <b style="color:var(--text)">The grade is now the short numeric one carried on each event of the edit list</b>, exported by Resolve from the first node of a colour managed session whose timeline is the common working format, and those numbers mean something only there. So the tool converts each clip into that format from the name in its metadata, applies the numbers, and converts out to the delivered form. A lookup table generated from a clip in that same session is the clip's whole node graph with the working format at both ends, and takes the numbers' place for a shot that needed more than the wheels. One case, no double conversion; OQ-55 is the export that checks it</td>
+            <td class="st"><span class="tag ok">Decided</span></td>
           </tr>
           <tr>
             <td class="id">OQ-45</td>
@@ -1600,7 +1635,7 @@
           </tr>
           <tr>
             <td class="id">OQ-44</td>
-            <td><b style="color:var(--text)">New 12 September.</b> Where in a clip's information the shooters write their camera's log format, and exactly what they write. Which field, and which carrier: the timeline file, the media file itself, or the grading session's edit list. The tool reads all three already, so this is about which one Resolve actually fills in. The string matters as much as the field: a log name on its own can match four entries, so the instruction has to ask for the camera's colour range too. Smaller since OQ-37: a plate no longer needs this to resolve, so a missing one costs a line of provenance rather than a picture</td>
+            <td><b style="color:var(--text)">New 12 September.</b> Where in a clip's information the shooters write their camera's log format, and exactly what they write. Which field, and which carrier: the timeline file, the media file itself, or the grading session's edit list. The tool reads all three already, so this is about which one Resolve actually fills in. The string matters as much as the field: a log name on its own can match four entries, so the instruction has to ask for the camera's colour range too. It was smaller for a week: a plate did not need this to resolve while the colour file was the whole conversion. <b style="color:var(--text)">Since 18 September every plate needs it</b>, because the tool converts into the working format ahead of the grade from this name, so a missing or unrecognised one stops the shot</td>
             <td class="st"><span class="tag open">Has a default</span></td>
           </tr>
           <tr>
@@ -1610,7 +1645,7 @@
           </tr>
           <tr>
             <td class="id">OQ-34</td>
-            <td><b style="color:var(--text)">Reopened 12 September, required the same day, and built the same day.</b> Resolve's format names and the colour engine's names do not match, so the tool has to turn one into the other. The table is now in the code: the engine's own names resolve on their own in any spelling, and the table carries the shorter names the shooters were given. A name it cannot resolve to exactly one entry stops that reference still rather than converting it approximately, and Sony's name on its own is exactly that case - it matches four entries, so the clip is stopped and the message names all four. <b style="color:var(--text)">What is still open is the string rather than the mechanism</b>, whether what a shooter actually types lands on a row, which is OQ-44. A fourth camera is one line</td>
+            <td><b style="color:var(--text)">Reopened 12 September, required the same day, and built the same day.</b> Resolve's format names and the colour engine's names do not match, so the tool has to turn one into the other. The table is now in the code: the engine's own names resolve on their own in any spelling, and the table carries the shorter names the shooters were given. A name it cannot resolve to exactly one entry stops that reference still rather than converting it approximately, and Sony's name on its own is exactly that case - it matches four entries, so the clip is stopped and the message names all four. <b style="color:var(--text)">What is still open is the string rather than the mechanism</b>, whether what a shooter actually types lands on a row, which is OQ-44. A fourth camera is one line. <b style="color:var(--text)">Load bearing on every plate since 18 September</b>, not only the reference still</td>
             <td class="st"><span class="tag open">Built</span></td>
           </tr>
           <tr>
@@ -1625,7 +1660,7 @@
           </tr>
           <tr>
             <td class="id">OQ-33</td>
-            <td>What pairs a colour file with its shot - built to the obvious default: the shot code in the filename, with two files claiming one shot refusing to run rather than choosing. The same one real export still confirms it</td>
+            <td>What pairs a lookup table with its shot - built to the obvious default: the shot code in the filename, with two files claiming one shot refusing to run rather than choosing. Since 18 September only the exception needs pairing: the grade itself sits on the edit list event the shot already matched</td>
             <td class="st"><span class="tag open">Built</span></td>
           </tr>
           <tr class="resolved">
@@ -1751,6 +1786,76 @@
 
   <section>
     <h2>Corrections made to the spec</h2>
+      <div class="note">
+        <h3>A review found the plan a week out of step with the workflow, and set a rule</h3>
+        <p>
+          The user suspected the plan and the real workflow had drifted, and asked for a pass over
+          everything looking for assumptions. An audit of the code and a day of research found
+          that <b>the whole format side of the specification rested on an intermediate the shooters
+          never make</b>: every colour and format document, and two checks, were built to ProRes
+          4444 delivered full range. The shooters leave footage as their cameras record it and
+          trim it in Resolve. And <b>the timeline file the scan is built on was never going to be
+          exported</b>: the shooters hand consolidated timelines to the colourist and nothing to the
+          tool. The colourist's edit list with the grade in it is the only timeline the tool will
+          ever see.
+        </p>
+        <p>
+          <b>What the reversal costs and saves.</b> The format checks are rebased on real cameras,
+          4:2:0 becomes a warning by decision, RAW of any kind is refused because the video tools
+          cannot read it, and the scan has to be rebuilt on the edit list. In exchange the tool has
+          one author for every input, the colourist, and nothing for the shooters to export or get
+          wrong. What the edit list cannot carry, each clip's camera format, most likely lives in
+          the camera file itself, which one real clip will show.
+        </p>
+        <p>
+          <b>The rule that came out of it: only verified facts go into the plan.</b> An assumption is
+          researched to a source, asked of the user, or written as a question with an owner, and
+          nothing is built on it while it is open. Nothing was built this session, deliberately;
+          the next work waits on one trimmed camera file. <span class="mono">docs/REVIEW_2026-09-19.md</span>
+          is the whole review on one page, with the ledger of what is verified and by whom.
+        </p>
+      </div>
+      <div class="note">
+        <h3>The grade carrier was decided a third time, and this time by how Resolve exports</h3>
+        <p>
+          On 11 September the grade was going to be the short numeric one in the edit list, then
+          a full colour file per shot the same day, and on the morning of 18 September a lookup
+          table per shot because Resolve writes no colour file. <b>That afternoon the user decided
+          it is the short numeric grade after all</b>, applied in the common working format, with
+          each clip's own metadata naming how the tool gets it there. The deciding fact is how
+          Resolve exports: the numeric grade comes off the <b>first node</b> of each clip and
+          nothing else, which means the colourist works in a colour managed session, grading in
+          that node with the wheels, and the numbers mean something only in the session's working
+          format. The morning's setup, an unmanaged session arranged so a table would contain the
+          whole conversion, would have exported an identity grade; the two could never have been
+          asked for together.
+        </p>
+        <p>
+          <b>What it buys and what it costs.</b> One export per delivery instead of one file per
+          shot, no naming and no pairing for the normal case, exact arithmetic instead of a
+          sampled grid, a grade a person can read, and the end of the question that had been the
+          one open risk: whether the table contained the conversion. Against that, the format
+          table is load bearing on every plate rather than only the reference still, so a shot
+          whose clip names no format or an unrecognised one is refused; the tool has to hold the
+          working format, as a standard rather than a setting, because a value that disagreed with
+          the session would grade wrong with nothing failing; and the grade the numbers can carry
+          is the wheels of one node. <b>The lookup table survives as the exception</b>: generated
+          from a clip in that same session it is the grade alone, and it takes the numbers' place
+          for a shot that needed a curve or a second node.
+        </p>
+        <p>
+          <b>One check had to change shape with it.</b> The check that refuses a lookup table with
+          the viewing transform baked in measured a ratio between two samples near white, which
+          was right while a table ended in the delivered form and would have refused every correct
+          table now that one starts and ends in the working format: identity gives 1.25 against a
+          floor of 1.4. It measures the distance between the samples instead, which a darkening
+          cannot move and a viewing transform closes, measured across every camera format in play
+          with the threshold well clear of both populations. Pushing the probe through the tool's
+          own conversion instead was tried on paper and rejected: it would have passed a viewing
+          transform. Nothing about this chain has been seen from a real session, and one export
+          (OQ-55) is what shows it.
+        </p>
+      </div>
       <div class="note">
         <h3>The colour session was specified to export a file Resolve cannot write</h3>
         <p>
@@ -2428,7 +2533,22 @@
     <b>Verify</b> &middot; bash build/mac_build.sh &middot; pytest &middot;
     ruff check . &amp;&amp; mypy proingest tests build &middot; python build/build.py &middot;
     python build/smoke_test.py &lt;app&gt;<br>
-    <b>Last updated</b> &middot; 18 September 2026, 10:27 PDT. <b>The per-shot grade file is a plain lookup
+    <b>Last updated</b> &middot; 19 September 2026, 10:03 PDT. <b>A review found the plan out of step with the
+    workflow</b>: the shooters deliver camera-native files, not the ProRes 4444 the format side
+    of the specification was built to, and they export no timeline file; the colourist's edit
+    list with the grade in it is the only timeline the tool will see. Twelve questions (OQ-56 to
+    OQ-67) record what that reverses, what a code audit found underneath, and what one real
+    trimmed clip will answer. Nothing built, by rule: only verified facts from here.
+    <span class="mono">docs/REVIEW_2026-09-19.md</span> is the page to read. 1739 tests.<br>
+    <b>18 September, afternoon</b> &middot; 18 September 2026, 12:35 PDT. <b>The grade is the short numeric one in the edit
+    list, applied in the common working format, and the lookup table is the exception</b>, decided
+    by the user after the morning's correction below and built the same day: the tool converts
+    each clip into the working format from the name in its own metadata, applies the grade, and
+    converts to the delivered form. The two format checks are errors on every plate, the check
+    against a baked-in viewing transform measures a distance instead of a ratio, the colourist's
+    page is rewritten for a colour managed session, and OQ-55 is the one export that confirms the
+    four facts the chain rests on. 1739 tests.<br>
+    <b>18 September, morning.</b> <b>The per-shot grade file is a plain lookup
     table, not the exchange format every colour document had assumed</b>, because Resolve reads
     that format and does not write it. One line of code, a dated correction at the top of the
     colour document, a new page telling the colourist exactly what to export and how to set the
@@ -2452,9 +2572,10 @@
     the proving run and the guide's last part all want the Mac or a real delivery.
     <b>Three questions want asking before a real delivery depends on them</b>: where the
     colourist will save each delivery's exports and what they will name the folder (OQ-53); which
-    field the shooters write their camera's format into and exactly what they write; and whether
-    a grading session's colour file really does contain the conversion - because if the tool also
-    converts, it converts twice and nothing fails. <b>One decision wants making before
+    field the shooters write their camera's format into and exactly what they write, which now
+    stops a plate rather than costing a line of provenance; and the test export (OQ-55): one shot
+    graded with the wheels in the first node of a session set to the working format, its edit
+    list, its stringout and a lookup table of the same clip, rendered both ways and compared. <b>One decision wants making before
     handover</b>: an Apple Developer ID, or a route to the editor that never marks a build as
     downloaded.
   </footer>

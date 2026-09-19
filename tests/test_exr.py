@@ -7,6 +7,7 @@ at the point it is written, not only at the point it is verified.
 
 from __future__ import annotations
 
+import dataclasses
 from pathlib import Path
 
 import numpy as np
@@ -203,7 +204,7 @@ class TestProvenance:
             path=path_to_clf,
             digest="abc123",
             transform=ocio.FileTransform(src=str(path_to_clf)),
-            is_scene_linear=True,
+            is_grade_only=True,
         )
         path = tmp_path / "frame.exr"
         exr.write_frame(path, image(), shot_color=shot_color, loaded_clf=loaded)
@@ -231,10 +232,21 @@ class TestProvenance:
         assert str(header[sop]).startswith("*ASC_SOP (1.020000")
         assert header[sat] == "*ASC_SAT 1.050000"
 
-    def test_the_header_says_the_cdl_was_not_the_thing_applied(self, tmp_path: Path) -> None:
+    def test_with_a_cube_the_header_says_the_cdl_was_not_the_thing_applied(self, tmp_path: Path) -> None:
         """Two grade artifacts in one header is only safe if the file says which is which."""
         header = self.written(tmp_path)
-        assert exr.CLF_ATTRIBUTE in str(header[exr.CDL_ATTRIBUTES[-1]])
+        assert header[exr.CDL_ATTRIBUTES[-1]] == exr.CDL_NOTE_RECORD
+        assert exr.CLF_ATTRIBUTE in exr.CDL_NOTE_RECORD
+
+    def test_without_a_cube_the_header_says_the_cdl_was_applied_and_where(self, tmp_path: Path) -> None:
+        shot_color = dataclasses.replace(self.shot_color(tmp_path), clf_path=None)
+        path = tmp_path / "frame.exr"
+        exr.write_frame(path, image(), shot_color=shot_color)
+        with OpenEXR.File(str(path)) as handle:
+            header = dict(handle.header())
+        assert header[exr.CDL_ATTRIBUTES[-1]] == exr.CDL_NOTE_APPLIED
+        assert color.WORKING_SPACE in exr.CDL_NOTE_APPLIED
+        assert exr.CLF_ATTRIBUTE not in header
 
     def test_a_frame_carries_its_own_timecode(self, tmp_path: Path) -> None:
         path = tmp_path / "frame.exr"

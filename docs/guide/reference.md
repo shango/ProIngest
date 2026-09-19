@@ -45,7 +45,7 @@ and looks exactly like a dead button. Its tooltip says so first.
 **Ingest Colour Session is the by-hand route.** A scan looks for the turnover's session
 first: a folder named exactly as the turnover folder, inside the folder Settings' "Ingest opens
 at" names, or else inside `_color` beside the turnovers, holding one final `.edl` and the
-`.cube` files. Found, it asks whether to ingest it; a folder with two `.edl` files in it is not
+any `.cube` files. Found, it asks whether to ingest it; a folder with two `.edl` files in it is not
 guessed between and the button is the answer. Ingesting twice reads the newer export over the
 older one, and the report says which rows changed.
 
@@ -155,8 +155,8 @@ collapsible and each remembering whether you shut it.
 - **Select several shots** and it shows what they agree on and marks the rest `mixed`. That is
   how one clip at the wrong resolution in a turnover of thirty is found without reading thirty
   rows.
-- Its **Colour** section is where you check that a shot got the grade file you expected: it names the
-  source encoding, where that name came from, and the grade file itself.
+- Its **Colour** section is where you check what a shot is graded with: it names the source
+  encoding, where that name came from, and any `.cube` that stands in for the CDL.
 
 ## The Issues tab
 
