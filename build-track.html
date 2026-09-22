@@ -311,7 +311,7 @@
   <header class="mast">
     <div class="eyebrow">
       <span>VFX turnover ingest &middot; macOS v01</span>
-      <span class="stamp">Updated <b>19 Sep 2026, 10:03 PDT</b></span>
+      <span class="stamp">Updated <b>22 Sep 2026</b></span>
     </div>
     <h1>ProIngest Build Track</h1>
     <p class="standfirst">
@@ -332,7 +332,7 @@
       <div class="stat-l">Tests, Linux + macOS</div>
     </div>
     <div class="stat">
-      <div class="stat-n warn">41<span style="color:var(--faint);font-size:17px">/67</span></div>
+      <div class="stat-n warn">43<span style="color:var(--faint);font-size:17px">/75</span></div>
       <div class="stat-l">Questions open</div>
     </div>
     <div class="stat">
@@ -1547,7 +1547,7 @@
     <h2>Open questions</h2>
     <p class="standfirst" style="margin-bottom:14px">
       The live list. Questions answered days ago and no longer affecting anything have been
-      taken off this board; none is deleted, and all 67 of them, closed ones included, stay in
+      taken off this board; none is deleted, and all 75 of them, closed ones included, stay in
       <span class="mono">docs/OPEN_QUESTIONS.md</span> with the reasoning that closed them.
       What is kept here is what is still open, what was answered in the last two days, and
       what was built to a default that one real delivery would confirm.
@@ -1559,19 +1559,54 @@
         </thead>
         <tbody>
           <tr>
+            <td class="id">OQ-70</td>
+            <td><b style="color:var(--text)">Answered 21 September by the user.</b> The shooters fill a second Resolve metadata field, <span class="mono">Shot Type</span>, with the code for what the clip is: plate, clean plate, element, witness camera, reference still. The shot code stays in its own field, so the two together give a deliverable its whole name. A code with no number on it means the first one, each shot has exactly one of each reference still, and the tool reads the codes without caring about capitals, because the shooters do not keep to them. <b style="color:var(--text)">Two things still to confirm</b>: the field is real and is where the user says, but the only public report of it is one where Resolve does not show it in a filter, and the sample cannot prove it reaches the spreadsheet because it was empty there. One export with the field filled proves both. The code for a clean plate is OQ-72</td>
+            <td class="st"><span class="tag open">Answered</span></td>
+          </tr>
+          <tr>
+            <td class="id">OQ-72</td>
+            <td><b style="color:var(--text)">Raised and answered 21 September, after the user corrected themselves twice.</b> Which code a clean plate carries. The answer is the one in the shooters' own specification, <span class="mono">cp</span>, so no translation is needed and none was built: the code a shooter types is the code the deliverable carries. What the full list raised instead is two smaller gaps, OQ-73.</td>
+            <td class="st"><span class="tag ok">Answered</span></td>
+          </tr>
+          <tr>
+            <td class="id">OQ-74</td>
+            <td><b style="color:var(--text)">Raised and answered 21 September.</b> Both of the tool's inputs now come from the colourist: identity and the camera format in his spreadsheet, the cut and the grade in his edit list. So there is nothing to scan before he is finished, where the tool was built to scan and review a delivery first and add his work later. <b style="color:var(--text)">The user settled it: that is by design.</b> He hands over one folder holding the media, the edit list and the spreadsheet together, and a folder missing either file is refused rather than scanned. It is simpler, and it retires three pieces of working interface - the automatic discovery of his exports, the delivery held back while others render, and the ingest step itself, which now exists only for a revised export.</td>
+            <td class="st"><span class="tag ok">Answered</span></td>
+          </tr>
+          <tr>
+            <td class="id">OQ-75</td>
+            <td><b style="color:var(--text)">Raised 22 September as a direction, not a build.</b> An industry metadata file could replace the spreadsheet and the grade export with one document: it carries an arbitrary column set per clip and can carry the grade numbers beside the identity and camera columns, and Resolve exports it. What it would not carry is the approved cut, so something like the edit list survives beside it. Recorded so the scoping is not redone: whether Resolve's export includes the two camera-format columns, whether it includes the clip type, and whether its grade columns come off the first node the way the edit list's do.</td>
+            <td class="st"><span class="tag open">Deferred</span></td>
+          </tr>
+          <tr>
+            <td class="id">OQ-71</td>
+            <td><b style="color:var(--text)">Raised 21 September and deferred the same day.</b> A standard colour metadata file, an industry format, could travel beside the edit list carrying the exact camera format and the grade, which would remove the hand-typed columns of OQ-58 entirely. <b style="color:var(--text)">Decided: not now.</b> The edit list stays, and the grade stays in it. The research is recorded so it does not have to be done twice: Resolve already exports one, and has a preset named for exactly this delivery; the colour library reads it only through a prototype, so the reader would be ours; and the format list the tool is pinned to carries none of the identifiers such a file uses, while the newer list that does would change every reference video, so the shape is to borrow the newer list's table without moving off the pinned one. One real file from the colourist would show whether its identifiers are the ones that table knows. It would not help the decode problem, which is about getting colour out of the file in the first place</td>
+            <td class="st"><span class="tag open">Deferred</span></td>
+          </tr>
+          <tr>
+            <td class="id">OQ-68</td>
+            <td><b style="color:var(--text)">New 19 September, evening, from the sample delivery.</b> Two files arrived beside the five clips that nobody had planned for: the timeline file Resolve writes automatically when media is consolidated, and a metadata spreadsheet from the shooter's Resolve project describing the <b style="color:var(--text)">original</b> clips, camera, lens, exposure, and the two columns that name the camera format. Are both part of what the shooters hand over? Who filled the camera columns: Resolve, which two sources say does not read this from Sony MP4 files itself, or one of the two community scripts that write exactly these fields? What does the <span class="mono">Input Gamma</span> column report? (<b style="color:var(--text)">Closed 21 September</b>: the user ruled it is ignored.) And was the timeline really five video tracks with one clip each, which the grade export cannot handle? One original camera file, or its sidecar, would settle the rest. <b style="color:var(--text)">Answered in part that evening</b>: Resolve exports the spreadsheet and the shooter types the camera format into those two columns by hand, so they are a deliberate step and the carrier the tool reads</td>
+            <td class="st"><span class="tag hot">Ask</span></td>
+          </tr>
+          <tr>
+            <td class="id">OQ-69</td>
+            <td><b style="color:var(--text)">New 19 September, evening.</b> The Sony files are 23.976 frames a second three ways over, and the shooter's Resolve timeline, every clip's stated rate and the spreadsheet all say 24.000, with the clips marked as force-conformed. The tool already lets the timeline win and reports the file's rate separately, which was written for exactly this; what it no longer has, without a timeline file from the shooters, is anything that states the timeline rate, since an edit list carries none and the automatic timeline file carries 24.0. <b style="color:var(--text)">Answered that evening</b>: the cameras shoot 23.98 and the shooters conform every clip to 24 in Resolve before consolidating, which is the right thing to do, since it keeps one source frame to one timeline frame for the colourist's edit list. The tool already treats the timeline rate as authoritative and writes even-24 outputs from a 23.976 file with every frame intact; what is left is a check that calls this an error, and a tenth of a percent of audio drift</td>
+            <td class="st"><span class="tag open">Respec</span></td>
+          </tr>
+          <tr>
             <td class="id">OQ-56</td>
             <td><b style="color:var(--text)">New 19 September, and it reverses a premise the format checks were built on.</b> The shooters deliver camera-native files, whatever their cameras shoot, trimmed in Resolve. Every colour and format document, and two of the checks, assumed a ProRes 4444 intermediate. Researched: the video tools decode every common compressed camera codec and <b style="color:var(--text)">no RAW format at all</b>, so nothing RAW may reach a delivery and a Blackmagic camera must record ProRes or DNx. <b style="color:var(--text)">Decided</b>: 4:2:0 sources are allowed with a warning. Still wanted: the exact cameras and modes</td>
             <td class="st"><span class="tag hot">Ask</span></td>
           </tr>
           <tr>
             <td class="id">OQ-57</td>
-            <td><b style="color:var(--text)">New 19 September: there is no timeline file from the shooters, and never was going to be.</b> The tool's whole shot list is built from one, exported by the shooters; they export nothing for the tool. The colourist's edit list with the grade in it, a right-click export, is the only timeline the tool will see, and it carries enough: clip names, the trims, the grade. What it cannot carry is each clip's camera format, which is OQ-58. Rebuilding the shot list on the edit list is a redesign of the scan rather than a setting, and waits on the clip</td>
+            <td><b style="color:var(--text)">New 19 September: there is no timeline file from the shooters, and never was going to be.</b> The tool's whole shot list is built from one, exported by the shooters; they export nothing for the tool. The colourist's edit list with the grade in it, a right-click export, is the only timeline the tool will see, and it carries enough: clip names, the trims, the grade. What it cannot carry is each clip's camera format, which is OQ-58. Rebuilding the shot list on the edit list is a redesign of the scan rather than a setting. <b style="color:var(--text)">The sample changed the picture</b>: Resolve writes a timeline file beside trimmed media on its own when the shooters consolidate, and it carries the frame rate, record positions, source starts and handles that an edit list cannot, and none of the grade. Whether it reaches the tool is OQ-68</td>
             <td class="st"><span class="tag hot">Redesign</span></td>
           </tr>
           <tr>
             <td class="id">OQ-58</td>
-            <td><b style="color:var(--text)">New 19 September.</b> Without a timeline file, where does each clip's camera format come from? Sony and Canon write it into the camera file itself, and Resolve reads exactly that; whether Resolve's trim keeps it and whether the tool can read it is what one real clip answers. The fallback is a second export from the colourist, unverified, and behind both a table and the per-delivery default of OQ-59</td>
-            <td class="st"><span class="tag hot">Clip</span></td>
+            <td><b style="color:var(--text)">New 19 September, answered for the file that evening by the sample delivery.</b> Without a timeline file, where does each clip's camera format come from? The hope was the camera file itself, and <b style="color:var(--text)">the trimmed file does not carry it</b>: Resolve rewraps the clip and strips the camera's own metadata, so every colour field reads unknown and only the signal range survives. In the sample the format is named in exactly one place, two columns of a Resolve metadata spreadsheet exported beside the media, as <span class="mono">S-Log3</span> and <span class="mono">S-Gamut3.Cine</span>. Whether Resolve fills those columns itself or a script did, and whether that spreadsheet is part of what the shooters hand over, is OQ-68 and is the user's to answer. <b style="color:var(--text)">Verified end to end 21 September</b>: the two columns joined in that order resolve to a real camera format on all five sample clips, and how much shooter sloppiness can be forgiven is now proved rather than hoped, since ignoring capitals, spacing and punctuation cannot pick the wrong format out of the pinned list. What it cannot forgive is a correct spelling of the neighbouring format, which resolves silently and costs more than the decode bug; that is caught by checking the named format against the camera the same spreadsheet names</td>
+            <td class="st"><span class="tag hot">Ask</span></td>
           </tr>
           <tr>
             <td class="id">OQ-59</td>
@@ -1580,8 +1615,8 @@
           </tr>
           <tr>
             <td class="id">OQ-60</td>
-            <td><b style="color:var(--text)">New 19 September, from the code audit.</b> The decode asserts no signal range and no colour matrix, and the check the documents describe for it was never built. Camera-native log from Sony and Canon is recorded full range and flagged, so the default decode is probably right; it still has to be asserted rather than hoped, with the check built. Seven smaller audit findings are OQ-61 to OQ-67</td>
-            <td class="st"><span class="tag open">Build</span></td>
+            <td><b style="color:var(--text)">New 19 September, from the code audit.</b> The decode asserts no signal range and no colour matrix, and the check the documents describe for it was never built. Camera-native log from Sony and Canon is recorded full range and flagged, so the default decode was expected to be right. <b style="color:var(--text)">Measured on the sample that evening, it is not</b>: the range flag says full, the colour description is written as "unspecified" in the compressed stream itself, which Resolve copies untouched and which is what a camera writing a log format with no standard code point is expected to write, and with none declared ffmpeg decodes these UHD files with the standard-definition coefficients. An explicit high-definition decode differs on 99.35% of pixels. <b style="color:var(--text)">Re-measured 21 September in the units that matter</b>: carried all the way through to the delivered plate that is 1.94% average error and 21.3% at its worst, a visible shift in hue and saturation across the whole frame on the one image a vendor matches to. Every Sony plate would be a matrix off with nothing reporting it, so this blocks a real delivery. Seven smaller audit findings are OQ-61 to OQ-67</td>
+            <td class="st"><span class="tag hot">Blocker</span></td>
           </tr>
           <tr>
             <td class="id">OQ-55</td>
@@ -1786,6 +1821,32 @@
 
   <section>
     <h2>Corrections made to the spec</h2>
+      <div class="note">
+        <h3>The sample delivery arrived, and the camera file does not carry its own format</h3>
+        <p>
+          The review that morning ended with one request: a clip trimmed the way the shooters
+          trim. The user supplied a whole sample delivery that evening, five Sony clips, the
+          timeline file Resolve wrote beside them, and a metadata spreadsheet from the shooter's
+          project. <b>The trimmed file carries none of the camera's own metadata.</b> Resolve
+          rewraps the clip and drops the track the camera wrote its format into, so the route the
+          plan preferred cannot be built, and the format survives in exactly one place in the
+          sample: two columns of that spreadsheet. Whether Resolve filled them or a script did is
+          the question the user can answer and the tool cannot.
+        </p>
+        <p>
+          <b>Two more things were measured rather than read.</b> The decode is a matrix off: with
+          none declared in the file, the video tools fall back to the standard-definition
+          coefficients on a UHD picture, and the difference reaches almost every pixel. That was
+          an audit finding in the morning and a blocker by night. And the files are 23.976 frames a
+          second while the shooter's Resolve treats them as 24, which the tool was already written
+          to cope with, except that nothing now carries the timeline's rate to it. <b>The
+          unexpected gift is the timeline file itself</b>: Resolve writes one automatically when
+          media is consolidated, so the shooters produce a timeline after all without exporting
+          anything, and it holds the frame rate, positions and handles an edit list cannot.
+          Nothing was built, by the rule; <span class="mono">docs/SAMPLE_TURNOVER_199.md</span> is
+          the evidence page, and OQ-68 and OQ-69 carry what the user is asked next.
+        </p>
+      </div>
       <div class="note">
         <h3>A review found the plan a week out of step with the workflow, and set a rule</h3>
         <p>
@@ -2533,7 +2594,17 @@
     <b>Verify</b> &middot; bash build/mac_build.sh &middot; pytest &middot;
     ruff check . &amp;&amp; mypy proingest tests build &middot; python build/build.py &middot;
     python build/smoke_test.py &lt;app&gt;<br>
-    <b>Last updated</b> &middot; 19 September 2026, 10:03 PDT. <b>A review found the plan out of step with the
+    <b>Last updated</b> &middot; 22 September 2026. <b style="color:var(--text)">The workflow was described end to end, and every document was corrected to it in one pass.</b> The user set out what actually happens: the shooters debayer only where a camera records raw, and without choosing any colours; they conform every clip to 24, add the metadata, and copy with trim without transcoding; the colourist does the final trims and the grade and exports an edit list and a spreadsheet, which sit in the same folder as the media. A documentation audit found <b style="color:var(--text)">58 wrong statements across 16 files</b> - a timeline file that is never exported still named as the required input in 25 places, an intermediate format nobody makes in 7, the wrong metadata field in 8, and names taken from filenames in 18 - and all of them are now corrected. Four things were decided along the way: no per-shot grade files, the frame rate is asserted rather than read, the clean plate code is the one in the shooters' own specification, and there is nothing to scan until the colourist hands over. <b style="color:var(--text)">No code has changed</b>, so the tool still implements the old workflow and the documents now describe the new one deliberately. 1739 tests.<br>
+    <b>21 September</b> &middot; <b>Naming is answered and the camera format is proved end to end.</b> The shooters will fill a second metadata field, <span class="mono">Shot Type</span>, with the code for what each clip is, which was the last thing missing before a deliverable could be named (OQ-70). An updated shooters' specification arrived with it and moves the reference stills: a colour chart or grey ball now belongs to the shot rather than to a plate, and its delivered name no longer carries the plate's code. One contradiction in it is the only thing holding the naming work: the user says a clean plate is typed <span class="mono">cl</span> and the specification names every one of them <span class="mono">cp</span> (OQ-72). The camera format now reads correctly off the two spreadsheet columns on every clip in the sample, and the amount of shooter sloppiness that can be safely forgiven was proved rather than guessed at. The decode bug was re-measured in the units that matter and is a visible error on every Sony plate, still waiting on one original camera file (OQ-60). A standard colour metadata file was considered and deferred: the edit list stays and the grade stays in it (OQ-71). Nothing built, by rule. 1739 tests.<br>
+    <b>19 September, evening</b> &middot; 21:50 PDT. <b>The sample delivery arrived</b>: five
+    Sony clips as Resolve trims them, the timeline file it writes beside them, and a metadata
+    spreadsheet. The trimmed file carries none of the camera's format metadata, so the format
+    lives in two spreadsheet columns whose provenance the user is asked about (OQ-68); the decode
+    is measured a matrix off (OQ-60, now a blocker); the files are 23.976 against a 24.000
+    timeline (OQ-69); and clip names are the camera's, by design: the shot code travels as metadata in
+    that same spreadsheet (OQ-62), and which field carries the element and still type is OQ-70. Nothing built. <span class="mono">docs/SAMPLE_TURNOVER_199.md</span> is the evidence
+    page. 1739 tests.<br>
+    <b>19 September, morning</b> &middot; 10:03 PDT. <b>A review found the plan out of step with the
     workflow</b>: the shooters deliver camera-native files, not the ProRes 4444 the format side
     of the specification was built to, and they export no timeline file; the colourist's edit
     list with the grade in it is the only timeline the tool will see. Twelve questions (OQ-56 to
@@ -2568,16 +2639,7 @@
     into the workflow page as their step and into the open questions as OQ-53, because it is a
     default the tool was built to and not yet something he has agreed to. Nothing else about
     what the tool applies changed.<br>
-    <b>Next</b> &middot; the same three things as before: the polish pass,
-    the proving run and the guide's last part all want the Mac or a real delivery.
-    <b>Three questions want asking before a real delivery depends on them</b>: where the
-    colourist will save each delivery's exports and what they will name the folder (OQ-53); which
-    field the shooters write their camera's format into and exactly what they write, which now
-    stops a plate rather than costing a line of provenance; and the test export (OQ-55): one shot
-    graded with the wheels in the first node of a session set to the working format, its edit
-    list, its stringout and a lookup table of the same clip, rendered both ways and compared. <b>One decision wants making before
-    handover</b>: an Apple Developer ID, or a route to the editor that never marks a build as
-    downloaded.
+    <b>Next</b> &middot; one answer and one file unblock everything. The answer is OQ-72, which code a clean plate carries; the file is one original camera clip, which settles the decode (OQ-60), the largest known defect in the tool. With the first, the naming work can be built at once: reading the shooters' spreadsheet for identity and camera format, the codes read without regard to capitals, the reference stills renamed to belong to the shot, and a check that the named format matches the camera the spreadsheet names. Behind that, the respec proper: camera-native sources, the matrix asserted on every decode, the scan rebuilt on the edit list and the automatic timeline file. The polish pass, the proving run and the guide's last part all still want the Mac or a real delivery. <b>Also wanted from the shooters</b>: one metadata export with the new field filled, to prove the column arrives (OQ-70); the two decisions on the per-delivery default camera format (OQ-59); and the test export (OQ-55): one shot graded with the wheels in the first node of a session set to the working format, its edit list, its stringout and a lookup table of the same clip, rendered both ways and compared. <b>One decision wants making before handover</b>: an Apple Developer ID, or a route to the editor that never marks a build as downloaded.
   </footer>
 
 </div>

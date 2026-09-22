@@ -1,47 +1,52 @@
-# Session close, 19 September 2026 (the review, and the misalignment it found)
+# Session close, 22 September 2026
 
-**This file is disposable and it is not the handoff record.** `PROGRESS.md` section 1 is, and it
-is written to be picked up cold. Delete this once it has been read. **If it disagrees with
-`PROGRESS.md` or the docs, they win.**
+**This file is disposable and it is not the handoff record.** `PROGRESS.md` section 1 is. Delete
+this once it has been read. **If it disagrees with `PROGRESS.md` or the docs, they win.**
 
-## Read first
+The previous version of this file is superseded: its traps are all cleared. The shooters' spec CSV
+in `docs/` **is** the current one now, `Turnover199/` has been replaced by `Turnover199_ForBEN/`
+(git-ignored), and the four sessions of uncommitted docs work is committed as of this note.
 
-`docs/REVIEW_2026-09-19.md`. It is the whole session in one page: what the review found, what
-the user decided, the verified-against-unverified ledger, and OQ-56 to OQ-67.
+## Read first, in this order
 
-## The rule for this project from now on
+1. `PROGRESS.md` section 1, the three entries dated 2026-09-22.
+2. **`docs/WORKFLOW.md`**. The whole workflow on one page.
+3. **`docs/REVIEW_2026-09-22.md`**. The code review: what is stale, what is structurally wrong,
+   and six questions nobody has answered.
+4. `docs/SAMPLE_TURNOVER_199.md` sections 7 and 8, the real turnover's evidence.
 
-**Only verified facts go into the plan.** The user said so on 2026-09-19, having suspected the
-misalignment the review confirmed. An assumption is researched to a source, asked of the user,
-or written as a question with an owner. Nothing is built on it while it is open. The memory
-`verified-facts-only` records this.
+## The state
 
-## What is wrong in the docs right now, and known to be
+**Version 0.3.0.** 1739 tests, `ruff`, `ruff format` and `mypy --strict` all green.
+**No feature code has changed since 2026-09-16.** The docs are four sessions ahead of it, on
+purpose, and the review is the list of what that costs.
 
-- Sources are **camera-native**, not ProRes 4444 (OQ-3, COLOR_AND_FORMAT section 2, PRD,
-  QC-020, QC-021). Not yet corrected: the respec waits on the clip (OQ-56).
-- The scan reads an **OTIO** that will never exist; Ben's EDL with the CDL is the only timeline
-  input (OQ-57). Not yet rebuilt.
-- `docs/COLOUR_SESSION_EXPORT.md` and the 2026-09-18 CDL decision stand, but say nothing about
-  camera-native sources or single-track timelines yet.
+## The one thing to know before testing a build
 
-## Do not
+**The tool cannot process a real turnover yet**, and a dmg from this commit will show it. Three
+errors fire on every row of `Turnover199_ForBEN`, each enough on its own to skip the row:
 
-- Do not start the respec or the EDL-only scan before the clip has been probed (OQ-58, OQ-61,
-  OQ-62). That is the "no assumptions" rule applied to the next chunk.
-- Do not build the turnover default before OQ-59's two answers.
-- Do not merge PR #12 without the user: it is green and mergeable, and the user has not said.
+- **QC-010**, because `naming.parse_clip_name("C0145.MP4")` returns None. Identity is metadata now.
+- **QC-046 / QC-047**, because `scan.SOURCE_ENCODING_KEY` is still `Input Color Space` and there is
+  no CSV reader. The data is in the CSV and resolves correctly; nothing reads it.
+- **QC-026**, because the files state 24000/1001 while the project asserts 24. **This one is a spec
+  defect rather than staleness** and is Q1 of the review.
 
-## Code state
+Also: the folder has no `.edl`, so it is QC-001 before any of that. It is the shooters' handover to
+Ben, not Ben's to the tool.
 
-Branch `color/cdl-in-acescct`, PR #12 open, CI green on four jobs. 1739 tests, ruff and mypy
-clean. This session added no code; it added `docs/REVIEW_2026-09-19.md`, OQ-56 to OQ-67, this
-note, the PROGRESS paragraph and the Build Track update.
+## What is ready to build
 
-## When the clip arrives
+`docs/REVIEW_2026-09-22.md` section 4 is the dependency-ordered list. In short: the CSV reader, the
+identity model reshaped to `(shot_code, kind, index)`, the scan rebuilt on folder + EDL + CSV, Q1
+answered, the EDL read moved into the scan, the removals (side files, camData, BTS, lens grid,
+stringout, cube, `_color`), and OQ-60's decode assertions with QC-018.
 
-Probe it with the bundled ffprobe: `color_range`, `color_space`, `color_transfer`, the
-`timecode` tag, `pix_fmt`, and every format and stream tag; then `exiftool`-style acquisition
-metadata if ffprobe shows none (Sony writes `CaptureGammaEquation` and `CaptureColorPrimaries`).
-Compare the filename with the clip name the user gives. Write the answers into the ledger in
-`docs/REVIEW_2026-09-19.md` and the OQ rows, then start the respec.
+## Still blocked on a person
+
+| what | ID |
+|---|---|
+| QC-026 at 23.976: warning, silent on a 1000/1001 conform, or retired | review Q1 |
+| One original camera file, for the BT.601/BT.709 decode | OQ-60 |
+| The per-turnover default input transform, two decisions | OQ-59 |
+| One test export from Ben: EDL, CSV, stringout, one graded shot | OQ-55 |

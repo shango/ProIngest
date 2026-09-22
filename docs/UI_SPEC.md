@@ -55,7 +55,7 @@ What M5.11 settled, beyond the wording:
   fundamental to the most specific, because "no batch is open" is a truer answer than "a scan is
   going" and only one is shown.
 - **One enabled button carries a note too, and it is the case the feature was asked for.** A
-  batch with shots and no ingested colour session runs, is refused by QC-008 and writes nothing,
+  batch whose EDL carries no CDL runs, is refused by QC-008 and writes nothing,
   which is correct and reads as a dead button. Run says so before it is pressed. It is the plain
   question - has anything been ingested - rather than a second implementation of QC-008, which
   needs pre-flight and the disk.
@@ -330,12 +330,12 @@ it is hidden rather than shown empty.
 
 | section | fields |
 |---|---|
-| Identity | timeline clip name, shot code (and whether it is an editor override), show, shot number, element type and index, aux type and index, track, turnover id |
+| Identity | source file name, `Shot` and `Shot Type` as the metadata carried them, shot code (and whether it is an editor override), show, shot number, element type and index, reference-still type and index, turnover id |
 | Source media | path, codec, pixel format, resolution, single file or image sequence, sequence frame range and padding, frame count, first frame number, start timecode, file size, modified time |
 | Frame rate | timeline rate (authoritative), rate stated by the media, and an explicit disagreement note when they differ. COLOR_AND_FORMAT section 5 explains why the timeline wins; QC-026 is the rule |
 | Range | record In/Out, source In/Out in frames and timecode, turnover snapshot In/Out, current In/Out, duration, max available out, and whether the editor has moved it off the snapshot (QC-035) |
 | Audio | path, sample rate, channels, bit depth, duration in samples and in frames, and the sync difference against the video range (QC-043) |
-| Colour | source encoding as the shooter wrote it, which carrier named it, and any cube the colour session delivered in place of the CDL. **Added 2026-09-12 with M5.6**: M4.6 put all three on the row after this table was written, none has a column in the list, and the encoding is shown verbatim because the string is what has to be corrected when it is wrong |
+| Colour | source encoding as the shooter wrote it (`Gamma Notes` + `Color Space Notes`), which carrier named it, and the CDL from the row's EDL event. **Added 2026-09-12 with M5.6**, corrected 2026-09-21 when per-shot grade files were removed: the encoding is shown verbatim because the string is what has to be corrected when it is wrong |
 | Side files | HDRI path, camData path, and the parsed camData key/values once OQ-11 is settled. This is the single most useful thing in the pane for an AD sitting with the editor, because it is the only place lens, filter and camera body ever appear. **The pane never reads the file itself**: the parsed pairs arrive through a lookup the window caches per batch, because the pane redraws on every arrow key and a turnover sits on a Drive mount |
 | Turnover | number, date, shooter, folder, timeline file. Shown alone when a turnover group header is the selection |
 | QC | count by severity with the rule IDs, each clicking through to that row in the Issues dock. **Built across the whole selection rather than merged field by field**, unlike every other section: two rows with different problems agree on nothing, so a merge would reduce this to "mixed", which is the one answer that helps nobody |
@@ -406,18 +406,20 @@ four formats (section 5).
 
 ## 15. Ingest Colour Session
 
-The toolbar action that does PRD section 6 step 4, built in M5.7.3. The editor points at the
-colour session's final EDL; the tool writes what it says onto one turnover's rows - the approved
-In/Out, the CDL that is the grade, and any cube per shot - and keeps the EDL's location on the turnover as the record
-of where the answers came from. Nothing reads the package again (`core/clf.py`).
+The toolbar action that does PRD section 6 step 4, built in M5.7.3 and **narrowed 2026-09-21**:
+the cut and the grade are read at scan from the EDL in the turnover folder, so this exists for a
+**revised** export. The editor points at the new EDL; the tool writes what it says onto one
+turnover's rows - the approved In/Out and the CDL that is the grade - and keeps its location on
+the turnover as the record of where the answers came from (`core/clf.py`).
 
 - **One turnover at a time**, because that is the scope the session is recorded at (OQ-50) and
   the scope QC-008 holds a run back at: a turnover still waiting on colour is a different
   turnover from this one. The selection says which - a group header, or rows that are all in the
   same turnover - a batch of one turnover never asks, and a selection that spans two does.
-- **The chooser opens at the colour session folder in Settings** (PRD FR-12), not at the batch's
-  source root: a session and a turnover live nowhere near each other on the mount. Where it ended
-  up is remembered there for the next one.
+- **The chooser opens at the turnover's own folder** (corrected 2026-09-21): the EDL, the CSV
+  and the media arrive together, so a revised EDL almost always lands beside the one already
+  read. Where it ended up is remembered for the next one. The `_color` convention of OQ-53 is
+  retired with the single-folder handover and no longer appears anywhere in the spec.
 - **The EDL is read at the first row with media's rate**, and a turnover carrying more than one
   says which was used rather than choosing silently (OQ-19). A turnover whose rows have no media
   has no rate to read it at, and is told so before the chooser opens rather than after it.
@@ -425,14 +427,12 @@ of where the answers came from. Nothing reads the package again (`core/clf.py`).
   (FR-5). The one-off trim made *after* an ingest is the supported one, and QC-045 reports it.
 - **The report says what `proingest run --color-session` prints**: the counts, and the three
   lists a person acts on - rows with no event, trims the approved cut replaced, and shot codes
-  more than one cube names. The labels live on `IngestReport` so the two surfaces cannot drift.
+  the approved cut overwrote. The labels live on `IngestReport` so the two surfaces cannot drift.
 - **The rules re-run afterwards**, because the ingest moves In and Out on the rows it matched and
   the durations the thresholds judge have changed. QC-008 and QC-009 are pre-flight and clear at
   the next Run.
-- **A session exported by convention is offered after the scan** (2026-09-17, OQ-53). When a
-  turnover's rows land, `clf.find_session` looks for a folder named as the turnover folder is,
-  first under the Settings folder the chooser opens at, then in `_color` beside the turnover; it
-  has to hold exactly one `.edl`, at any depth. Found, and the turnover has rows with media and
-  no session yet, a Yes/No dialog names the folder and Yes runs the same ingest the button does.
-  Two `.edl` files is no offer rather than a guess, since choosing between them is choosing a
-  cut. Asked rather than done because an ingest overwrites a trim on the rows.
+- **Nothing is discovered and nothing is offered after a scan** (2026-09-22). The EDL arrives in
+  the turnover folder with the media and is read at scan, so there is no second location to look
+  in and no session to offer. `clf.find_session` and the Yes/No dialog built for it in M5.13 are
+  removed with the `_color` convention they searched. The button remains, for a revised EDL the
+  editor points at.

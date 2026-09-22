@@ -50,7 +50,7 @@ WHAT_IT_DOES = {
     SAVE: "Writes the batch to its .pibatch file, asking where the first time.",
     ADD_TURNOVER: "Adds a turnover folder and scans it straight away.",
     SCAN: "Re-tries only the turnovers that came back with no shots.",
-    INGEST: "Writes a colour session's cut, CDL and grades onto one turnover.",
+    INGEST: "Applies a revised cut and CDL onto one turnover without a re-scan.",
     RUN: "Renders every shot that is not skipped, then writes both spreadsheets.",
     STOP: "Stops the run. What is in flight finishes; nothing further starts.",
     EXPORT: "Writes the QC log and the shot tracker without rendering.",

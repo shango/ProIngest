@@ -14,6 +14,178 @@ complete, M4.5 all four chunks, M4.6 all five, **M5 all twelve**, **M7**, and **
 What is left is **M8 polish** (needs a real turnover and a real colour session) and the rest
 of **M9, the user guide**.
 
+**2026-09-22, last: a code and architecture review, `docs/REVIEW_2026-09-22.md`.** Asked for by the
+user to quash assumptions about the workflow. **On `Turnover199_ForBEN` the tool today produces zero
+deliverables and three errors per row**, demonstrated rather than argued: `parse_clip_name` returns
+None on `C0145.MP4` (QC-010), `scan.SOURCE_ENCODING_KEY` is still `Input Color Space` and neither the
+CSV nor the container carries it (QC-046/047), and **QC-026 fires on every clip** because the
+delivered files state 24000/1001 while the project asserts 24. **That third one is a live spec
+defect, not staleness**: a Resolve conform is a timeline property and Copy with trim does not rewrite
+the file's rate, so QC-026 as specified is guaranteed to error on every clip of every Sony turnover,
+and `media.py`'s own docstring anticipates the shape of it while solving only the frame-math half.
+It is **Q1** and it wants a decision. Also recorded: **there is no CSV reader at all** (no `import
+csv`, no `utf-16`, no `Shot Type` anywhere in `proingest/`); **the identity model is structurally
+wrong** rather than stale, because `ShotIdentity` hangs a reference still off an element where the
+CSV makes `colorChart` a peer of `pl01`; **the EDL is read at the wrong time**, since `plan_batch`
+still documents the two-phase ingest OQ-74 collapsed; and **QC-018 cannot be built until `MediaInfo`
+grows colour fields**, which it has none of. Five more questions are open in section 3 of the review,
+none built to a default. **Still no code changed.**
+
+**2026-09-22, later: the tool's scope is now exactly `Shot Type`, and a second sample arrived with
+it filled in.** The alignment pass the user asked for produced five rulings, all recorded. **(1) The
+`_color` folder is gone**: OQ-53 is dissolved, and `WORKFLOW.md`, `COLOUR_SESSION_EXPORT.md` and
+`UI_SPEC.md` no longer describe a discovery convention, so M5.13's `clf.find_session` and its
+post-scan offer come out of the code. **(2) Ben produces and exports the final stringout, and the
+tool does nothing with it at all** - not built, read, transcoded, renamed or checked - which closes
+OQ-41 and removes `naming.stringout_mp4`. **The EDL is exported off that same stringout timeline**,
+so its events state the final clip durations by construction. **(3) No `.cube`, anywhere.**
+**(4) `Shot Type` is the whole of the tool's scope**: a row that carries one gets that type's
+deliverables, and **a clip with no `Shot Type` is ignored** rather than being QC-010. That drops
+HDRI, camData and BTS as deliverables (QC-050 to QC-053 and QC-056 retired, `core/camdata.py`
+removed), and the studio sheet marks HDRI and Camera Data **Required**, so they now reach the vendor
+without passing through this tool. New **QC-064** counts the ignored clips at turnover scope, because
+otherwise a turnover whose metadata was never filled in delivers nothing and says nothing.
+**(5) Ben delivers the lens grid**, closing OQ-20 and OQ-73(c) and retiring QC-054 and QC-057.
+
+**`Turnover199_ForBEN/` replaced `Turnover199/`** (git-ignored, its own `.gitignore` entry,
+`docs/SAMPLE_TURNOVER_199.md` section 7 is the durable record). Same five clips, re-exported `.drt`
+and CSV **with the metadata filled in**: `Shot` = `TEST0002`, and `Shot Type` = `pl01`,
+`colorChart`, `mirrorBall`, `greyBall`, `cp01`. Plates carry an explicit index and stills are bare,
+so "a bare code means `01`" is load bearing rather than lenient. **The CSV has 44 columns and
+`Shot Type` appears twice**: position 12 is Resolve's built-in, position 44 is a custom field the
+shooters created with the same name, proved out of the `.drt`'s field definitions. They agree here
+and nothing guarantees they agree next time, and Resolve's built-in `Shot Type` is a **framing**
+field, so a shooter using it as intended puts `Wide` in one and `pl01` in the other.
+**`csv.DictReader` silently keeps the last duplicate**, so the reader must take the column that
+resolves to a known clip type and QC the disagreement. `Shot Code` likewise duplicates `Shot`, and
+`Color Chart` / `VFX Grey Ball` / `VFX Mirror Ball` are Resolve built-in flags that agree with
+`Shot Type` on three of the four still types with **no `sizeRef` equivalent**. The **`.drt` carries
+the custom field names and none of the values** (all 75 hex blobs, 26 zstd frames decoded), so the
+CSV is the sole carrier on a second independent check. The shooters' custom field set also holds
+**`HDRI`, `BTS Images` and `Scans`**, all unfilled, plus four misspellings of their own
+(`Sensor Dimentions`, `Aputure Stop`, `Date Filmmed`, `Time Filmmed`) and six fields defined twice,
+which is how the `Shot Type` collision happened.
+
+**ALE was raised again as a live alternative and is now scoped** (OQ-75). Three of four unknowns are
+answered from the Resolve manual, Avid's EDL Manager guide and Pomfort: Resolve exports the CDL as
+`ASC_SOP` / `ASC_SAT` columns via **Timelines > Export > ALE and CDL**; it writes a column for every
+populated metadata field, and custom fields since **20.3** while the shooters run **21.1.0.0017**, so
+an ALE could replace the CSV outright; and an ALE carries **no record timecode**, so it is a clip log
+rather than a cut. **Then the user supplied a real ALE the same day and it is answered** (`SAMPLE_TURNOVER_199.md`
+section 8). **The ALE replaces the CSV and cannot replace the EDL.** 50 columns carrying `Shot`,
+`Shot Type`, `Gamma Notes`, `Color Space Notes`, `ASC_SOP`, `ASC_SAT`, `Shot Code` and a
+`Source File Path` that points at the delivered media, with **no duplicate column name**, so it beats
+the CSV on four counts. But **`End - Start` is the whole delivered file on all five clips** (280,
+248, 49, 49, 49, matching ffprobe) while the `.drt` beside it records `In` 24 and `Duration`
+232 / 216 / 1 on the same clips: **the export ignored a trim that existed in the same project**, and
+its rows are in timeline record order, so it was a timeline export that knew the cut and declined to
+state it. **Then the user skipped it**: "Let's skip the ALE" (OQ-75 closed, not adopted). The
+carriers stay as built - **Ben's EDL for the cut and the grade, Ben's CSV for identity and
+encoding**. It could not carry the cut, did not fix the misspelling problem it was wanted for (its
+only encoding columns are the same hand-typed `Gamma Notes` and `Color Space Notes`, and
+**`Input Color Space` is absent** because Ben's dropdown choice is a clip property rather than a
+metadata field), duplicated the CDL the EDL already has, and its timecodes are a hybrid - `Start`
+is the original clip's head with the delivered file's length, so it sits 43 to 167 frames before
+the delivered file's own TC, by a different amount per clip. What it did offer was one failure mode
+the CSV reader can handle itself, a stated frame rate, and `RESOLVE_SIZING`, identity on every clip
+here. **What would reopen it: Ben reframing shots**, since nothing else in the folder would show a
+lost reposition. **Recorded as an accepted gap rather than an oversight.** **Two findings survive the decision and are now load bearing, because the CSV is
+confirmed as the carrier rather than merely the incumbent.** First, the **duplicate `Shot Type`
+column** is now **QC-065**: Resolve's built-in at column 12 and the shooters' custom field of the
+same name at column 44, agreeing in this sample by luck, with the built-in being a *framing* field
+whose intended values are `Wide` and the like. The reader takes the column that resolves to a known
+clip type, prefers the custom field where both do, and warns when they differ; `csv.DictReader`
+silently keeps the last duplicate, which is why it is a named rule. Second, **the metadata CSV in
+that folder is stale.** Its `Clip Directory` points at
+the pre-consolidation originals and its `Frames` are 516 / 168 / 312 / 420 / 360 against delivered
+files of 280 / 49 / 49 / 49 / 248, so **nothing may read a duration, a frame count or a path out of
+a metadata CSV**; `File Name` still matches, so identity and encoding off it are still safe. Also:
+**tail handles are not reliably 24** (`C0152` has 8), and a reference still is **one timeline frame
+inside a 49-frame file**.
+
+**Docs only, again. No code has moved and the 1739 tests are untouched.** What is now stale in
+`proingest/` is everything the previous entry lists plus: the side-file discovery in `scan.py`,
+`core/camdata.py`, `naming.stringout_mp4`, `naming.lens_grid_png`, the BTS and HDRI planner
+branches, `clf.find_session` and the cube in `clf.py`.
+
+**2026-09-22: the user described the real workflow end to end, and every document was corrected
+to it in one pass. The code has not moved yet.** The user asked for the misinformation to be found
+and fixed; `docs/DOC_AUDIT_2026-09-21.md` is the finding list and records **58 stale claims across
+16 files**. What was wrong: the `.otio` was still the required input in 25 places including
+`PRD.md` and `CLAUDE.md`'s own description of the project; ProRes 4444 in 7; `Input Color Space` as
+the encoding field in 8; and identity coming from the clip name in 18. **The workflow as stated**:
+shooters debayer **only** where the camera system records RAW, to a basic file type with nothing
+baked in and no colours chosen; set every clip to 24.000; cut a stringout; fill `Shot`, `Shot Type`,
+`Gamma Notes` and `Color Space Notes`; then **Copy with trim, consolidating, not transcoding**.
+**Ben** does the final trims and the grade and exports **an EDL with the CDL and a metadata CSV**,
+and those sit **in the same folder as the media**. The tool does folders, filenames, every export
+format and the colour. Decisions taken along the way, all recorded: **there are no per-shot grade
+files** (the `.cube` is gone, QC-019 and QC-039 retired with it); **the project rate is 24 and the
+tool asserts it**, since a CMX 3600 EDL carries no frame rate and the `.drt` is not read; **`cp` is
+the clean-plate code** after the user corrected themselves twice (OQ-72 closed, no alias needed);
+**`Shot Type` names what the clip is** rather than only an element, over the vocabulary `pl`, `cp`,
+`el`, `wit`, `re`, `colorChart`, `mirrorBall`, `greyBall`, `sizeRef`, `BTS`, `lensgrid`; and
+**there is nothing to scan until Ben hands over the folder**, which collapses the two-phase flow
+(OQ-74) and retires OQ-53's `_color` discovery convention built in M5.13. `docs/WORKFLOW.md` was
+rewritten from scratch and is the page to read. **New questions**: OQ-73 (`raw` and `lensgrid` in
+the `Shot Type` list), OQ-75 (ALE instead of the CDL, deferred, raised by the user). **Three pieces
+of built UI now do nothing and should be removed**: the `_color` discovery (M5.13), the held-back
+turnover behaviour (M5.7.1), and normal-case ingest (M5.7.3, which survives only for a revised
+EDL). **1739 tests**, untouched: no code changed.
+
+**2026-09-21: OQ-70 is answered, the encoding carrier is verified end to end, and AMF was raised
+and deferred.** The user supplied an updated shooters' spec CSV and settled the identity question:
+**the shooters fill Resolve's `Shot Type` metadata field with the element code** (`pl` plate, `cl`
+clean, and so on) while `Shot` keeps the shot code, a bare code means index `01`, each shot code has
+exactly one of each reference still, and **parsing must be case insensitive** because the camel case
+is not kept. `docs/NAMING_SPEC.md` section 1 is rewritten to that contract. Two things in the new
+spec CSV change the build: **a reference still is now keyed to the shot code, not to an element**, so
+`MELT0001_colorChart_01_4k_v01.exr` replaces `MELT0001_pl01_colorChart_01_4k_v01.exr` and both
+directions of `naming.py` move with it; and the user's `cl` for clean plate contradicts the spec's own
+`cp01` everywhere, which is **OQ-72** and the one naming blocker left. The spec CSV also carries seven
+resolution typos (`3840x2161`, `3840x2162`) that must not be copied into a QC table. **The encoding
+chain is verified end to end**: `f"{Gamma Notes} {Color Space Notes}"` resolves to `S-Log3
+S-Gamut3.Cine` on all five sample rows with no new `INPUT_TRANSFORMS` row, order matters, and how much
+shooter sloppiness is safely absorbable is now a **proof**, since casefolding and stripping punctuation
+is injective over the pinned config (54 spaces, 166 names and aliases, zero collisions). What no parser
+can absorb is a valid name for the wrong space: `S-Gamut3` typed for `S-Gamut3.Cine` resolves silently
+and costs **2.17% mean, 41.8% peak** in ACEScg, so the rule stays exact-match-or-QC-047 and the CSV's
+own `Camera Manufacturer` and `Camera Type` become a warning cross-check that needs a QC ID. **OQ-60 was
+reproduced**: the default decode is bit-for-bit a BT.601 decode, differs from BT.709 on 99.35% of pixels,
+and is **1.94% mean, 21.3% peak** in ACEScg, so it remains the largest known defect and still waits on one
+original camera file. The `.drt` was re-decoded and **carries none of the metadata** (all 81 blobs
+searched), confirming the CSV is the sole carrier; the shooters run **Resolve 21.1.0.0017**; and the user
+ruled that **`Input Gamma` is ignored**. **AMF was raised as a direction and deferred the same day: the
+EDL stays and the CDL stays in it** (**OQ-71**, which records that Resolve 19.0.1 exports AMF with a VFX
+Request preset, that OCIO reads it only through a prototype, and that adopting it means borrowing
+`studio-config-v4.0.0`'s URN table rather than upgrading to it, since v4 deletes the `ACES 1.0 - SDR
+Video` view `color.VIEW` names). **Nothing was built**, by the rule; this entry, the OQ ledger, the naming
+spec and the sample page are the whole change. **1739 tests**, unchanged.
+
+**2026-09-19, later: the sample turnover arrived, and it answered the file-side questions
+in the direction the plan did not want.** The user dropped `Turnover199/` into the working tree
+(775 MB, now git-ignored): five Sony A7V clips as Resolve's Copy with trim wrote them, a `.drt`
+timeline and a Media Pool metadata CSV. **`docs/SAMPLE_TURNOVER_199.md` is the evidence page** and
+records how to read each file. What it settled: **the trimmed camera file carries no gamma or
+gamut metadata** (Resolve rewraps the MP4 and strips Sony's `rtmd` track; ffprobe reads every
+colour field `unknown`, only the range flag survives, full), so OQ-58's preferred route cannot be
+built; the encoding is named in **exactly one place**, the CSV's `Gamma Notes` = `S-Log3` and
+`Color Space Notes` = `S-Gamut3.Cine`, and who filled those fields is **OQ-68**, the user's to
+answer, because two sources say Resolve reads Sony MP4 acquisition metadata only through a script.
+**The decode is a matrix off, measured**: with no matrix declared ffmpeg decodes these UHD files
+as BT.601, and an explicit BT.709 decode differs on 97% of pixels, so OQ-60 is a blocker before
+any Sony plate ships. The `.drt` is the file Media Management writes beside trimmed media
+automatically (manual), and it carries the timeline rate (24.0), record positions, source starts
+and 24-frame handles that an EDL cannot, and no grade (OQ-57, OQ-68). Clip names were **not**
+renamed: the clip name is the camera filename with extension, the shot code sits in the `Shot`
+metadata field, and nothing carries the element type (OQ-62, now a question for the user). The
+files are 24000/1001 and Resolve's timeline is 24.000 with `IsForceConformed` on every clip
+(**OQ-69**). Three single-frame clips on the timeline confirm the stills half of OQ-4. **Nothing
+was built**, by the rule; `docs/OPEN_QUESTIONS.md` has OQ-58, 60, 61, 62, 57, 4, 19, 44 and 1
+amended and OQ-68, OQ-69 added; the review's ledger is updated in place. Still wanted from the
+user: OQ-68's four answers, one original camera file or its `M01.XML` sidecar, OQ-59's two
+decisions. **Then the user answered, the same evening**: Resolve exports the CSV and **the shooter types the encoding into `Gamma Notes` and `Color Space Notes` by hand**; the shooters conform every clip to 24.000 in Resolve from the camera's 23.98 before Copy with trim, and the outputs must be even 24 (the conform is right and the tool already copes, OQ-69); and, corrected an hour later, **clips are not renamed**: the camera filenames are what is delivered and **the shot code is metadata**, the `Shot` field reaching the tool through the CSV, so NAMING_SPEC section 1's contract moves to a metadata value and the CSV is load bearing for identity as well as encoding (OQ-62). Where the element type and the still type live is **OQ-70**, open, since every sample row says only `TEST0001`. An original camera file is offered. **1739 tests**, unchanged.
+
 **2026-09-19: a review the user asked for found the plan misaligned with the real workflow,
 and nothing is to be built on an assumption from here.** Read `docs/REVIEW_2026-09-19.md`
 first: it is the whole session on one page. The user stated that **the shooters deliver

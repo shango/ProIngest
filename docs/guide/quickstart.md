@@ -12,15 +12,15 @@ part-by-part version of everything skimmed over here.
 
 Three things have to exist, and only the third one usually does not.
 
-- **The turnover folder**, as the shooters delivered it: one file per shot, the `.otio`
+- **The turnover folder**, as the colourist handed it over: the media, his `.edl` and his `.csv`
   timeline, and the per shot extras. It can be on a Drive mount, an external volume or the
   local disk, and ProIngest does not care which.
 - **Somewhere to deliver to.** Any folder you can write into. The show and shot folders are
   made under it.
-- **The colour session's exports**: the final `.edl`, whose events carry the grade as a CDL, and
-  a `.cube` only for a shot that needed more than the wheels. **Nothing final
-  renders without them** and that is deliberate, not a limitation - see "When Run refuses"
-  below. Scanning and checking a turnover works fine before they arrive.
+- **The colourist's exports, in that same folder**: his `.edl`, whose events carry the approved
+  In/Out and the grade as a CDL, and his `.csv`, which carries the shot code, the clip type and
+  the camera encoding. **Both are required and the turnover cannot be scanned without them** -
+  there is nothing to scan until they arrive, which is by design.
 
 ## The seven steps
 
@@ -59,17 +59,15 @@ QC log.
 Every edit re-checks that row and saves itself a moment later, so there is nothing to remember
 to press. **⌘S** names the batch file the first time.
 
-**4. Ingest the colour session.** If the colourist exported it by the convention - a folder
-named exactly as the turnover folder, inside a `_color` folder beside the turnovers, holding
-the final `.edl` and any `.cube` files - the scan finds it and asks whether to ingest it. Say
-yes. Otherwise select the turnover (or any shot under it), press **Ingest Colour Session**,
-and point at the session's final `.edl`. One turnover at a time: another one can still be
-waiting on colour while this one delivers.
+**4. Nothing to do here in the normal case.** The cut and the grade are read at scan, from the
+`.edl` sitting in the turnover folder. **Ingest Colour Session** stays for one job: the
+colourist sends a **revised** export and you want it applied without a full re-scan. One
+turnover at a time.
 
-What it writes onto the rows: the approved In and Out from the trim the colourist and the AD sat through,
-the CDL each shot is graded with, and any `.cube` that takes its place. It then tells you how
-many shots matched, how many are graded, and the three lists worth looking at - shots the session
-says nothing about, trims the approved cut overwrote, and shots that more than one `.cube` claims.
+What it writes onto the rows: the approved In and Out from the trim the colourist and the AD sat
+through, and the CDL each shot is graded with. It then tells you how many shots matched, how many
+are graded, and the two lists worth looking at - shots the export says nothing about, and trims
+the approved cut overwrote.
 
 **The approved cut wins over a trim you already made**, and the report names the rows that lost
 one. Trimming again afterwards is allowed; it is what step 3 is for, and any row that moved is
@@ -115,9 +113,9 @@ finished is deleted, so a crash never leaves something that looks complete.
 
 ## When Run refuses
 
-The commonest one is not a fault. **A turnover with no colour session ingested renders
-nothing** (QC-008) - the plates would be missing the approved look, and delivering them
-ungraded is worse than delivering them late. Run says so in its tooltip before you press it,
+The commonest one is not a fault. **A turnover whose `.edl` carries no CDL renders nothing**
+(QC-008) - the plates would be missing the approved look, and delivering them ungraded is worse
+than delivering them late. Run says so in its tooltip before you press it,
 and if every turnover in the batch is in that state it opens a dialog naming each one and the
 rule holding it back, then brings up the Issues tab, rather than starting a run that does
 nothing. One turnover waiting on colour beside one that is ready is only a line in the status

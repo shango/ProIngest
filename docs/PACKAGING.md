@@ -33,7 +33,7 @@ The residue that still needs a person is `docs/MAC_SESSION.md`.
   `importlib.import_module("opentimelineio.adapters.<name>")` first and falls back to reading
   the path named in the manifest off disk, and the EDL adapter is called `cmx_3600` while
   living in `otio_cmx3600_adapter`, so for that one **only the file path fallback ever works**.
-  Without the sources there is no EDL support, and without the rest there is no `.otio` reader
+  Without the sources there is no EDL support, which is the one adapter the tool actually uses (the `.otio` reader is no longer needed, 2026-09-21)
   at all, which is to say no tool.
 - `Info.plist` needs: `CFBundleIdentifier`, `CFBundleShortVersionString`
   from `pyproject.toml`, `LSMinimumSystemVersion` (macOS 12 is a safe floor for PySide6 6.7),

@@ -28,7 +28,7 @@ One sentence each, the same sentences the buttons themselves show when you hover
 | **Save** | Writes the batch to its .pibatch file, asking where the first time. |
 | **Add Turnover** | Adds a turnover folder and scans it straight away. |
 | **Scan** | Re-tries only the turnovers that came back with no shots. |
-| **Ingest Colour Session** | Writes a colour session's cut, CDL and grades onto one turnover. |
+| **Ingest Colour Session** | Applies a revised cut and CDL onto one turnover without a re-scan. |
 | **Run** | Renders every shot that is not skipped, then writes both spreadsheets. |
 | **Stop** | Stops the run. What is in flight finishes; nothing further starts. |
 | **Export** | Writes the QC log and the shot tracker without rendering. |
@@ -38,15 +38,13 @@ One sentence each, the same sentences the buttons themselves show when you hover
 "Every turnover already has shots" - that is usually the whole answer, and it is the reason the
 toolbar shows everything from the first launch rather than hiding what cannot be used yet.
 
-**Run is the exception worth knowing.** It is not greyed when a turnover has no colour session
-ingested, because it will run: it refuses every turnover and writes nothing, which is correct
-and looks exactly like a dead button. Its tooltip says so first.
+**Run is the exception worth knowing.** It is not greyed when a turnover's export carries no
+CDL, because it will run: it refuses that turnover and writes nothing, which is correct and looks
+exactly like a dead button. Its tooltip says so first.
 
-**Ingest Colour Session is the by-hand route.** A scan looks for the turnover's session
-first: a folder named exactly as the turnover folder, inside the folder Settings' "Ingest opens
-at" names, or else inside `_color` beside the turnovers, holding one final `.edl` and the
-any `.cube` files. Found, it asks whether to ingest it; a folder with two `.edl` files in it is not
-guessed between and the button is the answer. Ingesting twice reads the newer export over the
+**Ingest Colour Session is for a revised export.** The cut and the grade are read at scan from
+the `.edl` in the turnover folder, so in the normal case there is nothing to press. When the
+colourist sends a new one, point the button at it: ingesting reads the newer export over the
 older one, and the report says which rows changed.
 
 **Export writes the two spreadsheets without rendering anything.** A run writes them when it
@@ -156,7 +154,7 @@ collapsible and each remembering whether you shut it.
   how one clip at the wrong resolution in a turnover of thirty is found without reading thirty
   rows.
 - Its **Colour** section is where you check what a shot is graded with: it names the source
-  encoding, where that name came from, and any `.cube` that stands in for the CDL.
+  encoding as the shooter typed it, where that name came from, and the CDL from the row's event.
 
 ## The Issues tab
 
@@ -245,7 +243,7 @@ button that opens with no batch loaded, because it is where a new batch's number
 | General | how many shots render at once, and a media path rewrite for timelines exported on Windows |
 | Rules | every threshold the checks compare against: shortest and longest shot, expected handles, expected resolution, audio sync tolerance |
 | Colour | where the Ingest chooser opens, and a read-only view of the ACES config, the output transform and the input transform table |
-| Naming | the pattern every clip name is parsed with and every delivered name is built from |
+| Naming | the pattern every shot code is parsed with and every delivered name is built from |
 | Output | the reference mp4's quality and the EXR compression level |
 | Advanced | how much is logged, an ffmpeg to use instead of the bundled one, and where the log file is |
 

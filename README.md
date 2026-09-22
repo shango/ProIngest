@@ -19,7 +19,7 @@ To just run it without building anything, double-click `ProIngest.command` inste
 1. `CLAUDE.md` - shared context and working rules for Claude Code
 2. `PROGRESS.md` - what is actually built, what is next, and every decision taken so far. Start at section 1
 3. `PRD.md` - product requirements, scope, user flow, milestones
-4. `docs/NAMING_SPEC.md` - clip name parsing and deliverable naming (the contract with the shooters)
+4. `docs/NAMING_SPEC.md` - metadata identity and deliverable naming (the contract with the shooters)
 5. `docs/COLOR_AND_FORMAT.md` - codecs, color handling, resolution, frame math
 6. `docs/QC_RULES.md` - every validation and QC check, with severity
 7. `docs/UI_SPEC.md` - screens, list view behavior, keyboard model, theme

@@ -232,17 +232,18 @@ Treat it as a working session with the editor rather than a delivery.
 - [ ] Install, strip quarantine, walk the first-run experience.
 - [ ] The editor picks a source root and a delivery root on their Drive mount and both stick
       across a restart. OQ-25 removed the detection, not the need to see this work once.
-- [ ] A turnover from a **Windows** shooter resolves its media. Their OTIO can carry `G:\...`
-      paths that mean nothing here, so this is what settles whether the FR-2 path map earns its
-      place or the filename search over the source root covers it on its own.
+- [ ] A turnover from a **Windows** shooter resolves its media. **Mostly dissolved 2026-09-21**:
+      with no OTIO there are no embedded media paths at all, so matching is by `File Name` from
+      the CSV against the folder. What is left to see is whether the filename search over a real
+      Drive mount is fast enough, which is M8.2's job rather than this one.
 - [ ] Scan a real turnover from each of the three shooters. OQ-1 folder structure, OQ-3 what
       the consolidated media actually is, OQ-4 how stills and BTS are named.
-- [ ] **Open one of those turnovers and look for `Input Color Space` in the clip metadata.**
-      The scan reads the source encoding from that one field (M4.6.4), because it is Resolve's
-      own Media Pool column for the input transform, and **nothing has confirmed Resolve exports
-      it into the `.otio`**. If it is absent, look at what the clip does carry and at the
-      container's tags, which is the second place the tool looks. The fix is one string in
-      `scan.SOURCE_ENCODING_KEY`; the point of looking is to find out which string. OQ-44.
+- [ ] **ANSWERED 2026-09-21, no Mac needed.** The encoding is not in `Input Color Space`, which
+      is a Resolve clip property rather than a metadata field and never appears in an export. It
+      is in **`Gamma Notes` + `Color Space Notes`**, typed by the shooter, reaching the tool
+      through the colourist's CSV, and verified to resolve on all five clips of the sample
+      turnover. What is still worth doing on a Mac: **open a real turnover and confirm
+      `Shot Type` is filled**, since the sample's was empty (OQ-70).
 - [ ] **Read what the shooters actually wrote in it.** "S-Log3" on its own resolves to nothing,
       deliberately, because it names four colour spaces. If that is what arrives, the outcome is
       an instruction to the shooters rather than a change to the tool: ask for the Resolve input
@@ -257,9 +258,10 @@ Treat it as a working session with the editor rather than a delivery.
       Linux, where the spin box arrows do not render at all and the form's label alignment
       against the multi-line path map block is a guess. Cmd+, has to open it, and it has to
       arrive in the application menu rather than a window menu (section 11's roles).
-- [ ] **Press Run on a batch with no colour session ingested and watch what the editor does.**
-      Since M5.7.1 QC-008 holds that turnover back and the run writes nothing, which is the
-      right refusal and may read as a dead button. The Issues dock carries the reason and the
+- [ ] **Press Run on a batch whose EDL carries no CDL and watch what the editor does.**
+      QC-008 holds that turnover back and the run writes nothing, which is the right refusal and
+      may read as a dead button. (A turnover with no EDL at all no longer reaches this: it is
+      refused at Add Turnover by QC-001, 2026-09-21.) The Issues dock carries the reason and the
       status bar names the turnover; whether that is enough, or whether Run should say it
       itself, is a judgement to make in front of the real window rather than from a test.
 - [ ] **Ingest one real session from the window and read the report.** How many rows matched,

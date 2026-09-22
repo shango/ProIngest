@@ -9,6 +9,16 @@ delivered graded, scene linear ACEScg.**
 
 ### 2026-09-18, later the same day: the grade is the CDL in the EDL, applied in ACEScct
 
+> **Corrected 2026-09-21/22.** Three things below are superseded and are left in place as the
+> record of how the plan moved. **(1) There are no per-shot grade files**: the `.cube` from
+> Generate LUT is gone and the CDL is the only grade carrier. **(2) The encoding is not in
+> `Input Color Space`**: the shooters write it into the Media Pool fields `Gamma Notes` and
+> `Color Space Notes`, which reach the tool through Ben's metadata CSV. `Input Color Space`
+> remains correct where this document describes what **Ben** sets in his own session, because
+> that is a Resolve clip property. **(3) Sources are not ProRes 4444**: they are camera native as
+> Copy with trim wrote them, or, where the camera system records RAW, debayered to a basic file
+> type with no colours baked in. See `docs/WORKFLOW.md`.
+
 **Decided by the user on 2026-09-18, after the cube correction below and superseding it.** The
 grade travels as the `*ASC_SOP` and `*ASC_SAT` lines on each event of the final EDL, the tool
 applies it in **ACEScct**, and the clip's metadata names the input transform that gets it there.
@@ -124,9 +134,9 @@ correct if they hold.
 |---|---|
 | colour science | DaVinci YRGB Color Managed, **ACES 1.3** |
 | timeline colour space | **ACEScct**, by standard (2026-09-18). The CDL is applied there, by Resolve and by the tool alike |
-| input colour space, per clip | **the clip's camera encoding**, the value the shooter wrote into `Input Color Space` (OQ-44). Resolve converts from it outside the node graph; the tool converts from the same name (`color.INPUT_TRANSFORMS`) |
-| grade | **the wheels of node one**, Luma Mix at 0, which is what Resolve's CDL export carries. A shot that needs more gets a cube from Generate LUT as well, ACEScct in and out, which takes the CDL's place |
-| viewing | on the timeline node or the output, never the clip. A cube with a display rendering in it is refused (QC-039) |
+| input colour space, per clip | **the clip's camera encoding**. Ben sets each clip's `Input Color Space` in his session to it, and Resolve converts from there outside the node graph. The tool reads the same encoding from the metadata (`Gamma Notes` + `Color Space Notes`, joined in that order) and resolves it through `color.INPUT_TRANSFORMS` |
+| grade | **the wheels of node one**, Luma Mix at 0, which is what Resolve's CDL export carries. **That is the whole grade**: there are no per-shot grade files (2026-09-21), so a look the wheels cannot reach is not deliverable through this pipeline |
+| viewing | on the timeline node or the output, never the clip. With the cube retired there is no grade file to inspect, so QC-039 is retired with it |
 
 **ACEScct is back in the chain as of 2026-09-18.** The 2026-09-12 version of this document took
 it out, because a grade file that started at the source encoding needed no working space. A
@@ -181,10 +191,10 @@ described as a one-off rather than a re-edit facility.
 
 | | |
 |---|---|
-| picture | **ProRes 4444**, one file per shot, with handles beyond the cut |
-| encoding | **named in the clip's metadata, per clip** (OQ-44). Camera native log is the expectation; DaVinci Wide Gamut / DaVinci Intermediate is one more value, not a separate mode. A turnover may mix them |
-| grade | **the CDL on each event of the final EDL**, applied in ACEScct (2026-09-18). A `.cube` per shot only where the wheels could not do it, and it takes the CDL's place for that shot |
-| conform | the colour session's final EDL: timecode, shot identity and the approved In/Out |
+| picture | **camera native**, one file per timeline clip, as Copy with trim wrote it: camera filename, camera timecode, handles both sides, nothing recompressed. Where the camera system records RAW, a **debayered basic file type with no colours baked in**. RAW itself never arrives |
+| encoding | **named in the metadata, per clip**, as `Gamma Notes` + `Color Space Notes` joined in that order, reaching the tool through Ben's CSV. Camera native log is the expectation; DaVinci Wide Gamut / DaVinci Intermediate is one more value, not a separate mode. A turnover may mix them |
+| grade | **the CDL on each event of Ben's EDL**, applied in ACEScct (2026-09-18). It is the only grade carrier (2026-09-21) |
+| conform | Ben's EDL: timecode, shot identity and the approved In/Out. Identity itself comes from his CSV, not from the EDL or any filename |
 
 ### One mechanism: the clip's metadata names the source encoding
 
@@ -199,11 +209,13 @@ Intermediate is not a mode, it is one more input transform**, and a clip encoded
 in its metadata like every other clip. A shooter working from a house template and a shooter
 delivering S-Log3 are the same case with different strings. So:
 
-**Read at scan time since 2026-09-12** (M4.6.4), from one named field: `scan.SOURCE_ENCODING_KEY`,
-`Input Color Space`, which is Resolve's own Media Pool column for the input transform. The
-clip's own metadata is looked at first and the container's tags second, because the timeline is
-where a person filled the field in and a tag is that same string travelling inside the file,
-which can outlive the session that wrote it. An empty field is no field. What is stored on the
+**Read at scan time from Ben's metadata CSV** (corrected 2026-09-21), from **two** named
+columns joined in order: `Gamma Notes` then `Color Space Notes`, giving `S-Log3 S-Gamut3.Cine`
+and the like. The shooters type both by hand. The file itself carries nothing - Copy with trim
+strips the camera's own metadata, verified on `Turnover199` - so there is no second carrier to
+fall back to, and an empty field is no field. Matching after casefolding and stripping
+punctuation is provably safe (no two colour spaces in the pinned config collide under it); a
+name that still does not resolve is QC-047 and is never guessed at. What is stored on the
 row is **what was written, verbatim**: the table resolves it at plan time, and QC-047 has to be
 able to quote back what somebody typed.
 
@@ -360,7 +372,7 @@ One decode, one transform stack, then a branch at the point where the two delive
 wanting the same thing:
 
 ```
-camera log ProRes 4444, encoding named in the clip's metadata (one per shot)
+camera native or debayered log, encoding named in the metadata (one file per clip)
         |
         |  decode to float RGB, colour tags overridden, range confirmed
         |
@@ -552,8 +564,13 @@ mix of camera logs and a house wide gamut, and nothing has to be told which in a
 
 **Expected**, and what every QC rule is written around:
 
-- **ProRes 4444 or DNxHR 444, in the log encoding the clip's metadata names, 12 bit, 4:4:4, full range**,
-  one file per shot, with handles beyond the cut.
+- **Whatever the camera recorded**, in the log encoding the metadata names, one file per timeline
+  clip, with handles both sides, copied with trim and **not recompressed**. Where the camera
+  system records RAW, a debayered basic file type with no colours baked in.
+- **RAW never arrives.** ffmpeg decodes no RAW format - BRAW, REDCODE, ARRIRAW, X-OCN, Cinema RAW
+  Light, ProRes RAW - so a RAW file in a turnover is refused rather than mis-rendered.
+- **4:2:0 is allowed with a warning** (user, 2026-09-19), so QC-020 is a warning and QC-021 is
+  rebased on what really arrives rather than on a ProRes 4444 intermediate that is never made.
 
 4:4:4 matters more on a log source than it would on a display referred one. Subsampled chroma
 in a log signal is stretched when the signal is linearised, and it shows on saturated edges.
@@ -630,12 +647,12 @@ NVENC was the Windows hardware encoder and **does not exist on macOS**. The macO
 
 ## 5. Frame rate and timecode
 
-- Project fps default 24, editable. Timeline fps from the OTIO must equal project fps or QC-025 error.
+- **Project fps is 24 and the tool asserts it** (user, 2026-09-21). An EDL states no frame rate - CMX 3600 has no field for one and otio's reader takes the rate as an argument - and the `.drt` that could have stated one is not read. So the rate is a setting defaulting to 24 rather than a fact read from a file, and QC-025 is retired with the timeline file it checked.
 - Shooters set every clip to the project rate in Resolve before export, so **the timeline rate is authoritative**. It is what the media is actually played at and what all frame math and timecode conversion use.
 - A clip's media may still carry a rate of its own: an EXR sequence states one in its `framesPerSecond` header, a container in its stream. After a conform that value can be stale camera metadata. It is recorded as `MediaInfo.stated_rate` and compared against the project rate for QC-026, but nothing computes with it. Computing with a stale rate would misread the source timecode and block every row.
 - A frame count is a property of the file, so it is always counted at the file's own rate, never at the timeline's. A 30 fps container conformed to 24 still holds the frames it holds.
 - QC-026 therefore fires when the media states a rate and that rate differs from the project rate. Media that states no rate, such as a DPX sequence, cannot disagree. No retiming is ever performed. See OQ-19 on severity.
-- Timecode is non-drop only. Drop-frame OTIO: QC-027 error.
+- Timecode is non-drop only. An EDL declaring drop frame (`FCM: DROP FRAME`) is QC-027 error.
 - Source TC = media start timecode from the container or EXR header plus frame offset. If the media has no timecode, source TC is displayed as frames only and QC-028 warning is raised.
 
 ## 6. Frame math

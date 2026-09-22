@@ -1,7 +1,7 @@
 # CLAUDE.md - ProIngest
 
 ## What this is
-A single-user macOS desktop app (PySide6, Python 3.11+) that ingests VFX shot turnovers. It reads an OpenTimelineIO file exported from DaVinci Resolve, matches timeline clips to media in a turnover folder on a Google Drive mount, lets the VFX editor adjust In/Out per shot, then transcodes and names all deliverables per the studio spec, runs automated QC, and exports spreadsheets.
+A single-user macOS desktop app (PySide6, Python 3.11+) that ingests VFX shot turnovers. It reads a CMX 3600 EDL and a Resolve metadata CSV, both exported by the colourist, matches their rows to media in a turnover folder on a Google Drive mount, lets the VFX editor adjust In/Out per shot, then transcodes and names all deliverables per the studio spec, runs automated QC, and exports spreadsheets.
 
 Read `PROGRESS.md` section 1 first: it is the handoff record, it says what is built, what is next and what was decided, and it is written to be picked up cold. Then `docs/WORKFLOW.md`, which is who does what in twenty lines. Then `PRD.md` and the docs it points to.
 
@@ -12,7 +12,7 @@ The docs are the spec. `PROGRESS.md` is the state. When code and docs disagree, 
 ## Ground rules
 - Core logic lives in `proingest/core/` and must not import Qt. The UI in `proingest/ui/` is a thin layer over core. Everything in core must be testable headless.
 - No rendering inside the UI thread. Long work runs in a worker process pool and reports progress through queues/signals.
-- Frame math is integer only. Never store or compare timecode as floats. Use `opentimelineio.opentime.RationalTime` at the boundary and integers internally.
+- Frame math is integer only. Never store or compare timecode as floats. Use `opentimelineio.opentime.RationalTime` at the boundary and integers internally. The project rate is 24 and is asserted, not read: an EDL states no frame rate.
 - Every deliverable is written atomically: render to a temp name in the destination folder, verify, then rename. A crash must never leave a file that looks finished.
 - Every check in `docs/QC_RULES.md` has a stable rule ID (e.g. `QC-012`). Log messages, row warnings, and spreadsheet exports reference the ID.
 - Output names come only from `proingest/core/naming.py`. No string formatting of filenames anywhere else.

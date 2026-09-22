@@ -7,8 +7,8 @@ proingest/
   __main__.py            # launches UI; `proingest scan|run|qc` subcommands for headless use
   core/
     models.py            # Batch, Turnover, ShotRow, Deliverable, QCResult (dataclasses, JSON schema v1)
-    timeline.py          # OTIO/EDL load, clip extraction, audio association, path mapping
-    naming.py            # parse clip names, build output names, delivery layout, versioning
+    timeline.py          # EDL load, event extraction, audio association
+    naming.py            # parse metadata identity, build output names, delivery layout, versioning
     media.py             # ffprobe wrapper, sequence detection, probe cache
     frames.py            # integer frame math, TC conversion, input parsing
     scan.py              # turnover folder -> Turnover + ShotRows (data flow steps 1-4)
@@ -17,7 +17,7 @@ proingest/
     exr.py               # EXR read/write (OpenEXR), DWAA, header checks
     resize.py            # antialiased Lanczos downscale for the EXR path
     color.py             # OCIO pipeline: input transform, the shot's grade file, the viewing LUT
-    clf.py               # colour session package: grade file matched per row, loaded, hashed
+    clf.py               # Ben's EDL: approved In/Out and the CDL, matched per row
     render.py            # job execution, process pool, atomic writes, cancellation
     qc.py                # rule registry, phase A and B checks
     exports.py           # openpyxl writers for tracker and QC log
@@ -70,11 +70,11 @@ build/
 
 ## Batch file
 
-JSON, `schema_version: 1`. Top level: settings overrides, delivery root, turnovers (folder, otio path, number, date, shooter), rows (full ShotRow including snapshot, edits, qc results, deliverables with status and checksums), probe cache. Written with a temp+rename. On open, a `.bak` copy is made. Loader reconciles deliverable status with the filesystem (existence and `.failed` markers) so the display never lies after a crash.
+JSON, `schema_version: 1`. Top level: settings overrides, delivery root, turnovers (folder, edl path, csv path, number, date, shooter), rows (full ShotRow including snapshot, edits, qc results, deliverables with status and checksums), probe cache. Written with a temp+rename. On open, a `.bak` copy is made. Loader reconciles deliverable status with the filesystem (existence and `.failed` markers) so the display never lies after a crash.
 
 ## Testing
 
-- Fixture generates: a 3840x2160 EXR sequence (300 frames, 24 fps, TC 01:00:00:00), a ProRes 4444 mov of the same, a 48k 16 bit wav, a small OTIO built with the otio API referencing them.
+- Fixture generates: a 3840x2160 EXR sequence (300 frames, 24 fps, TC 01:00:00:00), a camera-native H.264 mov of the same, a 48k 16 bit wav, a CMX 3600 `.edl` carrying CDL lines, and a Resolve-shaped metadata CSV (UTF-16, `File Name` / `Shot` / `Shot Type` / `Gamma Notes` / `Color Space Notes`) referencing them.
 - Golden tests for every naming example in the shooters' spec.
 - Frame-math tests for all four input formats and both TC modes.
 - Render tests run at reduced resolution flag for speed but assert real EXR headers, DWAA compression, frame counts, and checksums.

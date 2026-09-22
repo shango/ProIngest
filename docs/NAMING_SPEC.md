@@ -4,6 +4,26 @@ Source of truth: the shooters' spec PDF. This doc restates it as rules the code 
 
 ## 1. Timeline clip name (input contract)
 
+> **Settled, 2026-09-21 (OQ-62, OQ-70, OQ-72).** The shooters do not rename clips. Files and
+> timeline clips keep the camera's names (`C0145.MP4`), and identity arrives as metadata, through
+> the Media Pool CSV exported beside the media (`docs/SAMPLE_TURNOVER_199.md` section 4):
+> **`Shot` carries the shot code** (`MELT0001`) and **`Shot Type` carries the element code**
+> (`pl`, `cp`, `el`, `wit`, `re`, or a reference still's name). The grammar below still describes
+> what a full identity looks like; it is assembled from two fields rather than parsed out of one
+> name, and nothing parses a filename any more.
+>
+> Three reading rules, all from the user 2026-09-21:
+>
+> - **A bare code means index `01`.** `pl` is `pl01`. Each shot code has exactly one of each
+>   reference still, so a bare `colorChart` is `colorChart_01`. `pl02` and `cp02` still occur.
+> - **Parsing is case insensitive**, because the shooters do not keep the camel case. Output
+>   always uses the spelling in this document. This is safe rather than lenient: the ten codes
+>   are distinct when casefolded, so nothing is ambiguous.
+> - **Clean plate is accepted as either `cl` or `cp` and always written `cp`** (OQ-72).
+>
+> The code still parses clip names until the respec lands.
+
+
 ```
 [SHOW][NNNN]_[TYPE][II]
 MELT0001_pl01
@@ -17,7 +37,14 @@ Regex (show prefix configurable, default `[A-Z]{2,6}`):
 
 - `show` + `shot` = shot code (`MELT0001`).
 - `type` + `idx` = element id (`pl01`).
-- Optional `aux` marks a single-frame reference still tied to the plate (`MELT0001_pl01_colorChart_01`). See OQ-4 for how shooters will actually name these on the timeline.
+- Optional `aux` marks a single-frame reference still. **Changed 2026-09-21 by the shooters' updated spec**: a reference still is keyed to the **shot code**, not to an element, and its delivered name no longer carries one.
+
+  ```
+  new   MELT0001_colorChart_01_4k_v01.exr
+  old   MELT0001_pl01_colorChart_01_4k_v01.exr
+  ```
+
+  Same for `mirrorBall`, `greyBall`, `sizeRef` and `BTS`. `naming.aux_still_exr` and `naming.bts_image` build these from `ShotIdentity.stem` (`MELT0001_pl01`) today and must build from the shot code instead, and the `aux_still` and `bts` patterns in `_output_patterns` must match without the element segment. Both directions change together, because QC-151 round-trips them.
 - Lens grid clips use a different pattern: `^(?P<camera>[A-Za-z0-9]+)_(?P<lens>[A-Za-z0-9\-]+)_lensgrid_(?P<mm>\d+)mm$` and are turnover-level, not shot-level.
 - Anything that matches nothing is a QC-010 error on the row; the row still appears so the editor can fix the name in place.
 
@@ -30,15 +57,17 @@ Regex (show prefix configurable, default `[A-Z]{2,6}`):
 | el | element plate | raw 4k, raw HD, ref 4k, ref HD |
 | wit | witness cam | raw 4k, raw HD, ref 4k, ref HD |
 | re | recon plate | raw 4k, raw HD, ref 4k, ref HD |
-| aux still | reference still on a plate | single 4k exr (BTS: png/jpg/jpeg copy) |
-| lensgrid | lens distortion chart | **nothing in v01.** It arrives as a folder in the turnover package and the editor moves and renames it by hand. OQ-20 |
+| aux still | reference still, keyed to the shot code | single 4k exr, converted and never graded |
+| BTS | behind the scenes, phone stills | **nothing** (user, 2026-09-22) |
+| lensgrid | lens distortion chart | **nothing. Ben delivers it** (user, 2026-09-22, closing OQ-20) |
 
-Side files discovered next to the media (not on the timeline), matched by shot code and element id in the filename:
-
-| side file | match | deliverable |
-|---|---|---|
-| HDRI | `*HDRI*.exr` | exr copy, validated |
-| camData | `*camData*.txt|rtf` | copied and parsed into QC log |
+**Side files are not deliverables** (2026-09-22). HDRI, camData, BTS stills and the lens grid
+folder all arrive in the turnover and none of them carries a `Shot Type`, which is the whole of
+the tool's scope, so the tool neither copies nor renames nor reads any of them. They are Ben's or
+they are manual. What this removes: the `*HDRI*.exr` and `*camData*.txt|rtf` discovery, their
+templates in section 3, `core/camdata.py`, and QC-050, QC-051, QC-052, QC-053, QC-054, QC-056 and
+QC-057. Noted because the studio's own sheet marks **HDRI and Camera Data as Required**, so they
+still have to reach the vendor; they reach it without passing through this tool.
 
 ## 3. Output filename templates
 
@@ -50,12 +79,12 @@ Tokens: `{shotcode}` `{elem}` `{kind}` `{res}` `{ver}` `{frame}` `{aux}` `{auxid
 | raw exr folder | `{shotcode}_{elem}_raw_{res}_v{ver}` | `MELT0001_pl01_raw_4k_v01` |
 | ref mp4 | `{shotcode}_{elem}_ref_{res}_v{ver}.mp4` | `MELT0001_pl01_ref_HD_v01.mp4` |
 | audio | `{shotcode}_{elem}_audio_v{ver}.wav` | `MELT0001_pl01_audio_v01.wav` |
-| HDRI | `{shotcode}_{elem}_HDRI_v{ver}.exr` | `MELT0001_pl01_HDRI_v01.exr` |
-| camData | `{shotcode}_{elem}_camData_v{ver}.{ext}` | `MELT0001_pl01_camData_v01.rtf` |
-| aux still exr | `{shotcode}_{elem}_{aux}_{auxidx}_4k_v{ver}.exr` | `MELT0001_pl01_colorChart_01_4k_v01.exr` |
-| BTS | `{shotcode}_{elem}_BTS_{auxidx}_v{ver}.{ext}` | `MELT0001_pl01_BTS_01_v01.png` |
-| lens grid | `{camera}_{lens}_lensgrid_{mm}mm_v{ver}.png` | `SonyA7V_Tamron20-40_lensgrid_40mm_v01.png` (v01: the editor types this one, OQ-20) |
-| stringout | `turnover{tno:03d}_{MM}_{DD}_{YYYY}_{firstnamelastname}_v{ver}.mp4` | `turnover001_02_23_2026_danielluckett_v01.mp4`. **The tool no longer writes this file** (PRD FR-9, 2026-09-11). The pattern, `naming.stringout_mp4` and its parser branch are kept and still tested, because the name is now something a human types and the tool can still check it, exactly as with the lens grid (OQ-20). **This pattern is known wrong as a checker and must not be used as one until OQ-41 is answered**: measured against the 55 real stringout names in the studio tracker it matches none, because the real form carries a two digit year and an `SO` token and often no version at all (`turnover106_08_19_26_ericscheid_SO.mp4`). It is the builder's grammar, and the tool no longer builds |
+| ~~HDRI~~ | ~~`{shotcode}_{elem}_HDRI_v{ver}.exr`~~ | **REMOVED 2026-09-22**, with the deliverable. The tool does not deliver an HDRI |
+| ~~camData~~ | ~~`{shotcode}_{elem}_camData_v{ver}.{ext}`~~ | **REMOVED 2026-09-22**, with the deliverable. The tool does not deliver camData |
+| aux still exr | `{shotcode}_{aux}_{auxidx}_4k_v{ver}.exr` | `MELT0001_colorChart_01_4k_v01.exr`. **No element segment** (shooters' spec, 2026-09-21): a reference still is keyed to the shot code |
+| ~~BTS~~ | ~~`{shotcode}_{elem}_BTS_{auxidx}_v{ver}.{ext}`~~ | **REMOVED 2026-09-22**, with the deliverable. The tool does not deliver BTS |
+| ~~lens grid~~ | ~~`{camera}_{lens}_lensgrid_{mm}mm_v{ver}.png`~~ | **REMOVED 2026-09-22**, with the deliverable. **Ben delivers the lens grid** (OQ-20 closed) |
+| ~~stringout~~ | ~~`turnover{tno:03d}_{MM}_{DD}_{YYYY}_{firstnamelastname}_v{ver}.mp4`~~ | **REMOVED 2026-09-22**, with the deliverable. **The tool does nothing with the stringout**: it does not build, read, transcode, rename or check one (user, 2026-09-22). Ben produces and exports it. `naming.stringout_mp4`, its parser branch and OQ-41's checker question all go |
 
 `{res}` is `4k` or `HD` exactly. `{ver}` is two digits. `{frame}` is four digits starting at 1001.
 
@@ -82,7 +111,7 @@ the sheet does not go looking for the rule behind one of them.
 - Version is per shot per run. Before rendering a shot, list existing `v??` for any of its deliverables in the destination; new version = max + 1, or 01 if none.
 - "Per shot" means per shot folder, so the scope of that listing is the whole `<delivery_root>/<show>/<shotcode>/` directory and every element of the shot in the run shares the result. A shot whose `cp01` was delivered at v01 therefore starts its `pl01` at v02. Element versions can skip numbers; a shot's deliverables never disagree.
 - All deliverables for that shot in this run get the same version, even if only one of them was missing. Partial version sets are confusing downstream.
-- Side-file copies (HDRI, camData, stills) follow the same version as the shot in that run. The lens grid is not one of them in v01: it is turnover-level and handled by hand, so nothing versions it. OQ-20.
+- Reference stills follow the same version as the shot in that run. **There are no side-file copies to version** (2026-09-22): HDRI, camData, BTS and the lens grid are not tool deliverables.
 - A `.part` file or folder is never counted as an existing version.
 
 ## 5. Delivery folder layout (proposed default, editable template in Settings, OQ-1)
@@ -96,12 +125,7 @@ the sheet does not go looking for the rule behind one of them.
       <shotcode>_<elem>_ref_4k_v01.mp4
       <shotcode>_<elem>_ref_HD_v01.mp4
       <shotcode>_<elem>_audio_v01.wav
-      <shotcode>_<elem>_HDRI_v01.exr
-      <shotcode>_<elem>_camData_v01.rtf
-      <shotcode>_<elem>_colorChart_01_4k_v01.exr
-    _turnovers/
-      turnover001_02_23_2026_danielluckett_v01.mp4
-      <camera>_<lens>_lensgrid_40mm_v01.png   (v01: put here by hand, OQ-20)
+      <shotcode>_colorChart_01_4k_v01.exr     (keyed to the shot code, not an element)
     _reports/
       shot_tracker_<batchname>_<date>.xlsx      (<date> is YYYYMMDD, so name order is date order)
       qc_ingest_log_<batchname>_<date>.xlsx
