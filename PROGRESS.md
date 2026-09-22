@@ -14,6 +14,17 @@ complete, M4.5 all four chunks, M4.6 all five, **M5 all twelve**, **M7**, and **
 What is left is **M8 polish** (needs a real turnover and a real colour session) and the rest
 of **M9, the user guide**.
 
+**2026-09-22, the plan: `docs/TO_A_WORKING_BUILD.md`.** The page a cold session should open first.
+Part 1 is what is needed from the user, Part 2 is seven chunks with a verification step each, Part 3
+is the shortest path if only some of Part 1 arrives. **Two things block a working build**: the
+**Q1** decision (what QC-026 should do at 23.976 - recommended: silent on a 1000/1001 relationship
+to the project rate, so a genuinely unconformed 25 or 30 fps file still errors), and **one real
+turnover folder as Ben hands it over**, media plus his EDL plus his CSV, because nothing in the EDL
+half of the tool has ever met a real file and `clf.MATCH_FIELD` matching on the wrong field silently
+applies a neighbouring clip's grade. Two more artifacts improve it rather than unblock it: one
+original camera file (OQ-60) and OQ-55's test export, which can arrive in the same folder. Everything
+else in Part 1 - Q2 to Q6, OQ-59, OQ-35 - carries a stated default and will be built to it.
+
 **2026-09-22, last: a code and architecture review, `docs/REVIEW_2026-09-22.md`.** Asked for by the
 user to quash assumptions about the workflow. **On `Turnover199_ForBEN` the tool today produces zero
 deliverables and three errors per row**, demonstrated rather than argued: `parse_clip_name` returns

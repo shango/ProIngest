@@ -9,11 +9,14 @@ in `docs/` **is** the current one now, `Turnover199/` has been replaced by `Turn
 
 ## Read first, in this order
 
-1. `PROGRESS.md` section 1, the three entries dated 2026-09-22.
-2. **`docs/WORKFLOW.md`**. The whole workflow on one page.
-3. **`docs/REVIEW_2026-09-22.md`**. The code review: what is stale, what is structurally wrong,
-   and six questions nobody has answered.
-4. `docs/SAMPLE_TURNOVER_199.md` sections 7 and 8, the real turnover's evidence.
+1. **`docs/TO_A_WORKING_BUILD.md`.** The plan: what is needed from the user, and the seven chunks
+   that get from here to a build that ingests a real turnover. **Start here.** Everything below is
+   the reasoning behind it.
+2. `PROGRESS.md` section 1, the three entries dated 2026-09-22.
+3. **`docs/WORKFLOW.md`**. The whole workflow on one page.
+4. **`docs/REVIEW_2026-09-22.md`**. The code review: what is stale, what is structurally wrong, and
+   the questions behind Part 1 of the plan.
+5. `docs/SAMPLE_TURNOVER_199.md` sections 7 and 8, the real turnover's evidence.
 
 ## The state
 
@@ -37,16 +40,19 @@ Ben, not Ben's to the tool.
 
 ## What is ready to build
 
-`docs/REVIEW_2026-09-22.md` section 4 is the dependency-ordered list. In short: the CSV reader, the
-identity model reshaped to `(shot_code, kind, index)`, the scan rebuilt on folder + EDL + CSV, Q1
-answered, the EDL read moved into the scan, the removals (side files, camData, BTS, lens grid,
-stringout, cube, `_color`), and OQ-60's decode assertions with QC-018.
+**`docs/TO_A_WORKING_BUILD.md` Part 2** is the seven chunks with a verification step each.
 
-## Still blocked on a person
+## The two things that actually block, out of that page's Part 1
 
-| what | ID |
-|---|---|
-| QC-026 at 23.976: warning, silent on a 1000/1001 conform, or retired | review Q1 |
-| One original camera file, for the BT.601/BT.709 decode | OQ-60 |
-| The per-turnover default input transform, two decisions | OQ-59 |
-| One test export from Ben: EDL, CSV, stringout, one graded shot | OQ-55 |
+1. **Q1: what should QC-026 do at 23.976?** Recommended: pass silently on a 1000/1001 relationship
+   to the project rate, so a genuinely unconformed 25 or 30 fps file still errors. **No row of any
+   real turnover can render until this is decided.**
+2. **One real turnover folder as Ben hands it over**: media, his EDL, his CSV, together. One shot is
+   enough. Nothing in the EDL half of the tool has ever met a real file, and matching an event on
+   the wrong field silently applies a neighbouring clip's grade.
+
+Those two are the working build. Two more improve it: **one original camera file** (OQ-60, the
+BT.601/BT.709 decode, the only defect that ships wrong pixels quietly) and **OQ-55's test export**,
+which can arrive in the same folder as item 2.
+
+Everything else in Part 1 has a stated default and will be built to it.
