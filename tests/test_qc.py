@@ -161,6 +161,19 @@ class TestAudioSync:
         assert ids(results) == ["QC-043"]
         assert "longer" in results[0].message
 
+    def test_an_edit_past_the_audio_says_the_wav_is_padded(self) -> None:
+        """The wav is cut to the edited range, so sound it lacks becomes silence."""
+        longer = InOut(CHOSEN.in_frame, CHOSEN.out_frame + 60)
+        results = qc.check_audio_sync(row(audio=audio_of(240), current=longer), RATE_24)
+        assert ids(results) == ["QC-043"]
+        assert "padded with silence" in results[0].message
+
+    def test_an_edit_inside_the_audio_says_the_wav_is_cut(self) -> None:
+        shorter = InOut(CHOSEN.in_frame, CHOSEN.out_frame - 60)
+        results = qc.check_audio_sync(row(audio=audio_of(240), current=shorter), RATE_24)
+        assert ids(results) == ["QC-043"]
+        assert "cut to it" in results[0].message
+
     def test_audio_recorded_at_the_wrong_rate_shows_as_drift(self) -> None:
         """A 240 frame take cut at 30 fps is 8 seconds; at 24 that is 192 frames."""
         recorded_at_30 = audio_of(240, rate=RATE_30)

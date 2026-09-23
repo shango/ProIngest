@@ -551,7 +551,8 @@ def check_audio_sync(
 
     OQ-27 makes the reading firm. A wav runs cut point to cut point, so a mismatch
     against the *snapshot* means a malformed turnover, while one against an edited
-    range is the editor's own trim: the wav is a byte copy and is never retrimmed.
+    range is the editor's own trim. The delivered wav is cut to the edited range, so
+    audio longer than it is cut off, and audio shorter than it is padded with silence.
     The message says which, because the two need different phone calls.
     """
     if row.audio is None or row.current is None:
@@ -562,7 +563,11 @@ def check_audio_sync(
         return []
     direction = "longer" if drift > 0 else "shorter"
     cause = (
-        "the range was edited away from the turnover's and the wav is delivered untrimmed"
+        (
+            "the range was edited past the turnover's audio, so the delivered wav is padded with silence"
+            if drift < 0
+            else "the range was edited inside the turnover's; the delivered wav is cut to it"
+        )
         if row.was_edited
         else "the turnover is malformed: a wav should run cut point to cut point"
     )
@@ -1428,7 +1433,8 @@ def _verify_audio(job: DeliverableJob, deliverable: Deliverable) -> list[QCResul
         # Cut to the picture (user, 2026-09-23), so it is compared to the picture.
         results.extend(_check_trimmed_duration(job))
     elif job.source.suffix.lower() == WAV_SUFFIX:
-        # A wav is delivered as a byte copy, so the digest is the whole check.
+        # A row with no range: its wav is delivered as a byte copy, so the digest is
+        # the whole check.
         if file_digest(job.destination) != file_digest(job.source):
             results.append(_failure("QC-120", f"{job.name} does not match {job.source.name}"))
     else:

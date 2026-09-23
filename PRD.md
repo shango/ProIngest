@@ -130,7 +130,7 @@ FR-9 Stringout: **dropped from v01, 2026-09-11. Dropped entirely 2026-09-22.**
 
 FR-10 Exports
 - `shot_tracker.xlsx` via openpyxl, **rows to paste into the studio's own tracker**: its 39 columns in its own order, nine of them written and the other thirty left empty because the vendor's team owns them (OQ-2, answered 2026-09-11 from the real sheet). The column layout was to be loaded from a template file in Settings, which was right while nobody knew the columns and is a configuration point standing where a fact belongs now that they are known.
-- `qc_ingest_log.xlsx` with sheets: Summary, Shots (**three In/Out columns: as the shooters delivered it, as Ben approved it, as it rendered**, plus duration, shot code changes, skip reasons), Deliverables (one row each with path, version, size, checksum, every QC rule result). Three sheets since 2026-09-22: Side Files and Camera Data went with the deliverables they described.
+- `qc_ingest_log.xlsx` with sheets: Summary, Shots (**two In/Out pairs: Delivered, the range the turnover's EDL and CSV state, and Final, the range that rendered**; the colourist's export is the turnover since 2026-09-22, so the shooters' range and the approved one are the same range, plus duration, shot code changes, skip reasons), Deliverables (one row each with path, version, size, checksum, every QC rule result). Three sheets since 2026-09-22: Side Files and Camera Data went with the deliverables they described.
 
 FR-11 Batch file
 - `.pibatch` JSON, schema versioned. Contains everything needed to reopen: turnovers, rows, snapshots, edits, probe cache, delivery root, render status, settings overrides. Autosave on every edit (debounced 500 ms). Backup copy kept on open.

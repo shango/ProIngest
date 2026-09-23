@@ -9,9 +9,8 @@ it has been read.
 
 - **All eight chunks of the 2026-09-23 review are built** (`docs/REVIEW_2026-09-23.md` section 5),
   one commit each, in the order A, B, F, G, E, C, D, H. The version is **0.5.0**.
-- Branch `color/cdl-in-acescct` is **17 commits ahead of origin and not pushed.** The permission
-  check refused the push, so the user runs it themselves: `! git push origin color/cdl-in-acescct`.
-  CI then builds `ProIngest-0.5.0.dmg`.
+- Branch `color/cdl-in-acescct` is **pushed** for the 0.5.0 release. CI builds
+  `ProIngest-0.5.0.dmg` on PR #12, as the `ProIngest-macos-arm64` artifact of the run.
 - **The final check was green:** 1621 tests pass (the count fell because tests for removed code
   went with it), and `ruff`, `ruff format` and `mypy --strict` are clean.
 - **The real turnover, `Turnover199`, works end to end:**
@@ -22,7 +21,7 @@ it has been read.
 
 ## Next
 
-1. The user pushes the branch, and CI builds the dmg.
+1. Download the dmg from the CI run on PR #12.
 2. On the Mac, work through `docs/MAC_SESSION.md`, "The 0.5.0 build, in order". It opens with the
    acceptance test on Turnover199, then the per-chunk checks for B, G, E and D.
 
@@ -42,8 +41,6 @@ These were reported to the user; they are recorded in `PROGRESS.md` too.
 
 ## Left open
 
-- PRD FR-10 describes three In/Out columns in the QC log, but the log has two.
-- QC-043, QC-120 and QC-121 still describe the wav as a byte copy; it is now trimmed and retimed.
 - FR-1's "refuse an M2 motion effect" (OQ-63) is not built.
 - Non-square pixels are not handled when letterboxing (COLOR_AND_FORMAT section 4).
 

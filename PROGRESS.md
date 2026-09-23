@@ -12,9 +12,20 @@ commit.
 H of `docs/REVIEW_2026-09-23.md` section 5 are all built**, each in its own commit with the entry
 below. The real turnover, `Turnover199`, scans with no must-fix and renders every deliverable.
 What is left is the Mac: `docs/MAC_SESSION.md`, "The 0.5.0 build, in order", starting with the
-acceptance test on the editor's machine. The branch `color/cdl-in-acescct` is **not pushed**; the
-user pushes it, and CI builds `ProIngest-0.5.0.dmg`. The entries below are newest first; anything
+acceptance test on the editor's machine. The branch `color/cdl-in-acescct` is pushed for the
+0.5.0 release; CI builds `ProIngest-0.5.0.dmg` on PR #12 (the workflow runs on pull requests, not
+on a branch push). The entries below are newest first; anything
 older than 2026-09-22 describes the tool before the review and is history.
+
+**2026-09-23, release prep for 0.5.0.** Two of chunk H's open items closed, both stale text.
+**QC-043's message** said an edited row's wav is delivered untrimmed; since D2 the wav is cut to
+the edited range, so the message now says the wav is padded with silence (edited past the
+recorded sound) or cut (edited inside it), with a test for each. **The docs** (QC_RULES 043, 120,
+121; COLOR_AND_FORMAT section 3's audio line) no longer call the wav a byte copy, which it is now
+only on a row with no range. **PRD FR-10** now describes the log's two In/Out pairs, Delivered and
+Final: the code was right, since the colourist's export became the turnover the shooters' range
+and the approved range are one range. **Still open**: OQ-63 (refuse an M2 motion effect) and
+non-square pixels when letterboxing; neither affects `Turnover199`. **Verified**: the suite (1623).
 
 **2026-09-23, chunk H: cleanup, docs, and 0.5.0.** **Dead code out**: `clf.ingest` and
 `IngestReport`, `proingest run --color-session` (the scan reads the EDL; a scanned batch is
