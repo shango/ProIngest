@@ -7,8 +7,8 @@ a named document; everything under "Not verified" is an inference or a question,
 `docs/REVIEW_2026-09-19.md` is the review this sample was requested by, and
 `docs/OPEN_QUESTIONS.md` carries each open item with an ID.
 
-> **Superseded in part on 2026-09-22.** The user replaced `Turnover199/` with
-> **`Turnover199_ForBEN/`**: the same five camera files, a re-exported `.drt` and a re-exported
+> **Superseded in part on 2026-09-22.** The user re-exported `Turnover199/`:
+> the same five camera files, a re-exported `.drt` and a re-exported
 > CSV, this time **with the metadata filled in**. Section 7 at the bottom of this page is that
 > folder, and where it contradicts sections 2 to 6 it wins. What did not change: the media, the
 > encoding fields, and the finding that the `.drt` carries no per-clip metadata values. What did:
@@ -255,9 +255,9 @@ All at 24 frames per second, which is the rate the `.drt` and the CSV count in.
 | new | One original camera file, or its `M01.XML` sidecar, would show the `rtmd` metadata and the camera's own rate | user |
 
 
-## 7. `Turnover199_ForBEN/`, the metadata-filled re-export (2026-09-22)
+## 7. `Turnover199/`, the metadata-filled re-export (2026-09-22)
 
-The user replaced the folder with this one. Same five clips, byte-identical sizes; a 39 KB `.drt`
+The user replaced the folder's contents with these. Same five clips, byte-identical sizes; a 39 KB `.drt`
 and a 5 KB CSV in place of the 36 KB and 4 KB ones. **It is git-ignored** under its own
 `.gitignore` entry, so this section is its durable record.
 
@@ -379,6 +379,11 @@ duplicate column name.
 > comparative: the CSV in this folder is **stale** in every field but `File Name`, and its
 > `Shot Type` column is **duplicated**. The rest of the section is the evidence the decision was
 > made on, kept so it is not re-measured.
+>
+> **`Turnover199.ale` was deleted from the folder on 2026-09-22**, after the decision. This section
+> is therefore the only record of it. Every path quoted below is verbatim from that file, including
+> the `Turnover199_ForBEN/` in `Source File Path`, which is the name the folder carried when the
+> ALE was exported. Those quotes are evidence and are not renamed.
 
 The user dropped `Turnover199.ale` (3.3 KB) into the same folder. It is a shooters' export sitting
 in the `_ForBEN` folder, not Ben's, which matters for the CDL values below and **not** for the

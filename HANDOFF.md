@@ -4,7 +4,7 @@
 this once it has been read. **If it disagrees with `PROGRESS.md` or the docs, they win.**
 
 The previous version of this file is superseded: its traps are all cleared. The shooters' spec CSV
-in `docs/` **is** the current one now, `Turnover199/` has been replaced by `Turnover199_ForBEN/`
+in `docs/` **is** the current one now, `Turnover199/` holds the metadata-filled re-export
 (git-ignored), and the four sessions of uncommitted docs work is committed as of this note.
 
 ## Read first, in this order
@@ -27,7 +27,7 @@ purpose, and the review is the list of what that costs.
 ## The one thing to know before testing a build
 
 **The tool cannot process a real turnover yet**, and a dmg from this commit will show it. Three
-errors fire on every row of `Turnover199_ForBEN`, each enough on its own to skip the row:
+errors fire on every row of `Turnover199`, each enough on its own to skip the row:
 
 - **QC-010**, because `naming.parse_clip_name("C0145.MP4")` returns None. Identity is metadata now.
 - **QC-046 / QC-047**, because `scan.SOURCE_ENCODING_KEY` is still `Input Color Space` and there is

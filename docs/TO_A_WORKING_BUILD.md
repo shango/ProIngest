@@ -25,7 +25,7 @@ and always will: the shooters conform to 24.000 in Resolve, but a conform is a *
 and Copy with trim does not rewrite the file's rate. `check_source_rate` compares the file's stated
 rate to the project's 24 and raises an **error**, which auto-skips the row (PRD FR-6).
 
-Demonstrated on `Turnover199_ForBEN`: `C0145`, `C0148`, `C0152` all `stated_rate=24000/1001` ->
+Demonstrated on `Turnover199`: `C0145`, `C0148`, `C0152` all `stated_rate=24000/1001` ->
 QC-026 error. The suite never caught it because `tests/fixtures/media.py` sets `FPS = 24` and
 generates containers at exactly `24/1`.
 
@@ -42,7 +42,7 @@ item on this page that stops the work rather than shaping it.
 ### 1.2 One artifact that is worth more than all the others
 
 **A real turnover folder as Ben hands it over: the media, his EDL, and his CSV, together.** One shot
-is enough. `Turnover199_ForBEN` is the shooters' handover and has **no `.edl`**, so nothing in the
+is enough. `Turnover199` is the shooters' handover and has **no `.edl`**, so nothing in the
 EDL half of the tool has ever been tested against a real file.
 
 Everything in this list is currently **built to a default and unverified**:
@@ -131,7 +131,7 @@ New module, `proingest/core/metacsv.py`. Nothing like it exists: there is no `im
   `Clip Directory` in the real file describe the **pre-consolidation originals** and are wrong for
   the delivered media by 2x to 8x. ffprobe is the authority on every media fact.
 
-**Verify**: reads `Turnover199_ForBEN/Turnover199.csv` to five rows with `Shot Type` of `pl01`,
+**Verify**: reads `Turnover199/Turnover199.csv` to five rows with `Shot Type` of `pl01`,
 `colorChart`, `mirrorBall`, `greyBall`, `cp01` and `S-Log3 S-Gamut3.Cine` on all five. A synthetic
 fixture covers an absent `Shot Type` column, two that disagree, a blank `Shot`, and a row whose
 `File Name` matches nothing in the folder.

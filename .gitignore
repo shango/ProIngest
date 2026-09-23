@@ -46,7 +46,8 @@ proingest/resources/ffmpeg/*
 # A real sample turnover the user dropped into the working tree on 2026-09-19: five
 # Resolve-trimmed camera files, 775 MB, plus a .drt and a metadata CSV. It is evidence for
 # the respec, not source, and one `git add .` would put the media in history for good.
-# Replaced 2026-09-22 by Turnover199_ForBEN/, the same five clips with the metadata filled
-# in. Both patterns stay, so an older clone does not un-ignore the first one.
+# Re-exported 2026-09-22 with the metadata filled in. It briefly carried the name
+# Turnover199_ForBEN/ and was renamed back; that pattern stays as a guard, so a clone that
+# still has the old name cannot un-ignore 775 MB of media into a `git add .`.
 /Turnover199/
 /Turnover199_ForBEN/

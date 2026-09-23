@@ -14,6 +14,28 @@ complete, M4.5 all four chunks, M4.6 all five, **M5 all twelve**, **M7**, and **
 What is left is **M8 polish** (needs a real turnover and a real colour session) and the rest
 of **M9, the user guide**.
 
+**2026-09-22, latest: the sample folder is `Turnover199/` again, and the docs were brought back
+into line with it.** The user renamed `Turnover199_ForBEN/` back to **`Turnover199/`** and deleted
+`Turnover199.ale` and `.DS_Store` with the rename. The folder now holds five MP4s, `Turnover199.csv`
+and `Turnover199.drt`, and nothing else. **The ALE is gone from disk**, so
+`docs/SAMPLE_TURNOVER_199.md` section 8 is now its only record; a note at the head of that section
+says so, and marks the paths quoted inside it as verbatim evidence that is not to be renamed.
+**Fifteen stale `Turnover199_ForBEN` references across nine files were corrected.** Thirteen were
+plain paths and were renamed; four sentences that described the *replacement* were rewritten by hand,
+because a blind find-and-replace turns "X replaced Y" into "X replaced X"; two are quotations of the
+deleted ALE's `Source File Path` and were deliberately left. **`.gitignore` keeps both patterns**:
+`/Turnover199_ForBEN/` stays as a guard so a clone still carrying the old name cannot un-ignore
+775 MB into a `git add .`. **Re-verified on the renamed folder**: `find_timeline_files` returns `[]`,
+`scan_turnover` returns **0 rows** on `QC-001`, and `find . -iname "*.edl"` over the whole tree
+returns nothing - **the cut and the CDL still have no carrier in the sample**, which is Part 1.2 of
+`TO_A_WORKING_BUILD.md` and unchanged. **CI is green on `cab9ffa`** (run `35794121651`, all four
+jobs), and the dmg artifact `ProIngest-macos-arm64` is 107 MiB and downloadable until 2026-12-21.
+**`TEST0001/` at the repo root stays** (user, 2026-09-22): it is a **sample of the exported folder
+structure**, informational, not a turnover from anyone, and not an input to anything. It is nine
+empty directories named to the delivery spec. Note for whoever needs it to survive a fresh clone:
+it is untracked and **not** git-ignored, and git does not track empty directories, so today it
+exists only on this machine. **Docs only. No code changed, 1739 tests.**
+
 **2026-09-22, the plan: `docs/TO_A_WORKING_BUILD.md`.** The page a cold session should open first.
 Part 1 is what is needed from the user, Part 2 is seven chunks with a verification step each, Part 3
 is the shortest path if only some of Part 1 arrives. **Two things block a working build**: the
@@ -26,7 +48,7 @@ original camera file (OQ-60) and OQ-55's test export, which can arrive in the sa
 else in Part 1 - Q2 to Q6, OQ-59, OQ-35 - carries a stated default and will be built to it.
 
 **2026-09-22, last: a code and architecture review, `docs/REVIEW_2026-09-22.md`.** Asked for by the
-user to quash assumptions about the workflow. **On `Turnover199_ForBEN` the tool today produces zero
+user to quash assumptions about the workflow. **On `Turnover199` the tool today produces zero
 deliverables and three errors per row**, demonstrated rather than argued: `parse_clip_name` returns
 None on `C0145.MP4` (QC-010), `scan.SOURCE_ENCODING_KEY` is still `Input Color Space` and neither the
 CSV nor the container carries it (QC-046/047), and **QC-026 fires on every clip** because the
@@ -58,7 +80,7 @@ without passing through this tool. New **QC-064** counts the ignored clips at tu
 otherwise a turnover whose metadata was never filled in delivers nothing and says nothing.
 **(5) Ben delivers the lens grid**, closing OQ-20 and OQ-73(c) and retiring QC-054 and QC-057.
 
-**`Turnover199_ForBEN/` replaced `Turnover199/`** (git-ignored, its own `.gitignore` entry,
+**`Turnover199/` was re-exported with the metadata filled in** (git-ignored, its own `.gitignore` entry,
 `docs/SAMPLE_TURNOVER_199.md` section 7 is the durable record). Same five clips, re-exported `.drt`
 and CSV **with the metadata filled in**: `Shot` = `TEST0002`, and `Shot Type` = `pl01`,
 `colorChart`, `mirrorBall`, `greyBall`, `cp01`. Plates carry an explicit index and stills are bare,
