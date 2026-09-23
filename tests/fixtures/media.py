@@ -323,7 +323,8 @@ def make_final_edl(
     """Ben's final EDL: one event per clip, with the CDL that is the grade.
 
     Laid end to end in record order, which is what a stringout timeline looks like.
-    `clips` are `FROM CLIP NAME` values, matched to a row by stem (`clf.event_for`).
+    `clips` are `FROM CLIP NAME` values, matched to a row by stem (`clf.event_for`); an
+    empty one writes no name, which is what Resolve's CDL export does.
     """
     lines = [f"TITLE: {path.stem}", "FCM: NON-DROP FRAME", ""]
     record = record_start
@@ -333,7 +334,8 @@ def make_final_edl(
             f"{index:03d}  {reel} V     C        {timecode(source_start)} {src_out} "
             f"{timecode(record)} {timecode(record + duration)}"
         )
-        lines.append(f"* FROM CLIP NAME: {clip}")
+        if clip:
+            lines.append(f"* FROM CLIP NAME: {clip}")
         if with_cdl:
             lines += [
                 "*ASC_SOP (1.020000 0.990000 1.010000)"

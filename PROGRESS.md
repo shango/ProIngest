@@ -14,6 +14,18 @@ complete, M4.5 all four chunks, M4.6 all five, **M5 all twelve**, **M7**, and **
 What is left is **M8 polish** (needs a real turnover and a real colour session) and the rest
 of **M9, the user guide**.
 
+**2026-09-23, chunk A of `docs/REVIEW_2026-09-23.md`: an EDL event is matched by source timecode,
+and the real turnover now scans with the right cut and grade on every row.** `ColorSession.candidates`
+returns every event that could be a row's: a named event when `FROM CLIP NAME` agrees, an unnamed one
+when its whole source range sits inside the file's own timecode. **The reel is never read** and
+`MATCH_FIELD` and `_event_by_reel` are gone. The scan now matches all rows at once (`_conform_all`),
+because ambiguity is a cross-row fact: **new QC-067** (error) when two events fall inside one file or
+one event inside two, **new QC-068** (info, turnover) for an event no row claims. The parser keeps a
+picture event's comments across an `A` line under the same number, reads `W001` heads as events, and
+drops zero-length events. **Verified on `Turnover199` with Ben's real EDL**: `C0145` 24-255 (232),
+`C0152` 24-239 (216), the three stills at frame 24, a CDL on all five, and QC-026 the only blocker
+left, which is chunk B. **1613 tests**, `ruff`, `ruff format` and `mypy --strict` clean.
+
 **2026-09-23, newest: a full code, architecture and workflow review, and the user's answers to all
 of it. Read `docs/REVIEW_2026-09-23.md` first; its section 5 is now the plan.** Two things changed
 the ground. **(1) Ben's real EDL arrived** as `Turnover199/Turnover199.edl` and it carries **no

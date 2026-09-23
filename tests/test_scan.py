@@ -172,6 +172,24 @@ class TestScanTurnover:
         assert orphan.cdl is None and orphan.approved is None
         assert orphan.current is not None, "it still shows what arrived, so it can be trimmed by hand"
 
+    def test_an_unnamed_event_inside_two_files_is_refused_on_both(self, tmp_path: Path) -> None:
+        """Both fixture sequences start at 01:00:00:00, so a nameless event fits either."""
+        folder = tmp_path / GOOD_FOLDER
+        fixtures.make_turnover(folder, shots=2, frames=4)
+        fixtures.make_final_edl(folder / "FINAL_v01.edl", [""], duration=4)
+        _, rows = scan.scan_turnover(folder, "t1")
+        for row in rows:
+            assert "QC-067" in rules(row)
+            assert row.cdl is None and row.approved is None
+
+    def test_an_event_no_row_claims_is_recorded_at_turnover_scope(self, tmp_path: Path) -> None:
+        folder = tmp_path / GOOD_FOLDER
+        fixtures.make_turnover(folder, shots=1, frames=4)
+        fixtures.make_final_edl(folder / "FINAL_v01.edl", ["MELT0001_pl01", "SOMETHING_ELSE"], duration=4)
+        turnover, rows = scan.scan_turnover(folder, "t1")
+        assert "QC-068" in {result.rule_id for result in turnover.qc}
+        assert "QC-066" not in rules(rows[0]) and rows[0].approved is not None
+
     def test_media_the_csv_names_but_the_folder_lacks_is_qc_012(self, tmp_path: Path) -> None:
         folder = tmp_path / GOOD_FOLDER
         fixtures.make_turnover(folder, shots=1, frames=4)

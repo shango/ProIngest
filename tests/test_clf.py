@@ -81,6 +81,7 @@ def row(
     **kwargs: object,
 ) -> ShotRow:
     """A scanned row: 240 frames of ProRes starting at 01:00:00:00. `kwargs` are the media's."""
+    media: dict[str, object] = {"frame_count": 240, "start_timecode": 86400, **kwargs}
     return ShotRow(
         turnover_id="turnover001",
         clip_name=clip_name,
@@ -94,10 +95,8 @@ def row(
             width=3840,
             height=2160,
             rate=RATE_24,
-            frame_count=240,
             start_frame=0,
-            start_timecode=86400,
-            **kwargs,  # type: ignore[arg-type]
+            **media,  # type: ignore[arg-type]
         ),
     )
 
@@ -202,10 +201,24 @@ class TestCdl:
         assert clf.read_final_edl(edl(tmp_path, text), RATE_24)[0].cdl is None
 
 
+RESOLVE_EDL = """TITLE: Turnover199
+FCM: NON-DROP FRAME
+
+001  AX       V     C        01:00:00:08 01:00:09:08 01:00:00:00 01:00:09:00
+*ASC_SOP (1.020000 0.990000 1.010000)(0.001000 -0.002000 0.000000)(0.980000 1.000000 1.020000)
+*ASC_SAT 1.050000
+
+002  AX       V     C        02:00:00:00 02:00:04:00 01:00:09:00 01:00:13:00
+*ASC_SOP (1.000000 1.000000 1.000000)(0.000000 0.000000 0.000000)(1.000000 1.000000 1.000000)
+*ASC_SAT 1.000000
+"""
+"""The shape Resolve's CDL export actually writes (`Turnover199/Turnover199.edl`, 2026-09-23):
+no `FROM CLIP NAME` on any event, and `AX` for every reel."""
+
+
 class TestEventMatching:
-    def test_a_row_matches_on_the_field_the_naming_spec_rests_on(self, tmp_path: Path) -> None:
+    def test_a_named_event_matches_its_clip_by_name(self, tmp_path: Path) -> None:
         session = clf.load_session(edl(tmp_path), RATE_24)
-        assert clf.MATCH_FIELD == "FROM CLIP NAME"
         matched = session.event_for(row())
         assert matched is not None and matched.event_id == "001"
 
@@ -215,39 +228,74 @@ class TestEventMatching:
         matched = session.event_for(row())
         assert matched is not None and matched.event_id == "001"
 
-    def test_an_unmatched_row_gets_nothing_rather_than_the_nearest(self, tmp_path: Path) -> None:
+    def test_a_named_event_never_matches_another_clip(self, tmp_path: Path) -> None:
+        """The name has to agree even when the timecode would fit."""
         session = clf.load_session(edl(tmp_path), RATE_24)
         assert session.event_for(row("MELT0007_pl01")) is None
 
-    def test_the_fallback_wants_the_reel_and_the_timecode_together(self, tmp_path: Path) -> None:
-        """OQ-30's fallback: a reel alone repeats, and timecode alone is not jam synced."""
-        text = FINAL_EDL.replace("* FROM CLIP NAME: MELT0001_pl01.mov\n", "")
-        session = clf.load_session(edl(tmp_path, text), RATE_24)
-        matched = session.event_for(row())
+    def test_an_unnamed_event_matches_the_file_whose_timecode_holds_it(self, tmp_path: Path) -> None:
+        """OQ-30, answered by the real export: timecode is the only thing it states."""
+        session = clf.load_session(edl(tmp_path, RESOLVE_EDL), RATE_24)
+        matched = session.event_for(row("C0145"))
         assert matched is not None and matched.event_id == "001"
+        later = row("C0152", start_timecode=2 * 86400)
+        matched = session.event_for(later)
+        assert matched is not None and matched.event_id == "002"
 
-    def test_the_fallback_refuses_an_event_outside_the_media(self, tmp_path: Path) -> None:
-        text = FINAL_EDL.replace("* FROM CLIP NAME: MELT0001_pl01.mov\n", "").replace(
-            "01:00:00:08 01:00:09:08", "05:00:00:08 05:00:09:08"
+    def test_the_reel_is_never_read(self, tmp_path: Path) -> None:
+        text = RESOLVE_EDL.replace("001  AX", "001  ZZ")
+        session = clf.load_session(edl(tmp_path, text), RATE_24)
+        assert session.event_for(row("C0145")) is not None
+
+    def test_an_unnamed_event_outside_the_media_matches_nothing(self, tmp_path: Path) -> None:
+        text = RESOLVE_EDL.replace("01:00:00:08 01:00:09:08", "05:00:00:08 05:00:09:08")
+        session = clf.load_session(edl(tmp_path, text), RATE_24)
+        assert session.event_for(row("C0145")) is None
+
+    def test_an_event_running_past_the_end_of_the_file_matches_nothing(self, tmp_path: Path) -> None:
+        session = clf.load_session(edl(tmp_path, RESOLVE_EDL), RATE_24)
+        assert session.event_for(row("C0145", frame_count=100)) is None
+
+    def test_two_events_inside_one_file_are_both_candidates_and_neither_is_chosen(
+        self, tmp_path: Path
+    ) -> None:
+        text = RESOLVE_EDL.replace("02:00:00:00 02:00:04:00", "01:00:02:00 01:00:04:00")
+        session = clf.load_session(edl(tmp_path, text), RATE_24)
+        assert [event.event_id for event in session.candidates(row("C0145"))] == ["001", "002"]
+        assert session.event_for(row("C0145")) is None
+
+    def test_media_with_no_timecode_matches_no_unnamed_event(self, tmp_path: Path) -> None:
+        session = clf.load_session(edl(tmp_path, RESOLVE_EDL), RATE_24)
+        assert session.event_for(row("C0145", start_timecode=None)) is None
+
+
+class TestEdlLayouts:
+    def test_resolves_real_export_reads_with_crlf(self, tmp_path: Path) -> None:
+        events = clf.read_final_edl(edl(tmp_path, RESOLVE_EDL.replace("\n", "\r\n")), RATE_24)
+        assert [event.event_id for event in events] == ["001", "002"]
+        assert all(event.clip_name == "" and event.cdl is not None for event in events)
+
+    def test_an_audio_line_under_the_same_event_keeps_the_pictures_comments(self, tmp_path: Path) -> None:
+        text = FINAL_EDL.replace(
+            "* FROM CLIP NAME: MELT0001_pl01.mov",
+            "001  MELT0001 A     C        01:00:00:08 01:00:09:08 01:00:00:00 01:00:09:00\n"
+            "* FROM CLIP NAME: MELT0001_pl01.mov",
         )
-        session = clf.load_session(edl(tmp_path, text), RATE_24)
-        assert session.event_for(row()) is None
+        first = clf.read_final_edl(edl(tmp_path, text), RATE_24)[0]
+        assert first.clip_name == "MELT0001_pl01.mov"
+        assert first.cdl is not None
 
-    def test_the_fallback_refuses_two_events_on_one_reel(self, tmp_path: Path) -> None:
-        text = FINAL_EDL.replace("* FROM CLIP NAME: MELT0001_pl01.mov\n", "").replace(
-            "002  MELT0002 V     C        02:00:00:00 02:00:04:00",
-            "002  MELT0001 V     C        01:00:02:00 01:00:04:00",
-        )
-        session = clf.load_session(edl(tmp_path, text), RATE_24)
-        assert session.event_for(row()) is None
+    def test_a_wipe_is_an_event_not_a_comment(self, tmp_path: Path) -> None:
+        text = FINAL_EDL.replace("002  MELT0002 V     C       ", "002  MELT0002 V     W001 030")
+        events = clf.read_final_edl(edl(tmp_path, text), RATE_24)
+        assert [event.event_id for event in events] == ["001", "002"]
+        assert events[0].clip_name == "MELT0001_pl01.mov"
 
-    def test_media_with_no_timecode_cannot_use_the_fallback(self, tmp_path: Path) -> None:
-        text = FINAL_EDL.replace("* FROM CLIP NAME: MELT0001_pl01.mov\n", "")
-        session = clf.load_session(edl(tmp_path, text), RATE_24)
-        blank = row()
-        assert blank.media is not None
-        blank.media = blank.media.__class__(**{**blank.media.__dict__, "start_timecode": None})
-        assert session.event_for(blank) is None
+    def test_a_zero_length_event_conforms_nothing(self, tmp_path: Path) -> None:
+        """The outgoing side of a dissolve is written as a cut covering no frames."""
+        text = FINAL_EDL.replace("02:00:00:00 02:00:04:00", "02:00:00:00 02:00:00:00")
+        events = clf.read_final_edl(edl(tmp_path, text), RATE_24)
+        assert [event.event_id for event in events] == ["001"]
 
 
 class TestApprovedInOut:

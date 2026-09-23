@@ -20,11 +20,12 @@ original text (COLOR_AND_FORMAT, EXR metadata). An event line is a fixed format,
 reading it directly costs less than reconstructing what the adapter threw away, and
 timecode still goes through `frames.timecode_to_frames`, which refuses drop-frame.
 
-**Which field identifies a row is one constant, `MATCH_FIELD`** (OQ-30, OQ-33). Every
-failure in this module looks entirely plausible on screen: a row paired with a
-neighbour's event takes the wrong approved In/Out, and a row paired with a neighbour's
-CLF ships the wrong grade under the right filename. Nothing here guesses at the nearest
-candidate. It matches or it reports nothing matched, and QC-009 is what fires.
+**An event belongs to the row whose file's timecode contains its source range** (OQ-30,
+answered 2026-09-23 by Ben's real EDL, which carries no `FROM CLIP NAME` and reels every
+event `AX`). Where an event does name its clip, the name has to agree. Every failure here
+looks entirely plausible on screen: a row paired with a neighbour's event takes the wrong
+approved In/Out and the wrong grade. Nothing guesses at the nearest candidate, and a match
+that could go two ways is reported rather than chosen (QC-066, QC-067).
 """
 
 from __future__ import annotations
@@ -48,15 +49,6 @@ from proingest.core.models import (
 )
 
 log = logging.getLogger(__name__)
-
-MATCH_FIELD = "FROM CLIP NAME"
-"""The EDL field an event is matched on (OQ-30).
-
-It is the contract the whole naming spec already rests on, so it is the one field that
-is checkable against something the tool knows independently. Reel plus source timecode
-is the fallback, because Resolve populates reel names differently depending on export
-settings and a reel is not required to be unique.
-"""
 
 
 class ColorSessionError(RuntimeError):
@@ -202,44 +194,40 @@ class ColorSession:
     events: list[ConformEvent]
 
     def event_for(self, row: ShotRow) -> ConformEvent | None:
-        """The event that conforms this row, or None when nothing matches it.
+        """The one event that conforms this row, or None when there is none or several."""
+        found = self.candidates(row)
+        return found[0] if len(found) == 1 else None
 
-        `MATCH_FIELD` first, compared **without the extension on either side** and
-        without case. Both halves earn their place: a case difference between a Resolve
-        export and a macOS filesystem is not a disagreement about which shot this is,
-        and since 2026-09-22 a row's `clip_name` is the camera filename **with** its
-        extension (`C0145.MP4`) while `FROM CLIP NAME` may or may not carry one. Comparing
-        a stem to a whole filename matched nothing at all, silently, which is the shape
-        of failure OQ-30 exists to prevent.
+    def candidates(self, row: ShotRow) -> list[ConformEvent]:
+        """Every event that could conform this row.
 
-        Reel plus source timecode is the fallback, and it has to agree on both.
+        An event that names its clip (`FROM CLIP NAME`) is this row's when the name agrees,
+        compared without extension or case; QC-029 reports one that then runs outside the
+        media. An event that names nothing, which is what Resolve's CDL export writes, is
+        this row's when its whole source range sits inside the file's own timecode. The
+        reel is never read: the real export writes `AX` on every event.
+
+        A list rather than one answer, because an event inside two files, or two events
+        inside one file, is a match the tool must refuse rather than choose (QC-067), and
+        only the caller sees every row at once.
         """
-        wanted = Path(row.clip_name).stem.casefold()
+        stem = Path(row.clip_name).stem.casefold()
+        span = _timecode_span(row.media)
+        found: list[ConformEvent] = []
         for event in self.events:
-            if event.clip_stem.casefold() == wanted:
-                return event
-        return self._event_by_reel(row)
+            if event.clip_name:
+                if event.clip_stem.casefold() == stem:
+                    found.append(event)
+            elif span is not None and span[0] <= event.source_in <= event.source_out <= span[1]:
+                found.append(event)
+        return found
 
-    def _event_by_reel(self, row: ShotRow) -> ConformEvent | None:
-        """Reel plus source timecode, which is OQ-30's fallback.
 
-        The reel has to be the row's shot code and the event's source range has to sit
-        inside the media's own timecode. Either alone is too weak: reels repeat across
-        a turnover, and the same timecode turns up on every reel that was not jam
-        synced.
-        """
-        shot_code, media = row.shot_code, row.media
-        if shot_code is None or media is None or media.start_timecode is None:
-            return None
-        first = media.start_timecode
-        last = first + media.frame_count - 1
-        matched = [
-            event
-            for event in self.events
-            if event.reel.casefold() == shot_code.casefold()
-            and first <= event.source_in <= event.source_out <= last
-        ]
-        return matched[0] if len(matched) == 1 else None
+def _timecode_span(media: MediaInfo | None) -> tuple[int, int] | None:
+    """The first and last source timecode frame the file holds, or None when it states none."""
+    if media is None or media.start_timecode is None:
+        return None
+    return media.start_timecode, media.start_timecode + media.frame_count - 1
 
 
 def load_session(
@@ -370,14 +358,18 @@ def read_final_edl(path: Path, rate: FrameRate) -> list[ConformEvent]:
     for line in text.splitlines():
         head = _EVENT_HEAD.match(line)
         if head is not None:
+            if _same_event_audio(pending, head):
+                # A `V` line then an `A` line under one event number is one cut; the
+                # clip name and the CDL that follow belong to the picture.
+                continue
             if pending is not None:
-                events.append(pending.build(path, rate))
+                events.extend(pending.build(path, rate))
             pending = _Event(head) if _is_video(head["channel"]) else None
             continue
         if pending is not None:
             pending.comment(line)
     if pending is not None:
-        events.append(pending.build(path, rate))
+        events.extend(pending.build(path, rate))
 
     if not events:
         raise ColorSessionError(f"{path} carries no video events")
@@ -385,13 +377,18 @@ def read_final_edl(path: Path, rate: FrameRate) -> list[ConformEvent]:
 
 
 _EVENT_HEAD = re.compile(
-    r"^(?P<event>\d{3,})\s+(?P<reel>\S+)\s+(?P<channel>\S+)\s+(?P<edit>[A-Z]+)\b(?P<rest>.*)$"
+    r"^(?P<event>\d{3,})\s+(?P<reel>\S+)\s+(?P<channel>\S+)\s+(?P<edit>[A-Z]+\d*)\b(?P<rest>.*)$"
 )
 _TIMECODE = re.compile(r"\d{1,2}:\d{2}:\d{2}[:;]\d{2}")
 _FROM_CLIP = re.compile(r"^\*\s*FROM CLIP NAME:\s*(?P<name>.+?)\s*$", re.IGNORECASE)
 _ASC_SOP = re.compile(r"^\*\s*ASC_SOP\b", re.IGNORECASE)
 _ASC_SAT = re.compile(r"^\*\s*ASC_SAT\s+(?P<value>\S+)", re.IGNORECASE)
 _TRIPLE = re.compile(r"\(\s*(?P<a>\S+)\s+(?P<b>\S+)\s+(?P<c>\S+)\s*\)")
+
+
+def _same_event_audio(pending: _Event | None, head: re.Match[str]) -> bool:
+    """An audio line under the event number of the picture event being read."""
+    return pending is not None and head["event"] == pending.head["event"] and not _is_video(head["channel"])
 
 
 def _is_video(channel: str) -> bool:
@@ -417,7 +414,9 @@ class _Event:
         elif _ASC_SAT.match(line):
             self.sat_text = line.strip()
 
-    def build(self, path: Path, rate: FrameRate) -> ConformEvent:
+    def build(self, path: Path, rate: FrameRate) -> list[ConformEvent]:
+        """The event, or nothing for a zero-length one: the outgoing side of a dissolve
+        is written as a cut that covers no frames, and it conforms nothing."""
         head = self.head
         found = _TIMECODE.findall(head["rest"])
         if len(found) < 4:
@@ -427,16 +426,20 @@ class _Event:
         except ValueError as exc:
             raise ColorSessionError(f"{path}: event {head['event']} has {exc}") from exc
         source_in, source_out, record_in, record_out = times
-        return ConformEvent(
-            event_id=head["event"],
-            reel=head["reel"],
-            clip_name=self.clip_name,
-            source_in=source_in,
-            source_out=source_out - 1,
-            record_in=record_in,
-            record_out=record_out - 1,
-            cdl=_parse_cdl(self.sop_text, self.sat_text),
-        )
+        if source_out <= source_in:
+            return []
+        return [
+            ConformEvent(
+                event_id=head["event"],
+                reel=head["reel"],
+                clip_name=self.clip_name,
+                source_in=source_in,
+                source_out=source_out - 1,
+                record_in=record_in,
+                record_out=record_out - 1,
+                cdl=_parse_cdl(self.sop_text, self.sat_text),
+            )
+        ]
 
 
 def _parse_cdl(sop_text: str, sat_text: str) -> CDL | None:

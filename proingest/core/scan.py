@@ -141,7 +141,11 @@ def scan_turnover(
         )
 
     index = media_module.index_directory(folder)
-    rows = [_build_row(entry, session, index, turnover_id, settings, cache) for entry in meta.rows]
+    rows = [_build_row(entry, index, turnover_id, settings, cache) for entry in meta.rows]
+    turnover.qc.extend(_conform_all(rows, session))
+    for row in rows:
+        _attach_audio(row, index, settings)
+        qc.apply_row_rules(row, settings.project_rate, settings.rules)
     return turnover, rows
 
 
@@ -220,13 +224,14 @@ def _ignored_clips(ignored: list[str]) -> list[QCResult]:
 
 def _build_row(
     entry: metacsv.MetaRow,
-    session: clf.ColorSession,
     index: media_module.DirectoryIndex,
     turnover_id: str,
     settings: ScanSettings,
     cache: dict[str, MediaInfo],
 ) -> ShotRow:
-    """One CSV row into one shot row, with whatever QC the scan uncovered."""
+    """One CSV row into one shot row: identity, media and encoding. The EDL comes after,
+    across every row at once (`_conform_all`), because a match is only unambiguous when no
+    other row claims the same event."""
     row = ShotRow(turnover_id=turnover_id, clip_name=entry.file_name)
     row.qc.extend(entry.qc)
     if entry.kind is not None and entry.index is not None and not row.errors():
@@ -240,35 +245,78 @@ def _build_row(
     # typed. The CSV is the only carrier: the delivered container declares nothing.
     row.source_encoding = entry.written_encoding or None
     row.source_encoding_origin = "clip metadata" if row.source_encoding else None
-
-    _conform(row, session)
-    _attach_audio(row, index, settings)
-    qc.apply_row_rules(row, settings.project_rate, settings.rules)
     return row
 
 
-def _conform(row: ShotRow, session: clf.ColorSession) -> None:
-    """The approved cut and the CDL off this row's EDL event.
+def _conform_all(rows: list[ShotRow], session: clf.ColorSession) -> list[QCResult]:
+    """Pair every row with its EDL event, and return what the turnover should hear.
 
-    A row with no event gets neither, which is an error on the row (Q2): it has no
-    approved cut and no grade, so it cannot render. Nothing here reaches for the nearest
-    event - a neighbour's cut and a neighbour's grade both look entirely plausible.
-
-    With no event the row still gets a range, the whole media, so the editor can see what
-    arrived and trim it by hand rather than facing an empty row.
+    A row with no event (QC-066) or with a match that could go two ways (QC-067) gets
+    neither a cut nor a grade and cannot render. Nothing here reaches for the nearest
+    event or picks one of two: a neighbour's cut and a neighbour's grade both look
+    entirely plausible. Such a row still gets the whole media as its range, so the
+    editor can see what arrived. An event no row claims is QC-068, for the record.
     """
-    event = session.event_for(row)
-    if event is None:
-        row.qc.append(
-            QCResult(
-                "QC-066",
-                "error",
-                "row",
-                f"no event in the EDL names {row.clip_name}, so the row has no approved cut and no grade",
+    found = [session.candidates(row) for row in rows]
+    claims: dict[int, list[str]] = {}
+    for row, events in zip(rows, found, strict=True):
+        for event in events:
+            claims.setdefault(id(event), []).append(row.clip_name)
+
+    for row, events in zip(rows, found, strict=True):
+        if not events:
+            row.qc.append(
+                QCResult(
+                    "QC-066",
+                    "error",
+                    "row",
+                    f"no event in the EDL falls inside {row.clip_name}, "
+                    f"so the row has no approved cut and no grade",
+                )
             )
+            _whole_media(row)
+        elif len(events) > 1:
+            ids = ", ".join(event.event_id for event in events)
+            row.qc.append(
+                QCResult(
+                    "QC-067",
+                    "error",
+                    "row",
+                    f"EDL events {ids} all fall inside {row.clip_name}; "
+                    f"the tool will not choose between them",
+                )
+            )
+            _whole_media(row)
+        elif len(claims[id(events[0])]) > 1:
+            names = ", ".join(claims[id(events[0])])
+            row.qc.append(
+                QCResult(
+                    "QC-067",
+                    "error",
+                    "row",
+                    f"EDL event {events[0].event_id} falls inside more than one file ({names}); "
+                    f"the tool will not choose between them",
+                )
+            )
+            _whole_media(row)
+        else:
+            _conform(row, events[0])
+
+    unclaimed = [event.event_id for event in session.events if id(event) not in claims]
+    if not unclaimed:
+        return []
+    return [
+        QCResult(
+            "QC-068",
+            "info",
+            "turnover",
+            f"EDL events {', '.join(unclaimed)} fall inside no file the CSV describes",
         )
-        _whole_media(row)
-        return
+    ]
+
+
+def _conform(row: ShotRow, event: clf.ConformEvent) -> None:
+    """The approved cut and the CDL off this row's one EDL event."""
 
     row.record_in, row.record_out = event.record_in, event.record_out
     row.cdl = event.cdl
