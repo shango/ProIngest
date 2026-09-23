@@ -63,7 +63,7 @@ def executable_path(platform: str = sys.platform) -> Path:
 
 
 def dmg_path(version: str) -> Path:
-    """`ProIngest-0.5.1.dmg`. The version is in the filename so two builds cannot be
+    """`ProIngest-0.5.2.dmg`. The version is in the filename so two builds cannot be
     confused for each other on a machine that has downloaded both."""
     return DIST_DIR / f"{bundle.APP_NAME}-{version}.dmg"
 

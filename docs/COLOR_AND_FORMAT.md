@@ -604,7 +604,7 @@ look very nearly right.
 | output | spec |
 |---|---|
 | raw EXR | OpenEXR 2 scanline, DWAA compression level 45, half float RGB (alpha dropped unless source has real alpha, then RGBA), data window = display window, frame numbers start 1001 (OQ-35). **ACEScg, scene linear, AP1 chromaticities, graded with the shot's grade file**, with the source encoding, the grade file name and hash, and the CDL as its readable record, carried in the header (section 1) |
-| ref mp4 4k | 3840x2160, H.264 High, yuv420p, CRF 18 (x264 `-preset slow`) or `h264_videotoolbox` when hardware encoding is enabled, keyint 24, `-movflags +faststart`, AAC 192k if audio associated |
+| ref mp4 4k | 3840x2160, H.264 High, yuv420p, CRF 18 (x264 `-preset slow`) or `h264_videotoolbox` when hardware encoding is enabled, keyint 24, `-movflags +faststart`, AAC 192k if audio associated. **Only a plate's reference carries sound** (2026-09-23): a cp or el is delivered silent even when its own file has a track |
 | ref mp4 HD | same, 1920x1080 |
 | audio | PCM 16 bit, same sample rate and channel count, no resampling. Cut to the delivered range and sped up with the picture (1.001 for a 24000/1001 source, D2 of `docs/REVIEW_2026-09-23.md`), padded with silence where the range runs past the recorded sound. Only a row with no range is delivered as-is: a wav source byte for byte, audio in a container extracted whole. QC-044 if the source was not 16 bit |
 | HDRI, stills, camData | byte copy with rename, checksum recorded |

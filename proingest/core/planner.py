@@ -466,7 +466,12 @@ def _audio_source(row: ShotRow) -> Path | None:
 
     COLOR_AND_FORMAT section 3 accepts both. A clip on the timeline's audio track wins,
     because that is the one the editor synced.
+
+    **Only a plate has any** (user, 2026-09-23): a cp or el that carries sound anyway is
+    delivered without it, so its reference mp4 is silent.
     """
+    if row.identity is None or row.identity.kind not in AUDIO_TYPES:
+        return None
     if row.audio_path is not None:
         return row.audio_path
     if row.media is not None and row.media.has_audio:
