@@ -100,7 +100,7 @@ FR-4 Shot model
 Each row holds: turnover id, clip name (parsed into show, shot number, type, index), source path, source fps, source resolution, source frame count and start TC, record In/Out TC, source In/Out (frames and TC), turnover snapshot of In/Out (immutable after scan), current In/Out, duration, max available Out, audio path, side files, skip flag, per-deliverable status, QC results.
 
 FR-5 Editing
-- Editable fields: Shot Code, In, Out, Notes. No handle controls on rows: handles are already inside the timeline range by convention, and the editor extends a clip by moving Out. A Settings value "expected handle frames" exists only for the QC-030 warning.
+- Editable fields: Shot Code, In, Out, Notes. No handle controls on rows. **The plate is the cut only** (user, 2026-09-23): the EDL event's source In/Out, with the handles outside it in the file (`C0145` is 24 + 232 + 24), and the editor extends a clip into them by moving Out. A Settings value "expected handle frames" exists only for the QC-030 warning.
 - In/Out accept four formats, auto-detected: source TC `HH:MM:SS:FF`, record TC (when the display toggle is on record), absolute source frame number, relative offset `+12` / `-8` applied to the current value.
 - Duration recalculates on every edit. Max Available shows the last usable source frame.
 - Shot Code edits are validated against the naming regex live. A renamed shot code is a diff entry in the QC log.

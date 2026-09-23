@@ -14,6 +14,28 @@ complete, M4.5 all four chunks, M4.6 all five, **M5 all twelve**, **M7**, and **
 What is left is **M8 polish** (needs a real turnover and a real colour session) and the rest
 of **M9, the user guide**.
 
+**2026-09-23, newest: a full code, architecture and workflow review, and the user's answers to all
+of it. Read `docs/REVIEW_2026-09-23.md` first; its section 5 is now the plan.** Two things changed
+the ground. **(1) Ben's real EDL arrived** as `Turnover199/Turnover199.edl` and it carries **no
+`FROM CLIP NAME` on any event and reel `AX` on all five**, so `clf.MATCH_FIELD` and the reel fallback
+both miss and **every real row is QC-066 today** (measured). Source timecode matches all five
+unambiguously, 24 frames into each file with the `.drt`'s durations, so OQ-30 is answered: match by
+timecode containment. The parser itself read the events and CDLs correctly. **(2) Eighteen
+decisions (D1 to D18)**, among them: every source rendered at 24 frame for frame, 24000/1001 silent, 25 or 30 a must-fix;
+audio trimmed to the event and retimed 1000/1001; **the plate is the cut only** (`PRD.md:103` said
+the opposite and was corrected); stills use their event's frame, never a guess; an unrecognised
+`Shot Type` and a duplicate identity are must-fix; **two QC tiers, must-fix and info**, with the
+proposed assignment in section 4 **awaiting the user's line-by-line approval**; no `.failed`
+sidecar, a failed row names its output and is reset to re-run; one tracker line per shot code;
+BT.709 provisionally (OQ-60). Also found by running: reference mp4s fail QC-113 at 24000/1001, the
+reference timecode is the source start, and a deliverable is renamed before it is verified. The
+end-to-end trace landed 8 of 12 deliverables on the real media with QC-026 patched out in scratch.
+**`uv.lock` still pins `proingest` 0.2.0 against `pyproject.toml`'s 0.3.0**, so any `uv run`
+rewrites it; left for chunk H. **Docs only, 1605 tests.** `WORKFLOW.md` steps 17, 18, 22, 23, 25 and
+rules 5 and 6a, `PRD.md`, `UI_SPEC.md`, OQ-30 and OQ-60 now say what was decided. **The Build Track
+board is retired** (user, 2026-09-23): it was last published at version 78 and `build-track.html` is
+no longer updated, so section 8's description of it is historical.
+
 **2026-09-22, chunk 3: the scan is rebuilt on the handover folder, and it works on the real
 media.** `scan_turnover` now reads **one folder, one `.edl`, one `.csv`** and nothing else. **Rows
 come from CSV rows rather than timeline clips**, which is the whole of the change: `Shot Type` is

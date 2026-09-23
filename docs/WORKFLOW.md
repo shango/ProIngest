@@ -49,15 +49,15 @@ behind it is `COLOR_AND_FORMAT.md` section 1 and `PRD.md`.
 | # | step | output |
 |---|---|---|
 | 16 | Scan the turnover: **the folder, Ben's EDL and Ben's CSV**. Identity from `Shot` + `Shot Type`, encoding from `Gamma Notes` + `Color Space Notes`, media matched by `File Name`. | the shot list |
-| 17 | Run pre-flight checks on every row and block the ones that cannot be delivered. | QC-0xx results |
-| 18 | Read the EDL for the approved In/Out and the CDL per event. | the conform and the grade, or QC-008 / QC-009 |
+| 17 | Run pre-flight checks on every row. A **must-fix** blocks the run until the user drops the correction into the folder and re-scans; an **info** is shown and never blocks (2026-09-23, `REVIEW_2026-09-23.md` section 4). | QC-0xx results |
+| 18 | Read the EDL for the approved In/Out and the CDL per event. **An event belongs to the row whose file's timecode range contains its source range**: Ben's real EDL carries no `FROM CLIP NAME` and reels every event `AX` (2026-09-23). The plate is **the cut only**, no handles. | the conform and the grade, or QC-008 / QC-009 / QC-066 |
 | 19 | Let the editor make the occasional one-off trim not worth a trip back to Resolve. | QC-045 on any row that moved |
 | 20 | Convert each clip into ACEScct from the encoding its metadata names, apply the CDL, convert to ACEScg, write the plates. | 4k and HD EXR, ACEScg, DWAA 45, frames from 1001 (OQ-35) |
 | 21 | Bake that chain plus the ACES output transform into one LUT and encode the references through it. | 4k and HD H.264 mp4 |
-| 22 | Deliver the single-frame reference stills, **converted but never graded**. | `<shot>_colorChart_01_4k_v01.exr` and the rest, keyed to the **shot code**, not to an element |
-| 23 | Copy the audio of each plate row, renamed to spec, without judging its contents. | wav |
+| 22 | Deliver the single-frame reference stills, **converted but never graded**, each at **its EDL event's frame**. A still with no event is a must-fix, never a guess. | `<shot>_colorChart_01_4k_v01.exr` and the rest, keyed to the **shot code**, not to an element |
+| 23 | Deliver the audio of each plate row, renamed to spec, **trimmed to the same event as the picture and retimed by 1000/1001 so it follows the 24 fps video** (2026-09-23). Its contents are not judged. | wav |
 | 24 | *(was: transcode and name Ben's stringout. **Removed 2026-09-22** - the tool does nothing with the stringout.)* | nothing |
-| 25 | Verify every deliverable the moment it lands, and keep any that fails for inspection. | QC-1xx results |
+| 25 | Verify every deliverable **under its temp name**, and rename only when it passes. A failure leaves nothing that looks finished: the row is marked failed, naming the output and why, and the user fixes the cause and **resets the row** to re-run it (2026-09-23). | QC-1xx results |
 | 26 | Write the spreadsheets. | `shot_tracker_<batch>_<date>.xlsx` and `qc_ingest_log_<batch>_<date>.xlsx` |
 
 ## What the tool is for
@@ -82,8 +82,10 @@ writes is either a deliverable named from the spec or a report about one.
    and the `.cube` from Generate LUT that used to be the exception is gone.
 5. **The project rate is 24 and the tool asserts it.** An EDL states no frame rate - CMX 3600 has
    no field for one, and the reader takes the rate as an argument - and the `.drt` that could have
-   stated it is not read. So 24 is a setting defaulting to 24, and QC-026 reports any file whose
-   own rate disagrees.
+   stated it is not read. **Every source is treated as, and rendered at, 24, frame for frame**
+   (user, 2026-09-23). A file stating 24000/1001 is the shooters' normal conform and is silent;
+   **any other rate, 25 or 30, is a QC-026 must-fix and the batch does not run** until it is
+   fixed. The rate is a constant today, not a setting.
 6. **Identity is metadata, never a filename.** Camera filenames are delivered unchanged. Nothing
    parses a filename to learn what a clip is.
 6a. **`Shot Type` is the whole of the tool's scope** (user, 2026-09-22). A CSV row that carries a
@@ -92,7 +94,9 @@ writes is either a deliverable named from the spec or a report about one.
    track, a filename or a Resolve VFX flag. Everything in the turnover that is not a `Shot Type`
    row - HDRI, camData, BTS, the lens grid, Ben's stringout - is delivered by hand or by Ben, and
    the tool does not touch it. The one exception is a plate's **audio**, which has no row of its
-   own and rides along with its `pl` row.
+   own and rides along with its `pl` row. **A `Shot Type` the tool does not recognise is a
+   must-fix warning** and gets no deliverables (user, 2026-09-23); so is the same shot code, type
+   and index on two rows. `BTS` and `lensgrid` are ignored when they carry no `Shot Type`.
 7. **A trim does not disturb the grade.** The CDL is one static transform for the whole shot, so
    moving In or Out carries it unchanged. Extending into the handles applies the approved grade to
    frames Ben never saw, which is why step 19 is for one-offs.

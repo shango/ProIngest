@@ -1,5 +1,9 @@
 # To a working build
 
+> **2026-09-23: from chunk 4 on, this plan is superseded by `docs/REVIEW_2026-09-23.md` section 5**, which
+> records the user's answers to Q1 and the rest, and Ben's real EDL, which changes the match (OQ-30).
+> Chunks 1, 2, 3, 5a and 5b below are built. The acceptance test at the top of this page stands.
+
 Written 2026-09-22 at the user's request: **everything needed from them, and the instructions to do
 the work.** Read `PROGRESS.md` section 1 and `docs/REVIEW_2026-09-22.md` first; this page is the
 plan, not the diagnosis.
@@ -105,8 +109,7 @@ one later is cheap; finding out afterwards that it was wrong is not.**
 
 Seven chunks, in dependency order. **One commit each**, `PROGRESS.md` updated in the same commit
 (`CLAUDE.md`), a line in `docs/MAC_SESSION.md` in the same commit for anything only a person on a
-Mac can confirm, and `build-track.html` republished with whichever commit lands the work
-(memory `keep-build-track-current`).
+Mac can confirm. (`build-track.html` is no longer maintained, user 2026-09-23.)
 
 **Green before every commit**, no exceptions:
 

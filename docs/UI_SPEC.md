@@ -69,7 +69,7 @@ What M5.11 settled, beyond the wording:
 ## 2. Shot list columns
 
 Frozen left: status dot, Shot Code (editable), Elem.
-Scrolling: Source file, Res, FPS, In (editable), Out (editable), Duration, Max Avail, Audio (icon: none / one / many), Side files (icons: HDRI, camData, stills), Version, Progress, Notes (editable, free text, goes to tracker).
+Scrolling: Source file, Res, FPS, In (editable), Out (editable), Duration, Max Avail, Audio (icon: none / one / many), Side files (icons: HDRI, camData, stills), Version, Progress, Notes (editable, free text; kept in the batch and the QC log. The studio tracker has no Notes column, 2026-09-23).
 
 - **The In/Out display toggle in the batch bar has three states, not two: `Frames`, `Source TC`, `Record TC`.** It sets what the In and Out cells show as their primary value for the whole list, and it sets how a typed timecode is interpreted (source or record) when either TC state is selected.
 - **`Frames` is the default.** The frame number is what the model actually holds: frame math is integer throughout, In and Out *are* frame numbers, the QC rules quote them, the delivered EXR sequence is numbered by them, and the viewers step by them. Timecode is derived at the boundary and never stored. Opening on the derived value would show the editor a translation of the thing they are about to edit rather than the thing itself. The choice is remembered per batch, so an editor who works in source TC sets it once.
