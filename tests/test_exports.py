@@ -254,10 +254,42 @@ class TestShotTracker:
         """OQ-41: the grammar the tool would rebuild it from matches none of the real names."""
         assert sheet_rows(tracker, "Shots")[1][34] is None
 
-    def test_an_odd_rate_is_written_as_the_sheet_writes_it(self, tmp_path: Path) -> None:
-        """`23.976`, not the exact fraction `24000/1001` a log would want."""
+    def test_a_23976_source_is_recorded_at_the_24_it_was_delivered_at(self, tmp_path: Path) -> None:
+        """Every deliverable is written at 24 frame for frame (user, 2026-09-23)."""
         written = exports.write_shot_tracker(batch_of(row(rate=RATE_2398)), tmp_path / "t.xlsx")
-        assert sheet_rows(written, "Shots")[1][8] == "23.976"
+        assert sheet_rows(written, "Shots")[1][8] == "24"
+
+    def test_one_line_per_shot_code(self, tmp_path: Path) -> None:
+        """The studio sheet is one line per shot; a shot's plates and stills are one line."""
+        clean = row(clip_name="MELT0001_cp01")
+        clean.deliverables = [deliverable("raw_dir", "MELT0001_cp01_raw_4k_v01", "4k")]
+        other = row(clip_name="MELT0002_pl01")
+        written = exports.write_shot_tracker(batch_of(clean, row(), other), tmp_path / "t.xlsx")
+        lines = sheet_rows(written, "Shots")[1:]
+        assert [line[2] for line in lines] == ["MELT0001", "MELT0002"]
+        assert lines[0][4] == "MELT0001_pl01_ref_HD_v01.mp4", "described by its pl, not its cp"
+
+    def test_a_shot_with_no_plate_has_no_plate_video_and_no_marks(self, tmp_path: Path) -> None:
+        clean = row(clip_name="MELT0001_cp01")
+        written = exports.write_shot_tracker(batch_of(clean), tmp_path / "t.xlsx")
+        line = sheet_rows(written, "Shots")[1]
+        assert line[4] is None
+        assert line[7] == "4K \u2014\nHD \u2014"
+        assert line[9] is None
+
+    def test_a_blocked_row_is_not_offered_for_pasting(self, tmp_path: Path) -> None:
+        blocked = row()
+        blocked.qc.append(QCResult("QC-066", "error", "row", "no event"))
+        written = exports.write_shot_tracker(batch_of(blocked), tmp_path / "t.xlsx")
+        assert len(sheet_rows(written, "Shots")) == 1
+
+    def test_a_cancelled_or_failed_render_is_not_offered_for_pasting(self, tmp_path: Path) -> None:
+        cancelled = row()
+        cancelled.deliverables[0].status = "skipped"
+        failed = row(clip_name="MELT0002_pl01")
+        failed.deliverables[-1].status = "failed"
+        written = exports.write_shot_tracker(batch_of(cancelled, failed), tmp_path / "t.xlsx")
+        assert len(sheet_rows(written, "Shots")) == 1
 
     def test_a_skipped_row_is_not_offered_for_pasting(self, tmp_path: Path) -> None:
         """It delivered nothing, so it is not a shot in the delivery."""

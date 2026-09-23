@@ -14,6 +14,18 @@ complete, M4.5 all four chunks, M4.6 all five, **M5 all twelve**, **M7**, and **
 What is left is **M8 polish** (needs a real turnover and a real colour session) and the rest
 of **M9, the user guide**.
 
+**2026-09-23, chunk F: the shot tracker is one line per shot code.** `exports.tracker_rows`
+groups the batch's rows by shot code and writes one line per code, described by the shot's main
+plate (the `pl` with the lowest index): Plate Video is its HD reference, PLATES its 4K and HD
+sequences, Shot Audio? its wav. **Only rows that landed count**: skipped, blocked, cancelled and
+failed rows contribute nothing, where before a cancelled run still ticked plates it never wrote.
+**FPS is always `24`**, since everything is delivered at 24. The studio's dash glyph is written as
+`\u2014` so the source carries no em dash. **Verified on `Turnover199`**: five rows, one tracker line,
+`TEST0002_pl01_ref_HD_v01.mp4`, both plates ticked, 24, audio ticked. `QC_RULES.md`'s tracker table
+follows. **Next: chunks E and G**, after a compaction the user asked for (`docs/REVIEW_2026-09-23.md`
+section 5). The branch is **not pushed**: the push was refused by the permission check and the
+user was asked to run it.
+
 **2026-09-23, chunk B and version 0.4.0: every deliverable is written at 24, and the real turnover
 renders.** **QC-026 is silent at 24000/1001** against the project's 24 (`qc._pulled_down`, exact),
 and any other rate is still an error: the user made 25 or 30 a must-fix. **The reference encode reads

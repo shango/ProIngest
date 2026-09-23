@@ -134,19 +134,22 @@ that used to be described here shared exactly one column with it, Shot Code, and
 The studio tracker has 39 columns. **Nine of them are the tool's**; the other thirty are
 production state that the vendor's team fills in over the weeks after delivery - statuses,
 owners, difficulty grades, callout movies, requesters - and the tool must never write them.
-The export is **additive**: one row per shot row of this batch, in the tracker's column order,
-with every column it does not own left empty so a paste cannot overwrite anything.
+The export is **additive**: **one line per shot code** (user, 2026-09-23), as the studio's sheet
+has always been, in the tracker's column order, with every column it does not own left empty so a
+paste cannot overwrite anything. A shot's `pl01`, `cp01` and reference stills are one line,
+described by its main plate (the `pl` with the lowest index). **Only shots that landed are
+written**: a row that was skipped, blocked by an error, cancelled or failed contributes nothing.
 
 | # | tracker column | what the tool writes |
 |---|---|---|
 | 2 | `Shot Code (ABCD123)` | the final shot code. The header says ABCD123; the real data is four letters and **four** digits, which is what `naming.py` already parses |
 | 3 | `Publish Folder` | the shot folder name, which equals the shot code |
-| 4 | `Plate Video` | the **HD** reference mp4's filename. 628 of 782 real values already parse as `ref_mp4` under section 7's grammar; the misses are rows that predate the convention |
-| 5 | `HDRI` | the delivered HDRI filename, blank when the shot has none |
-| 6 | `CAM Data` | the delivered camData filename, blank when the shot has none |
-| 7 | `PLATES` | `4K ✓` and `HD ✓` on two lines, one mark per raw sequence delivered, an em dash for one that was not (the literal glyph `exports.py` writes) |
-| 8 | `FPS` | the row's rate. **Not always 24** - see the note below |
-| 9 | `Shot Audio?` | `✓` when the row delivered audio, blank otherwise |
+| 4 | `Plate Video` | the main plate's **HD** reference mp4 filename, blank for a shot with no `pl`. 628 of 782 real values already parse as `ref_mp4` under section 7's grammar; the misses are rows that predate the convention |
+| 5 | `HDRI` | **left empty** since 2026-09-22: an HDRI carries no `Shot Type` and is not a tool deliverable |
+| 6 | `CAM Data` | **left empty**, likewise |
+| 7 | `PLATES` | `4K ✓` and `HD ✓` on two lines, one mark per main-plate raw sequence that landed, and the studio sheet's own dash glyph for one that did not |
+| 8 | `FPS` | **`24`, always**: every deliverable is written at 24 frame for frame (user, 2026-09-23). The note below about other rates is historical |
+| 9 | `Shot Audio?` | `✓` when the main plate's wav landed and passed, blank otherwise |
 | 34 | `Turnover Stringout (Edit)` | **left empty, on purpose.** The tool no longer writes that file (PRD FR-9) and the grammar it would rebuild the name from matches none of the 55 real ones (OQ-41). A blank cell is the honest answer, and it is one line to fill in once OQ-41 is settled |
 
 Column 0 is a checkbox the sheet owns (`FALSE`), and column 1 `Shot#` is a production number with

@@ -270,73 +270,105 @@ TOOL_OWNED_COLUMNS = (2, 3, 4, 5, 6, 7, 8, 9, 34)
 """Which indices of `TRACKER_HEADERS` the tool fills. Everything else stays empty."""
 
 
-def _tracker_fps(row: ShotRow) -> str:
-    """The rate as the tracker's own column writes it: `24`, or `23.976`.
+TRACKER_FPS = "24"
+"""Every deliverable is written at 24, frame for frame (user, 2026-09-23), whatever the
+source file states, so that is the rate the tracker records."""
 
-    Not `FrameRate.__str__`, which is the exact fraction `24000/1001`. That is the
-    right thing for a log and the wrong thing for a cell in a sheet whose other 778
-    rows say `23.976`.
+_MISSING = "\u2014"
+"""The sheet's own mark for a plate that is not there: `4K \u2014`. Written as an escape
+so the source carries no em dash; the studio's cells do."""
+
+_TICK = "✓"
+"""The sheet's mark for a plate or a sound that is there."""
+
+_LANDED = ("done", "exists")
+"""A deliverable that is on disk and passed: written this run, or already complete."""
+
+
+def _landed(row: ShotRow) -> bool:
+    """Whether this row delivered everything it planned.
+
+    Skipped, blocked, failed and cancelled rows did not, and a tracker line for any of
+    them would add a shot to the production's sheet that is not in the delivery.
     """
-    if row.media is None:
-        return ""
-    rate = row.media.rate
-    return str(rate.numerator) if rate.denominator == 1 else f"{rate.as_float():.3f}"
+    if row.skipped or row.errors() or not row.deliverables:
+        return False
+    return all(item.status in _LANDED for item in row.deliverables)
 
 
-def _plate_marks(row: ShotRow) -> str:
+def _delivered(row: ShotRow, kind: str, res: str | None = None) -> Deliverable | None:
+    """The landed deliverable of one kind, or None."""
+    for item in row.deliverables:
+        if item.kind == kind and (res is None or item.res == res) and item.status in _LANDED:
+            return item
+    return None
+
+
+def _plate_marks(row: ShotRow | None) -> str:
     """`4K ✓` and `HD ✓` on two lines, the way the tracker's own cells are written."""
-    delivered = {item.res for item in row.deliverables if item.kind == "raw_dir" and item.status != "failed"}
     return "\n".join(
-        f"{label} {'✓' if res in delivered else '—'}" for label, res in (("4K", "4k"), ("HD", "HD"))
+        f"{label} {_TICK if row is not None and _delivered(row, 'raw_dir', res) else _MISSING}"
+        for label, res in (("4K", "4k"), ("HD", "HD"))
     )
 
 
-def _named(row: ShotRow, kind: str, res: str | None = None) -> str:
-    """The delivered filename for one kind, or empty when the row has none."""
-    for item in row.deliverables:
-        if item.kind == kind and (res is None or item.res == res) and item.status != "failed":
-            return item.name
-    return ""
+def _main_plate(rows: list[ShotRow]) -> ShotRow | None:
+    """The shot's `pl` row with the lowest index, which is what the tracker describes.
+
+    The sheet has one Plate Video and one pair of plate marks per shot, and every real
+    value in it is a `pl01`. A clean plate, an element or a still has no column.
+    """
+    plates = [row for row in rows if row.identity is not None and row.identity.kind == "pl"]
+    return min(plates, key=lambda row: row.identity.index if row.identity else "", default=None)
 
 
-def tracker_row(row: ShotRow) -> list[str]:
-    """One shot as the studio's 39 columns, with the thirty that are not ours empty.
+def tracker_row(shot_code: str, rows: list[ShotRow]) -> list[str]:
+    """One shot code as the studio's 39 columns, with the thirty that are not ours empty.
+
+    **One line per shot code** (user, 2026-09-23), as the studio's own sheet has always
+    been: a shot's `pl01`, `cp01` and reference stills are one line, described by its
+    main plate. `rows` are the shot's rows that landed.
 
     The stringout column is left empty because Ben produces and exports that file and
-    the tool does nothing with it at all (user, 2026-09-22, closing OQ-41). It is not
-    ours to name, so a blank cell is the whole of the answer rather than a placeholder.
+    the tool does nothing with it at all (user, 2026-09-22, closing OQ-41).
     """
+    plate = _main_plate(rows)
+    reference = _delivered(plate, "ref_mp4", "HD") if plate is not None else None
+    audio = _delivered(plate, "audio") if plate is not None else None
     cells = [""] * len(TRACKER_HEADERS)
     cells[0] = "FALSE"
-    cells[2] = row.shot_code or ""
-    cells[3] = row.shot_code or ""
-    cells[4] = _named(row, "ref_mp4", "HD")
+    cells[2] = shot_code
+    cells[3] = shot_code
+    cells[4] = reference.name if reference is not None else ""
     # HDRI and CAM Data stay the studio's columns and stay empty: neither carries a
     # `Shot Type`, so neither is a deliverable of this tool any more (2026-09-22).
-    # They still reach the vendor, they just do not pass through here.
-    cells[7] = _plate_marks(row)
-    cells[8] = _tracker_fps(row)
-    cells[9] = "✓" if row.audio_path else ""
+    cells[7] = _plate_marks(plate)
+    cells[8] = TRACKER_FPS
+    cells[9] = _TICK if audio is not None else ""
     return cells
 
 
-def write_shot_tracker(batch: Batch, path: Path) -> Path:
-    """Write the rows to paste into the studio tracker. Skipped rows are left out.
+def tracker_rows(batch: Batch) -> list[list[str]]:
+    """One line per shot code that delivered anything, in the order the batch lists them."""
+    shots: dict[str, list[ShotRow]] = {}
+    for row in batch.rows:
+        if row.shot_code and _landed(row):
+            shots.setdefault(row.shot_code, []).append(row)
+    return [tracker_row(code, rows) for code, rows in shots.items()]
 
-    A skipped row delivered nothing, so pasting one would add a shot to the production's
-    tracker that does not exist in the delivery.
-    """
+
+def write_shot_tracker(batch: Batch, path: Path) -> Path:
+    """Write the rows to paste into the studio tracker, one per shot code that landed."""
     book = Workbook()
     book.remove(book.active)
     sheet = _sheet(book, "Shots", TRACKER_HEADERS)
     plates_column = TRACKER_HEADERS.index("PLATES") + 1
-    for row in batch.rows:
-        if not row.skipped:
-            sheet.append(tracker_row(row))
-            # The plate marks are two lines in one cell, as they are in the real sheet.
-            sheet.cell(row=sheet.max_row, column=plates_column).alignment = Alignment(
-                wrap_text=True, vertical="top"
-            )
+    for cells in tracker_rows(batch):
+        sheet.append(cells)
+        # The plate marks are two lines in one cell, as they are in the real sheet.
+        sheet.cell(row=sheet.max_row, column=plates_column).alignment = Alignment(
+            wrap_text=True, vertical="top"
+        )
     return _save(book, path)
 
 
