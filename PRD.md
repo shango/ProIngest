@@ -4,16 +4,16 @@ Working name: ProIngest. Version target: v01 (macOS, Apple Silicon). v02 items a
 
 ## 1. Problem
 
-A small VFX studio receives shot turnovers from three shooters. Each turnover is a DaVinci Resolve project consolidated to HQ media, one clip per shot with handles, plus a timeline export. Today the VFX editor conforms the stringout, renames and transcodes every deliverable by hand, and checks them by eye. This is slow, error prone, and the naming spec is strict.
+A small VFX studio receives shot turnovers from three shooters. Each turnover is a DaVinci Resolve project consolidated to HQ media, one clip per shot with handles, plus the colourist's EDL and metadata CSV. Today the VFX editor conforms the stringout, renames and transcodes every deliverable by hand, and checks them by eye. This is slow, error prone, and the naming spec is strict.
 
-ProIngest turns that into: point at the turnover folder, load the timeline, review and adjust In/Out with the AD and supervisor in the same list, press Run, get correctly named and verified deliverables plus tracker and QC spreadsheets.
+ProIngest turns that into: point at the turnover folder, scan it, review and adjust In/Out with the AD and supervisor in the same list, press Run, get correctly named and verified deliverables plus tracker and QC spreadsheets.
 
 ## 2. Users
 
 - VFX Editor (primary). Runs the tool, owns the batch.
 - AD / VFX Supervisor. Sits with the editor during review; does not operate the tool.
 - Colourist. Runs the final colour session in Resolve with the AD, and exports the updated final
-  EDL, whose events carry the ASC CDL that **is the grade** (decided 2026-09-18), and nothing else: there are no per-shot grade files (2026-09-21), which the tool ingests (`docs/COLOR_AND_FORMAT.md` section 1). Does not operate
+  EDL, whose events carry the ASC CDL that **is the grade** (decided 2026-09-18), and nothing else: there are no per-shot grade files (2026-09-21). The tool reads that EDL from the turnover folder at scan (`docs/COLOR_AND_FORMAT.md` section 1). Does not operate
   the tool, but nothing final renders until their session has happened.
 - Shooters (indirect). Their output must match `docs/NAMING_SPEC.md`; the tool tells the editor when it does not.
 
@@ -29,9 +29,9 @@ Goals
 - Installs from a single macOS disk image with no Python setup.
 
 Non-goals for v01
-- Authoring colour. The tool applies colour, it never invents any: the look is decided in the AD meeting, built in the colour session, and arrives as one grade file per shot alongside its final EDL. **There are no colour controls in the tool.** An earlier version of this PRD, from the same morning, specified four per clip sliders for the AD's notes; they are removed, because two places to author a grade is one place too many and the Resolve session is the one that has the AD in the room.
+- Authoring colour. The tool applies colour, it never invents any: the look is decided in the AD meeting, built in the colour session, and arrives as the CDL on each event of its final EDL. **There are no colour controls in the tool.** An earlier version of this PRD, from the same morning, specified four per clip sliders for the AD's notes; they are removed, because two places to author a grade is one place too many and the Resolve session is the one that has the AD in the room.
 - Lidar deliverables.
-- Lens grid delivery. The tool reports whether a turnover has one; moving and renaming it is manual in v01 (OQ-20).
+- Lens grid delivery. **Ben delivers the lens grid** and the tool does not look for one (2026-09-22, OQ-20 closed).
 - Frame viewer. Specified on the morning of 2026-09-11 as three steppable viewers, removed that afternoon, and back in the v02 backlog where it started (FR-16).
 - Any Google Drive API use. The Drive mount is a normal mounted folder.
 - Windows build (design for it, do not ship it). v01 is Apple Silicon only, and a Windows 11 build is a v02 intention (OQ-24).
@@ -41,7 +41,7 @@ Non-goals for v01
 Per turnover, in one folder on the Google Drive mount (structure configurable in Settings, see `docs/OPEN_QUESTIONS.md` OQ-1):
 
 - **The turnover folder**: consolidated media, one file per timeline clip, as the shooters' Copy with trim wrote it - the camera's filename, the camera's start timecode, handles both sides, and **nothing recompressed**. The encoding is camera native, or, where the camera system records RAW, a debayered basic file type with **no colours baked in**. RAW itself never arrives, which matters because ffmpeg decodes no RAW format. Resolve also writes a `.drt` beside the media as a by-product of the trim; **the tool does not read it**.
-- **Ben's EDL with the CDL in it, required before anything final renders**: shot identity, the approved In/Out from his trims with the AD, and the grade as `*ASC_SOP` / `*ASC_SAT` lines per event. **That CDL is the grade the tool applies, in ACEScct** (2026-09-18). There are no per-shot grade files (2026-09-21). An EDL states **no frame rate**, so the project rate is asserted rather than read (see section 9 and `docs/WORKFLOW.md` rule 5).
+- **Ben's EDL with the CDL in it, required before anything final renders**: the approved In/Out from his trims with the AD, and the grade as `*ASC_SOP` / `*ASC_SAT` lines per event. **That CDL is the grade the tool applies, in ACEScct** (2026-09-18). There are no per-shot grade files (2026-09-21). An EDL states **no frame rate**, so the project rate is asserted rather than read (see section 9 and `docs/WORKFLOW.md` rule 5).
 - **Ben's metadata CSV, required**: `File Name`, `Shot`, `Shot Type`, `Gamma Notes`, `Color Space Notes`. **This is identity and encoding**, and the scan cannot build a row without it. `Shot` carries the shot code, `Shot Type` says what the clip is, and the two encoding fields join in that order into one input transform name.
 - Audio per shot, in the turnover.
 - Per shot in the turnover: HDRI `.exr`, camera data `.txt`/`.rtf`, lens grid, BTS stills. **The tool reads none of these and delivers none of them** (2026-09-22): they carry no `Shot Type`. The **reference stills** - colour chart, mirror ball, grey ball, size reference - are different: they arrive as **single-frame clips on the timeline** with a `Shot Type` of their own, confirmed in `Turnover199`, and the tool does deliver those.
@@ -49,19 +49,18 @@ Per turnover, in one folder on the Google Drive mount (structure configurable in
 
 **Identity is metadata, never a filename.** Camera filenames are delivered unchanged and nothing parses one to learn what a clip is (`docs/NAMING_SPEC.md` section 1, 2026-09-21).
 
-> **Sequencing consequence, raised 2026-09-21 and not yet resolved (OQ-74).** Identity and encoding
-> now arrive in Ben's CSV, and the conform and grade in Ben's EDL. Both come from Ben. So a turnover
-> scanned before Ben has finished yields media with no shot codes, no clip types and no encoding -
-> where the old flow could scan and review off the shooters' timeline and add Ben's work later. The
-> two-phase user flow in section 6 assumes the first phase works without him, and it no longer does.
+> **One folder, one phase (OQ-74, settled 2026-09-22).** Identity and encoding arrive in Ben's
+> CSV, and the conform and grade in Ben's EDL. Both come from Ben, so there is nothing to scan
+> before he has finished: he hands over one folder holding the media, the EDL and the CSV, and a
+> single scan reads all three. There is no separate colour session step.
 
 ## 5. Outputs
 
 Per shot, into a delivery root the user chooses (default proposed layout in `docs/NAMING_SPEC.md` section 5):
 
-- 4k and HD raw EXR sequences (DWAA 45, start frame 1001) in their own subfolders. **ACEScg, scene linear, graded with the shot's grade file**, with the source encoding, the grade file name and hash, and the CDL as a readable record, in the header so the grade in the pixels can be identified later without the session
-- 4k and HD H.264 reference mp4s, sRGB display, the same grade file plus the ACES output transform
-- Audio wav for plate clips (as delivered, 16 bit PCM)
+- 4k and HD raw EXR sequences (DWAA 45, start frame 1001) in their own subfolders. **ACEScg, scene linear, graded with the CDL on the shot's EDL event**, with the source encoding and the CDL, as numbers and as its original lines, in the header so the grade in the pixels can be identified later without the session
+- 4k and HD H.264 reference mp4s, sRGB display, the same graded chain plus the ACES output transform
+- Audio wav for main plate clips, 16 bit PCM, **trimmed to the same EDL event as the picture and retimed to follow the 24 fps video** (2026-09-23, D2)
 - Single 4k EXR per reference still (`colorChart`, `mirrorBall`, `greyBall`, `sizeRef`), converted and **never graded**, keyed to the shot code
 - **Nothing else.** Decided 2026-09-22: the tool delivers exactly what a `Shot Type` row names. **HDRI, camData, BTS, the lens grid and the stringout are not tool deliverables** - they carry no `Shot Type`, so the tool ignores them, and they are delivered by Ben or by hand. QC-050 to QC-054, QC-056 and QC-057 retire with them, and so do `core/camdata.py`, `naming.lens_grid_png` and `naming.stringout_mp4`
 - `shot_tracker.xlsx` for paste into the studio tracker (the studio's own 39 columns, OQ-2)
@@ -71,8 +70,8 @@ Per shot, into a delivery root the user chooses (default proposed layout in `doc
 
 1. New Batch or Open Batch (`.pibatch` JSON).
 2. Add Turnover: pick the folder Ben handed over, which holds **the media, his EDL and his CSV together**. The chooser opens at the batch's source root and picking outside it just moves the root. Repeat for up to N turnovers in a batch. A folder missing the EDL or the CSV cannot be scanned and says so (QC-001).
-3. Scan. Tool reads Ben's CSV for identity and encoding, reads his EDL for the approved In/Out and the CDL, matches each row to media by `File Name`, probes media with ffprobe, resolves audio, discovers side files, runs pre-flight QC. List populates, grouped by turnover. Problem rows are colored with a tooltip and a QC panel entry.
-4. Re-ingest, when Ben revises. The conform and the grade are read at scan, so this is not a separate step in the normal case. It stays for a **revised EDL**: the editor points at the new one and the tool rewrites the approved In/Out and the CDL onto the rows without a full re-scan, reporting the trims it overwrote (FR-5). Rows it cannot match cannot render (QC-008, QC-009).
+3. Scan. Tool reads Ben's CSV for identity and encoding, reads his EDL for the approved In/Out and the CDL, matches each row to media by `File Name`, probes media with ffprobe, resolves audio, runs pre-flight QC. List populates, grouped by turnover. Problem rows are colored with a tooltip and a QC panel entry.
+4. Correct and re-scan, when Ben revises or a check needs a fix (2026-09-23, D8). There is no separate ingest step: the corrected EDL, CSV or clip is dropped into the turnover folder and Scan reads it again, carrying the editor's trims, shot code corrections, skips, notes and delivered state over by `File Name` (`scan.carry_over`). A trim the editor never made follows the new EDL, and QC-070 says when the EDL or CSV changed. Rows no event matches cannot render (QC-066, QC-067), nor can rows whose event carries no CDL (QC-008, QC-009).
 5. Review. Editor works down the list with the keyboard, checking the rows, fixing names, marking clips as skipped, and making the occasional one-off trim that is not worth a trip back to Resolve (FR-5). Duration and validation update live. Selecting a row fills the metadata pane on the right with everything known about that clip (FR-14). Everything autosaves to the batch file.
 6. Run. Editor picks the delivery root (remembered per batch, the second of the two folder choosers in `docs/UI_SPEC.md` section 13), presses Run. Progress per row and overall. Rows go green when all their deliverables pass post-render QC.
 7. Export. Tracker and QC spreadsheets are written to the delivery root. Editor can re-open the batch later and re-run only what failed.
@@ -83,21 +82,21 @@ FR-1 Conform import
 
 - **There is no timeline file.** The shooters export nothing for the tool and never did; Resolve's `.drt`, written beside consolidated media as a by-product, is not read either. The conform comes from Ben's EDL and identity from Ben's CSV (2026-09-21, reversing the OTIO design).
 - **Ben's CSV is the shot list.** One row per consolidated clip: `File Name`, `Shot`, `Shot Type`, `Gamma Notes`, `Color Space Notes`. UTF-16 with a BOM, and the column set is dynamic - Resolve writes only the columns that carry a value - so a reader must not assume a fixed schema. A row whose `Shot` or `Shot Type` is blank is QC-010 and still appears, so the editor can see it.
-- **Ben's EDL is the conform and the grade.** Per event: shot identity, the approved In/Out from his trims with the AD, and `*ASC_SOP` / `*ASC_SAT` comment lines, because Resolve exports no `.cdl` or `.ccc` file. Read with otio's `cmx_3600` adapter. Matching an event to a row is OQ-30.
-- **An EDL states no frame rate.** CMX 3600 has no field for one and the adapter takes the rate as an argument, so the project rate is a setting defaulting to 24 and QC-026 reports any file whose own rate disagrees.
+- **Ben's EDL is the conform and the grade.** Per event: the approved In/Out from his trims with the AD, and `*ASC_SOP` / `*ASC_SAT` comment lines, because Resolve exports no `.cdl` or `.ccc` file. Read by `core/clf.py`'s own parser, which keeps the event's verbatim CDL lines for the EXR header. **An event belongs to the row whose file's timecode range contains its source range** (OQ-30, answered 2026-09-23: the real EDL names no clip and reels every event `AX`); where an event does name its clip, the name has to agree. No event is QC-066, an ambiguous match QC-067, and an event with no row QC-068.
+- **An EDL states no frame rate.** CMX 3600 has no field for one, so the project rate is asserted at 24, a constant rather than a setting (`docs/WORKFLOW.md` rule 5). Every source is rendered at 24 frame for frame; a file at 24000/1001 is the normal conform and is silent, and any other rate is a QC-026 must-fix (D1).
 - **Refuse rather than mis-render a motion effect.** A retime is an `M2` line and a reversed clip a negative speed on it; an event carrying one is refused and says so (OQ-63).
 - Audio: the EDL carries no audio association, so the tool searches the turnover folder for a wav matching the clip's file name. Zero or more than one is a QC result.
 
 FR-2 Media resolution
 - **Match each CSV row to its media by `File Name`, in the folder Ben handed over.** Camera filenames are delivered unchanged, so the row and the file agree by construction. Comparison is casefolded, because APFS and a Drive mount are not case sensitive and Ben's EDL is not either (OQ-67). Nothing parses a filename to learn what a clip is.
-- If the referenced file is missing, search the turnover folder recursively for a file or image sequence whose base name matches the clip name. Exactly one hit resolves silently; zero or many is a QC error on the row.
+- The turnover folder is indexed once, recursively, and a row's media is the file or image sequence whose base name matches its `File Name`. Exactly one hit resolves silently; none is QC-012 and more than one QC-013. The CSV's `Clip Directory` is not used: it points at the pre-consolidation originals.
 - Image sequences are detected by the `name.####.ext` pattern and treated as one media item with a frame range.
 
 FR-3 Probing
 - ffprobe every resolved media item once: codec, pixel format, width, height, frame rate, duration in frames, start timecode, audio streams. Cache in the batch file keyed by path, size, and mtime.
 
 FR-4 Shot model
-Each row holds: turnover id, clip name (parsed into show, shot number, type, index), source path, source fps, source resolution, source frame count and start TC, record In/Out TC, source In/Out (frames and TC), turnover snapshot of In/Out (immutable after scan), current In/Out, duration, max available Out, audio path, side files, skip flag, per-deliverable status, QC results.
+Each row holds: turnover id, clip name (the CSV's `File Name`), identity (shot code from `Shot`, type and index from `Shot Type`), source encoding, source path, source fps, source resolution, source frame count and start TC, record In/Out TC, source In/Out (frames and TC), turnover snapshot of In/Out (immutable after scan), current In/Out, duration, max available Out, audio path, the event's CDL, skip flag, per-deliverable status, QC results.
 
 FR-5 Editing
 - Editable fields: Shot Code, In, Out, Notes. No handle controls on rows. **The plate is the cut only** (user, 2026-09-23): the EDL event's source In/Out, with the handles outside it in the file (`C0145` is 24 + 232 + 24), and the editor extends a clip into them by moving Out. A Settings value "expected handle frames" exists only for the QC-030 warning.
@@ -107,7 +106,7 @@ FR-5 Editing
 - Skip flag excludes the row from render and marks it in the QC log with a required reason field.
 - **Trimming in the tool is an exception path, not the main way a cut is decided.** In and Out arrive already approved: Ben and the AD set them in the colour session and they come in on its final EDL (FR-15). The tool keeps its In/Out editing for **the quick one-off**, the trim that would otherwise mean asking Ben to reopen Resolve and export a new EDL for one shot. That is worth having and it is not a licence to re-edit a turnover.
 - **A trim in the tool is a deviation from an approved edit, and is reported as one.** QC-045, warning. QC-035 keeps its own meaning, which is the difference between what the shooters delivered and what is being rendered, and most of that difference is now Ben's own work rather than the editor's.
-- **Trimming does not invalidate the grade.** A grade file is one static transform for the whole shot, not an animated one, so moving In or Out carries it unchanged. The caveat, which is why this is a one-off facility: **extending into the handles applies the approved grade to frames Ben never looked at.** Usually fine for a static primary, and worth knowing before extending a long way.
+- **Trimming does not invalidate the grade.** The CDL is one static transform for the whole shot, not an animated one, so moving In or Out carries it unchanged. The caveat, which is why this is a one-off facility: **extending into the handles applies the approved grade to frames Ben never looked at.** Usually fine for a static primary, and worth knowing before extending a long way.
 - **The list owns every edit.** There is no second surface that writes to a row: no viewers, no colour controls, no editable metadata pane.
 
 FR-6 Validation (pre-flight)
@@ -131,27 +130,27 @@ FR-9 Stringout: **dropped from v01, 2026-09-11. Dropped entirely 2026-09-22.**
 
 FR-10 Exports
 - `shot_tracker.xlsx` via openpyxl, **rows to paste into the studio's own tracker**: its 39 columns in its own order, nine of them written and the other thirty left empty because the vendor's team owns them (OQ-2, answered 2026-09-11 from the real sheet). The column layout was to be loaded from a template file in Settings, which was right while nobody knew the columns and is a configuration point standing where a fact belongs now that they are known.
-- `qc_ingest_log.xlsx` with sheets: Summary, Shots (**three In/Out columns: as the shooters delivered it, as Ben approved it, as it rendered**, plus duration, shot code changes, skip reasons), Deliverables (one row each with path, version, size, checksum, every QC rule result), Side Files, Camera Data (parsed key/values from camData files).
+- `qc_ingest_log.xlsx` with sheets: Summary, Shots (**three In/Out columns: as the shooters delivered it, as Ben approved it, as it rendered**, plus duration, shot code changes, skip reasons), Deliverables (one row each with path, version, size, checksum, every QC rule result). Three sheets since 2026-09-22: Side Files and Camera Data went with the deliverables they described.
 
 FR-11 Batch file
 - `.pibatch` JSON, schema versioned. Contains everything needed to reopen: turnovers, rows, snapshots, edits, probe cache, delivery root, render status, settings overrides. Autosave on every edit (debounced 500 ms). Backup copy kept on open.
 
 FR-12 Settings page
-Sections: General (delivery root default, path map, concurrency, GPU), Rules (min/max duration frames, expected handle frames, allowed fps, expected resolutions), **Colour (where the ingest chooser opens, the input transform table and its overrides, ACES config version, output transform)**. **The session package's own location is not a setting**: it is ingested per turnover and recorded on the batch (`Turnover.color_session_edl`, OQ-50), because it is a record of what this work was rendered from rather than a preference, and because QC-008 is turnover scope so one turnover can wait on colour while another renders. **No source encoding mode**: the clip's metadata names the encoding per clip and DaVinci Wide Gamut is one more entry in the table rather than a mode to switch into, Naming (show prefix regex, type table overrides), Output (mp4 quality, EXR compression level), Advanced (ffmpeg path override, OCIO config override, log level).
+Sections: General (delivery root default, path map, concurrency, GPU), Rules (min/max duration frames, expected handle frames, allowed fps, expected resolutions), **Colour (the input transform table and its overrides, ACES config version, output transform)**. **The EDL's location is not a setting**: it is the one in the turnover folder, read at scan and recorded on the turnover (`Turnover.color_session_edl`), because it is a record of what this work was rendered from rather than a preference. **No source encoding mode**: the clip's metadata names the encoding per clip and DaVinci Wide Gamut is one more entry in the table rather than a mode to switch into, Naming (show prefix regex, type table overrides), Output (mp4 quality, EXR compression level), Advanced (ffmpeg path override, OCIO config override, log level).
 
 FR-13 Logging
 - Rotating log file in the app data folder. Every ffmpeg command line logged. In-app log panel with filter by row.
 
 FR-14 Metadata pane
-- A read-only pane to the right of the shot list. Selecting a row shows everything known about that clip: identity, source media, frame rate, ranges, audio, side files, turnover, and a QC summary. Full field list and behaviour in `docs/UI_SPEC.md` section 12.
-- It shows what the list has no column for (codec, pixel format, start timecode, file size, parsed camera data, the paths themselves), rather than repeating the columns.
+- A read-only pane to the right of the shot list. Selecting a row shows everything known about that clip: identity, source media, frame rate, ranges, colour, audio, turnover, and a QC summary. Full field list and behaviour in `docs/UI_SPEC.md` section 12.
+- It shows what the list has no column for (codec, pixel format, start timecode, file size, the paths themselves), rather than repeating the columns.
 - Read only. The list owns every edit per FR-5, so the pane never writes to the model and never takes keyboard focus. Ctrl+I toggles it.
 - Multi-selection shows the fields the selection agrees on and marks the rest "mixed", which is how an editor spots one clip at the wrong resolution in a turnover of thirty.
 - Values are individually copyable, paths and checksums especially.
-- Primarily serves the AD and VFX supervisor described in section 2, who sit with the editor during review and read rather than operate. Parsed camera data (OQ-11) is the only place lens, filter and body ever surface in the UI.
+- Primarily serves the AD and VFX supervisor described in section 2, who sit with the editor during review and read rather than operate. camData is not read (2026-09-22), so lens, filter and body do not surface in the UI.
 
 FR-15 Colour pipeline
-- Working space is **ACEScg**. Every deliverable is graded, with the approved look applied from the **CDL on the shot's event in the final EDL, in ACEScct** (decided 2026-09-18). There are no per-shot grade files (2026-09-21): the CDL is the only carrier. The EXR header says which was applied. `docs/COLOR_AND_FORMAT.md` section 1 says why both exist. Full policy, both branches and the reasoning are in `docs/COLOR_AND_FORMAT.md` section 1, which is the spec. This entry records that the pipeline exists and what it owes.
+- Working space is **ACEScg**. Every deliverable is graded, with the approved look applied from the **CDL on the shot's event in the final EDL, in ACEScct** (decided 2026-09-18). There are no per-shot grade files (2026-09-21): the CDL is the only carrier. The EXR header records the CDL that was applied. Full policy, both branches and the reasoning are in `docs/COLOR_AND_FORMAT.md` section 1, which is the spec. This entry records that the pipeline exists and what it owes.
 - Transforms come from **OpenColorIO** as a single `GroupTransform` per shot, interpolated **tetrahedrally**, using a pinned ACES 1.3 built-in config so no config files ship and no dependency bump changes what a reference looks like (OQ-29). Curves and matrices are never hand written.
 - Per shot the chain is: decode to float, **override the container's colour tags** with the encoding the clip's metadata names and confirm range, then the input transform that encoding names **into ACEScct**, the shot's CDL, then ACEScct to linear ACEScg (decided 2026-09-18, OQ-46). This reverses OQ-37's 2026-09-12 answer: Resolve's CDL export carries node one's primaries and means something only in the timeline space, so the tool converts on both sides of it.
 - **The source encoding is named in the clip's metadata, per clip, and there is no mode** (`docs/COLOR_AND_FORMAT.md` section 1, decided 2026-09-12). Camera native log is the expectation; **DaVinci Wide Gamut / DaVinci Intermediate is one more entry in the input transform table**, not a batch-wide setting, so a turnover may mix a shooter on a house template with two on their cameras and nothing has to be switched before it is scanned.

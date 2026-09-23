@@ -31,7 +31,7 @@ from openpyxl.styles import Alignment, Font
 from openpyxl.worksheet.worksheet import Worksheet
 
 from proingest import __version__
-from proingest.core import frames, naming, qc
+from proingest.core import ffmpeg, frames, naming, qc
 from proingest.core.models import Batch, Deliverable, QCResult, ShotRow
 
 DATE_STAMP = "%Y%m%d"
@@ -116,7 +116,7 @@ SHOTS_HEADERS = (
     "Delivered In", "Delivered Out", "Delivered In TC", "Delivered Out TC",
     "Final In", "Final Out", "Duration", "Max available", "Audio", "Edited",
     "Source encoding",
-    "Skip reason", "Warnings", "Errors",
+    "Skip reason", "Notes", "Warnings", "Errors",
 )  # fmt: skip
 """The QC log's own columns, QC_RULES "QC log structure".
 
@@ -141,6 +141,7 @@ def _write_summary(book: Workbook, batch: Batch, when: date) -> None:
         ("Batch", batch.name),
         ("Date", when.isoformat()),
         ("Tool version", __version__),
+        ("ffmpeg", ffmpeg_version()),
         ("Delivery root", str(batch.delivery_root) if batch.delivery_root else ""),
         ("Turnovers", len(batch.turnovers)),
         ("Rows", len(batch.rows)),
@@ -154,6 +155,15 @@ def _write_summary(book: Workbook, batch: Batch, when: date) -> None:
     ):
         _append(sheet, [label, value])
     sheet.column_dimensions["B"].width = 60
+
+
+def ffmpeg_version() -> str:
+    """The first line of `ffmpeg -version`, which PACKAGING.md wants in every QC log, or
+    what stopped it being asked. A report is not refused over it."""
+    try:
+        return ffmpeg.tool_info("ffmpeg").version
+    except (ffmpeg.FFmpegNotFound, ffmpeg.FFmpegError, OSError) as exc:
+        return f"unknown ({exc})"
 
 
 def _every_result(batch: Batch) -> list[list[QCResult]]:
@@ -204,6 +214,7 @@ def _write_shots(book: Workbook, batch: Batch) -> None:
                 "yes" if row.was_edited else "",
                 row.source_encoding or "",
                 row.skip_reason or "",
+                row.notes,
                 _rule_ids(row.qc, "warning"),
                 _rule_ids(row.qc, "error"),
             ],

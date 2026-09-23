@@ -57,8 +57,8 @@ What M5.11 settled, beyond the wording:
 - **One enabled button carries a note too, and it is the case the feature was asked for.** A
   batch whose EDL carries no CDL runs, is refused by QC-008 and writes nothing,
   which is correct and reads as a dead button. Run says so before it is pressed. It is the plain
-  question - has anything been ingested - rather than a second implementation of QC-008, which
-  needs pre-flight and the disk.
+  question - has any turnover's EDL been read at scan - rather than a second implementation of
+  QC-008, which needs pre-flight and the disk.
 - **A line may not exceed `toolbar_help.MAX_LINE` characters**, and a test holds every line of
   every tooltip in every state under it. Qt word-wraps a tooltip **only** when the text looks
   like rich text, so plain text is drawn on one line however long it is: the first draft had a
@@ -69,14 +69,14 @@ What M5.11 settled, beyond the wording:
 ## 2. Shot list columns
 
 Frozen left: status dot, Shot Code (editable), Elem.
-Scrolling: Source file, Res, FPS, In (editable), Out (editable), Duration, Max Avail, Audio (icon: none / one / many), Side files (icons: HDRI, camData, stills), Version, Progress, Notes (editable, free text; kept in the batch and the QC log. The studio tracker has no Notes column, 2026-09-23).
+Scrolling: Source file, Res, FPS, In (editable), Out (editable), Duration, Max Avail, Audio (icon: none / one / many), Version, Progress, Notes (editable, free text; kept in the batch and the QC log. The studio tracker has no Notes column, 2026-09-23).
 
 - **The In/Out display toggle in the batch bar has three states, not two: `Frames`, `Source TC`, `Record TC`.** It sets what the In and Out cells show as their primary value for the whole list, and it sets how a typed timecode is interpreted (source or record) when either TC state is selected.
 - **`Frames` is the default.** The frame number is what the model actually holds: frame math is integer throughout, In and Out *are* frame numbers, the QC rules quote them, the delivered EXR sequence is numbered by them, and the viewers step by them. Timecode is derived at the boundary and never stored. Opening on the derived value would show the editor a translation of the thing they are about to edit rather than the thing itself. The choice is remembered per batch, so an editor who works in source TC sets it once.
 - Secondary line: whichever representation is not primary sits under it in smaller text, so nothing is ever hidden, only demoted. In `Frames` the secondary is source TC; in either TC state it is the source frame number. Row height accommodates two lines.
 - The editor reads frames and timecode at different moments, which is why frames is a first-class state of this control rather than only the secondary line: a frame number is what gets typed into the In/Out cells and what a VFX vendor quotes back, and a timecode is what the AD and the edit talk in. Section 5 accepts both as input whatever this is set to.
 - Turnover group headers are rows in the same view (QTreeView with a flat two-level model), collapsible, showing counts and aggregate status.
-- Sorting is fixed to timeline order within a turnover. A search box filters rows by shot code substring.
+- Sorting is fixed to the metadata CSV's row order within a turnover. A search box filters rows by shot code substring.
 
 ## 3. Row colors and status dot
 
@@ -243,7 +243,7 @@ Built in M5.7.2. What that settled, beyond the layout:
 - **A section with nothing behind it yet is listed and disabled**, and its page says what it is waiting on. Same rule as the toolbar in section 1. **Every section is live as of M5.12**; the rule stays because it is how the page was built and how the next section will arrive.
 - **Advanced went live in M5.8.3**: the log level, the ffmpeg override, and a read-only line naming the log file. Both editable values are process wide rather than per batch, both take effect the moment they are applied, and both reach a render's worker processes when the next run starts them - a worker is told at its initialiser (`core/render.execute`), so a change made mid-run applies from the run after. The ffmpeg override takes the folder or the binary, and **a path that is not there is an error rather than a fallback**: an override quietly ignored is a render done with the wrong build of ffmpeg.
 - **Output went live in M5.12**, last, because both its values are applied inside a render's worker processes and had to be able to get there first. They travel on the channel Advanced built, at the worker's initialiser, so a change reaches the next run rather than one already going. Reference quality is the x264 rate factor, bounded 0 to 51 by what the encoder accepts; the preset stays at `slow` and is not editable. EXR compression level is the DWAA level. **Both are pinned by the spec** (`COLOR_AND_FORMAT.md` section 3: CRF 18, DWAA 45) and the page opens on those values, read from `core/ffmpeg.py` and `core/exr.py` rather than typed in a second time: moving either is a decision about a delivery rather than a preference, and each field's help says what the spec is so the person moving it knows what they are leaving.
-- **The Colour section carries no source encoding value and no mode** (2026-09-12): the encoding is a per clip fact. The ACES config, the output transform and the input transform table are shown **read only**, read from `core/color.py` rather than copied, because they are pinned by spec (OQ-29) and an override has nowhere to travel to yet. Where the colour session package lives is not here either: it is ingested per turnover and recorded on the batch (OQ-50).
+- **The Colour section carries no source encoding value and no mode** (2026-09-12): the encoding is a per clip fact. The ACES config, the output transform and the input transform table are shown **read only**, read from `core/color.py` rather than copied, because they are pinned by spec (OQ-29) and an override has nowhere to travel to yet. The EDL is not chosen here either: it is the one in the turnover folder, read at every scan (OQ-74), and the turnover records which file it read (`Turnover.color_session_edl`).
 
 ## 10. Empty and first-run states
 
@@ -291,10 +291,10 @@ A read-only pane on the right of the shot list showing everything known about th
 selection. Clicking a row fills it; arrowing down the list refills it as the selection moves.
 
 **Its job is to show what has no column.** Section 2 gives the list columns for the fields the
-editor works with (shot code, In, Out, duration, max available, audio and side file icons).
+editor works with (shot code, In, Out, duration, max available, audio).
 Repeating them here would waste the space and give the editor two places to read the same
-number. The pane exists for the rest: codec, pixel format, start timecode, file size, camera
-data, turnover details, and the paths themselves.
+number. The pane exists for the rest: codec, pixel format, start timecode, file size,
+turnover details, and the paths themselves.
 
 ### 12.1 Behaviour
 
@@ -332,13 +332,15 @@ it is hidden rather than shown empty.
 |---|---|
 | Identity | source file name, `Shot` and `Shot Type` as the metadata carried them, shot code (and whether it is an editor override), show, shot number, element type and index, reference-still type and index, turnover id |
 | Source media | path, codec, pixel format, resolution, single file or image sequence, sequence frame range and padding, frame count, first frame number, start timecode, file size, modified time |
-| Frame rate | timeline rate (authoritative), rate stated by the media, and an explicit disagreement note when they differ. COLOR_AND_FORMAT section 5 explains why the timeline wins; QC-026 is the rule |
+| Frame rate | the project rate, 24, asserted rather than read and labelled "Timeline rate"; the rate the file is conformed to when it differs; the rate stated by the media; and an explicit disagreement note when they differ. QC-026 is the rule |
 | Range | record In/Out, source In/Out in frames and timecode, turnover snapshot In/Out, current In/Out, duration, max available out, and whether the editor has moved it off the snapshot (QC-035) |
 | Audio | path, sample rate, channels, bit depth, duration in samples and in frames, and the sync difference against the video range (QC-043) |
 | Colour | source encoding as the shooter wrote it (`Gamma Notes` + `Color Space Notes`), which carrier named it, and the CDL from the row's EDL event. **Added 2026-09-12 with M5.6**, corrected 2026-09-21 when per-shot grade files were removed: the encoding is shown verbatim because the string is what has to be corrected when it is wrong |
-| Side files | HDRI path, camData path, and the parsed camData key/values once OQ-11 is settled. This is the single most useful thing in the pane for an AD sitting with the editor, because it is the only place lens, filter and camera body ever appear. **The pane never reads the file itself**: the parsed pairs arrive through a lookup the window caches per batch, because the pane redraws on every arrow key and a turnover sits on a Drive mount |
-| Turnover | number, date, shooter, folder, timeline file. Shown alone when a turnover group header is the selection |
+| Turnover | number, date, shooter, folder, EDL, metadata CSV, timeline start. Shown alone when a turnover group header is the selection |
 | QC | count by severity with the rule IDs, each clicking through to that row in the Issues dock. **Built across the whole selection rather than merged field by field**, unlike every other section: two rows with different problems agree on nothing, so a merge would reduce this to "mixed", which is the one answer that helps nobody |
+
+There is **no Side files section** since 2026-09-22: HDRI and camData carry no `Shot Type`, so
+the tool reads neither and the pane has nothing to show for them.
 
 ### 12.3 Empty and edge states
 
@@ -350,13 +352,13 @@ it is hidden rather than shown empty.
   fields inside it rather than a QC section beside it, so "alone" stays literally true; the
   rows' results are not rolled up here because the group header in the list already counts
   them and the Issues dock lists every one.
-- **Media unresolved** (QC-011, QC-012): the Identity and Range sections still populate from
-  the timeline, and Source media reads why it is missing rather than vanishing. An unresolved
-  row is exactly when someone wants to see what the timeline claimed the path was.
+- **Media unresolved** (QC-012, QC-013): the Identity and Range sections still populate from
+  the CSV and the EDL, and Source media reads why it is missing rather than vanishing. An
+  unresolved row is exactly when someone wants to see which file the CSV named.
   **Where that sentence comes from** (M5.6): the pane reads the QC result rather than
   re-deriving anything, because the scan is the only thing that knows what it looked for.
-  Nothing stores the claimed path once a row has no media, so **QC-012's message names it**,
-  which is the one record of what the timeline asked for.
+  Nothing stores the named file once a row has no media, so **QC-012's message names it**,
+  which is the one record of what the CSV asked for.
 - **Media on a Drive placeholder** that has not downloaded yet: show the download-wait state
   rather than blocking the pane, matching the scan behaviour in PRD section 8.
 

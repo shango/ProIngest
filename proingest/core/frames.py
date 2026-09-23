@@ -46,11 +46,6 @@ def max_available_out(source_start: int, source_length: int) -> int:
     return source_start + source_length - 1
 
 
-def output_frame_for(in_frame: int, source_frame: int) -> int:
-    """Output sequences always start at 1001 regardless of source numbering."""
-    return FIRST_OUTPUT_FRAME + (source_frame - in_frame)
-
-
 def source_frame_for(in_frame: int, output_frame: int) -> int:
     return in_frame + (output_frame - FIRST_OUTPUT_FRAME)
 

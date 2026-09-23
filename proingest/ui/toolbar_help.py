@@ -72,7 +72,7 @@ NO_ROWS_TO_EXPORT = "Nothing to report on yet; add a turnover first."
 NOT_RUNNING = "No run is going."
 ALREADY_STOPPING = "Already stopping; the deliverables in flight are finishing."
 
-NO_SESSION = "No colour session ingested yet, so a run would write nothing (QC-008)."
+NO_SESSION = "No EDL with a CDL has been read yet, so Run will list QC-008 to fix."
 """The one note on a button that is **enabled**, and the reason section 1 wanted these.
 
 A batch with shots and no ingested session runs, refuses every turnover and writes

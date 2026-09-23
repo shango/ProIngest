@@ -21,6 +21,7 @@ from proingest.core.models import (
     ShotRow,
     Turnover,
 )
+from tests.fixtures.names import identity_of
 
 ROOT = Path("/delivery")
 SHOT_DIR = ROOT / "MELT" / "MELT0001"
@@ -56,7 +57,7 @@ def row(
     built = ShotRow(
         turnover_id="t1",
         clip_name=clip_name,
-        identity=naming.parse_clip_name(clip_name),
+        identity=identity_of(clip_name),
         media=media(source, has_audio=has_audio),
         snapshot=InOut(1001, 1240),
         current=InOut(1001, 1240),
@@ -357,10 +358,13 @@ class TestShotColourOnJobs:
     """
 
     def ingest(self, batch: Batch, tmp_path: Path) -> None:
-        """Ingest a session onto the batch's rows, which is what a run does first."""
-        turnover = Turnover(turnover_id="turnover001", folder=tmp_path)
-        batch.turnovers.append(turnover)
-        clf.ingest(turnover, batch.rows, self.session(tmp_path))
+        """Put each row's event's CDL on it, which is what the scan does (`scan._conform`)."""
+        batch.turnovers.append(Turnover(turnover_id="turnover001", folder=tmp_path))
+        session = self.session(tmp_path)
+        for row_ in batch.rows:
+            event = session.event_for(row_)
+            if event is not None:
+                row_.cdl = event.cdl
 
     def session(self, tmp_path: Path) -> clf.ColorSession:
         edl = tmp_path / "MELT_FINAL.edl"

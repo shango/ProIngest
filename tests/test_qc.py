@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-from proingest.core import naming, qc, render
+from proingest.core import qc, render
 from proingest.core.models import (
     CDL,
     AudioInfo,
@@ -31,6 +31,7 @@ from proingest.core.models import (
 from proingest.core.planner import DeliverableJob
 from tests.fixtures import color as color_fixtures
 from tests.fixtures import media as fixtures
+from tests.fixtures.names import identity_of
 
 RATE_24 = FrameRate(24)
 RATE_30 = FrameRate(30)
@@ -87,7 +88,7 @@ def row(
     return ShotRow(
         turnover_id="t1",
         clip_name=clip_name,
-        identity=naming.parse_clip_name(clip_name),
+        identity=identity_of(clip_name),
         source_encoding=source_encoding,
         media=media(stated, **media_kwargs),  # type: ignore[arg-type]
         snapshot=CHOSEN,
@@ -111,24 +112,6 @@ def audio_of(frames: int, sample_rate: int = 48000, rate: FrameRate = RATE_24) -
 
 def ids(results: list[QCResult]) -> list[str]:
     return [result.rule_id for result in results]
-
-
-class TestTimelineRate:
-    def test_matching_rate_is_clean(self) -> None:
-        turnover = Turnover("t1", Path("/t"))
-        assert qc.check_timeline_rate(turnover, RATE_24, RATE_24) == []
-
-    def test_mismatched_rate_is_qc_025(self) -> None:
-        turnover = Turnover("t1", Path("/t"))
-        results = qc.check_timeline_rate(turnover, RATE_30, RATE_24)
-        assert ids(results) == ["QC-025"]
-        assert results[0].severity == "error"
-        assert results[0].scope == "turnover"
-
-    def test_ntsc_does_not_pass_as_24(self) -> None:
-        """23.976 and 24 are different rates, and exact comparison keeps them apart."""
-        turnover = Turnover("t1", Path("/t"))
-        assert ids(qc.check_timeline_rate(turnover, NTSC, RATE_24)) == ["QC-025"]
 
 
 class TestSourceRate:
@@ -457,12 +440,12 @@ class TestAudioPresence:
         """An element or witness clip delivers no wav, so silence is expected."""
         assert qc.check_audio_presence(row(clip_name="MELT0001_el01")) == []
 
-    def test_several_overlapping_clips_is_qc_041(self) -> None:
+    def test_several_matching_audio_files_is_qc_041(self) -> None:
         target = row(audio=audio_of(240))
         target.audio_clip_count = 3
         results = qc.check_audio_presence(target)
         assert ids(results) == ["QC-041"]
-        assert "3 audio clips" in results[0].message
+        assert "3 audio files" in results[0].message
 
 
 class TestAudioFormat:

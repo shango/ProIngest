@@ -104,27 +104,6 @@ class TestLookups:
         fixtures.make_wav(tmp_path / "MELT0001_pl01.wav")
         assert len(media.index_directory(tmp_path).audio_matching("MELT0001_pl01")) == 1
 
-    def test_containing_finds_side_files(self, tmp_path: Path) -> None:
-        (tmp_path / "MELT0001_pl01_HDRI.exr").write_bytes(b"not really an exr")
-        (tmp_path / "MELT0001_pl01_camData.txt").write_text("iso: 800")
-        index = media.index_directory(tmp_path)
-        assert len(index.containing("HDRI")) == 1
-        assert len(index.containing("camdata")) == 1, "matching is case-insensitive"
-
-
-class TestUrlToPath:
-    @pytest.mark.parametrize(
-        ("url", "expected"),
-        [
-            ("/Volumes/GoogleDrive/turnover/a.exr", "/Volumes/GoogleDrive/turnover/a.exr"),
-            ("file:///Volumes/GoogleDrive/a.exr", "/Volumes/GoogleDrive/a.exr"),
-            ("file:///G:/turnover/a.exr", "G:/turnover/a.exr"),
-            ("file:///Volumes/My%20Drive/a.exr", "/Volumes/My Drive/a.exr"),
-        ],
-    )
-    def test_converts(self, url: str, expected: str) -> None:
-        assert media.url_to_path(url) == Path(expected)
-
 
 class TestRemap:
     MAP: ClassVar[dict[str, str]] = {"/Volumes/GoogleDrive/Shared drives": "G:/Shared drives"}

@@ -19,8 +19,6 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from PyInstaller.utils.hooks import collect_data_files, copy_metadata
-
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 APP_NAME = "ProIngest"
@@ -83,28 +81,19 @@ def version() -> str:
 def datas(platform: str = sys.platform) -> list[tuple[str, str]]:
     """Files PyInstaller's import analysis cannot find by following imports.
 
-    Three groups, and the middle one is the one that breaks a naive build:
+    Two groups:
 
     - `theme.qss`, read by `ui/app.py` with `Path(__file__).parent`. Its absence is not
       fatal there by design, which is exactly why it has to be listed: a missing
       stylesheet would ship as an app that merely looks wrong.
-    - **OpenTimelineIO's adapters.** otio finds adapters through `importlib.metadata`
-      entry points and JSON manifests, neither of which survives freezing on its own.
-      The `.py` sources go too, and that is not belt and braces: otio's loader tries
-      `importlib.import_module("opentimelineio.adapters.<name>")` first and falls back
-      to `spec_from_file_location` on the path in the manifest. The CMX3600 adapter is
-      named `cmx_3600` but lives in `otio_cmx3600_adapter`, so the import always misses
-      and **only the file path fallback ever works** for it. No source file on disk, no
-      EDL support.
     - ffmpeg's licence and provenance, which ship beside the binaries or not at all.
+
+    OpenTimelineIO and its adapters went on 2026-09-23: `clf.read_final_edl` reads the
+    EDL itself and nothing imported otio any more.
     """
     collected: list[tuple[str, str]] = [
         (str(REPO_ROOT / "proingest" / "ui" / "theme.qss"), str(Path("proingest") / "ui")),
     ]
-    collected += collect_data_files("opentimelineio", include_py_files=True)
-    collected += collect_data_files("otio_cmx3600_adapter", include_py_files=True)
-    collected += copy_metadata("opentimelineio")
-    collected += copy_metadata("otio-cmx3600-adapter")
 
     if platform == MACOS:
         for name in ("LICENSE.ffmpeg.txt", "PROVENANCE.md"):
@@ -134,18 +123,10 @@ def binaries(platform: str = sys.platform) -> list[tuple[str, str]]:
 def hidden_imports() -> list[str]:
     """Modules reached by name at run time rather than by an `import` statement.
 
-    otio's builtin adapters are named in a manifest and imported by string, so the
-    analysis never sees them. `otio_json` is the one that reads the `.otio` a turnover
-    arrives with, which makes it the module whose absence stops the tool doing anything
-    at all.
+    None since OpenTimelineIO went (2026-09-23): its adapters were the only ones.
+    Kept as the one place to list such a module if one comes back.
     """
-    return [
-        "opentimelineio.adapters.otio_json",
-        "opentimelineio.adapters.otiod",
-        "opentimelineio.adapters.otioz",
-        "otio_cmx3600_adapter",
-        "otio_cmx3600_adapter.cmx_3600",
-    ]
+    return []
 
 
 def excludes() -> list[str]:

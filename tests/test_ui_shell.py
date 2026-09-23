@@ -64,6 +64,7 @@ from tests.fixtures.batches import (
     turnover,
     warn,
 )
+from tests.fixtures.names import identity_of
 from tests.test_runner import pump_until
 
 
@@ -1489,7 +1490,7 @@ class TestTheMetadataPane:
         """The plan named the deliverables with the settings pattern; the reparse after
         the run must use the same one, or every name fails QC-151 as unparseable."""
         window._settings.show_pattern = "[a-z]{2}"
-        lower = row("mx0001_pl01", identity=naming.parse_clip_name("mx0001_pl01", "[a-z]{2}"))
+        lower = row("mx0001_pl01", identity=identity_of("mx0001_pl01", "[a-z]{2}"))
         window.set_batch(ingested(batch(lower, delivery_root=tmp_path), tmp_path))
         started = stub_runner(window)
         window.action_run.trigger()

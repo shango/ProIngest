@@ -93,15 +93,6 @@ class AppSettings:
     batch that shipped.
     """
 
-    color_session_folder: str = ""
-    """Where the Ingest chooser opens (FR-12, Colour).
-
-    The folder, not the session: which session a turnover was ingested from lives on
-    the turnover (OQ-50). This is the same kind of thing as `last_folder` - a starting
-    point for a dialog - kept separately because a colour session and a turnover live
-    nowhere near each other on the mount.
-    """
-
     log_level: str = logsetup.name_of(logsetup.DEFAULT_LEVEL)
     """How much the tool writes to its log and its Log tab (FR-12, Advanced).
 
@@ -162,7 +153,6 @@ class AppSettings:
             "show_pattern": self.show_pattern,
             "path_map": dict(self.path_map),
             "rules": dict(self.rules),
-            "color_session_folder": self.color_session_folder,
             "log_level": self.log_level,
             "ffmpeg_path": self.ffmpeg_path,
             "reference_crf": self.reference_crf,
@@ -181,7 +171,6 @@ class AppSettings:
             show_pattern=str(data.get("show_pattern", "")),
             path_map={str(k): str(v) for k, v in dict(data.get("path_map", {})).items()},
             rules=dict(data.get("rules", {})),
-            color_session_folder=str(data.get("color_session_folder", "")),
             log_level=logsetup.name_of(logsetup.level_of(str(data.get("log_level", "")))),
             ffmpeg_path=str(data.get("ffmpeg_path", "")),
             reference_crf=int(data.get("reference_crf", REFERENCE_CRF)),

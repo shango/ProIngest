@@ -739,7 +739,7 @@ class ShotListModel(QAbstractItemModel):
         """An override, or none at all when the cell is emptied.
 
         Emptying it puts the parsed code back rather than leaving the row nameless: the
-        override is a correction of what `naming.parse_clip_name` read, and withdrawing a
+        override is a correction of what the CSV's `Shot` gave, and withdrawing a
         correction means the original stands.
         """
         override = text.strip() or None

@@ -32,7 +32,7 @@ from __future__ import annotations
 
 import logging
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 import PyOpenColorIO as ocio
@@ -45,7 +45,6 @@ from proingest.core.models import (
     MediaInfo,
     ShotRow,
     SourceEncodingOrigin,
-    Turnover,
 )
 
 log = logging.getLogger(__name__)
@@ -235,83 +234,6 @@ def load_session(
 ) -> ColorSession:
     """Read the final EDL. It is the whole session as far as this tool is concerned."""
     return ColorSession(edl_path=edl_path, events=read_final_edl(edl_path, rate))
-
-
-@dataclass(frozen=True)
-class IngestReport:
-    """What ingesting one turnover's colour session did to its rows.
-
-    Returned rather than logged because every list on it is something a person acts on:
-    an unmatched row will not render and an overwritten trim is work the editor has just
-    lost. The rules report the same facts at run time (QC-008, QC-009); this reports them
-    at the moment the editor can still do something about them.
-    """
-
-    edl_path: Path
-    events: int
-    matched: list[str] = field(default_factory=list)
-    graded: list[str] = field(default_factory=list)
-    """Rows the session left a grade for: a CDL on the event (`has_grade`)."""
-
-    overwritten: list[str] = field(default_factory=list)
-    """Rows whose one-off trim the approved In/Out replaced. PRD section 6 step 4: the
-    session's cut wins and the tool says so, rather than keeping a trim the AD never saw."""
-
-    unmatched: list[str] = field(default_factory=list)
-
-    @property
-    def counts(self) -> str:
-        """What the ingest did, in the one phrase every surface says it in."""
-        return f"{len(self.matched)} rows matched, {len(self.graded)} graded"
-
-    def notices(self) -> list[tuple[str, list[str]]]:
-        """The three lists a person acts on, labelled, and only where there is anything.
-
-        The labels live here rather than in each caller because the CLI and the window
-        both report an ingest and the editor compares what the two said.
-        """
-        lists = (
-            ("no event", self.unmatched),
-            ("trim overwritten by the approved cut", self.overwritten),
-        )
-        return [(label, sorted(names)) for label, names in lists if names]
-
-
-def ingest(turnover: Turnover, rows: list[ShotRow], session: ColorSession) -> IngestReport:
-    """Write what the colour session says onto a turnover and its rows. PRD section 6 step 4.
-
-    **The session is read once, here, and never again.** What it said travels on the
-    model afterwards - the approved In/Out and the CDL - so a batch
-    reopened after the package has been archived plans the same grade, and the planner
-    needs no session at all. The turnover keeps the EDL's location as the record of
-    where the answers came from.
-
-    **The approved cut wins over a trim already made.** Ben and the AD trimmed in the
-    session and that is the cut that was signed off, so `current` is written from
-    `approved` and the rows that lost a trim are named in the report (FR-5). A trim made
-    *after* an ingest is the supported one-off, and QC-045 is what reports it.
-
-    A row the session says nothing about keeps everything it had. Nothing here guesses:
-    an unmatched row is reported, not conformed to its neighbour's event.
-    """
-    report = IngestReport(edl_path=session.edl_path, events=len(session.events))
-    turnover.color_session_edl = session.edl_path
-    for row in rows:
-        event = session.event_for(row)
-        if event is not None:
-            report.matched.append(row.clip_name)
-            approved = approved_in_out(event, row.media) if row.media else None
-            row.cdl = event.cdl
-            if approved is not None:
-                if row.current is not None and row.current != approved:
-                    report.overwritten.append(row.clip_name)
-                row.approved = approved
-                row.current = approved
-        else:
-            report.unmatched.append(row.clip_name)
-        if has_grade(row):
-            report.graded.append(row.clip_name)
-    return report
 
 
 def shot_color(row: ShotRow) -> ShotColor:

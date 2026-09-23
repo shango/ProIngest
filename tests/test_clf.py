@@ -16,16 +16,15 @@ import numpy as np
 import PyOpenColorIO as ocio
 import pytest
 
-from proingest.core import clf, color, naming
+from proingest.core import clf, color
 from proingest.core.models import (
     CDL,
     FrameRate,
-    InOut,
     MediaInfo,
     ShotRow,
     SourceEncodingOrigin,
-    Turnover,
 )
+from tests.fixtures.names import identity_of
 
 RATE_24 = FrameRate(24)
 
@@ -85,7 +84,7 @@ def row(
     return ShotRow(
         turnover_id="turnover001",
         clip_name=clip_name,
-        identity=naming.parse_clip_name(clip_name),
+        identity=identity_of(clip_name),
         source_encoding=source_encoding,
         source_encoding_origin=source_encoding_origin,
         media=MediaInfo(
@@ -428,87 +427,18 @@ class TestShotColor:
         assert pickle.loads(pickle.dumps(shot_color)) == shot_color
 
 
-def ingested(tmp_path: Path, *rows: ShotRow) -> Turnover:
-    """Ingest the fixture session into a turnover holding `rows`, and hand it back."""
-    turnover = Turnover(turnover_id="turnover001", folder=tmp_path)
-    clf.ingest(turnover, list(rows), clf.load_session(edl(tmp_path), RATE_24))
-    return turnover
-
-
-class TestIngest:
-    """What the session writes onto the model, which is the only thing a run reads."""
-
-    def test_it_records_where_the_session_was(self, tmp_path: Path) -> None:
-        turnover = ingested(tmp_path, row())
-        assert turnover.color_session_edl == edl(tmp_path)
-
-    def test_a_matched_row_takes_the_approved_in_out(self, tmp_path: Path) -> None:
-        scanned = row()
-        ingested(tmp_path, scanned)
-        assert scanned.approved == InOut(8, 223)
-        assert scanned.current == scanned.approved
-
-    def test_the_approved_cut_overwrites_a_trim_and_says_so(self, tmp_path: Path) -> None:
-        """PRD section 6 step 4: the cut the AD signed off wins, and the editor is told."""
-        scanned = row()
-        scanned.current = InOut(10, 200)
-        turnover = Turnover(turnover_id="turnover001", folder=tmp_path)
-        report = clf.ingest(turnover, [scanned], clf.load_session(edl(tmp_path), RATE_24))
-        assert report.overwritten == ["MELT0001_pl01"]
-        assert scanned.current == InOut(8, 223)
-
-    def test_a_trim_that_already_agrees_is_not_reported(self, tmp_path: Path) -> None:
-        scanned = row()
-        scanned.current = InOut(8, 223)
-        turnover = Turnover(turnover_id="turnover001", folder=tmp_path)
-        report = clf.ingest(turnover, [scanned], clf.load_session(edl(tmp_path), RATE_24))
-        assert report.overwritten == []
-
-    def test_a_matched_row_records_the_cdl(self, tmp_path: Path) -> None:
-        scanned = row()
-        ingested(tmp_path, scanned)
-        assert scanned.cdl is not None
-        assert scanned.cdl.saturation == pytest.approx(1.05)
-
-    def test_a_row_the_session_never_heard_of_is_left_alone_and_reported(self, tmp_path: Path) -> None:
-        """Nothing here conforms a row to its neighbour's event."""
-        scanned = row("MELT0009_pl01")
-        scanned.current = InOut(5, 100)
-        turnover = Turnover(turnover_id="turnover001", folder=tmp_path)
-        report = clf.ingest(turnover, [scanned], clf.load_session(edl(tmp_path), RATE_24))
-        assert report.unmatched == ["MELT0009_pl01"]
-        assert scanned.approved is None
-        assert scanned.current == InOut(5, 100)
-
-    def test_a_row_with_a_cdl_counts_as_graded(self, tmp_path: Path) -> None:
-        """The CDL is the whole grade; there are no per-shot grade files (2026-09-22)."""
-        scanned = row()
-        turnover = Turnover(turnover_id="turnover001", folder=tmp_path)
-        report = clf.ingest(turnover, [scanned], clf.load_session(edl(tmp_path), RATE_24))
-        assert report.graded == ["MELT0001_pl01"]
-        assert report.counts == "1 rows matched, 1 graded"
-
-    def test_it_counts_what_it_matched_and_what_it_graded(self, tmp_path: Path) -> None:
-        turnover = Turnover(turnover_id="turnover001", folder=tmp_path)
-        rows = [row(), row("MELT0009_pl01")]
-        report = clf.ingest(turnover, rows, clf.load_session(edl(tmp_path), RATE_24))
-        assert report.matched == ["MELT0001_pl01"]
-        assert report.graded == ["MELT0001_pl01"]
-        assert report.events == 2
-
-
 class TestShotColorFromRow:
     """`clf.shot_color` is the one place a row becomes a chain, ingested or not."""
 
     def test_a_matched_row_carries_its_cdl(self, tmp_path: Path) -> None:
         scanned = row()
-        ingested(tmp_path, scanned)
+        event = clf.load_session(edl(tmp_path), RATE_24).event_for(scanned)
+        assert event is not None
+        scanned.cdl = event.cdl
         assert clf.shot_color(scanned).cdl is not None
 
-    def test_a_row_the_session_never_heard_of_gets_the_ungraded_chain(self, tmp_path: Path) -> None:
-        scanned = row("MELT0009_pl01")
-        ingested(tmp_path, scanned)
-        assert clf.shot_color(scanned).cdl is None
+    def test_a_row_with_no_cdl_gets_the_ungraded_chain(self) -> None:
+        assert clf.shot_color(row("MELT0009_pl01")).cdl is None
 
     def test_the_source_encoding_comes_off_the_row(self, tmp_path: Path) -> None:
         """A per clip fact, so the session neither carries it nor is asked for it."""

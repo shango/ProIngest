@@ -265,15 +265,6 @@ def available_decoders(ffmpeg: Path | None = None) -> frozenset[str]:
     return frozenset(names)
 
 
-def has_nvenc(ffmpeg: Path | None = None) -> bool:
-    """Whether NVENC H.264 encoding is compiled in.
-
-    Presence in the build does not prove a working NVIDIA GPU is attached; FR-7 wants
-    detection at startup, and an actual encode attempt is the only real proof.
-    """
-    return "h264_nvenc" in available_encoders(ffmpeg)
-
-
 # --- YCbCr to RGB and back. D17 of the 2026-09-23 review. ---
 
 DEFAULT_MATRIX = "bt709"

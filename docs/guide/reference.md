@@ -65,8 +65,8 @@ the files went.
 ## The shot list
 
 One row per shot, grouped under a header naming the turnover folder and counting what is under
-it. **Space** on a header collapses it. Order is timeline order within a turnover and cannot be
-changed; **⌘F** and the search box narrow the list to a shot code fragment, keeping the header
+it. **Space** on a header collapses it. Order is the metadata CSV's order within a turnover and
+cannot be changed; **⌘F** and the search box narrow the list to a shot code fragment, keeping the header
 above whatever survives.
 
 The first three columns - the dot, Shot and Elem - **stay put while the rest scrolls sideways**,
@@ -77,7 +77,7 @@ so a row can still be identified while reading a column at the far right of it.
 | dot | the row's state, below |
 | **Shot** | the shot code. **Yours to edit** |
 | Elem | which element of the shot this is: `pl` main plate, `cp` clean plate, `el` element, `wit` witness cam, `re` recon |
-| Source | the media file the timeline clip resolved to |
+| Source | the media file the CSV's `File Name` resolved to |
 | Res | its resolution |
 | FPS | its frame rate |
 | **In** | first delivered frame. **Yours to edit** |
@@ -85,10 +85,9 @@ so a row can still be identified while reading a column at the far right of it.
 | Dur | how long the delivery is, from In and Out |
 | Max | how much there is to work with, handles included |
 | Audio | whether sound was found, and how much |
-| Side | which extras were found: HDRI, camData, stills |
 | Ver | which version this shot is at |
 | Progress | jobs done over jobs planned, during a run |
-| **Notes** | free text, and it goes to the tracker. **Yours to edit** |
+| **Notes** | free text, kept with the batch. The tracker has no Notes column. **Yours to edit** |
 
 ### The dot
 
@@ -147,9 +146,8 @@ typing instant, and saves a moment later. A batch that has never been saved asks
 ![The metadata pane](images/metadata-pane.png)
 
 Everything known about the selected shot that has no column: codec, pixel format, start
-timecode, file sizes, the camera data, the turnover, and the paths themselves. Nine sections -
-Identity, Source media, Frame rate, Range, Colour, Audio, Side files, Turnover and QC - each
-collapsible and each remembering whether you shut it.
+timecode, file sizes, the turnover, and the paths themselves. Eight sections - Identity, Source
+media, Frame rate, Range, Colour, Audio, Turnover and QC - each collapsible and each remembering whether you shut it.
 
 - **Read only**, always. The list owns every edit, so there is one place a value can be changed
   and one place validation can disagree with itself.
@@ -176,7 +174,7 @@ Rule numbers are stable and never change meaning, so `QC-030` means the same thi
 window, in the log and in the spreadsheet. `docs/QC_RULES.md` is the full list.
 
 Checks run in two passes. The first is about the turnover **before** anything is written -
-format, resolution, ranges, handles, audio, side files - and re-runs every time you edit a row.
+format, resolution, ranges, handles, audio - and re-runs every time you edit a row.
 The second is about each delivered file the moment it lands, and it is the one that catches a
 render that went wrong rather than a source that arrived wrong.
 
@@ -201,9 +199,9 @@ Time, level, shot and message, over a filter bar: a minimum level, a search box,
 
 ## The Deliverables tab
 
-What the selected shot delivers: one line per output - the two EXR sequences, the two mp4s, the
-wav, each side file - with its kind, resolution, version, status, frame count, size, the rule
-numbers it failed if any, and the path. Select several shots and it lists all of theirs.
+What the selected shot delivers: one line per output - a plate's two EXR sequences and two mp4s,
+a main plate's wav, a reference still's one EXR - with its kind, resolution, version, status,
+frame count, size, the rule numbers it failed if any, and the path. Select several shots and it lists all of theirs.
 
 - **Read only.** A run writes deliverables; nothing else does.
 - **Double-click a line to open the folder it is in.**
@@ -274,9 +272,8 @@ month therefore cannot silently re-judge a batch that shipped last week.
 plausible - the same rule as In and Out.
 
 There is **no colour mode and no source encoding setting**: each clip's own metadata names what
-it is encoded in. And where the colour session lives is not here either - it is ingested per
-turnover and kept with the batch, because it is a record of what that work was rendered from
-rather than a preference.
+it is encoded in. And there is nothing to choose for the grade either: the cut and the grade are
+the `.edl` in the turnover folder, read at every scan, and the batch records which file it read.
 
 ## Every shortcut
 

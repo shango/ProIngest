@@ -12,7 +12,7 @@ The docs are the spec. `PROGRESS.md` is the state. When code and docs disagree, 
 ## Ground rules
 - Core logic lives in `proingest/core/` and must not import Qt. The UI in `proingest/ui/` is a thin layer over core. Everything in core must be testable headless.
 - No rendering inside the UI thread. Long work runs in a worker process pool and reports progress through queues/signals.
-- Frame math is integer only. Never store or compare timecode as floats. Use `opentimelineio.opentime.RationalTime` at the boundary and integers internally. The project rate is 24 and is asserted, not read: an EDL states no frame rate.
+- Frame math is integer only. Never store or compare timecode as floats. Integers throughout, and timecode is converted only at the boundary (`core/frames.py`). The project rate is 24 and is asserted, not read: an EDL states no frame rate.
 - Every deliverable is written atomically: render to a temp name in the destination folder, verify, then rename. A crash must never leave a file that looks finished.
 - Every check in `docs/QC_RULES.md` has a stable rule ID (e.g. `QC-012`). Log messages, row warnings, and spreadsheet exports reference the ID.
 - Output names come only from `proingest/core/naming.py`. No string formatting of filenames anywhere else.

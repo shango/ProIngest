@@ -10,7 +10,6 @@ import pytest
 from proingest.__main__ import _ProgressPrinter, main
 from proingest.core import batchfile, color, exr, qc, render
 from proingest.core.models import Batch, QCResult
-from tests.fixtures import color as color_fixtures
 from tests.fixtures import media as fixtures
 
 FOLDER = "turnover001_02_23_2026_danielluckett"
@@ -161,10 +160,6 @@ class TestRunCommand:
         assert main(["scan", str(folder), "--rules", str(rules), "--save", str(batch_path)]) == 0
         return batch_path
 
-    def graded(self, tmp_path: Path) -> list[str]:
-        """The flags a run needs to produce anything: QC-008 refuses one without them."""
-        return ["--color-session", str(color_fixtures.make_session(tmp_path / "session"))]
-
     def test_a_dry_run_prints_the_plan_and_writes_nothing(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
@@ -172,7 +167,7 @@ class TestRunCommand:
         delivery = tmp_path / "delivery"
 
         argv = ["run", str(batch_path), "--delivery-root", str(delivery), "--dry-run"]
-        assert main(argv + self.graded(tmp_path)) == 0
+        assert main(argv) == 0
         out = capsys.readouterr().out
         assert "MELT0001_pl01_raw_4k_v01" in out
         assert "deliverables from 1 shots" in out
@@ -185,7 +180,7 @@ class TestRunCommand:
         delivery = tmp_path / "delivery"
 
         argv = ["run", str(batch_path), "--delivery-root", str(delivery), "--jobs", "2"]
-        assert main(argv + self.graded(tmp_path)) == 0
+        assert main(argv) == 0
         out = capsys.readouterr().out
 
         shot = delivery / "MELT" / "MELT0001"
@@ -199,7 +194,7 @@ class TestRunCommand:
     def test_the_run_is_recorded_back_into_the_batch_file(self, tmp_path: Path) -> None:
         batch_path = self.scanned(tmp_path)
         argv = ["run", str(batch_path), "--delivery-root", str(tmp_path / "delivery")]
-        main(argv + self.graded(tmp_path))
+        main(argv)
 
         batch = batchfile.load(batch_path)
         done = [d for row in batch.rows for d in row.deliverables if d.status == "done"]
@@ -263,52 +258,17 @@ class TestRunCommand:
         assert "delivery root" in capsys.readouterr().err
 
 
-class TestColorSession:
-    """`run --color-session` is where the colour session package comes in until the
+class TestTheGrade:
+    """The grade comes from the EDL in the turnover folder, read at scan (OQ-74)."""
 
-    Settings page holds it (PRD section 7). The run has to work without one, and with
-    one the grade has to reach the file rather than just the command line.
-    """
-
-    def scanned(self, tmp_path: Path) -> Path:
+    def test_the_grade_reaches_the_delivered_frames(self, tmp_path: Path) -> None:
         folder = tmp_path / FOLDER
         fixtures.make_turnover(folder, shots=1, frames=4)
         rules = fixtures.write_rules_file(tmp_path / "rules.json")
         batch_path = tmp_path / "batch.pibatch"
         assert main(["scan", str(folder), "--rules", str(rules), "--save", str(batch_path)]) == 0
-        return batch_path
-
-    def session(self, tmp_path: Path) -> Path:
-        """A final EDL with the CDL, and one cube overriding it, laid out as the session exports them."""
-        folder = tmp_path / "session"
-        folder.mkdir()
-        edl = folder / "MELT_FINAL_v01.edl"
-        edl.write_text(
-            "TITLE: MELT_FINAL_v01\nFCM: NON-DROP FRAME\n\n"
-            "001  MELT0001 V     C        01:00:00:00 01:00:00:04 01:00:00:00 01:00:00:04\n"
-            "* FROM CLIP NAME: MELT0001_pl01.exr\n"
-            "*ASC_SOP (1.020000 0.990000 1.010000)"
-            "(0.001000 -0.002000 0.000000)(0.980000 1.000000 1.020000)\n"
-            "*ASC_SAT 1.050000\n"
-        )
-        return edl
-
-    def test_the_grade_reaches_the_delivered_frames(
-        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        batch_path = self.scanned(tmp_path)
         delivery = tmp_path / "delivery"
-        main(
-            [
-                "run",
-                str(batch_path),
-                "--delivery-root",
-                str(delivery),
-                "--color-session",
-                str(self.session(tmp_path)),
-            ]
-        )
-        assert "colour session: 1 events, 1 with a CDL" in capsys.readouterr().out
+        main(["run", str(batch_path), "--delivery-root", str(delivery)])
 
         frame = next((delivery / "MELT" / "MELT0001" / "MELT0001_pl01_raw_4k_v01").iterdir())
         with OpenEXR.File(str(frame)) as handle:
@@ -316,24 +276,9 @@ class TestColorSession:
         assert header[exr.CDL_ATTRIBUTES[-1]] == exr.CDL_NOTE_APPLIED
         assert header[exr.COLORSPACE_ATTRIBUTE] == color.PLATE_SPACE
 
-    def test_an_unreadable_edl_stops_the_run_before_anything_is_written(
-        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        batch_path = self.scanned(tmp_path)
-        delivery = tmp_path / "delivery"
-        code = main(
-            [
-                "run",
-                str(batch_path),
-                "--delivery-root",
-                str(delivery),
-                "--color-session",
-                str(tmp_path / "nothing.edl"),
-            ]
-        )
-        assert code == 2
-        assert "could not read" in capsys.readouterr().err
-        assert not delivery.exists()
+    def test_there_is_no_colour_session_flag_any_more(self) -> None:
+        with pytest.raises(SystemExit):
+            main(["run", "x.pibatch", "--color-session", "final.edl"])
 
 
 class TestQcCommand:
@@ -346,20 +291,8 @@ class TestQcCommand:
         rules = fixtures.write_rules_file(tmp_path / "rules.json")
         batch_path = tmp_path / "batch.pibatch"
         delivery = tmp_path / "delivery"
-        session = color_fixtures.make_session(tmp_path / "session")
         main(["scan", str(folder), "--rules", str(rules), "--save", str(batch_path)])
-        main(
-            [
-                "run",
-                str(batch_path),
-                "--delivery-root",
-                str(delivery),
-                "--jobs",
-                "2",
-                "--color-session",
-                str(session),
-            ]
-        )
+        main(["run", str(batch_path), "--delivery-root", str(delivery), "--jobs", "2"])
         return batch_path, delivery
 
     def test_both_sheets_land_in_the_show_s_reports_folder(

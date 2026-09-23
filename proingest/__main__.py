@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from proingest import __version__
-from proingest.core import batchfile, clf, color, exports, logsetup, naming, planner, qc, render, scan
+from proingest.core import batchfile, clf, exports, logsetup, naming, planner, qc, render, scan
 from proingest.core.models import DEFAULT_WORKERS, Batch, Deliverable, ShotRow, Turnover
 
 COLUMNS = ("STATUS", "SHOT", "ELEM", "SOURCE", "RES", "FPS", "IN", "OUT", "DUR", "MAX", "AUDIO")
@@ -59,12 +59,6 @@ def main(argv: list[str] | None = None) -> int:
     )
     run_parser.add_argument("--dry-run", action="store_true", help="print the plan and write nothing")
     run_parser.add_argument("--show-pattern", default=naming.DEFAULT_SHOW_PATTERN, help=pattern_help)
-    run_parser.add_argument(
-        "--color-session",
-        type=Path,
-        metavar="EDL",
-        help="the colour session's final EDL, whose events carry the CDL; any cubes beside it are found too",
-    )
 
     qc_parser = subparsers.add_parser("qc", help="write the QC log and shot tracker for a batch")
     qc_parser.add_argument("batch", type=Path, help="a .pibatch file")
@@ -88,7 +82,6 @@ def main(argv: list[str] | None = None) -> int:
             args.delivery_root,
             args.jobs,
             args.dry_run,
-            args.color_session,
             args.show_pattern,
         )
 
@@ -179,7 +172,6 @@ def _run(
     delivery_root: Path | None,
     jobs: int,
     dry_run: bool,
-    color_session: Path | None = None,
     show_pattern: str = naming.DEFAULT_SHOW_PATTERN,
 ) -> int:
     """Plan a saved batch and render it.
@@ -187,20 +179,12 @@ def _run(
     Planning happens here rather than at scan time because the version depends on what
     is in the delivery folder at the moment the run starts (NAMING_SPEC section 4).
 
-    `--color-session` ingests the session package into every turnover, which is the same
-    step the window offers (PRD section 6 step 4): it writes the approved In/Out, the CDL
-    and the CLF onto the rows, and the plan reads them from there. Any must-fix stops
-    the run before anything is planned (`qc.must_fix`).
+    The cut and the grade were read at scan from the EDL in the turnover folder and are
+    on the rows. Any must-fix stops the run before anything is planned (`qc.must_fix`).
     """
     try:
         batch = batchfile.load(batch_path)
     except batchfile.BatchFileError as exc:
-        print(f"error: {exc}", file=sys.stderr)
-        return 2
-
-    try:
-        _ingest_color_session(batch, color_session)
-    except (clf.ColorSessionError, color.ColorError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
 
@@ -244,33 +228,6 @@ def _run(
         return 2
 
     return _report_run(written, batch_path)
-
-
-def _ingest_color_session(batch: Batch, edl_path: Path | None) -> None:
-    """Read the colour session package and ingest it into every turnover.
-
-    One package for the whole batch, because a command line run is one delivery: the
-    window is where a turnover is ingested on its own (`Turnover.color_session_edl`).
-
-    The EDL's timecode is read at one rate and a batch can carry more than one (OQ-19
-    reopened this), so the rate is taken from the first row that has media and the
-    choice is printed rather than assumed silently.
-    """
-    if edl_path is None:
-        return
-    rates = [row.media.rate for row in batch.rows if row.media is not None]
-    if not rates:
-        raise clf.ColorSessionError("no row has media, so there is no rate to read the EDL at")
-    if len({str(rate) for rate in rates}) > 1:
-        print(f"note: the batch carries more than one rate; reading the EDL at {rates[0]}")
-    session = clf.load_session(edl_path, rates[0])
-    with_cdl = sum(event.cdl is not None for event in session.events)
-    print(f"colour session: {len(session.events)} events, {with_cdl} with a CDL")
-    for turnover in batch.turnovers:
-        report = clf.ingest(turnover, batch.rows_for(turnover.turnover_id), session)
-        print(f"  {turnover.turnover_id}: {report.counts}")
-        for label, names in report.notices():
-            print(f"    {label}: {', '.join(names)}")
 
 
 def _qc(

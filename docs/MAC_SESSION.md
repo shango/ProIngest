@@ -39,6 +39,23 @@ Do not rent for any of these. Listed because the instinct to rent is usually wro
   validation colouring, docks, metadata pane and theme are all built and iterated locally.
   Only the platform-specific surface below needs a Mac.
 
+## The 0.5.0 build, in order (2026-09-23)
+
+What the review of 2026-09-23 changed, checked on the editor's Mac with the real folder. The old
+chunk 7 of `docs/TO_A_WORKING_BUILD.md`, in the order that wastes least.
+
+- [ ] Download `ProIngest-0.5.0.dmg` from the CI run of the pushed branch (the `package-macos`
+      job's artifact) and install it as `docs/guide/install.md` says. Do not build it locally.
+- [ ] **The acceptance test.** Point the tool at `Turnover199`. Scan: five rows, each with a shot
+      code, a clip type, an encoding, an approved In/Out and a CDL, and **no must-fix** (Run is
+      not refused). Run: twelve deliverables land, named to the spec, verified, and both
+      spreadsheets are written. The tracker has one line, `TEST0002`.
+- [ ] Work the four 2026-09-23 lines at the end of Session 2 below: the reference against its
+      wav (chunk B), colour against Resolve (chunk G), locks and a moved folder (chunk E), and
+      failure and re-run (chunk D).
+- [ ] Neither shell script (`build/mac_build.sh`, `ProIngest.command`) has ever run on a Mac;
+      CI does the same steps from its own YAML. Run `./ProIngest.command` once from a clone.
+
 ## Session 1: a rented Mac, one day, at the end of M5
 
 ### Do not rent until all of these are true
@@ -315,20 +332,20 @@ Treat it as a working session with the editor rather than a delivery.
       `⌘R`, so every line is shorter there than the width test assumes. What a test cannot
       judge: whether two lines is right for a greyed button, whether the shortcut belongs on the
       first line or looks like part of the sentence, and whether the note on an enabled Run
-      ("no colour session ingested yet") reads as helpful or as nagging. UI_SPEC section 1.
-- [ ] **Play one 0.4.0 reference mp4 against its wav and its EXRs on the Mac** (2026-09-23, chunk B).
+      ("no EDL with a CDL has been read yet") reads as helpful or as nagging. UI_SPEC section 1.
+- [ ] **Play one reference mp4 against its wav and its EXRs on the Mac** (2026-09-23, chunk B).
   Every real file is 24000/1001 and is now delivered at 24 frame for frame, with the sound sped up
   0.1% by `atempo` to follow it. Measured on Linux with ffmpeg 6.1: `r_frame_rate` 24/1, the same
   frames bit for bit, the wav exactly the plate's length, the mp4 timecode the In frame's. Confirm
   on the bundled 9.0.1 that QC-113 passes, the timecode tag reads the EXR's first `timeCode`, and
   the sound stays in sync to the last frame of a long plate.
-- **Chunk G, colour and format (2026-09-23).** Every decode now states its matrix and range, and a
+- [ ] **Chunk G, colour and format (2026-09-23).** Every decode now states its matrix and range, and a
   file with no matrix tag is decoded as BT.709 (D17, provisional). Measured on Linux with ffmpeg
   6.1; the suite's `test_a_pure_red_reference_measures_bt709` and
   `test_an_untagged_bt709_file_decodes_to_its_primary` pin it on CI. By eye on the Mac: open
   `TEST0002_pl01_ref_HD_v01.mp4` beside the same frame in Resolve's viewer and say whether the
   colours agree; saturated reds and greens are where a matrix error shows.
-- **Chunk E, locks and recovery (2026-09-23).** On the Mac, with the real turnover: (1) press Run
+- [ ] **Chunk E, locks and recovery (2026-09-23).** On the Mac, with the real turnover: (1) press Run
   and try to edit a cell, press Ctrl+K, click the delivery root, open Settings: all refused until
   the banner shows. (2) The window stays responsive while "Checking the batch" and "Writing the QC
   log" are on the strip, with the delivery root on the Drive mount. (3) Save the batch, quit, move
@@ -336,7 +353,7 @@ Treat it as a working session with the editor rather than a delivery.
   header, New Folder Location..., pick the moved folder: the rows come back with their trims and
   skips. (4) Right-click on the frozen left columns of a header works as well as on the rest.
   (5) Close during a run: the window closes within a few seconds of the run stopping.
-- **Chunk D, failure and re-run (2026-09-23).** On the Mac: (1) Run the real turnover twice; the
+- [ ] **Chunk D, failure and re-run (2026-09-23).** On the Mac: (1) Run the real turnover twice; the
   second Run says nothing to render and each row carries QC-061. (2) Right-click a shot, Re-run,
   Run: that shot alone comes back at v02. (3) Force a failure (for instance make the delivery
   folder read-only part way through, or delete a source clip) and check nothing under a final

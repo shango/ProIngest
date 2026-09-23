@@ -9,7 +9,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from proingest.core import naming
 from proingest.core.models import (
     CDL,
     Batch,
@@ -21,6 +20,7 @@ from proingest.core.models import (
     ShotRow,
     Turnover,
 )
+from tests.fixtures.names import identity_of
 
 RATE_24 = FrameRate(24)
 ONE_HOUR = 86400
@@ -58,7 +58,7 @@ def row(
     built = ShotRow(
         turnover_id=turnover_id,
         clip_name=clip_name,
-        identity=naming.parse_clip_name(clip_name),
+        identity=identity_of(clip_name),
         source_encoding="ACEScct",
         media=media(path=Path(f"/turnover/{clip_name}.mov")),
         record_in=record_in,

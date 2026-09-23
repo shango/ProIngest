@@ -104,7 +104,7 @@ class TestThePages:
 
     def test_it_has_no_em_dashes(self, page: Path) -> None:
         """CLAUDE.md, and the guide is the document most likely to be pasted elsewhere."""
-        assert "—" not in text_of(page)
+        assert "\u2014" not in text_of(page)
 
 
 def test_the_button_table_is_the_tooltips_word_for_word() -> None:

@@ -18,22 +18,7 @@ CLEAN = ShotIdentity(shot_code="MELT0001", kind="cp", index="01")
 CHART = ShotIdentity(shot_code="MELT0001", kind="colorChart", index="01")
 
 
-class TestParseClipName:
-    def test_plate(self) -> None:
-        assert naming.parse_clip_name("MELT0001_pl01") == PLATE
-
-    @pytest.mark.parametrize("elem_type", naming.ELEMENT_TYPES)
-    def test_every_element_type(self, elem_type: str) -> None:
-        parsed = naming.parse_clip_name(f"MELT0001_{elem_type}01")
-        assert parsed is not None
-        assert parsed.kind == elem_type
-
-    @pytest.mark.parametrize("aux", naming.AUX_NAMES)
-    def test_an_aux_name_reads_as_a_still_keyed_to_the_shot(self, aux: str) -> None:
-        """The element it used to hang off is dropped: a still is a peer of a plate now."""
-        parsed = naming.parse_clip_name(f"MELT0001_pl01_{aux}_01")
-        assert parsed == ShotIdentity(shot_code="MELT0001", kind=aux, index="01")
-
+class TestShotIdentity:
     def test_derived_properties(self) -> None:
         assert PLATE.shot_code == "MELT0001"
         assert PLATE.show == "MELT"
@@ -48,32 +33,6 @@ class TestParseClipName:
         assert CHART.show == "MELT"
         with pytest.raises(ValueError, match="reference still"):
             _ = CHART.stem
-
-    @pytest.mark.parametrize(
-        "name",
-        [
-            "",
-            "MELT0001",  # no element
-            "melt0001_pl01",  # show must be upper case
-            "MELT001_pl01",  # shot is exactly four digits
-            "MELT00001_pl01",
-            "MELT0001_xx01",  # unknown type
-            "MELT0001_pl1",  # index is exactly two digits
-            "MELT0001_pl01_extra",
-            "MELT0001_pl01_colorChart",  # aux needs an index
-            "MELT0001_pl01_bogus_01",
-            "M0001_pl01",  # show is at least two characters
-            "TOOLONGSHOW0001_pl01",
-            " MELT0001_pl01",
-            "MELT0001_pl01 ",
-        ],
-    )
-    def test_rejects_invalid(self, name: str) -> None:
-        assert naming.parse_clip_name(name) is None
-
-    def test_configurable_show_pattern(self) -> None:
-        assert naming.parse_clip_name("XY0001_pl01", show_pattern=r"[A-Z]{2}") is not None
-        assert naming.parse_clip_name("MELT0001_pl01", show_pattern=r"[A-Z]{2}") is None
 
 
 class TestParseShotType:
@@ -322,6 +281,5 @@ class TestDeliveryLayout:
     def test_shot_dir(self) -> None:
         assert naming.shot_dir(Path("/d"), PLATE) == Path("/d/MELT/MELT0001")
 
-    def test_turnovers_and_reports_sit_beside_shots(self) -> None:
-        assert naming.turnovers_dir(Path("/d"), "MELT") == Path("/d/MELT/_turnovers")
+    def test_reports_sit_beside_shots(self) -> None:
         assert naming.reports_dir(Path("/d"), "MELT") == Path("/d/MELT/_reports")

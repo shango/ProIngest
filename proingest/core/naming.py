@@ -102,14 +102,6 @@ class ShotIdentity:
         return f"{self.shot_code}_{self.elem}"
 
 
-def _clip_pattern(show_pattern: str) -> re.Pattern[str]:
-    return re.compile(
-        rf"^(?P<show>{show_pattern})(?P<shot>\d{{4}})"
-        rf"_(?P<type>{_TYPES})(?P<idx>\d{{2}})"
-        rf"(?:_(?P<aux>{_AUX}|BTS)_(?P<auxidx>\d{{2}}))?$"
-    )
-
-
 def parse_shot_type(written: str) -> tuple[str, str] | None:
     """A `Shot Type` value as (kind, index), or None when it names nothing we deliver.
 
@@ -131,36 +123,6 @@ def parse_shot_type(written: str) -> tuple[str, str] | None:
     if kind is None:
         return None
     return kind, (match["index"] or "1").zfill(2)
-
-
-def parse_clip_name(name: str, show_pattern: str = DEFAULT_SHOW_PATTERN) -> ShotIdentity | None:
-    """Parse a timeline clip name into the new identity. Returns None when it does not match.
-
-    **Interim.** The shooters do not rename clips and identity arrives in the CSV, so
-    nothing in the real workflow reaches this. It survives only until chunk 3 rebuilds
-    the scan on the CSV, and it is kept rather than deleted early so the suite stays
-    green across one commit rather than two.
-
-    An old-style name naming an aux still reads as that still, keyed to the shot code:
-    `MELT0001_pl01_colorChart_01` is `colorChart` 01 of `MELT0001`, and the element it
-    used to hang off is dropped, because that is the contract now.
-    """
-    match = _clip_pattern(show_pattern).match(name)
-    if match is None:
-        return None
-    if match["aux"] is not None and match["aux"] != "BTS":
-        return ShotIdentity(
-            shot_code=f"{match['show']}{match['shot']}",
-            kind=match["aux"],
-            index=match["auxidx"] or "01",
-        )
-    if match["aux"] is not None:
-        return None
-    return ShotIdentity(
-        shot_code=f"{match['show']}{match['shot']}",
-        kind=match["type"],
-        index=match["idx"],
-    )
 
 
 def parse_shot_code(code: str, show_pattern: str = DEFAULT_SHOW_PATTERN) -> tuple[str, str] | None:
@@ -223,10 +185,6 @@ def aux_still_exr(identity: ShotIdentity, version: int) -> str:
 
 def shot_dir(delivery_root: Path, identity: ShotIdentity) -> Path:
     return delivery_root / identity.show / identity.shot_code
-
-
-def turnovers_dir(delivery_root: Path, show: str) -> Path:
-    return delivery_root / show / "_turnovers"
 
 
 def reports_dir(delivery_root: Path, show: str) -> Path:

@@ -2,7 +2,7 @@
 
 Source of truth: the shooters' spec PDF. This doc restates it as rules the code follows. All output names are produced by `core/naming.py`.
 
-## 1. Timeline clip name (input contract)
+## 1. Shot identity (input contract)
 
 > **Settled, 2026-09-21 (OQ-62, OQ-70, OQ-72).** The shooters do not rename clips. Files and
 > timeline clips keep the camera's names (`C0145.MP4`), and identity arrives as metadata, through
@@ -17,14 +17,13 @@ Source of truth: the shooters' spec PDF. This doc restates it as rules the code 
 > - **A bare code means index `01`.** `pl` is `pl01`. Each shot code has exactly one of each
 >   reference still, so a bare `colorChart` is `colorChart_01`. `pl02` and `cp02` still occur.
 > - **Parsing is case insensitive**, because the shooters do not keep the camel case. Output
->   always uses the spelling in this document. This is safe rather than lenient: the ten codes
+>   always uses the spelling in this document. This is safe rather than lenient: the nine codes
 >   are distinct when casefolded, so nothing is ambiguous.
 > - **Clean plate is accepted as either `cl` or `cp` and always written `cp`** (OQ-72).
 >
 > **Built 2026-09-22.** `naming.ShotIdentity` is `(shot_code, kind, index)`, `naming.parse_shot_type`
 > carries the three reading rules, and `core/metacsv.py` assembles an identity from the two CSV
-> fields. `naming.parse_clip_name` survives only until the scan is rebuilt on the CSV, and is
-> marked interim in its own docstring.
+> fields. The scan is built on the CSV, and nothing parses a clip name.
 
 
 ```
@@ -32,24 +31,25 @@ Source of truth: the shooters' spec PDF. This doc restates it as rules the code 
 MELT0001_pl01
 ```
 
-Regex (show prefix configurable, default `[A-Z]{2,6}`):
+The two fields are read separately (show prefix configurable, default `[A-Z]{2,6}`):
 
 ```
-^(?P<show>[A-Z]{2,6})(?P<shot>\d{4})_(?P<type>pl|cp|el|wit|re)(?P<idx>\d{2})(?:_(?P<aux>colorChart|mirrorBall|greyBall|sizeRef|BTS)_(?P<auxidx>\d{2}))?$
+Shot        ^(?P<show>[A-Z]{2,6})(?P<shot>\d{4})$
+Shot Type   ^(?P<kind>[A-Za-z]+)(?P<index>\d{1,2})?$   kind, casefolded, one of
+            pl cp el wit re colorChart mirrorBall greyBall sizeRef   (cl accepted as cp)
 ```
 
 - `show` + `shot` = shot code (`MELT0001`).
-- `type` + `idx` = element id (`pl01`).
-- Optional `aux` marks a single-frame reference still. **Changed 2026-09-21 by the shooters' updated spec**: a reference still is keyed to the **shot code**, not to an element, and its delivered name no longer carries one.
+- `kind` + `index` = element id (`pl01`), the index zero-padded to two digits and `01` when bare.
+- A `kind` that is one of the four reference stills marks a single-frame reference still. **Changed 2026-09-21 by the shooters' updated spec**: a reference still is keyed to the **shot code**, not to an element, and its delivered name no longer carries one.
 
   ```
   new   MELT0001_colorChart_01_4k_v01.exr
   old   MELT0001_pl01_colorChart_01_4k_v01.exr
   ```
 
-  Same for `mirrorBall`, `greyBall`, `sizeRef` and `BTS`. `naming.aux_still_exr` and `naming.bts_image` build these from `ShotIdentity.stem` (`MELT0001_pl01`) today and must build from the shot code instead, and the `aux_still` and `bts` patterns in `_output_patterns` must match without the element segment. Both directions change together, because QC-151 round-trips them.
-- Lens grid clips use a different pattern: `^(?P<camera>[A-Za-z0-9]+)_(?P<lens>[A-Za-z0-9\-]+)_lensgrid_(?P<mm>\d+)mm$` and are turnover-level, not shot-level.
-- Anything that matches nothing is a QC-010 error on the row; the row still appears so the editor can fix the name in place.
+  Same for `mirrorBall`, `greyBall` and `sizeRef`. `naming.aux_still_exr` builds these from the shot code, and the `aux_still` pattern in `_output_patterns` matches without the element segment, so QC-151 round-trips them.
+- A `Shot Type` that is none of the nine, or a `Shot` that is blank or not a shot code, is a QC-010 error on the row; the row still appears so the editor can see it, and correct a shot code in place (section 6). A clip with no `Shot Type` at all is not a row: it is ignored and counted by QC-064.
 
 ## 2. Type table
 
@@ -61,15 +61,11 @@ Regex (show prefix configurable, default `[A-Z]{2,6}`):
 | wit | witness cam | raw 4k, raw HD, ref 4k, ref HD |
 | re | recon plate | raw 4k, raw HD, ref 4k, ref HD |
 | aux still | reference still, keyed to the shot code | single 4k exr, converted and never graded |
-| BTS | behind the scenes, phone stills | **nothing** (user, 2026-09-22) |
-| lensgrid | lens distortion chart | **nothing. Ben delivers it** (user, 2026-09-22, closing OQ-20) |
 
-**Side files are not deliverables** (2026-09-22). HDRI, camData, BTS stills and the lens grid
-folder all arrive in the turnover and none of them carries a `Shot Type`, which is the whole of
-the tool's scope, so the tool neither copies nor renames nor reads any of them. They are Ben's or
-they are manual. What this removes: the `*HDRI*.exr` and `*camData*.txt|rtf` discovery, their
-templates in section 3, `core/camdata.py`, and QC-050, QC-051, QC-052, QC-053, QC-054, QC-056 and
-QC-057. Noted because the studio's own sheet marks **HDRI and Camera Data as Required**, so they
+**Nothing else is a deliverable** (2026-09-22). HDRI, camData, BTS stills, the lens grid and the
+stringout carry no `Shot Type`, which is the whole of the tool's scope, so the tool neither
+reads, copies nor renames any of them; they are Ben's or they are manual. `BTS` and `lensgrid` are
+not types either: a `Shot Type` of either is unrecognised and QC-010 (D5). Noted because the studio's own sheet marks **HDRI and Camera Data as Required**, so they
 still have to reach the vendor; they reach it without passing through this tool.
 
 ## 3. Output filename templates
@@ -82,12 +78,9 @@ Tokens: `{shotcode}` `{elem}` `{kind}` `{res}` `{ver}` `{frame}` `{aux}` `{auxid
 | raw exr folder | `{shotcode}_{elem}_raw_{res}_v{ver}` | `MELT0001_pl01_raw_4k_v01` |
 | ref mp4 | `{shotcode}_{elem}_ref_{res}_v{ver}.mp4` | `MELT0001_pl01_ref_HD_v01.mp4` |
 | audio | `{shotcode}_{elem}_audio_v{ver}.wav` | `MELT0001_pl01_audio_v01.wav` |
-| ~~HDRI~~ | ~~`{shotcode}_{elem}_HDRI_v{ver}.exr`~~ | **REMOVED 2026-09-22**, with the deliverable. The tool does not deliver an HDRI |
-| ~~camData~~ | ~~`{shotcode}_{elem}_camData_v{ver}.{ext}`~~ | **REMOVED 2026-09-22**, with the deliverable. The tool does not deliver camData |
 | aux still exr | `{shotcode}_{aux}_{auxidx}_4k_v{ver}.exr` | `MELT0001_colorChart_01_4k_v01.exr`. **No element segment** (shooters' spec, 2026-09-21): a reference still is keyed to the shot code |
-| ~~BTS~~ | ~~`{shotcode}_{elem}_BTS_{auxidx}_v{ver}.{ext}`~~ | **REMOVED 2026-09-22**, with the deliverable. The tool does not deliver BTS |
-| ~~lens grid~~ | ~~`{camera}_{lens}_lensgrid_{mm}mm_v{ver}.png`~~ | **REMOVED 2026-09-22**, with the deliverable. **Ben delivers the lens grid** (OQ-20 closed) |
-| ~~stringout~~ | ~~`turnover{tno:03d}_{MM}_{DD}_{YYYY}_{firstnamelastname}_v{ver}.mp4`~~ | **REMOVED 2026-09-22**, with the deliverable. **The tool does nothing with the stringout**: it does not build, read, transcode, rename or check one (user, 2026-09-22). Ben produces and exports it. `naming.stringout_mp4`, its parser branch and OQ-41's checker question all go |
+
+The HDRI, camData, BTS, lens grid and stringout templates were removed on 2026-09-22 with the deliverables (section 2).
 
 `{res}` is `4k` or `HD` exactly. `{ver}` is two digits. `{frame}` is four digits starting at 1001.
 
@@ -142,7 +135,7 @@ The editor may correct a shot code in the list (typo from the shooter). The tool
 
 QC-151 requires every written deliverable to re-parse from its filename back to the same shot code, element, kind, resolution and version that the planner intended. The section 3 templates are therefore a two-way contract: `naming.build_*` writes them and `naming.parse_output_name` reads them. Both live in `core/naming.py` and are tested against the same example table.
 
-`{kind}` is the literal segment that identifies the deliverable (`raw`, `ref`, `audio`, `HDRI`, `camData`, `BTS`, `lensgrid`, or one of the aux names). It is not a free variable; the token list in section 3 names it only so the type table and the parser can talk about it.
+`{kind}` is the literal segment that identifies the deliverable (`raw`, `ref`, `audio`, or one of the aux names). It is not a free variable; the token list in section 3 names it only so the type table and the parser can talk about it.
 
 Shared fragments:
 
@@ -153,7 +146,7 @@ res       (?P<res>4k|HD)
 ver       v(?P<ver>\d{2})
 ```
 
-One anchored pattern per kind, tried in order. They are mutually exclusive because the literal kind segment differs, so a match is unambiguous. `<sc>` below stands for `shotcode_elem` joined with `_`.
+One anchored pattern per kind, tried in order. They are mutually exclusive because the literal kind segment differs, so a match is unambiguous. `<sc>` below stands for `shotcode_elem` joined with `_`, and `<shotcode>` for the shot code alone.
 
 | kind | pattern |
 |---|---|
@@ -161,15 +154,8 @@ One anchored pattern per kind, tried in order. They are mutually exclusive becau
 | raw exr folder | `^<sc>_raw_(?P<res>4k\|HD)_v(?P<ver>\d{2})$` |
 | ref mp4 | `^<sc>_ref_(?P<res>4k\|HD)_v(?P<ver>\d{2})\.mp4$` |
 | audio | `^<sc>_audio_v(?P<ver>\d{2})\.wav$` |
-| HDRI | `^<sc>_HDRI_v(?P<ver>\d{2})\.exr$` |
-| camData | `^<sc>_camData_v(?P<ver>\d{2})\.(?P<ext>txt\|rtf)$` |
-| aux still exr | `^<sc>_(?P<aux>colorChart\|mirrorBall\|greyBall\|sizeRef)_(?P<auxidx>\d{2})_4k_v(?P<ver>\d{2})\.exr$` |
-| BTS | `^<sc>_BTS_(?P<auxidx>\d{2})_v(?P<ver>\d{2})\.(?P<ext>png\|jpg\|jpeg)$` |
-| lens grid | `^(?P<camera>[A-Za-z0-9]+)_(?P<lens>[A-Za-z0-9\-]+)_lensgrid_(?P<mm>\d+)mm_v(?P<ver>\d{2})\.png$` |
-| stringout | `^turnover(?P<tno>\d{3})_(?P<mm>\d{2})_(?P<dd>\d{2})_(?P<yyyy>\d{4})_(?P<shooter>[a-z0-9]+)_v(?P<ver>\d{2})\.mp4$` | **Checker side blocked on OQ-41**: this accepts none of the 55 real names.
+| aux still exr | `^<shotcode>_(?P<aux>colorChart\|mirrorBall\|greyBall\|sizeRef)_(?P<auxidx>\d{2})_4k_v(?P<ver>\d{2})\.exr$` |
 
 The `show` prefix pattern is the same configurable value as section 1, so a Settings change applies to both directions at once.
-
-Shooter name: the stringout pattern only accepts lowercase alphanumerics, so the builder normalizes the turnover-level shooter field (lowercase, strip everything outside `a-z0-9`) before substituting it. `Daniel Luckett` and `daniel-luckett` both become `danielluckett`. The unnormalized value is kept on the turnover for the tracker and QC log. See OQ-15.
 
 Version discovery (section 4) uses the same patterns: an entry in the shot folder counts as an existing version if it parses as any deliverable this tool writes, not only as the kind being planned, because section 4 versions the shot rather than the individual output. This is what keeps a stray file from inflating the version number, and it is why `.part` names can never match.

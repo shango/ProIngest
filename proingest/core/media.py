@@ -15,7 +15,6 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
-from urllib.parse import unquote, urlparse
 
 from proingest.core import exr, ffmpeg
 from proingest.core.models import AudioInfo, FrameRate, MediaInfo
@@ -166,11 +165,6 @@ class DirectoryIndex:
             if entry.stem.casefold() == key and entry.suffix in AUDIO_EXTENSIONS
         ]
 
-    def containing(self, fragment: str) -> list[FileEntry]:
-        """Single files whose name contains `fragment`. Used for HDRI and camData."""
-        lowered = fragment.lower()
-        return [entry for entry in self.singles if lowered in entry.name.lower()]
-
 
 def index_directory(root: Path) -> DirectoryIndex:
     """Walk `root` once and group image sequences.
@@ -219,22 +213,6 @@ def index_directory(root: Path) -> DirectoryIndex:
 
 
 # --- Path mapping, FR-2. ---
-
-
-def url_to_path(url: str) -> Path:
-    """Turn an OTIO `target_url` into a local path.
-
-    Resolve writes either a plain path or a `file://` URL depending on platform and
-    version, so both are accepted.
-    """
-    if url.startswith("file://"):
-        parsed = urlparse(url)
-        raw = unquote(parsed.path)
-        # A Windows URL looks like file:///G:/media, leaving a leading slash to drop.
-        if re.match(r"^/[A-Za-z]:", raw):
-            raw = raw[1:]
-        return Path(raw)
-    return Path(url)
 
 
 def remap(path: Path, path_map: dict[str, str]) -> Path:

@@ -32,7 +32,6 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
-from tests.fixtures import color as color_fixtures  # noqa: E402
 from tests.fixtures import media as media_fixtures  # noqa: E402
 
 SHOW = "MELT"
@@ -102,12 +101,7 @@ def check_spawn_argument_is_intercepted(executable: Path) -> None:
 
 
 def check_scan(executable: Path, work: Path) -> Path:
-    """Scan a fixture turnover. This is the OpenTimelineIO check.
-
-    Reading the `.otio` goes through otio's `otio_json` adapter, which otio finds
-    through a plugin manifest and an entry point rather than an import. Both are things
-    freezing drops by default, and neither failure is visible before this line.
-    """
+    """Scan a fixture turnover: the EDL, the metadata CSV and ffprobe, in the frozen app."""
     folder = work / "turnover001_09_13_2026_shooterA"
     media_fixtures.make_turnover(folder, shots=1, frames=FRAMES)
     rules = media_fixtures.write_rules_file(work / "rules.json")
@@ -124,9 +118,8 @@ def check_run(executable: Path, work: Path, batch: Path) -> Path:
     """Render the batch through a real worker pool and a real colour transform.
 
     Everything the tool is for passes through here: the spawn pool, ffmpeg, OpenEXR,
-    OpenColorIO's built-in ACES config, and the CLF the session package carries.
+    OpenColorIO's built-in ACES config, and the CDL the turnover's EDL carries.
     """
-    session = color_fixtures.make_session(work / "session")
     delivery = work / "delivery"
     out = run_step(
         executable,
@@ -135,8 +128,6 @@ def check_run(executable: Path, work: Path, batch: Path) -> Path:
             str(batch),
             "--delivery-root",
             str(delivery),
-            "--color-session",
-            str(session),
             "--jobs",
             "2",
         ],

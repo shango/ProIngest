@@ -169,30 +169,6 @@ def is_plate(row: ShotRow) -> bool:
     return row.identity is not None and row.identity.kind == "pl"
 
 
-# --- turnover rules ---------------------------------------------------------------
-
-
-def check_timeline_rate(
-    turnover: Turnover, timeline_rate: FrameRate, project_rate: FrameRate
-) -> list[QCResult]:
-    """QC-025: the timeline's rate must be the project rate.
-
-    Everything is set to the project rate in Resolve before export, so a timeline
-    that says otherwise means the conform did not take.
-    """
-    if timeline_rate == project_rate:
-        return []
-    return [
-        QCResult(
-            "QC-025",
-            "error",
-            "turnover",
-            f"timeline is {timeline_rate} fps but the project is {project_rate} fps; "
-            f"every clip should have been conformed in Resolve before export",
-        )
-    ]
-
-
 # --- source format rules ----------------------------------------------------------
 
 _DEPTH_PATTERN = re.compile(r"(\d+)(?:le|be)?$")
@@ -522,9 +498,9 @@ def check_audio_presence(row: ShotRow) -> list[QCResult]:
     """QC-040 and QC-041: a plate with no audio, or with more than one candidate.
 
     Only the plate delivers audio (`planner.AUDIO_TYPES`), so only the plate is asked
-    whether it has any. More than one overlapping clip is a warning on any row, because
-    the association picked the first, and which one it should have been is a human
-    question.
+    whether it has any. More than one audio file matching the clip's name is a warning
+    on any row: the scan uses none of them rather than guess, and which one it should
+    have been is a human question.
     """
     results: list[QCResult] = []
     # Audio inside the plate's own file is audio: it was delivered and reported
@@ -538,7 +514,7 @@ def check_audio_presence(row: ShotRow) -> list[QCResult]:
                 "QC-041",
                 "warning",
                 "row",
-                f"{row.audio_clip_count} audio clips overlap this clip; the first was used",
+                f"{row.audio_clip_count} audio files match this clip's name, so none was used",
             )
         )
     return results

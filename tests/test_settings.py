@@ -81,7 +81,6 @@ class TestRoundTrip:
                 show_pattern="ABC",
                 path_map={"G:/media": "/Volumes/drive"},
                 rules={"min_duration_frames": 11},
-                color_session_folder="/Volumes/drive/colour",
             ),
             path,
         )
@@ -90,7 +89,6 @@ class TestRoundTrip:
         assert loaded.show_pattern == "ABC"
         assert loaded.path_map == {"G:/media": "/Volumes/drive"}
         assert loaded.rules == {"min_duration_frames": 11}
-        assert loaded.color_session_folder == "/Volumes/drive/colour"
 
     def test_the_two_output_fields_survive(self, tmp_path: Path) -> None:
         """M5.12, additive for the same reason: the schema version does not move."""

@@ -8,11 +8,33 @@ commit.
 
 ## 1. Resume here
 
-**State at 2026-09-16. Every feature milestone is built, and so is packaging.** M1 to M4
-complete, M4.5 all four chunks, M4.6 all five, **M5 all twelve**, **M7**, and **M9.4**.
-**1739 tests**, `ruff`, `ruff format` and `mypy --strict` clean over `proingest tests build`.
-What is left is **M8 polish** (needs a real turnover and a real colour session) and the rest
-of **M9, the user guide**.
+**State at 2026-09-23, version 0.5.0. The review of 2026-09-23 is worked through: chunks A to
+H of `docs/REVIEW_2026-09-23.md` section 5 are all built**, each in its own commit with the entry
+below. The real turnover, `Turnover199`, scans with no must-fix and renders every deliverable.
+What is left is the Mac: `docs/MAC_SESSION.md`, "The 0.5.0 build, in order", starting with the
+acceptance test on the editor's machine. The branch `color/cdl-in-acescct` is **not pushed**; the
+user pushes it, and CI builds `ProIngest-0.5.0.dmg`. The entries below are newest first; anything
+older than 2026-09-22 describes the tool before the review and is history.
+
+**2026-09-23, chunk H: cleanup, docs, and 0.5.0.** **Dead code out**: `clf.ingest` and
+`IngestReport`, `proingest run --color-session` (the scan reads the EDL; a scanned batch is
+graded), `naming.parse_clip_name` and its BTS pattern (now `tests/fixtures/names.identity_of`,
+the tests' shorthand), `qc.check_timeline_rate` (QC-025 was already retired), `ffmpeg.has_nvenc`,
+`media.url_to_path`, `DirectoryIndex.containing`, `naming.turnovers_dir`,
+`frames.output_frame_for`, the `color_session_folder` setting, and **the `opentimelineio` and
+`otio-cmx3600-adapter` dependencies** with their bundling (`build/bundle.py`, PACKAGING.md;
+CLAUDE.md's frame math rule no longer names otio). **`ffmpeg.tool_info` was not dead**: PACKAGING
+wants the ffmpeg version in every QC log and nothing put it there; the Summary sheet now does.
+**The QC log's Shots sheet has a Notes column**, which UI_SPEC section 2 and D14 promised.
+QC-041's message now says what the scan does (several matching wavs: none used). **Docs**:
+ARCHITECTURE.md's module list is rewritten from the files; PRD, UI_SPEC, NAMING_SPEC, QC_RULES and
+the guide no longer describe side files, BTS, the lens grid, the stringout, a timeline input or
+the ingest step. `HANDOFF.md` is deleted and section 1 opens on today's state. **0.5.0** in the
+four places, `uv.lock` relocked. `docs/MAC_SESSION.md` opens the Mac work with "The 0.5.0
+build, in order". **Verified**: the suite, and on `Turnover199` the CLI reports 0.5.0, plans
+nothing on a complete batch, and writes a QC log naming the ffmpeg build. **Left open**: PRD
+FR-10's three In/Out columns against the log's two, QC-043/120/121 still describing the wav as a
+byte copy, and FR-1's "refuse an M2 motion effect" (OQ-63), which is not built.
 
 **2026-09-23, chunk D: failure and re-run.** **A deliverable is verified on its temp and renamed
 only when it passes** (D11, F11): `render_job` runs phase B on a copy of the job pointed at the

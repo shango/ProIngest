@@ -14,7 +14,7 @@ from pathlib import Path
 import pytest
 from openpyxl import load_workbook
 
-from proingest.core import exports, naming, qc
+from proingest.core import exports, qc
 from proingest.core.models import (
     AudioInfo,
     Batch,
@@ -26,6 +26,7 @@ from proingest.core.models import (
     ShotRow,
     Turnover,
 )
+from tests.fixtures.names import identity_of
 
 RATE_24 = FrameRate(24)
 RATE_2398 = FrameRate(24000, 1001)
@@ -48,7 +49,7 @@ def row(clip_name: str = "MELT0001_pl01", rate: FrameRate = RATE_24, **kwargs: o
     built = ShotRow(
         turnover_id="turnover001",
         clip_name=clip_name,
-        identity=naming.parse_clip_name(clip_name),
+        identity=identity_of(clip_name),
         media=MediaInfo(
             path=Path("/turnover/MELT0001_pl01.mov"),
             codec="prores",
@@ -134,6 +135,11 @@ class TestQcLogSheets:
     @pytest.fixture
     def log(self, tmp_path: Path) -> Path:
         return exports.write_qc_log(batch_of(row()), tmp_path / "log.xlsx", date(2026, 9, 11))
+
+    def test_the_summary_records_the_ffmpeg_version(self, log: Path) -> None:
+        """PACKAGING.md: every QC log names the ffmpeg that made the deliverables."""
+        summary = {line[0]: line[1] for line in sheet_rows(log, "Summary")}
+        assert "ffmpeg version" in str(summary["ffmpeg"]).lower()
 
     def test_the_three_sheets_the_spec_names(self, log: Path) -> None:
         """Three since 2026-09-22: Side Files and Camera Data went with the deliverables
@@ -254,7 +260,7 @@ class TestShotTracker:
         target = row()
         target.deliverables = [d for d in target.deliverables if d.res != "HD"]
         written = exports.write_shot_tracker(batch_of(target), tmp_path / "t.xlsx")
-        assert sheet_rows(written, "Shots")[1][7] == "4K ✓\nHD —"
+        assert sheet_rows(written, "Shots")[1][7] == "4K ✓\nHD \u2014"
 
     def test_the_stringout_column_is_left_for_a_human(self, tracker: Path) -> None:
         """OQ-41: the grammar the tool would rebuild it from matches none of the real names."""

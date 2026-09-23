@@ -170,13 +170,6 @@ def sections() -> tuple[Section, ...]:
             COLOUR,
             (
                 Field(
-                    "app.color_session_folder",
-                    "Ingest opens at",
-                    "folder",
-                    "Where the colour session chooser starts. Which session a "
-                    "turnover was ingested from is kept on the turnover, not here.",
-                ),
-                Field(
                     "readonly.config",
                     "ACES config",
                     "readonly",
@@ -315,7 +308,6 @@ def to_values(app: AppSettings, rules: qc.RuleSettings) -> dict[str, Any]:
         "app.workers": app.workers,
         "app.path_map": dict(app.path_map),
         "app.show_pattern": app.show_pattern,
-        "app.color_session_folder": app.color_session_folder,
         "app.log_level": app.log_level,
         "app.ffmpeg_path": app.ffmpeg_path,
         "app.reference_crf": app.reference_crf,
@@ -354,7 +346,6 @@ def apply_values(
     app.workers = int(values.get("app.workers", app.workers))
     app.path_map = dict(values.get("app.path_map", app.path_map))
     app.show_pattern = str(values.get("app.show_pattern", app.show_pattern))
-    app.color_session_folder = str(values.get("app.color_session_folder", app.color_session_folder))
     app.log_level = logsetup.name_of(logsetup.level_of(str(values.get("app.log_level", app.log_level))))
     app.ffmpeg_path = str(values.get("app.ffmpeg_path", app.ffmpeg_path))
     app.reference_crf = int(values.get("app.reference_crf", app.reference_crf))
