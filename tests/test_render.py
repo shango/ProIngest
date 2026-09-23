@@ -589,6 +589,23 @@ class TestReferenceMp4:
         assert video_stream(job.destination)["codec_name"] == "h264"
         assert deliverable.status == "done"
 
+    def test_a_24000_1001_file_is_delivered_at_24_frame_for_frame(self, tmp_path: Path) -> None:
+        """Every real file states 24000/1001 (user, 2026-09-23). QC-113 refused all four
+        references of the real turnover before the encode read the file as 24."""
+        source = fixtures.make_mov(tmp_path / "src" / "plate.mov", count=8, rate="24000/1001")
+        job = replace(ref_job(tmp_path, source, 2, 5), source_rate=NTSC)
+        render.render_job(job)
+        assert video_stream(job.destination)["r_frame_rate"] == "24/1"
+        assert ffmpeg.count_frames(job.destination) == 4
+
+    def test_the_reference_carries_the_in_frames_timecode(self, tmp_path: Path) -> None:
+        """Not the file's start, which is the head of the handles. The EXRs carry the In."""
+        source = fixtures.make_mov(tmp_path / "src" / "plate.mov", count=8)
+        job = replace(ref_job(tmp_path, source, 2, 5), source_start_frame=0)
+        render.render_job(job)
+        tags = video_stream(job.destination).get("tags", {})
+        assert isinstance(tags, dict) and tags.get("timecode") == "01:00:00:02"
+
     def test_an_exr_sequence_reference_plays_at_the_timeline_rate(self, tmp_path: Path) -> None:
         """The image2 demuxer defaults to 25, so this is the `-framerate` trap."""
         fixture = fixtures.make_exr_sequence(tmp_path / "src", count=6, first=1001)
@@ -678,6 +695,43 @@ class TestReferenceMp4:
             render.render_job(job)
         assert not job.destination.exists()
         assert not job.temp.exists()
+
+
+NTSC = FrameRate(24000, 1001)
+
+
+class TestTrimmedAudio:
+    """D2: the wav is the plate's range, sped up to follow the picture played at 24."""
+
+    def audio_job(self, tmp_path: Path, source: Path, in_frame: int, out_frame: int) -> DeliverableJob:
+        return DeliverableJob(
+            kind="audio",
+            source=source,
+            destination=tmp_path / "out" / "MELT0001_pl01_audio_v01.wav",
+            version=1,
+            shot_code="MELT0001",
+            elem="pl01",
+            in_frame=in_frame,
+            out_frame=out_frame,
+            rate=FPS,
+            source_rate=NTSC,
+        )
+
+    def test_the_wav_is_exactly_the_plates_length_at_24(self, tmp_path: Path) -> None:
+        source = fixtures.make_mov(tmp_path / "src" / "p.mov", count=48, rate="24000/1001", with_audio=True)
+        job = self.audio_job(tmp_path, source, 24, 35)
+        deliverable = render.render_job(job)
+        assert deliverable.status == "done", deliverable.qc
+        assert media.probe_audio(job.destination).duration_samples == 12 * 48000 // 24
+
+    def test_the_skip_is_measured_at_the_files_own_rate(self, tmp_path: Path) -> None:
+        job = self.audio_job(tmp_path, Path("p.mov"), 24, 35)
+        assert render._audio_skip(job) == pytest.approx(24 * 1001 / 24000)
+        assert render._audio_tempo(job) == pytest.approx(1.001)
+
+    def test_a_file_already_at_24_is_not_retimed(self, tmp_path: Path) -> None:
+        job = replace(self.audio_job(tmp_path, Path("p.mov"), 24, 35), source_rate=FPS)
+        assert render._audio_tempo(job) == 1.0
 
 
 class TestAudioAlignment:

@@ -411,8 +411,20 @@ def decode_frames(
 # --- Extracting audio out of a container. COLOR_AND_FORMAT section 3. ---
 
 
-def extract_audio_command(source: Path, destination: Path, ffmpeg: Path | None = None) -> list[str]:
+def extract_audio_command(
+    source: Path,
+    destination: Path,
+    ffmpeg: Path | None = None,
+    skip: float = 0.0,
+    tempo: float = 1.0,
+    duration: float | None = None,
+) -> list[str]:
     """Pull the first audio stream out as PCM 16 bit.
+
+    With a `duration`, the sound is cut to the picture: `skip` seconds dropped off the
+    front, sped up by `tempo` so it follows a picture played at 24 (1.001 for a
+    24000/1001 file), and padded or cut to exactly `duration` seconds. `atempo` keeps the
+    pitch. The numbers come from integer frames in `core/render.py`.
 
     Neither `-ar` nor `-ac` is passed, which is what "no resampling" means: the sample
     rate and the channel count arrive on the output exactly as they were on the input,
@@ -431,11 +443,13 @@ def extract_audio_command(source: Path, destination: Path, ffmpeg: Path | None =
         "error",
         "-nostdin",
         "-y",
+        *(["-ss", f"{skip:.6f}"] if skip > 0 else []),
         "-i",
         str(source),
         "-vn",
         "-map",
         "0:a:0",
+        *(["-af", _audio_fit(tempo, duration)] if duration is not None else []),
         "-c:a",
         "pcm_s16le",
         "-f",
@@ -444,9 +458,22 @@ def extract_audio_command(source: Path, destination: Path, ffmpeg: Path | None =
     ]
 
 
-def extract_audio(source: Path, destination: Path, ffmpeg: Path | None = None) -> None:
+def _audio_fit(tempo: float, duration: float) -> str:
+    """Speed the sound up to the picture's rate, then make it exactly `duration` long."""
+    fit = f"apad,atrim=duration={duration:.6f}"
+    return fit if tempo == 1.0 else f"atempo={tempo:.9f},{fit}"
+
+
+def extract_audio(
+    source: Path,
+    destination: Path,
+    ffmpeg: Path | None = None,
+    skip: float = 0.0,
+    tempo: float = 1.0,
+    duration: float | None = None,
+) -> None:
     """Run the extract, raising FFmpegError with ffmpeg's own complaint on failure."""
-    result = run(extract_audio_command(source, destination, ffmpeg))
+    result = run(extract_audio_command(source, destination, ffmpeg, skip, tempo, duration))
     if result.returncode != 0:
         raise FFmpegError(f"extracting audio from {source} failed: {result.stderr.strip()}")
 
@@ -548,6 +575,8 @@ def encode_command(
     audio_skip: float = 0.0,
     ffmpeg: Path | None = None,
     crf: int | None = None,
+    audio_tempo: float = 1.0,
+    timecode: str | None = None,
 ) -> list[str]:
     """The command that encodes `[in_frame, out_frame]` to one reference mp4.
 
@@ -560,9 +589,16 @@ def encode_command(
     - **`rate` is passed as `-framerate` before a sequence input.** The image2 demuxer
       states no rate of its own and defaults to **25**, so without this every reference
       built from an EXR or DPX sequence plays 4% fast with nothing in the log.
+    - **`rate` is passed as `-r` before a container input too**, which makes ffmpeg read
+      the file as that rate frame for frame. The shooters' files are 24000/1001 and every
+      deliverable is written at 24 (user, 2026-09-23); without it the mp4 kept 23.976
+      and QC-113 refused all four references. Measured: the same frames come out, bit
+      for bit, and restamping after the trim with `setpts` left the encoder at 23.976.
     - **`setpts=PTS-STARTPTS` follows the trim.** `trim` keeps the source timestamps,
       so the first delivered frame lands at its original offset and the mp4 opens with
       a gap that long. Measured: four frames at 24 came out 0.25s instead of 0.17s.
+    - **`timecode` is the In frame's**, stated with `-timecode`, because otherwise the
+      muxer copies the source's start timecode, which is the head of the handles.
     - **`-f mp4` is stated.** The output is a `.part` path, so there is no extension to
       infer a muxer from. This is the same trap `extract_audio_command` documents.
 
@@ -585,6 +621,7 @@ def encode_command(
         command += ["-framerate", rate, "-start_number", str(in_frame)]
     else:
         # end_frame is exclusive, so it is the first frame past the range.
+        command += ["-r", rate]
         filters += [
             f"trim=start_frame={in_frame}:end_frame={out_frame + 1}",
             "setpts=PTS-STARTPTS",
@@ -647,8 +684,10 @@ def encode_command(
             "-b:a",
             REFERENCE_AUDIO_BITRATE,
             "-af",
-            f"apad,atrim=duration={_seconds(count, rate):.6f}",
+            _audio_fit(audio_tempo, _seconds(count, rate)),
         ]
+    if timecode is not None:
+        command += ["-timecode", timecode]
     return [*command, "-movflags", "+faststart", "-f", "mp4", str(destination)]
 
 
@@ -678,6 +717,8 @@ def encode_reference(
     audio: Path | None = None,
     audio_skip: float = 0.0,
     ffmpeg: Path | None = None,
+    audio_tempo: float = 1.0,
+    timecode: str | None = None,
 ) -> None:
     """Run the reference encode, raising FFmpegError with ffmpeg's own complaint.
 
@@ -697,6 +738,8 @@ def encode_reference(
         audio,
         audio_skip,
         ffmpeg,
+        audio_tempo=audio_tempo,
+        timecode=timecode,
     )
     result = run(command, timeout=ENCODE_TIMEOUT)
     if result.returncode != 0:

@@ -105,9 +105,15 @@ def make_mov(
     with_audio: bool = False,
     codec: str = "prores_ks",
     profile: str = "4",
+    rate: str | None = None,
 ) -> Path:
-    """A ProRes 4444 mov, one of the source formats COLOR_AND_FORMAT section 2 accepts."""
+    """A ProRes 4444 mov, one of the source formats COLOR_AND_FORMAT section 2 accepts.
+
+    `rate` overrides `fps` with an exact fraction, for `24000/1001`, which is what every
+    real delivered file states."""
     path.parent.mkdir(parents=True, exist_ok=True)
+    numerator, _, denominator = (rate or str(fps)).partition("/")
+    seconds = count * int(denominator or 1) / int(numerator)
     command = [
         "ffmpeg",
         "-hide_banner",
@@ -117,10 +123,10 @@ def make_mov(
         "-f",
         "lavfi",
         "-i",
-        f"testsrc2=size={size[0]}x{size[1]}:rate={fps}:duration={count / fps}",
+        f"testsrc2=size={size[0]}x{size[1]}:rate={rate or fps}:duration={seconds}",
     ]
     if with_audio:
-        command += ["-f", "lavfi", "-i", f"sine=frequency=440:duration={count / fps}:sample_rate=48000"]
+        command += ["-f", "lavfi", "-i", f"sine=frequency=440:duration={seconds}:sample_rate=48000"]
     command += ["-c:v", codec, "-profile:v", profile, "-pix_fmt", "yuva444p10le"]
     if with_audio:
         command += ["-c:a", "pcm_s16le", "-ac", "2"]

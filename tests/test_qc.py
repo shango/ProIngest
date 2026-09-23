@@ -149,8 +149,13 @@ class TestSourceRate:
     def test_a_row_with_no_media_is_skipped(self) -> None:
         assert qc.check_source_rate(ShotRow(turnover_id="t1", clip_name="x"), RATE_24) == []
 
-    def test_ntsc_source_against_a_24_project_is_flagged(self) -> None:
-        assert ids(qc.check_source_rate(row(stated=NTSC), RATE_24)) == ["QC-026"]
+    def test_ntsc_source_against_a_24_project_is_the_normal_conform(self) -> None:
+        """Every real file states 24000/1001 and is rendered at 24 (user, 2026-09-23)."""
+        assert qc.check_source_rate(row(stated=NTSC), RATE_24) == []
+
+    def test_25_fps_against_a_24_project_is_an_error(self) -> None:
+        results = qc.check_source_rate(row(stated=FrameRate(25)), RATE_24)
+        assert ids(results) == ["QC-026"] and results[0].severity == "error"
 
 
 class TestAudioSync:

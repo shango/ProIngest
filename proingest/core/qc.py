@@ -569,8 +569,18 @@ def check_audio_sync(
     ]
 
 
+def _pulled_down(rate: FrameRate) -> FrameRate:
+    """`rate` slowed by 1000/1001: 24000/1001 for 24. Exact, never a float comparison."""
+    return FrameRate(rate.numerator * 1000, rate.denominator * 1001)
+
+
 def check_source_rate(row: ShotRow, project_rate: FrameRate) -> list[QCResult]:
-    """QC-026: media that states a rate must state the project rate.
+    """QC-026: media that states a rate must state the project rate, or its 1000/1001.
+
+    **24000/1001 against 24 is the normal case and is silent** (user, 2026-09-23). The
+    shooters set every clip to 24 in Resolve, which is a timeline property: Copy with trim
+    does not rewrite the file, so every delivered file states 24000/1001 and is rendered
+    at 24 frame for frame. Any other rate, 25 or 30, is an error and the row does not run.
 
     Frame math already follows the timeline, so an odd rate here does not corrupt
     the output. It does mean this particular file escaped the conform, so the file
@@ -580,7 +590,7 @@ def check_source_rate(row: ShotRow, project_rate: FrameRate) -> list[QCResult]:
     """
     if row.media is None or row.media.stated_rate is None:
         return []
-    if row.media.stated_rate == project_rate:
+    if row.media.stated_rate in (project_rate, _pulled_down(project_rate)):
         return []
     return [
         QCResult(
@@ -1359,7 +1369,10 @@ def _top_level_boxes(path: Path, limit: int = 32) -> list[str]:
 def _verify_audio(job: DeliverableJob, deliverable: Deliverable) -> list[QCResult]:
     """QC-120 and QC-121: the delivered wav against the source it came from."""
     results: list[QCResult] = []
-    if job.source.suffix.lower() == WAV_SUFFIX:
+    if job.in_frame is not None and job.rate is not None:
+        # Cut to the picture (user, 2026-09-23), so it is compared to the picture.
+        results.extend(_check_trimmed_duration(job))
+    elif job.source.suffix.lower() == WAV_SUFFIX:
         # A wav is delivered as a byte copy, so the digest is the whole check.
         if file_digest(job.destination) != file_digest(job.source):
             results.append(_failure("QC-120", f"{job.name} does not match {job.source.name}"))
@@ -1385,6 +1398,29 @@ def _verify_audio(job: DeliverableJob, deliverable: Deliverable) -> list[QCResul
             )
         return results
     return [*results, _failure("QC-121", f"{job.name} has no audio stream")]
+
+
+def _check_trimmed_duration(job: DeliverableJob) -> list[QCResult]:
+    """QC-120 for a wav cut to the picture: exactly the plate's length at its rate.
+
+    Integer throughout: frames times sample rate over the frame rate. One sample either
+    way is rounding at the cut, not drift.
+    """
+    assert job.rate is not None
+    try:
+        written = media.probe_audio(job.destination)
+    except (ffmpeg.FFprobeError, ffmpeg.FFmpegNotFound) as error:
+        return [_failure("QC-120", f"{job.name} could not be read: {error}")]
+    wanted = job.frame_count * written.sample_rate * job.rate.denominator // job.rate.numerator
+    if abs(written.duration_samples - wanted) <= 1:
+        return []
+    return [
+        _failure(
+            "QC-120",
+            f"{job.name} holds {written.duration_samples} samples; the plate's "
+            f"{job.frame_count} frames want {wanted}",
+        )
+    ]
 
 
 def _check_extracted_duration(job: DeliverableJob) -> list[QCResult]:

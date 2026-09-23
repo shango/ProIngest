@@ -316,3 +316,9 @@ Treat it as a working session with the editor rather than a delivery.
       judge: whether two lines is right for a greyed button, whether the shortcut belongs on the
       first line or looks like part of the sentence, and whether the note on an enabled Run
       ("no colour session ingested yet") reads as helpful or as nagging. UI_SPEC section 1.
+- [ ] **Play one 0.4.0 reference mp4 against its wav and its EXRs on the Mac** (2026-09-23, chunk B).
+  Every real file is 24000/1001 and is now delivered at 24 frame for frame, with the sound sped up
+  0.1% by `atempo` to follow it. Measured on Linux with ffmpeg 6.1: `r_frame_rate` 24/1, the same
+  frames bit for bit, the wav exactly the plate's length, the mp4 timecode the In frame's. Confirm
+  on the bundled 9.0.1 that QC-113 passes, the timecode tag reads the EXR's first `timeCode`, and
+  the sound stays in sync to the last frame of a long plate.

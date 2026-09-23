@@ -49,7 +49,7 @@ import numpy as np
 import numpy.typing as npt
 import PyOpenColorIO as ocio
 
-from proingest.core import batchfile, color, exr, ffmpeg, logsetup, media, naming, qc, resize
+from proingest.core import batchfile, color, exr, ffmpeg, frames, logsetup, media, naming, qc, resize
 from proingest.core.models import DEFAULT_WORKERS, Batch, Deliverable, QCResult
 from proingest.core.planner import DeliverableJob
 
@@ -369,6 +369,8 @@ def _render_reference(job: DeliverableJob, deliverable: Deliverable) -> None:
             lut=_view_lut(job, Path(folder)),
             audio=job.audio_source,
             audio_skip=_audio_skip(job),
+            audio_tempo=_audio_tempo(job),
+            timecode=_start_timecode(job),
         )
     if not job.temp.is_file():
         raise RenderError(f"{job.name}: the encode reported success and wrote nothing")
@@ -411,10 +413,36 @@ def _audio_skip(job: DeliverableJob) -> float:
     extend past the delivered range, so a shot extended into the handles outruns it; see
     the `apad` note in `ffmpeg.encode_command` for why that does not truncate the picture.
     """
-    if job.audio_source is None or job.in_frame is None or job.rate is None:
+    if job.in_frame is None or (job.kind == "ref_mp4" and job.audio_source is None):
+        return 0.0
+    rate = job.source_rate or job.rate
+    if rate is None:
         return 0.0
     offset = job.in_frame - job.source_start_frame
-    return max(0, offset) * job.rate.denominator / job.rate.numerator
+    # At the source's own rate, because that is the rate its sound was recorded against.
+    return max(0, offset) * rate.denominator / rate.numerator
+
+
+def _audio_tempo(job: DeliverableJob) -> float:
+    """How much faster the sound plays so it follows the picture played at 24.
+
+    1.001 for the shooters' 24000/1001 files, 1.0 for a file already at 24. D2 of
+    `docs/REVIEW_2026-09-23.md`: the picture is delivered frame for frame at 24, so it
+    runs 0.1% faster than it was shot, and the sound does too or it drifts off it.
+    """
+    if job.rate is None or job.source_rate is None:
+        return 1.0
+    return (job.rate.numerator * job.source_rate.denominator) / (
+        job.rate.denominator * job.source_rate.numerator
+    )
+
+
+def _start_timecode(job: DeliverableJob) -> str | None:
+    """The reference's own timecode: the In frame's, which is what the EXRs carry too."""
+    if job.rate is None or job.in_frame is None or job.source_start_timecode is None:
+        return None
+    first = frames.timecode_frames_for(job.in_frame, job.source_start_frame, job.source_start_timecode)
+    return frames.frames_to_timecode(first, job.rate.as_float())
 
 
 # --- Audio and byte copies. ---
@@ -426,10 +454,19 @@ def _render_audio(job: DeliverableJob, deliverable: Deliverable) -> None:
     Copying rather than re-encoding is the point: a delivered wav that came in as a
     wav has the same checksum as the source, which is what QC-120 compares.
     """
-    if job.source.suffix.lower() == WAV_SUFFIX:
-        shutil.copyfile(job.source, job.temp)
+    if job.in_frame is None or job.rate is None:
+        if job.source.suffix.lower() == WAV_SUFFIX:
+            shutil.copyfile(job.source, job.temp)
+        else:
+            ffmpeg.extract_audio(job.source, job.temp)
     else:
-        ffmpeg.extract_audio(job.source, job.temp)
+        ffmpeg.extract_audio(
+            job.source,
+            job.temp,
+            skip=_audio_skip(job),
+            tempo=_audio_tempo(job),
+            duration=job.frame_count * job.rate.denominator / job.rate.numerator,
+        )
     if not job.temp.is_file():
         raise RenderError(f"{job.name}: no audio was produced from {job.source}")
     _record_file(deliverable, job.temp)

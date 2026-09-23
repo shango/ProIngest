@@ -14,6 +14,19 @@ complete, M4.5 all four chunks, M4.6 all five, **M5 all twelve**, **M7**, and **
 What is left is **M8 polish** (needs a real turnover and a real colour session) and the rest
 of **M9, the user guide**.
 
+**2026-09-23, chunk B and version 0.4.0: every deliverable is written at 24, and the real turnover
+renders.** **QC-026 is silent at 24000/1001** against the project's 24 (`qc._pulled_down`, exact),
+and any other rate is still an error: the user made 25 or 30 a must-fix. **The reference encode reads
+a container with `-r 24` on the input**, which delivers the same frames bit for bit at 24/1;
+restamping after the trim with `setpts` was tried first and left the encoder at 23.976. **The mp4's
+timecode is the In frame's** (`-timecode`), not the head of the handles. **The wav is cut to the
+plate** and sped up by `rate / source_rate` (1.001) with `atempo`, so it is exactly the plate's
+length at 24 (QC-120 now checks that, integer samples, one either way). **Verified on `Turnover199` with the real EDL: 12 written, 0 failed, 0 errors**, `pl01` 4k reference 232 frames at 24/1 with timecode 09:37:03:18, the wav 464000 samples, the EXRs 1001 to 1232. **1619 tests**, `ruff`, `ruff format` and `mypy --strict` clean. `DeliverableJob` grew
+`source_rate`, the rate the file's own frames and sound run at, which only audio timing reads.
+**Version 0.4.0** in `pyproject.toml`, `proingest/__init__.py`, `build/build.py` and
+`docs/guide/install.md`, and **`uv.lock` is no longer stale** (it said 0.2.0). A line in
+`docs/MAC_SESSION.md` asks for the sync to be confirmed on the bundled ffmpeg 9.0.1.
+
 **2026-09-23, chunk A of `docs/REVIEW_2026-09-23.md`: an EDL event is matched by source timecode,
 and the real turnover now scans with the right cut and grade on every row.** `ColorSession.candidates`
 returns every event that could be a row's: a named event when `FROM CLIP NAME` agrees, an unnamed one

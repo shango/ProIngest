@@ -85,7 +85,16 @@ class DeliverableJob:
     """The media's own resolution, which is what sizes the raw decode."""
 
     rate: FrameRate | None = None
-    """The effective rate, so a worker converts timecode without reopening the source."""
+    """The effective rate, so a worker converts timecode without reopening the source.
+
+    Always the project's 24 for a container: every deliverable is written at 24, frame for
+    frame, whatever the file states (user, 2026-09-23)."""
+
+    source_rate: FrameRate | None = None
+    """The rate the source's own frames and sound run at: 24000/1001 for the shooters'
+    conformed files. Only audio timing reads it, because sound is time and not frames: an
+    In frame is `in / source_rate` seconds into the clip, and the sound is retimed by
+    `rate / source_rate` so it follows the picture played at 24."""
 
     source_start_frame: int = 0
     """First frame index of the media: the first sequence number, or 0 for a container."""
@@ -352,6 +361,7 @@ def _picture_job(shot: _Shot, kind: JobKind, res: Resolution) -> DeliverableJob:
         audio_source=shot.audio if kind == "ref_mp4" else None,
         source_size=shot.media.resolution,
         rate=shot.media.rate,
+        source_rate=shot.media.stated_rate or shot.media.rate,
         source_start_frame=shot.media.start_frame,
         source_start_timecode=shot.media.start_timecode,
         shot_color=shot.color,
@@ -379,6 +389,8 @@ def _audio_job(shot: _Shot) -> DeliverableJob | None:
     """
     if shot.identity.kind not in AUDIO_TYPES or shot.audio is None:
         return None
+    # The same range as the picture: the wav is cut to the EDL event and follows the
+    # video's duration (user, 2026-09-23).
     return DeliverableJob(
         kind="audio",
         source=shot.audio,
@@ -386,6 +398,11 @@ def _audio_job(shot: _Shot) -> DeliverableJob | None:
         version=shot.version,
         shot_code=shot.identity.shot_code,
         elem=shot.identity.elem,
+        in_frame=shot.current.in_frame,
+        out_frame=shot.current.out_frame,
+        rate=shot.media.rate,
+        source_rate=shot.media.stated_rate or shot.media.rate,
+        source_start_frame=shot.media.start_frame,
     )
 
 
