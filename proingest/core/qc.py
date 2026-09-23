@@ -37,7 +37,7 @@ from proingest.core.models import (
     ShotRow,
     Turnover,
 )
-from proingest.core.planner import DeliverableJob
+from proingest.core.planner import DeliverableJob, effective_identity
 
 SYNC_TOLERANCE_FRAMES = 1
 """How far audio may run from picture before it is called a sync problem.
@@ -121,6 +121,7 @@ OWNED_ROW_RULES = frozenset(
         "QC-021",
         "QC-023",
         "QC-026",
+        "QC-027",
         "QC-028",
         "QC-030",
         "QC-031",
@@ -269,7 +270,7 @@ def check_source_format(row: ShotRow) -> list[QCResult]:
         return [
             QCResult(
                 "QC-020",
-                "error",
+                "warning",
                 "row",
                 f"{row.media.path.name} is {pixel_format} ({depth} bit); 8 bit and 4:2:0 "
                 f"sources cannot carry a linear plate",
@@ -349,13 +350,24 @@ def check_source_resolution(row: ShotRow, settings: RuleSettings) -> list[QCResu
 
 
 def check_timecode(row: ShotRow) -> list[QCResult]:
-    """QC-028: a source with no embedded timecode.
+    """QC-027 and QC-028: drop-frame timecode, and a source with none.
 
-    Not fatal: the delivered EXRs simply carry no `timeCode` attribute. It is worth
-    saying out loud because the vendor reading them back has no way to conform.
+    Drop-frame is must-fix: no 24 fps frame count honours it, and it used to fall
+    through to QC-028 as though the file had none (F24). No timecode at all is not
+    fatal: the delivered EXRs simply carry no `timeCode` attribute. It is worth saying
+    out loud because the vendor reading them back has no way to conform.
     """
     if row.media is None or not is_picture_row(row):
         return []
+    if row.media.drop_frame:
+        return [
+            QCResult(
+                "QC-027",
+                "error",
+                "row",
+                f"{row.media.path.name} states drop-frame timecode, which a 24 fps delivery cannot carry",
+            )
+        ]
     if row.media.start_timecode is not None:
         return []
     return [QCResult("QC-028", "warning", "row", f"{row.media.path.name} has no embedded timecode")]
@@ -517,7 +529,10 @@ def check_audio_presence(row: ShotRow) -> list[QCResult]:
     question.
     """
     results: list[QCResult] = []
-    if is_plate(row) and row.audio_path is None:
+    # Audio inside the plate's own file is audio: it was delivered and reported
+    # missing on every real plate (F20).
+    embedded = row.media is not None and row.media.has_audio
+    if is_plate(row) and row.audio_path is None and not embedded:
         results.append(QCResult("QC-040", "warning", "row", "plate has no associated audio clip"))
     if row.audio_clip_count > 1:
         results.append(
@@ -679,21 +694,36 @@ def check_source_encoding(row: ShotRow) -> list[QCResult]:
     return []
 
 
-def check_duplicate_name(row: ShotRow, counts: dict[str, int]) -> list[QCResult]:
-    """QC-011: the same clip name twice in one batch.
+def identity_key(row: ShotRow) -> str | None:
+    """What a row's deliverables are named from: shot code, type and index (D6).
 
-    Names are what every deliverable is built from, so two rows sharing one would
-    plan two sets of identical filenames and the second render would overwrite the
-    first. `counts` comes from the batch because a row alone cannot know.
+    None for a row that delivers nothing, which cannot collide with anything. A skipped
+    row is one, so skipping the second of two is a way to resolve a duplicate.
     """
-    if counts.get(row.clip_name, 0) <= 1:
+    if row.skipped or row.identity is None or row.shot_code is None:
+        return None
+    return f"{row.shot_code} {row.identity.kind}{row.identity.index}"
+
+
+def check_duplicate_name(row: ShotRow, counts: dict[str, int]) -> list[QCResult]:
+    """QC-011, must-fix: two rows with the same shot code, type and index (D6).
+
+    Names are built from that identity, so two rows sharing one would plan the same
+    files and the second render would overwrite the first. It used to key on the clip
+    name, which a clip used twice legitimately repeats and two different clips never do
+    (F2). `counts` comes from the batch because a row alone cannot know.
+    """
+    key = identity_key(row)
+    if key is None or counts.get(key, 0) <= 1:
         return []
+    others = counts[key] - 1
+    also = "so is another row" if others == 1 else f"so are {others} other rows"
     return [
         QCResult(
             "QC-011",
-            "warning",
+            "error",
             "row",
-            f"{row.clip_name!r} appears {counts[row.clip_name]} times in this batch",
+            f"{row.clip_name} is {key}, and {also} in this batch; they would write the same files",
         )
     ]
 
@@ -746,11 +776,20 @@ def settings_for(batch: Batch) -> RuleSettings:
 
 
 def clip_name_counts(batch: Batch) -> dict[str, int]:
-    """How often each clip name appears, which is all QC-011 needs."""
+    """How often each identity appears (`identity_key`), which is all QC-011 needs."""
     counts: dict[str, int] = {}
     for row in batch.rows:
-        counts[row.clip_name] = counts.get(row.clip_name, 0) + 1
+        key = identity_key(row)
+        if key is not None:
+            counts[key] = counts.get(key, 0) + 1
     return counts
+
+
+def apply_duplicate_rule(batch: Batch, counts: dict[str, int]) -> None:
+    """QC-011 alone, across the batch: what one row's edit can change about the others."""
+    for row in batch.rows:
+        row.qc = [result for result in row.qc if result.rule_id != "QC-011"]
+        row.qc.extend(check_duplicate_name(row, counts))
 
 
 def apply_batch_rules(batch: Batch, settings: RuleSettings = DEFAULT_SETTINGS) -> None:
@@ -959,7 +998,7 @@ def check_free_space(batch: Batch) -> list[QCResult]:
     return [
         QCResult(
             "QC-063",
-            "warning",
+            "error",
             "batch",
             f"{free // 1_000_000} MB free at {batch.delivery_root} but the run is estimated at "
             f"{needed // 1_000_000} MB",
@@ -967,39 +1006,33 @@ def check_free_space(batch: Batch) -> list[QCResult]:
     ]
 
 
+def must_fix(batch: Batch) -> list[tuple[str, QCResult]]:
+    """Every error in the batch that stops a run, with where it is (D8, D9).
+
+    **Any must-fix anywhere stops the whole run**: the editor fixes the folder, re-scans
+    and runs, and nothing renders past a problem nobody has looked at. A skipped row's
+    errors do not count, because a skipped row renders nothing. Where is the batch, a
+    turnover's folder name, or a row's clip name. Phase B (QC-1xx) is not here: it is
+    about what a run wrote, and fails the row rather than refusing the next run.
+    """
+    found: list[tuple[str, QCResult]] = [("batch", r) for r in batch.qc if r.severity == "error"]
+    for turnover in batch.turnovers:
+        found.extend((turnover.folder.name, r) for r in turnover.qc if r.severity == "error")
+    for row in batch.rows:
+        if row.skipped:
+            continue
+        found.extend((row.clip_name, r) for r in row.qc if r.severity == "error" and not _phase_b(r))
+    return found
+
+
 def blocking_results(batch: Batch) -> list[QCResult]:
-    """The batch-scope errors, which are the only ones that stop a run outright.
-
-    FR-6's rule, in one place rather than in each surface that has to obey it: a batch
-    scope error stops the run, a turnover scope one holds that turnover back
-    (`blocked_turnovers` below), and a row scope one drops that row from the plan
-    (`planner.plannable_identity`). The window and `proingest run` both ask here, so
-    the two cannot come to different answers about whether a batch may go.
-    """
-    return [result for result in batch.qc if result.severity == "error"]
+    """`must_fix` without the where. The window and `proingest run` both ask here, so the
+    two cannot come to different answers about whether a batch may go."""
+    return [result for _, result in must_fix(batch)]
 
 
-def blocked_turnovers(batch: Batch) -> frozenset[str]:
-    """Turnovers carrying any turnover-scope error, whose rows must not be rendered.
-
-    Scan-time errors count as much as pre-flight ones: a timeline at the wrong rate
-    (QC-002) is no more renderable than a missing colour session (QC-008).
-
-    The one place turnover scope means something at run time. FR-6's rule is that a
-    batch scope error stops the run and a row scope one does not, and a turnover sits
-    between the two: QC-008 says this turnover's colour session does not exist yet, so
-    its rows would render ungraded, while the turnovers beside it are ready to deliver.
-    Stopping the whole run would make a batch as slow as its least finished turnover;
-    rendering anyway is the ungraded plate QC-008 exists to refuse.
-
-    Read after `preflight` and passed to `plan_batch`, rather than read by the planner,
-    so that planning has one authority and it is not a QC list it cannot see being set.
-    """
-    return frozenset(
-        turnover.turnover_id
-        for turnover in batch.turnovers
-        if any(result.severity == "error" for result in turnover.qc)
-    )
+def _phase_b(result: QCResult) -> bool:
+    return result.rule_id.startswith("QC-1")
 
 
 def check_turnover_folder(turnover: Turnover) -> list[QCResult]:
@@ -1165,7 +1198,7 @@ def _check_numbering(job: DeliverableJob, paths: list[Path]) -> list[QCResult]:
     position in the sorted list, so a missing frame shows up as the gap it is instead
     of shifting every later frame's identity.
     """
-    found = [naming.parse_output_name(path.name) for path in paths]
+    found = [naming.parse_output_name(path.name, job.show_pattern) for path in paths]
     numbers = [parsed.frame for parsed in found if parsed is not None and parsed.frame is not None]
     unparsed = [path.name for path, parsed in zip(paths, found, strict=True) if parsed is None]
     expected = list(job.output_frames())
@@ -1583,11 +1616,12 @@ def check_names_reparse(batch: Batch, show_pattern: str = naming.DEFAULT_SHOW_PA
     """
     results: list[QCResult] = []
     for row in batch.rows:
+        identity = effective_identity(row, show_pattern)
         for item in row.deliverables:
             if item.status != "done":
                 continue
             parsed = naming.parse_output_name(item.name, show_pattern)
-            fault = _name_fault(item, parsed)
+            fault = _name_fault(item, parsed) or _identity_fault(parsed, identity)
             if fault is not None:
                 results.append(QCResult("QC-151", "error", "batch", f"{item.name}: {fault}"))
     return results
@@ -1603,6 +1637,25 @@ def _name_fault(item: Deliverable, parsed: naming.ParsedOutput | None) -> str | 
         return f"reads as v{parsed.version:02d}, but v{item.version:02d} was planned"
     if item.res is not None and parsed.res is not None and parsed.res != item.res:
         return f"reads as {parsed.res}, but {item.res} was planned"
+    return None
+
+
+def _identity_fault(parsed: naming.ParsedOutput | None, identity: naming.ShotIdentity | None) -> str | None:
+    """What a delivered name says about who the clip is that the row does not (F22).
+
+    The shape was checked and the shot was not: a well formed name for the wrong shot or
+    element passed.
+    """
+    if parsed is None or identity is None:
+        return None
+    if parsed.shot_code != identity.shot_code:
+        return f"reads as {parsed.shot_code}, but the row is {identity.shot_code}"
+    if identity.is_still:
+        if (parsed.aux, parsed.aux_index) != (identity.kind, identity.index):
+            said, row_is = f"{parsed.aux} {parsed.aux_index}", f"{identity.kind} {identity.index}"
+            return f"reads as {said}, but the row is {row_is}"
+    elif parsed.elem != identity.elem:
+        return f"reads as {parsed.elem}, but the row is {identity.elem}"
     return None
 
 

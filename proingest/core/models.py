@@ -173,6 +173,10 @@ class MediaInfo:
     compares this against the project rate; nothing computes with it.
     """
 
+    drop_frame: bool = False
+    """The media states drop-frame timecode, which no 24 fps frame count can honour (QC-027).
+    Its timecode is then not read at all. Additive, so the schema version does not move."""
+
     color_space: str = ""
     color_range: str = ""
     color_transfer: str = ""
@@ -222,6 +226,7 @@ class MediaInfo:
             "size": self.size,
             "mtime": self.mtime,
             "stated_rate": self.stated_rate.to_dict() if self.stated_rate else None,
+            "drop_frame": self.drop_frame,
             "color_space": self.color_space,
             "color_range": self.color_range,
             "color_transfer": self.color_transfer,
@@ -249,6 +254,7 @@ class MediaInfo:
             size=int(data["size"]),
             mtime=float(data["mtime"]),
             stated_rate=(FrameRate.from_dict(data["stated_rate"]) if data.get("stated_rate") else None),
+            drop_frame=bool(data.get("drop_frame", False)),
             color_space=str(data.get("color_space", "")),
             color_range=str(data.get("color_range", "")),
             color_transfer=str(data.get("color_transfer", "")),

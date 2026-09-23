@@ -29,7 +29,7 @@ from typing import TYPE_CHECKING, cast
 from PySide6.QtCore import QObject, QTimer
 
 from proingest.core import clf, exports, planner, qc, render
-from proingest.core.models import Batch, Deliverable
+from proingest.core.models import Batch, Deliverable, QCResult
 from proingest.core.planner import DeliverableJob
 from proingest.ui import settings_form
 from proingest.ui.background import Background, Failure
@@ -44,16 +44,15 @@ log = logging.getLogger(__name__)
 NOTHING_TO_RENDER = "Nothing to render: no row produced a deliverable"
 CLOSING_AFTER_RUN = "Stopping the run, then closing..."
 
-HELD_BACK = "{count} turnovers are held back by an error; see the Issues dock"
-HELD_BACK_ONE = "{name} is held back by an error; see the Issues dock"
-NOTHING_WOULD_RENDER = "Nothing would render"
-"""The title of the dialog Run opens when every turnover is held back.
+MUST_FIX_TITLE = "Fix these before running"
+"""The dialog Run opens when anything must be fixed first (D8, D9).
 
-A run in that state used to start, plan nothing and say so in the status bar, which is
-the correct refusal and reads as a dead button (docs/MAC_SESSION.md). The commonest
-cause is a batch nobody has ingested a colour session into (QC-008), and the dialog
-says so, per turnover, in the rule's own words.
+Every must-fix in the batch, each with where it is, because the fix is in the folder:
+the editor corrects it there, presses Scan, and runs.
 """
+
+MUST_FIX_SHOWN = 20
+"""How many the dialog lists before it points at the Issues dock for the rest."""
 
 CHECKING_BATCH = "Checking the batch"
 PLANNING = "Planning {count} shots"
@@ -97,6 +96,16 @@ def export_banner_text(reports: Path) -> str:
 
 def _reports_link(reports: Path) -> str:
     return f'<a href="#reports" style="color:{LINK_COLOR}">{reports}</a>'
+
+
+def must_fix_text(found: Sequence[tuple[str, QCResult]]) -> str:
+    """The dialog's body: one line per must-fix, where it is first, capped."""
+    lines = [f"{where}: {result.rule_id} {result.message}" for where, result in found[:MUST_FIX_SHOWN]]
+    if len(found) > MUST_FIX_SHOWN:
+        lines.append(f"and {len(found) - MUST_FIX_SHOWN} more; see the Issues dock")
+    lines.append("")
+    lines.append("Correct them in the turnover folder, press Scan, then Run.")
+    return "\n".join(lines)
 
 
 class RunController(QObject):
@@ -180,9 +189,8 @@ class RunController(QObject):
         batch is locked while they do (D15), so nothing on this thread changes it under
         them, and each answer comes back here before the next step starts.
 
-        **A batch scope error stops the run and a row scope one does not** (FR-6), and a
-        turnover whose pre-flight found an error is held back while the rest of the
-        batch still delivers (`qc.blocked_turnovers`).
+        **Any must-fix anywhere stops the run** (D8): the whole batch waits for the
+        folder to be corrected and re-scanned (`qc.must_fix`).
         """
         window = self._window
         if not window.batch_open or self.busy or window.scanner.busy:
@@ -214,29 +222,18 @@ class RunController(QObject):
         if self._stop_requested:
             self._refuse()
             return
-        blocking = qc.blocking_results(batch)
-        if blocking:
-            self._refuse(
-                "The batch cannot run",
-                "\n".join(f"{result.rule_id}: {result.message}" for result in blocking),
-            )
+        found = qc.must_fix(batch)
+        if found:
+            self._refuse(MUST_FIX_TITLE, must_fix_text(found))
             window.show_issues()
             return
-
-        held_back = qc.blocked_turnovers(batch)
-        if held_back and held_back >= {row.turnover_id for row in batch.rows}:
-            self._refuse(NOTHING_WOULD_RENDER, self._held_back_reasons(held_back))
-            window.show_issues()
-            return
-        if held_back:
-            window.statusBar().showMessage(self._held_back_text(held_back))
 
         strip.say(PLANNING.format(count=len(batch.rows)))
         root = batch.delivery_root
         assert root is not None
         pattern = settings_form.show_pattern_of(window.settings)
         self.background.run(
-            lambda: planner.plan_batch(batch, root, pattern, skip_turnovers=held_back),
+            lambda: planner.plan_batch(batch, root, pattern),
             self._planned,
         )
         window.update_state()
@@ -327,25 +324,6 @@ class RunController(QObject):
             window.statusBar().showMessage(re.sub(r"<[^>]+>", "", text))
         window.update_state()
         self._idle()
-
-    def _held_back_reasons(self, held_back: frozenset[str]) -> str:
-        """Every turnover this run would skip, each with the errors holding it back."""
-        lines = []
-        for turnover in self._window.batch.turnovers:
-            if turnover.turnover_id not in held_back:
-                continue
-            errors = [r for r in turnover.qc if r.severity == "error" and r.scope == "turnover"]
-            lines.append(turnover.folder.name)
-            lines.extend(f"  {result.rule_id}: {result.message}" for result in errors)
-        return "\n".join(lines)
-
-    def _held_back_text(self, held_back: frozenset[str]) -> str:
-        """What the status bar says about the turnovers this run will not touch."""
-        if len(held_back) > 1:
-            return HELD_BACK.format(count=len(held_back))
-        one = next(iter(held_back))
-        name = next((t.folder.name for t in self._window.batch.turnovers if t.turnover_id == one), one)
-        return HELD_BACK_ONE.format(name=name)
 
     def stop(self) -> None:
         """Stop: no new jobs, in-flight ones stop at their next frame boundary.

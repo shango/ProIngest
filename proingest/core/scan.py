@@ -130,7 +130,7 @@ def scan_turnover(
         turnover.qc.append(
             QCResult(
                 "QC-004",
-                "warning",
+                "error",
                 "turnover",
                 f"{csv_path.name} describes no clip carrying a Shot Type, so there is nothing to deliver",
             )
@@ -138,7 +138,7 @@ def scan_turnover(
         return turnover, []
     if not session.events:
         turnover.qc.append(
-            QCResult("QC-004", "warning", "turnover", f"{edl_path.name} carries no video events")
+            QCResult("QC-004", "error", "turnover", f"{edl_path.name} carries no video events")
         )
 
     index = media_module.index_directory(folder)
@@ -179,7 +179,8 @@ def _handover_files(folder: Path, turnover: Turnover) -> tuple[Path, Path] | Non
     two CSVs. Not recursive, because the handover is one folder (OQ-74) and a recursive
     search would find a colourist's working copy in a subfolder as readily as the export.
     """
-    edls = sorted(path for path in folder.glob(f"*{EDL_SUFFIX}") if path.is_file())
+    # By suffix in any case: `.EDL` is as much Ben's export as `.edl` (F27).
+    edls = sorted(p for p in folder.iterdir() if p.is_file() and p.suffix.lower() == EDL_SUFFIX)
     csvs = metacsv.find(folder)
 
     missing = [name for name, found in (("Ben's EDL", edls), ("his metadata CSV", csvs)) if not found]
@@ -334,7 +335,7 @@ def _conform(row: ShotRow, event: clf.ConformEvent) -> None:
         row.qc.append(
             QCResult(
                 "QC-029",
-                "warning",
+                "error",
                 "row",
                 f"the EDL references frames {approved.in_frame}-{approved.out_frame} but the media "
                 f"holds {row.media.start_frame}-{row.media.max_available_out}",

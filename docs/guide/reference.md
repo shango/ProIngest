@@ -37,9 +37,10 @@ One sentence each, the same sentences the buttons themselves show when you hover
 "A run is going" - that is usually the whole answer, and it is the reason the
 toolbar shows everything from the first launch rather than hiding what cannot be used yet.
 
-**Run is the exception worth knowing.** It is not greyed when a turnover's export carries no
-CDL, because it will run: it refuses that turnover and writes nothing, which is correct and looks
-exactly like a dead button. Its tooltip says so first.
+**Run will not start while anything must be fixed.** It is not greyed for it: pressing it lists
+every must-fix - the red rows and headers - with where each one is. Correct them in the turnover
+folder, press Scan, and Run again. A skipped shot's problems do not count, because a skipped shot
+delivers nothing.
 
 **Scan is how a correction arrives.** The cut and the grade are read at scan from the `.edl` in
 the turnover folder. When something is wrong - a revised EDL, a fixed CSV, a missing clip - drop
@@ -95,7 +96,7 @@ so a row can still be identified while reading a column at the far right of it.
 |---|---|
 | grey | nothing wrong, nothing delivered yet |
 | amber | a warning, and the row is tinted faintly |
-| red | an error: this row is blocked and will not deliver |
+| red | must fix: nothing in the batch runs until it is fixed and re-scanned |
 | hollow | you skipped it |
 | accent | rendering now |
 | green | delivered |

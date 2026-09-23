@@ -164,7 +164,7 @@ pane: a deliverable is written by a run and by nothing else.
 - Status bar shows overall percent, jobs running, throughput (frames/s), and ETA.
 - Stop finishes in-flight frames, discards `.part` outputs, and leaves rows in their previous state.
 - On completion a non-modal banner above the list reads "Batch complete: 27 done, 1 failed, 2 skipped. Exports written to ...". Click opens the folder.
-- **A run that would render nothing does not start** (2026-09-17). When every turnover with rows is held back by a turnover scope error, which is usually QC-008 on a batch nobody has ingested a session into, Run opens a dialog naming each turnover and the rule holding it, and brings up the Issues tab. It used to start, plan nothing and say so in the status bar, which is the correct refusal and reads as a dead button. One turnover held back beside one that is ready is still a status bar line, and the ready one delivers.
+- **A run with anything to fix does not start** (2026-09-23, D8). Run opens one dialog listing every must-fix with where it is - the batch, a turnover folder, or a clip - capped at twenty and pointing at the Issues dock for the rest, and says to correct the folder, press Scan and run. The held-back turnover of 2026-09-17 is gone: one turnover waiting on a fix holds the batch.
 
 **Two things about a stopped run that this list said too simply** (M5.5, 2026-09-12). The
 records of a stopped run **are** applied to the rows, because a job that finished before Stop

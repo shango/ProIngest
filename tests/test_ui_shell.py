@@ -45,8 +45,8 @@ from proingest.ui.main_window import (
 from proingest.ui.metadata import MIXED, NO_SELECTION, as_text
 from proingest.ui.run_controller import (
     CHECKING_BATCH,
+    MUST_FIX_TITLE,
     NOTHING_TO_RENDER,
-    NOTHING_WOULD_RENDER,
     WRITING_REPORTS,
 )
 from proingest.ui.run_strip import LINK_COLOR, RunStrip
@@ -1012,8 +1012,19 @@ class TestRunningABatch:
         assert window.problems and "QC-0" in window.problems[0][1]
         assert window.bottom_tabs.currentIndex() == BOTTOM_TABS.index("Issues")
 
-    def test_a_row_scope_error_does_not(self, window: DrivenWindow, tmp_path: Path) -> None:
+    def test_a_row_scope_error_stops_it_too(self, window: DrivenWindow, tmp_path: Path) -> None:
+        """D8: every must-fix is fixed before running, whatever it is about."""
         window.set_batch(ingested(batch(fail(row()), row("MELT0002_pl01"), delivery_root=tmp_path), tmp_path))
+        started = stub_runner(window)
+        window.action_run.trigger()
+        assert started == []
+        assert window.problems[0][0] == MUST_FIX_TITLE
+        assert window.problems[0][1].startswith("MELT0001_pl01: ")
+
+    def test_a_skipped_row_s_error_does_not(self, window: DrivenWindow, tmp_path: Path) -> None:
+        """A skipped row renders nothing, so what is wrong with it cannot reach a delivery."""
+        broken = fail(row(skipped=True, skip_reason="not needed"))
+        window.set_batch(ingested(batch(broken, row("MELT0002_pl01"), delivery_root=tmp_path), tmp_path))
         started = stub_runner(window)
         window.action_run.trigger()
         assert started and window.problems == []
@@ -1032,21 +1043,23 @@ class TestRunningABatch:
     def test_a_run_that_would_render_nothing_says_why_in_a_dialog(
         self, window: DrivenWindow, tmp_path: Path
     ) -> None:
-        """Every turnover held back: a dialog naming each and its rule, not a status line."""
+        """A dialog naming where each must-fix is and its rule, not a status line."""
         window.set_batch(batch(row(), delivery_root=tmp_path))
         window.bottom_dock.setVisible(False)
         window.action_run.trigger()
 
         assert len(window.problems) == 1
         title, text = window.problems[0]
-        assert title == NOTHING_WOULD_RENDER
+        assert title == MUST_FIX_TITLE
         assert text.startswith(window.batch.turnovers[0].folder.name)
         assert "QC-008" in text
         assert window.run_strip.state == "empty"
         assert not window.bottom_dock.isHidden()
 
-    def test_the_turnovers_that_are_ready_still_render(self, window: DrivenWindow, tmp_path: Path) -> None:
-        """What turnover scope buys: one waits on colour while the other delivers."""
+    def test_one_turnover_s_must_fix_holds_the_whole_batch(
+        self, window: DrivenWindow, tmp_path: Path
+    ) -> None:
+        """D8: the held-back turnover of M5.7.1 is gone; the batch waits for the fix."""
         ready, waiting = turnover("turnover001"), turnover("turnover002")
         built = batch(
             row(),
@@ -1061,8 +1074,8 @@ class TestRunningABatch:
         started = stub_runner(window)
         window.action_run.trigger()
 
-        assert started and {job.shot_code for job in started[0]} == {"MELT0001"}
-        assert "held back" in window.statusBar().currentMessage()
+        assert started == []
+        assert window.problems[0][0] == MUST_FIX_TITLE
 
     def test_a_batch_that_plans_nothing_says_so_rather_than_starting(
         self, window: DrivenWindow, tmp_path: Path

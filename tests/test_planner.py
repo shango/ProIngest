@@ -455,3 +455,11 @@ class TestShotColourOnJobs:
         planner.plan_batch(batch)
         assert skipped.deliverables == []
         assert skipped.cdl is not None
+
+
+class TestTheShowPatternTravels:
+    def test_every_job_carries_the_pattern_it_was_named_with(self) -> None:
+        """F23: a worker reads its names back (QC-102), and read them with the default."""
+        plan = planner.plan_row(row(), ROOT, 1, show_pattern="[A-Z]{2,6}")
+        assert plan.jobs
+        assert {job.show_pattern for job in plan.jobs} == {"[A-Z]{2,6}"}

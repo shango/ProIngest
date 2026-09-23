@@ -239,7 +239,7 @@ class TestSourceFormat:
         """8 bit throws away shadow detail and 4:2:0 throws away two thirds of the chroma."""
         results = qc.check_source_format(row(pixel_format=pixel_format))
         assert ids(results) == ["QC-020"]
-        assert results[0].severity == "error"
+        assert results[0].severity == "warning", "allowed with a warning since 2026-09-19 (F21)"
 
     @pytest.mark.parametrize("pixel_format", ["yuv422p10le", "yuv444p12le", "rgb48le", "gbrp10le"])
     def test_integer_containers_are_qc_021(self, pixel_format: str) -> None:
@@ -446,6 +446,13 @@ class TestAudioPresence:
         assert ids(results) == ["QC-040"]
         assert results[0].severity == "warning"
 
+    def test_audio_inside_the_plate_s_own_file_counts(self) -> None:
+        """F20: every real plate carries its sound embedded, and was told it had none."""
+        embedded = row()
+        assert embedded.media is not None
+        embedded.media.has_audio = True
+        assert qc.check_audio_presence(embedded) == []
+
     def test_only_the_plate_owes_audio(self) -> None:
         """An element or witness clip delivers no wav, so silence is expected."""
         assert qc.check_audio_presence(row(clip_name="MELT0001_el01")) == []
@@ -574,17 +581,31 @@ class TestColorChain:
 
 
 class TestDuplicateNames:
-    def test_a_unique_name_is_clean(self) -> None:
-        assert qc.check_duplicate_name(row(), {"MELT0001_pl01": 1}) == []
+    """QC-011, must-fix since 2026-09-23 (D6): keyed on what the files are named from."""
 
-    def test_a_repeated_name_is_qc_011(self) -> None:
-        results = qc.check_duplicate_name(row(), {"MELT0001_pl01": 2})
+    def test_a_unique_identity_is_clean(self) -> None:
+        assert qc.check_duplicate_name(row(), {"MELT0001 pl01": 1}) == []
+
+    def test_a_repeated_identity_is_qc_011(self) -> None:
+        results = qc.check_duplicate_name(row(), {"MELT0001 pl01": 2})
         assert ids(results) == ["QC-011"]
-        assert results[0].severity == "warning"
+        assert results[0].severity == "error"
 
     def test_counts_come_from_the_batch(self) -> None:
         batch = Batch(rows=[row(), row(), row(clip_name="MELT0002_pl01")])
-        assert qc.clip_name_counts(batch) == {"MELT0001_pl01": 2, "MELT0002_pl01": 1}
+        assert qc.clip_name_counts(batch) == {"MELT0001 pl01": 2, "MELT0002 pl01": 1}
+
+    def test_the_same_clip_twice_as_two_shots_is_fine(self) -> None:
+        """D3: a clip used twice is two rows with two shot codes, and that is normal (F2)."""
+        second = row()
+        second.shot_code_override = "MELT0002"
+        batch = Batch(rows=[row(), second])
+        assert qc.clip_name_counts(batch) == {"MELT0001 pl01": 1, "MELT0002 pl01": 1}
+
+    def test_a_skipped_row_collides_with_nothing(self) -> None:
+        skipped = row()
+        skipped.skipped = True
+        assert qc.clip_name_counts(Batch(rows=[row(), skipped])) == {"MELT0001 pl01": 1}
 
 
 class TestRuleSettings:
@@ -695,7 +716,7 @@ class TestFreeSpace:
         batch.rows[0].media.size = 1 << 60
         results = qc.check_free_space(batch)
         assert ids(results) == ["QC-063"]
-        assert results[0].severity == "warning"
+        assert results[0].severity == "error"
         assert results[0].scope == "batch"
 
     def test_no_delivery_root_is_qc_062s_business(self) -> None:
@@ -733,7 +754,7 @@ class TestPreflight:
 
 
 class TestBlockingResults:
-    """FR-6's scopes: only a batch scope error stops the run (`qc.blocking_results`)."""
+    """D8: every must-fix stops the run, wherever it is (`qc.must_fix`)."""
 
     def test_a_batch_scope_error_blocks(self) -> None:
         batch = Batch(rows=[row()])
@@ -745,13 +766,28 @@ class TestBlockingResults:
         batch.qc.append(QCResult("QC-063", "warning", "batch", "not much room left"))
         assert qc.blocking_results(batch) == []
 
-    def test_a_turnover_scope_error_holds_that_turnover_back_rather_than_the_run(
-        self, tmp_path: Path
-    ) -> None:
+    def test_a_turnover_scope_error_stops_the_run(self, tmp_path: Path) -> None:
         batch = Batch(delivery_root=tmp_path, turnovers=[Turnover("t1", tmp_path)], rows=[row()])
         qc.preflight(batch)
-        assert qc.blocking_results(batch) == []
-        assert qc.blocked_turnovers(batch) == frozenset({"t1"})
+        assert (tmp_path.name, "QC-008") in [(where, result.rule_id) for where, result in qc.must_fix(batch)]
+
+    def test_a_row_scope_error_stops_the_run_and_says_which_row(self, tmp_path: Path) -> None:
+        broken = row()
+        broken.qc.append(QCResult("QC-012", "error", "row", "no such file"))
+        found = qc.must_fix(Batch(delivery_root=tmp_path, rows=[broken]))
+        assert [(where, result.rule_id) for where, result in found] == [("MELT0001_pl01", "QC-012")]
+
+    def test_a_skipped_row_s_error_does_not(self, tmp_path: Path) -> None:
+        broken = row()
+        broken.skipped = True
+        broken.qc.append(QCResult("QC-012", "error", "row", "no such file"))
+        assert qc.must_fix(Batch(delivery_root=tmp_path, rows=[broken])) == []
+
+    def test_phase_b_is_not_a_reason_to_refuse_the_next_run(self, tmp_path: Path) -> None:
+        """QC-150 says the last run failed a deliverable; the fix is to run again (D11)."""
+        failed = row()
+        failed.qc.append(QCResult("QC-150", "error", "row", "1 deliverable is not done"))
+        assert qc.must_fix(Batch(delivery_root=tmp_path, rows=[failed])) == []
 
 
 def ingested_batch(tmp_path: Path, *rows: ShotRow, edl_name: str = "MELT_FINAL.edl") -> Batch:
@@ -1230,6 +1266,17 @@ class TestNamesReparse:
         batch = self.batch_with(delivered("MELT0001_pl01_raw_HD_v01", "raw_dir", res="4k"))
         assert ids(qc.check_names_reparse(batch)) == ["QC-151"]
 
+    def test_a_well_formed_name_for_another_shot_is_qc_151(self) -> None:
+        """F22: the shape was checked and the shot was not."""
+        batch = self.batch_with(delivered("MELT0002_pl01_raw_4k_v01", "raw_dir", res="4k"))
+        results = qc.check_names_reparse(batch)
+        assert ids(results) == ["QC-151"]
+        assert "MELT0002" in results[0].message
+
+    def test_a_well_formed_name_for_another_element_is_qc_151(self) -> None:
+        batch = self.batch_with(delivered("MELT0001_pl02_raw_4k_v01", "raw_dir", res="4k"))
+        assert "pl02" in qc.check_names_reparse(batch)[0].message
+
     def test_a_deliverable_that_never_landed_is_not_asked(self) -> None:
         """QC-150 owns an unwritten deliverable; this rule is about delivered names."""
         item = delivered("nonsense", "raw_dir")
@@ -1278,3 +1325,14 @@ class TestTurnoverFolder:
         here.turnovers[0].qc.append(QCResult("QC-069", "error", "turnover", "stale"))
         qc.check_folders(here)
         assert here.turnovers[0].qc == []
+
+
+class TestDropFrame:
+    """QC-027 (F24): drop-frame timecode is must-fix, and no longer passes for none."""
+
+    def test_a_drop_frame_source_is_qc_027_not_qc_028(self) -> None:
+        dropped = row(start_timecode=None)
+        assert dropped.media is not None
+        dropped.media.drop_frame = True
+        results = qc.check_timecode(dropped)
+        assert [(r.rule_id, r.severity) for r in results] == [("QC-027", "error")]

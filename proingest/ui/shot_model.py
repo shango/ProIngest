@@ -768,7 +768,14 @@ class ShotListModel(QAbstractItemModel):
         """
         # Read from the batch each time rather than cached: Settings Apply writes new
         # thresholds onto the batch, and the next edit must be judged by those.
+        before = self._name_counts
+        self._name_counts = qc.clip_name_counts(self._batch)
         qc.apply_row_rules(row, self._batch.project_rate, qc.settings_for(self._batch), self._name_counts)
+        if self._name_counts != before:
+            # A shot code or a skip changed who collides with whom (QC-011, D6), and the
+            # row it collided with is somewhere else in the list.
+            qc.apply_duplicate_rule(self._batch, self._name_counts)
+            self.refresh_rows()
         parent = index.parent()
         self.dataChanged.emit(
             self.index(index.row(), 0, parent), self.index(index.row(), len(COLUMNS) - 1, parent)

@@ -14,7 +14,6 @@ direct comparison between what was planned and what the written filename says.
 
 from __future__ import annotations
 
-from collections.abc import Collection
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Literal
@@ -95,6 +94,9 @@ class DeliverableJob:
     conformed files. Only audio timing reads it, because sound is time and not frames: an
     In frame is `in / source_rate` seconds into the clip, and the sound is retimed by
     `rate / source_rate` so it follows the picture played at 24."""
+
+    show_pattern: str = naming.DEFAULT_SHOW_PATTERN
+    """The show code pattern the name was built with, so it is read back with the same."""
 
     source_color_space: str = ""
     source_color_range: str = ""
@@ -274,12 +276,15 @@ def plan_row(
         color=shot_color,
     )
     if identity.is_still:
-        return _aux_plan(shot)
-
-    plan = RowPlan(jobs=[_picture_job(shot, kind, res) for kind, res in TYPE_TABLE[identity.kind]])
-    audio = _audio_job(shot)
-    if audio is not None:
-        plan.jobs.append(audio)
+        plan = _aux_plan(shot)
+    else:
+        plan = RowPlan(jobs=[_picture_job(shot, kind, res) for kind, res in TYPE_TABLE[identity.kind]])
+        audio = _audio_job(shot)
+        if audio is not None:
+            plan.jobs.append(audio)
+    # The pattern goes with the job, because a worker verifying what it wrote reads the
+    # names back (QC-102) and was reading them with the default (F23).
+    plan.jobs = [replace(job, show_pattern=show_pattern) for job in plan.jobs]
     return plan
 
 
@@ -287,7 +292,6 @@ def plan_batch(
     batch: Batch,
     delivery_root: Path | None = None,
     show_pattern: str = naming.DEFAULT_SHOW_PATTERN,
-    skip_turnovers: Collection[str] = (),
 ) -> list[DeliverableJob]:
     """Plan every row of a batch and record the plan on the rows.
 
@@ -304,15 +308,9 @@ def plan_batch(
     CDL and the approved In/Out it was matched with and planning reads them off the model
     like every other field. A batch nothing has been ingested into plans ungraded: the
     deliverables are the same files in the same places, and the difference is whether the
-    CLF is in them. QC-008 is what refuses a **run** in that state, and it is a rule about
-    the turnover rather than something the planner decides.
-
-    `skip_turnovers` is what that refusal does here: a turnover whose pre-flight found an
-    error plans nothing, and the turnovers beside it still deliver (`qc.blocked_turnovers`).
-    It is passed in rather than read off the turnovers' QC lists, so planning does not
-    depend on a rule pass having run that it cannot see.
+    CLF is in them. QC-008 is what refuses a **run** in that state, and every must-fix
+    refuses the whole run before planning is asked (`qc.must_fix`, D8).
     """
-    skipped = frozenset(skip_turnovers)
     root = delivery_root or batch.delivery_root
     if root is None:
         raise ValueError("no delivery root: pass one, or set batch.delivery_root")
@@ -321,7 +319,7 @@ def plan_batch(
     jobs: list[DeliverableJob] = []
     for row in batch.rows:
         identity = plannable_identity(row, show_pattern)
-        if identity is None or row.turnover_id in skipped:
+        if identity is None:
             _record(row, RowPlan())
             continue
 

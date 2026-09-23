@@ -139,9 +139,14 @@ class DirectoryIndex:
     singles: list[FileEntry] = field(default_factory=list)
 
     def by_stem(self, stem: str) -> list[Sequence | FileEntry]:
-        """Everything whose base name equals `stem`, sequences and single files alike."""
-        matches: list[Sequence | FileEntry] = [s for s in self.sequences if s.base == stem]
-        matches.extend(entry for entry in self.singles if entry.stem == stem)
+        """Everything whose base name equals `stem` in any case, sequences and files alike.
+
+        In any case because the CSV's `File Name` is typed by a person and `c0145.mp4`
+        names `C0145.MP4` (F27). Two files differing only in case are then QC-013.
+        """
+        key = stem.casefold()
+        matches: list[Sequence | FileEntry] = [s for s in self.sequences if s.base.casefold() == key]
+        matches.extend(entry for entry in self.singles if entry.stem.casefold() == key)
         return matches
 
     def media_matching(self, stem: str) -> list[Sequence | FileEntry]:
@@ -154,7 +159,12 @@ class DirectoryIndex:
 
     def audio_matching(self, stem: str) -> list[FileEntry]:
         """Used by the EDL fallback, which cannot associate audio from the timeline."""
-        return [entry for entry in self.singles if entry.stem == stem and entry.suffix in AUDIO_EXTENSIONS]
+        key = stem.casefold()
+        return [
+            entry
+            for entry in self.singles
+            if entry.stem.casefold() == key and entry.suffix in AUDIO_EXTENSIONS
+        ]
 
     def containing(self, fragment: str) -> list[FileEntry]:
         """Single files whose name contains `fragment`. Used for HDRI and camData."""
@@ -275,6 +285,13 @@ def _timecode_from(probe: dict[str, Any], rate: FrameRate) -> int | None:
     return None
 
 
+def _is_drop_frame(probe: dict[str, Any]) -> bool:
+    """Whether the media states drop-frame timecode: a `;` before the frames (QC-027)."""
+    sources: list[dict[str, Any]] = [probe.get("format", {}).get("tags", {})]
+    sources.extend(stream.get("tags", {}) for stream in probe.get("streams", []))
+    return any(";" in str(tags.get("timecode") or tags.get("TIMECODE") or "") for tags in sources)
+
+
 def _video_stream(probe: dict[str, Any]) -> dict[str, Any]:
     """The first usable video stream.
 
@@ -347,6 +364,11 @@ def probe(
         frame_count, start_frame = _container_frame_count(stream, stated), 0
 
     rate = fallback_rate or stated or FrameRate(24)
+    # `is None` and not `or`: 00:00:00:00 is frame 0, a timecode, not the absence of one (F8).
+    timecode = _timecode_from(raw, rate)
+    if timecode is None:
+        timecode = _exr_timecode(header, rate)
+    drop_frame = _is_drop_frame(raw)
 
     return MediaInfo(
         path=target,
@@ -357,7 +379,8 @@ def probe(
         rate=rate,
         frame_count=frame_count,
         start_frame=start_frame,
-        start_timecode=_timecode_from(raw, rate) or _exr_timecode(header, rate),
+        start_timecode=timecode,
+        drop_frame=drop_frame,
         is_sequence=isinstance(item, Sequence),
         has_audio=has_audio,
         audio_channels=channels,

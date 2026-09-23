@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from proingest import __version__
-from proingest.core import batchfile, clf, color, exports, logsetup, planner, qc, render, scan
+from proingest.core import batchfile, clf, color, exports, logsetup, naming, planner, qc, render, scan
 from proingest.core.models import DEFAULT_WORKERS, Batch, Deliverable, ShotRow, Turnover
 
 COLUMNS = ("STATUS", "SHOT", "ELEM", "SOURCE", "RES", "FPS", "IN", "OUT", "DUR", "MAX", "AUDIO")
@@ -32,11 +32,16 @@ def main(argv: list[str] | None = None) -> int:
         help="log every ffmpeg command (subcommands only; the app takes its level from Settings)",
     )
     subparsers = parser.add_subparsers(dest="command")
+    pattern_help = (
+        "the show code pattern, a regular expression, when the Settings page has a custom one "
+        f"(default {naming.DEFAULT_SHOW_PATTERN})"
+    )
 
     scan_parser = subparsers.add_parser("scan", help="scan turnover folders and print the row table")
     scan_parser.add_argument("folders", nargs="+", type=Path)
     scan_parser.add_argument("--save", type=Path, help="write the result to a .pibatch file")
     scan_parser.add_argument("--name", default="untitled", help="batch name")
+    scan_parser.add_argument("--show-pattern", default=naming.DEFAULT_SHOW_PATTERN, help=pattern_help)
     scan_parser.add_argument(
         "--rules",
         type=Path,
@@ -53,6 +58,7 @@ def main(argv: list[str] | None = None) -> int:
         help=f"worker processes (default {DEFAULT_WORKERS})",
     )
     run_parser.add_argument("--dry-run", action="store_true", help="print the plan and write nothing")
+    run_parser.add_argument("--show-pattern", default=naming.DEFAULT_SHOW_PATTERN, help=pattern_help)
     run_parser.add_argument(
         "--color-session",
         type=Path,
@@ -66,6 +72,7 @@ def main(argv: list[str] | None = None) -> int:
     qc_parser.add_argument(
         "--out", type=Path, help="write both files here instead of the show's _reports folder"
     )
+    qc_parser.add_argument("--show-pattern", default=naming.DEFAULT_SHOW_PATTERN, help=pattern_help)
 
     args = parser.parse_args(argv)
     # Console only: the log file lives in a folder `ui/paths.py` asks Qt for, and the
@@ -73,7 +80,7 @@ def main(argv: list[str] | None = None) -> int:
     logsetup.configure(level=logging.INFO if args.verbose else logging.WARNING)
 
     if args.command == "scan":
-        return _scan(args.folders, args.save, args.name, args.rules)
+        return _scan(args.folders, args.save, args.name, args.rules, args.show_pattern)
 
     if args.command == "run":
         return _run(
@@ -82,10 +89,11 @@ def main(argv: list[str] | None = None) -> int:
             args.jobs,
             args.dry_run,
             args.color_session,
+            args.show_pattern,
         )
 
     if args.command == "qc":
-        return _qc(args.batch, args.delivery_root, args.out)
+        return _qc(args.batch, args.delivery_root, args.out, args.show_pattern)
 
     return _launch_ui()
 
@@ -102,7 +110,13 @@ def _launch_ui() -> int:
     return app.run()
 
 
-def _scan(folders: list[Path], save: Path | None, name: str, rules_path: Path | None) -> int:
+def _scan(
+    folders: list[Path],
+    save: Path | None,
+    name: str,
+    rules_path: Path | None,
+    show_pattern: str = naming.DEFAULT_SHOW_PATTERN,
+) -> int:
     missing = [folder for folder in folders if not folder.is_dir()]
     if missing:
         for folder in missing:
@@ -115,9 +129,8 @@ def _scan(folders: list[Path], save: Path | None, name: str, rules_path: Path | 
         print(f"error: {exc}", file=sys.stderr)
         return 2
 
-    batch = scan.scan_batch(
-        folders, name=name, settings=scan.ScanSettings(rules=qc.RuleSettings.from_dict(overrides))
-    )
+    settings = scan.ScanSettings(show_pattern=show_pattern, rules=qc.RuleSettings.from_dict(overrides))
+    batch = scan.scan_batch(folders, name=name, settings=settings)
     if overrides:
         batch.settings_overrides[qc.RULES_OVERRIDE_KEY] = overrides
     _print_batch(batch)
@@ -132,24 +145,18 @@ def _scan(folders: list[Path], save: Path | None, name: str, rules_path: Path | 
 def _print_preflight(batch: Batch) -> bool:
     """Print what the pre-flight rules found and say whether the run must stop.
 
-    Only a batch-scope error stops it: a turnover with no lens grid or a row with a
-    broken HDRI is a warning the editor reads, not a reason to render nothing.
+    **Any must-fix anywhere stops it** (D8, `qc.must_fix`): the batch waits for the
+    folder to be corrected and re-scanned. Warnings about the batch and its turnovers are
+    printed too, because they are what the editor reads before a delivery.
     """
     results = list(batch.qc) + [result for turnover in batch.turnovers for result in turnover.qc]
     for result in results:
-        print(f"  {result.severity.upper():7} {result.rule_id}  {result.message}")
-    # A row-scope error drops that row from the plan (`planner.plannable_identity`), so
-    # it is the one kind of row result worth printing here: without it the shot count
-    # below is short and nothing says why.
-    for row in batch.rows:
-        for result in row.qc:
-            if result.severity == "error":
-                code = row.shot_code or row.clip_name
-                print(f"  {result.severity.upper():7} {result.rule_id}  {code}: {result.message}")
-    blocking = qc.blocking_results(batch)
-    for result in blocking:
-        print(f"error: {result.rule_id}: {result.message}", file=sys.stderr)
-    return bool(blocking)
+        if result.severity != "error":
+            print(f"  {result.severity.upper():7} {result.rule_id}  {result.message}")
+    found = qc.must_fix(batch)
+    for where, result in found:
+        print(f"error: {where}: {result.rule_id}: {result.message}", file=sys.stderr)
+    return bool(found)
 
 
 def _load_rule_overrides(path: Path | None) -> dict[str, Any]:
@@ -173,6 +180,7 @@ def _run(
     jobs: int,
     dry_run: bool,
     color_session: Path | None = None,
+    show_pattern: str = naming.DEFAULT_SHOW_PATTERN,
 ) -> int:
     """Plan a saved batch and render it.
 
@@ -181,8 +189,8 @@ def _run(
 
     `--color-session` ingests the session package into every turnover, which is the same
     step the window offers (PRD section 6 step 4): it writes the approved In/Out, the CDL
-    and the CLF onto the rows, and the plan reads them from there. Without it QC-008
-    holds every turnover back (`qc.blocked_turnovers`) and nothing is rendered.
+    and the CLF onto the rows, and the plan reads them from there. Any must-fix stops
+    the run before anything is planned (`qc.must_fix`).
     """
     try:
         batch = batchfile.load(batch_path)
@@ -206,11 +214,8 @@ def _run(
     if _print_preflight(batch):
         return 2
 
-    held_back = qc.blocked_turnovers(batch)
-    for turnover_id in sorted(held_back):
-        print(f"holding back {turnover_id}: its pre-flight found an error")
     try:
-        planned = planner.plan_batch(batch, root, skip_turnovers=held_back)
+        planned = planner.plan_batch(batch, root, show_pattern)
     except (ValueError, clf.ClfError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
@@ -230,7 +235,7 @@ def _run(
     print()
     reporter = _ProgressPrinter()
     written = render.execute(planned, workers=jobs, on_progress=reporter)
-    render.apply_results(batch, written)
+    render.apply_results(batch, written, show_pattern)
     try:
         batchfile.backup(batch_path)
         batchfile.save(batch, batch_path)
@@ -268,7 +273,12 @@ def _ingest_color_session(batch: Batch, edl_path: Path | None) -> None:
             print(f"    {label}: {', '.join(names)}")
 
 
-def _qc(batch_path: Path, delivery_root: Path | None, out: Path | None) -> int:
+def _qc(
+    batch_path: Path,
+    delivery_root: Path | None,
+    out: Path | None,
+    show_pattern: str = naming.DEFAULT_SHOW_PATTERN,
+) -> int:
     """Re-run the rules over a saved batch and write both spreadsheets.
 
     The rules are re-run rather than read back off the batch file, because a batch can
@@ -284,7 +294,7 @@ def _qc(batch_path: Path, delivery_root: Path | None, out: Path | None) -> int:
     batch.delivery_root = delivery_root or batch.delivery_root
     qc.apply_batch_rules(batch, qc.settings_for(batch))
     qc.preflight(batch)
-    qc.apply_phase_b(batch)
+    qc.apply_phase_b(batch, show_pattern)
 
     try:
         log_path, tracker_path = _report_destinations(batch, out)

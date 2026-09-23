@@ -106,10 +106,12 @@ class TestScanCommand:
         fixtures.make_turnover(second, shots=1, frames=4)
         rules = fixtures.write_rules_file(tmp_path / "rules.json")
 
-        assert main(["scan", str(first), str(second), "--rules", str(rules)]) == 0
+        # The fixture names both turnovers' shot MELT0001 pl01, which D6 makes a must-fix.
+        assert main(["scan", str(first), str(second), "--rules", str(rules)]) == 1
         out = capsys.readouterr().out
         assert "turnover001" in out and "turnover002" in out
         assert "2 rows" in out
+        assert "QC-011" in out
 
 
 class TestTopLevel:
@@ -225,17 +227,17 @@ class TestRunCommand:
     def test_a_row_error_from_the_preflight_is_printed_too(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """A row with an error is dropped from the plan, so the shot count is short and
-        this line is the only thing that says why."""
+        """D8: a row's must-fix stops the run, and says where it is."""
         batch_path = self.scanned(tmp_path)
 
         def flag_a_row(batch: Batch) -> None:
             batch.rows[0].qc.append(QCResult("QC-019", "error", "row", "the HDRI will not open"))
 
         monkeypatch.setattr(qc, "preflight", flag_a_row)
-        main(["run", str(batch_path), "--delivery-root", str(tmp_path / "delivery"), "--dry-run"])
-        out = capsys.readouterr().out
-        assert "QC-019" in out and "MELT0001" in out
+        code = main(["run", str(batch_path), "--delivery-root", str(tmp_path / "delivery"), "--dry-run"])
+        err = capsys.readouterr().err
+        assert code == 2
+        assert "QC-019" in err and "MELT0001" in err
 
     def test_an_unwritable_delivery_root_stops_the_run(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]

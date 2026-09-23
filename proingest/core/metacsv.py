@@ -116,7 +116,7 @@ def _columns(header: list[str], name: str) -> list[int]:
     every other column: nothing guarantees the shooters' custom field set collides only
     where we have already seen it collide.
     """
-    return [i for i, column in enumerate(header) if column.strip() == name]
+    return [i for i, column in enumerate(header) if column.strip().casefold() == name.casefold()]
 
 
 def _value(row: list[str], positions: list[int]) -> str:
@@ -153,13 +153,27 @@ def _resolve_shot_type(
         qc.append(
             QCResult(
                 "QC-065",
-                "warning",
+                "error",
                 "row",
                 f"{file_name} carries {len(resolved)} Shot Type columns that resolve differently "
                 f"({names}); using {value!r} from the last of them, which is the shooters' custom field",
             )
         )
     return value, kind, index, qc
+
+
+def _shot(typed: str, show_pattern: str) -> str:
+    """The `Shot` value, upper cased when that is the only way it reads as a shot code.
+
+    `test0002` under the default pattern is a typo of `TEST0002`, not another shot (F27).
+    Only when the typed value does not parse and the upper case one does, so a custom
+    pattern written in lower case keeps working.
+    """
+    if naming.parse_shot_code(typed, show_pattern) is None and naming.parse_shot_code(
+        typed.upper(), show_pattern
+    ):
+        return typed.upper()
+    return typed
 
 
 def _row_qc(file_name: str, shot: str, shot_type: str, kind: str | None, show_pattern: str) -> list[QCResult]:
@@ -229,7 +243,7 @@ def read(path: Path, show_pattern: str = naming.DEFAULT_SHOW_PATTERN) -> MetaCsv
         if not shot_type:
             result.ignored.append(file_name)
             continue
-        shot = _value(record, shot_positions)
+        shot = _shot(_value(record, shot_positions), show_pattern)
         result.rows.append(
             MetaRow(
                 file_name=file_name,
@@ -252,4 +266,4 @@ def find(folder: Path) -> list[Path]:
     folder holding the media, one EDL and one CSV (OQ-74), so a second CSV is a question
     rather than something to pick between.
     """
-    return sorted(p for p in folder.glob(f"*{CSV_SUFFIX}") if p.is_file())
+    return sorted(p for p in folder.iterdir() if p.is_file() and p.suffix.lower() == CSV_SUFFIX)

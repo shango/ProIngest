@@ -14,6 +14,21 @@ complete, M4.5 all four chunks, M4.6 all five, **M5 all twelve**, **M7**, and **
 What is left is **M8 polish** (needs a real turnover and a real colour session) and the rest
 of **M9, the user guide**.
 
+**2026-09-23, chunk C: the two QC tiers, and the correctness findings.** **Any must-fix anywhere
+stops the run** (D8, D9): `qc.must_fix` lists every error in the batch, its turnovers and every
+row that is not skipped, each with where it is, and Run and `proingest run` both refuse on it.
+The held-back turnover (M5.7.1, `qc.blocked_turnovers`, `plan_batch(skip_turnovers=)`) is gone.
+Phase B is not tiered. **Rules moved to section 4's tiers**: QC-004, QC-029, QC-063 (a shortfall;
+an unreadable mount stays a warning) and QC-065 are errors, QC-020 is a warning (F21). **QC-011 is
+keyed on shot code, type and index** and is an error (D6, F2); the list recounts it after a shot
+code edit or a skip. **QC-027 is raised** for drop-frame timecode (`MediaInfo.drop_frame`, F24).
+**00:00:00:00 is a timecode** (F8). **QC-040 counts embedded audio** (F20). **QC-151 compares shot
+code and element** (F22). **The show pattern travels on the job** so QC-102 reads names back with it,
+and `scan`, `run` and `qc` take `--show-pattern` (F23). **Case**: `.EDL`, `.CSV`, column names and
+`File Name` match in any case, and a `Shot` that only parses upper-cased is upper-cased (F27).
+QC-016 is retired. **Verified on `Turnover199`**: no must-fix; QC-040 gone. **My call, flagged to
+the user**: a skipped row's errors do not block, since it renders nothing. **Next: D, then H.**
+
 **2026-09-23, chunk E: locks and recovery.** **The batch is locked while a scan or a run has it**
 (D15): `ShotListModel.set_locked` refuses every edit, and New, Open, Settings, Skip, Add Turnover,
 Scan and the delivery root wait (F13, F14). A scan's result is dropped if its batch was replaced.

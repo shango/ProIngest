@@ -152,6 +152,21 @@ class TestRemap:
 
 
 class TestProbe:
+    def test_a_start_of_00_00_00_00_is_a_timecode(self, tmp_path: Path) -> None:
+        """F8: frame 0 read as no timecode, and the EXRs lost `timeCode`."""
+        source = fixtures.make_mov(tmp_path / "zero.mov", count=2, timecode="00:00:00:00")
+        assert media.probe(source).start_timecode == 0
+
+    def test_drop_frame_timecode_is_flagged(self) -> None:
+        """F24: `;` marks drop-frame, which the timecode reader refuses (QC-027)."""
+        assert media._is_drop_frame({"format": {"tags": {"timecode": "01:00:00;00"}}, "streams": []})
+        assert not media._is_drop_frame({"format": {"tags": {"timecode": "01:00:00:00"}}, "streams": []})
+
+    def test_a_file_name_in_another_case_still_finds_its_file(self, tmp_path: Path) -> None:
+        """F27: the CSV's File Name is typed by a person."""
+        fixtures.make_mov(tmp_path / "C0145.MOV", count=2)
+        assert len(media.index_directory(tmp_path).media_matching("c0145")) == 1
+
     def test_exr_sequence(self, tmp_path: Path) -> None:
         fixtures.make_exr_sequence(tmp_path, count=6, first=1001, size=(64, 36))
         sequence = media.index_directory(tmp_path).sequences[0]

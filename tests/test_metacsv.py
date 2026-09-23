@@ -131,12 +131,17 @@ class TestShot:
 
     def test_show_pattern_is_honoured(self, tmp_path: Path) -> None:
         rows = [["C1.MP4", "zz0001", "pl01"]]
-        assert read(tmp_path, ["File Name", "Shot", "Shot Type"], rows).rows[0].qc, (
-            "default pattern is uppercase"
-        )
-        assert (
-            read(tmp_path, ["File Name", "Shot", "Shot Type"], rows, show_pattern="[a-z]{2}").rows[0].qc == ()
-        )
+        lower = read(tmp_path, ["File Name", "Shot", "Shot Type"], rows, show_pattern="[a-z]{2}").rows[0]
+        assert (lower.shot, lower.qc) == ("zz0001", ())
+
+    def test_a_lower_case_shot_under_the_default_reads_as_upper_case(self, tmp_path: Path) -> None:
+        """F27: a person typed it, and `zz0001` is not a different shot from `ZZ0001`."""
+        read_back = read(tmp_path, ["File Name", "Shot", "Shot Type"], [["C1.MP4", "zz0001", "pl01"]]).rows[0]
+        assert (read_back.shot, read_back.qc) == ("ZZ0001", ())
+
+    def test_column_names_are_matched_in_any_case(self, tmp_path: Path) -> None:
+        read_back = read(tmp_path, ["file name", "SHOT", "shot type"], [["C1.MP4", "ZZ0001", "pl01"]])
+        assert read_back.rows[0].shot == "ZZ0001"
 
 
 class TestEncoding:

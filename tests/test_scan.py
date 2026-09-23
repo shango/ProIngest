@@ -345,3 +345,18 @@ class TestCarryOver:
         fixtures.make_turnover(folder, shots=1, frames=4)
         turnover, _ = scan.scan_turnover(folder, "t1")
         assert turnover.edl_digest and turnover.csv_digest
+
+
+class TestCaseOfTheHandover:
+    def test_an_upper_case_edl_suffix_is_ben_s_edl(self, tmp_path: Path) -> None:
+        """F27: `.EDL` is as much an EDL as `.edl`."""
+        folder = tmp_path / GOOD_FOLDER
+        fixtures.make_turnover(folder, shots=1, frames=4)
+        (folder / "FINAL_v01.edl").rename(folder / "FINAL_v01.EDL")
+        turnover, rows = scan.scan_turnover(folder, "t1")
+        assert "QC-001" not in turnover_rules_of(turnover)
+        assert len(rows) == 1
+
+
+def turnover_rules_of(turnover: Turnover) -> set[str]:
+    return {result.rule_id for result in turnover.qc}
