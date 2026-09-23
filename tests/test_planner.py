@@ -179,13 +179,13 @@ class TestAudio:
 class TestAuxStills:
     def test_reference_still_delivers_one_4k_exr(self) -> None:
         plan = planner.plan_row(row("MELT0001_pl01_colorChart_01"), ROOT, 1)
-        assert names(plan.jobs) == ["MELT0001_pl01_colorChart_01_4k_v01.exr"]
+        assert names(plan.jobs) == ["MELT0001_colorChart_01_4k_v01.exr"]
         assert plan.jobs[0].res == "4k"
 
     @pytest.mark.parametrize("aux", naming.AUX_NAMES)
     def test_every_aux_name(self, aux: str) -> None:
         plan = planner.plan_row(row(f"MELT0001_pl01_{aux}_01"), ROOT, 1)
-        assert names(plan.jobs) == [f"MELT0001_pl01_{aux}_01_4k_v01.exr"]
+        assert names(plan.jobs) == [f"MELT0001_{aux}_01_4k_v01.exr"]
 
     def test_only_the_first_frame_of_the_clip_is_used(self) -> None:
         plan = planner.plan_row(row("MELT0001_pl01_greyBall_01", current=InOut(1005, 1030)), ROOT, 1)

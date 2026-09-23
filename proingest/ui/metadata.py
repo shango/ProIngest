@@ -161,11 +161,8 @@ def _identity_fields(row: ShotRow) -> list[Field]:
     identity = row.identity
     if identity is not None:
         fields.append(Field("Show", identity.show))
-        fields.append(Field("Shot", identity.shot))
-        fields.append(Field("Element", f"{identity.elem_type} {identity.elem_index}"))
-        if identity.aux:
-            aux = identity.aux + (f" {identity.aux_index}" if identity.aux_index else "")
-            fields.append(Field("Aux", aux))
+        label = "Reference still" if identity.is_still else "Element"
+        fields.append(Field(label, f"{identity.kind} {identity.index}"))
     fields.append(Field("Track", row.track))
     fields.append(Field("Turnover id", row.turnover_id))
     if row.skipped:

@@ -14,6 +14,22 @@ complete, M4.5 all four chunks, M4.6 all five, **M5 all twelve**, **M7**, and **
 What is left is **M8 polish** (needs a real turnover and a real colour session) and the rest
 of **M9, the user guide**.
 
+**2026-09-22, chunk 2: the identity model is `(shot_code, kind, index)`, and that was a shape
+change rather than a rename.** `ShotIdentity` was `(show, shot, elem_type, elem_index, aux,
+aux_index)`, which hung a reference still off an element. In the CSV `colorChart` is a **peer** of
+`pl01`, so the still now stands on its own: `CLIP_TYPES` holds plates and stills in one tuple, a
+still is keyed to the shot code, and `aux_still_exr` builds
+**`MELT0001_colorChart_01_4k_v01.exr`** with no element segment - `_output_patterns`' `aux_still`
+row moved with it, because QC-151 round-trips the two. **`ShotIdentity.stem` raises for a still**
+rather than returning `MELT0001_colorChart01`, a name nothing writes: a still that cannot be named
+beats one named plausibly wrong, which is this project's recurring failure mode. `show` is derived
+off the shot code rather than carried, since the grammar is letters then four digits and two copies
+could disagree. `effective_identity` lost its premise that the element comes from the clip name.
+**`parse_clip_name` survives, deliberately, and returns the new shape**: nothing in the real
+workflow reaches it, and keeping it until chunk 3 rebuilds the scan is what keeps one commit green
+instead of two. Its docstring says so and `docs/NAMING_SPEC.md` section 1 records it. **1653
+tests**, `ruff`, `ruff format` and `mypy --strict` clean.
+
 **2026-09-22, chunk 5b: there is no per-shot grade file anywhere in the code.** The CDL on the
 EDL event is the whole grade (user, 2026-09-22, "no `.cube`, anywhere"), and what that removed is
 larger than a file type. Gone from `clf.py`: `GRADE_EXTENSIONS`, `LoadedClf`, `load_clf`,

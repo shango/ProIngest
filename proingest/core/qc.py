@@ -147,28 +147,27 @@ alone: a module owns only the IDs it raises.
 
 
 def is_picture_row(row: ShotRow) -> bool:
-    """True for a row that delivers a moving picture, rather than a still or a BTS.
+    """True for a row that delivers a moving picture rather than a reference still.
 
-    An aux still and a BTS frame carry no timeline range worth checking and are
-    planned separately (`planner._aux_plan`), so the range, duration, handle and
-    timecode rules do not apply to them.
+    A still carries no timeline range worth checking and is planned separately
+    (`planner._aux_plan`), so the range, duration, handle and timecode rules do not
+    apply to it.
     """
-    return row.identity is not None and row.identity.aux is None
+    return row.identity is not None and not row.identity.is_still
 
 
 def delivers_aux_still(row: ShotRow) -> bool:
     """True for a row that delivers a reference still the tool converts on its own.
 
-    The one picture with no CLF in its chain by design (COLOR_AND_FORMAT section 1), so
-    it is the one that cannot be delivered without a source encoding. BTS is excluded:
-    it is copied byte for byte and never transformed.
+    The one picture with no grade in its chain by design (COLOR_AND_FORMAT section 1),
+    so it is the one that cannot be delivered without a source encoding.
     """
-    return row.identity is not None and row.identity.aux is not None and row.identity.aux != "BTS"
+    return row.identity is not None and row.identity.is_still
 
 
 def is_plate(row: ShotRow) -> bool:
-    """True for the main plate, which is the only element that owes audio and side files."""
-    return row.identity is not None and row.identity.aux is None and row.identity.elem_type == "pl"
+    """True for the main plate, which is the only clip type that owes audio."""
+    return row.identity is not None and row.identity.kind == "pl"
 
 
 # --- turnover rules ---------------------------------------------------------------
@@ -597,11 +596,12 @@ def check_source_rate(row: ShotRow, project_rate: FrameRate) -> list[QCResult]:
 def check_aux_still(row: ShotRow) -> list[QCResult]:
     """QC-055: an aux still that is really a clip.
 
-    `planner._aux_plan` delivers the first frame and nothing else, so a colour chart
-    that arrived as a hundred frames loses ninety-nine of them silently without this.
-    BTS is excluded: it is a still by definition and never carries a frame count.
+    `planner._aux_plan` delivers the In frame and nothing else, so a colour chart that
+    arrived as a hundred frames loses ninety-nine of them silently without this. **That
+    is now the normal case rather than an oddity**: in the real sample a reference still
+    is one timeline frame inside a 49-frame file, so this fires on every one of them.
     """
-    if row.identity is None or row.identity.aux is None or row.identity.aux == "BTS":
+    if row.identity is None or not row.identity.is_still:
         return []
     if row.media is None or row.media.frame_count <= 1:
         return []
@@ -610,7 +610,7 @@ def check_aux_still(row: ShotRow) -> list[QCResult]:
             "QC-055",
             "warning",
             "row",
-            f"{row.identity.aux} still has {row.media.frame_count} frames; the first will be used",
+            f"{row.identity.kind} still has {row.media.frame_count} frames; the In frame will be used",
         )
     ]
 

@@ -49,7 +49,7 @@ def make_row(**overrides: object) -> ShotRow:
     defaults: dict[str, object] = {
         "turnover_id": "t1",
         "clip_name": "MELT0001_pl01",
-        "identity": ShotIdentity(show="MELT", shot="0001", elem_type="pl", elem_index="01"),
+        "identity": ShotIdentity(shot_code="MELT0001", kind="pl", index="01"),
         "media": make_media(),
         "record_in": 0,
         "record_out": 239,

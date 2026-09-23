@@ -56,7 +56,6 @@ class TestWhatOneRowSays:
         sections = describe([row()], batch(row()))
         assert value(sections, "Identity", "Clip name") == "MELT0001_pl01"
         assert value(sections, "Identity", "Show") == "MELT"
-        assert value(sections, "Identity", "Shot") == "0001"
         assert value(sections, "Identity", "Element") == "pl 01"
 
     def test_an_edited_shot_code_says_that_it_was_edited(self) -> None:

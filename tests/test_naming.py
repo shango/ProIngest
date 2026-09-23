@@ -13,11 +13,9 @@ import pytest
 from proingest.core import naming
 from proingest.core.naming import ShotIdentity
 
-PLATE = ShotIdentity(show="MELT", shot="0001", elem_type="pl", elem_index="01")
-CLEAN = ShotIdentity(show="MELT", shot="0001", elem_type="cp", elem_index="01")
-CHART = ShotIdentity(
-    show="MELT", shot="0001", elem_type="pl", elem_index="01", aux="colorChart", aux_index="01"
-)
+PLATE = ShotIdentity(shot_code="MELT0001", kind="pl", index="01")
+CLEAN = ShotIdentity(shot_code="MELT0001", kind="cp", index="01")
+CHART = ShotIdentity(shot_code="MELT0001", kind="colorChart", index="01")
 
 
 class TestParseClipName:
@@ -28,19 +26,28 @@ class TestParseClipName:
     def test_every_element_type(self, elem_type: str) -> None:
         parsed = naming.parse_clip_name(f"MELT0001_{elem_type}01")
         assert parsed is not None
-        assert parsed.elem_type == elem_type
+        assert parsed.kind == elem_type
 
     @pytest.mark.parametrize("aux", naming.AUX_NAMES)
-    def test_every_aux_name(self, aux: str) -> None:
+    def test_an_aux_name_reads_as_a_still_keyed_to_the_shot(self, aux: str) -> None:
+        """The element it used to hang off is dropped: a still is a peer of a plate now."""
         parsed = naming.parse_clip_name(f"MELT0001_pl01_{aux}_01")
-        assert parsed is not None
-        assert parsed.aux == aux
-        assert parsed.aux_index == "01"
+        assert parsed == ShotIdentity(shot_code="MELT0001", kind=aux, index="01")
 
     def test_derived_properties(self) -> None:
         assert PLATE.shot_code == "MELT0001"
+        assert PLATE.show == "MELT"
         assert PLATE.elem == "pl01"
         assert PLATE.stem == "MELT0001_pl01"
+        assert not PLATE.is_still
+
+    def test_a_still_has_no_element_stem(self) -> None:
+        """`MELT0001_colorChart01` is a name nothing writes, so it is refused rather
+        than returned: a still that cannot be named beats one named plausibly wrong."""
+        assert CHART.is_still
+        assert CHART.show == "MELT"
+        with pytest.raises(ValueError, match="reference still"):
+            _ = CHART.stem
 
     @pytest.mark.parametrize(
         "name",
@@ -167,7 +174,7 @@ class TestBuildNames:
         assert naming.audio_wav(PLATE, 1) == "MELT0001_pl01_audio_v01.wav"
 
     def test_aux_still(self) -> None:
-        assert naming.aux_still_exr(CHART, 1) == "MELT0001_pl01_colorChart_01_4k_v01.exr"
+        assert naming.aux_still_exr(CHART, 1) == "MELT0001_colorChart_01_4k_v01.exr"
 
     def test_clean_plate_uses_its_own_element(self) -> None:
         assert naming.raw_sequence_dir(CLEAN, "HD", 3) == "MELT0001_cp01_raw_HD_v03"
@@ -193,7 +200,7 @@ class TestParseOutputName:
             ("MELT0001_pl01_raw_4k_v01", "raw_dir"),
             ("MELT0001_pl01_ref_HD_v01.mp4", "ref_mp4"),
             ("MELT0001_pl01_audio_v01.wav", "audio"),
-            ("MELT0001_pl01_colorChart_01_4k_v01.exr", "aux_still"),
+            ("MELT0001_colorChart_01_4k_v01.exr", "aux_still"),
         ],
     )
     def test_each_example_parses_to_exactly_one_kind(self, name: str, kind: str) -> None:
@@ -209,7 +216,7 @@ class TestParseOutputName:
             "MELT0001_pl01_raw_4k_v01",
             "MELT0001_pl01_ref_HD_v01.mp4",
             "MELT0001_pl01_audio_v01.wav",
-            "MELT0001_pl01_colorChart_01_4k_v01.exr",
+            "MELT0001_colorChart_01_4k_v01.exr",
         ],
     )
     def test_patterns_are_mutually_exclusive(self, name: str) -> None:
@@ -265,7 +272,7 @@ class TestRoundTrip:
 
     @pytest.mark.parametrize("elem_type", naming.ELEMENT_TYPES)
     def test_ref_mp4_for_every_element_type(self, elem_type: str) -> None:
-        identity = ShotIdentity(show="MELT", shot="0042", elem_type=elem_type, elem_index="02")
+        identity = ShotIdentity(shot_code="MELT0042", kind=elem_type, index="02")
         parsed = naming.parse_output_name(naming.ref_mp4(identity, "4k", 5))
         assert parsed is not None
         assert parsed.shot_code == "MELT0042"
@@ -282,9 +289,7 @@ class TestRoundTrip:
 
     @pytest.mark.parametrize("aux", naming.AUX_NAMES)
     def test_aux_still(self, aux: str) -> None:
-        identity = ShotIdentity(
-            show="MELT", shot="0001", elem_type="pl", elem_index="01", aux=aux, aux_index="03"
-        )
+        identity = ShotIdentity(shot_code="MELT0001", kind=aux, index="03")
         parsed = naming.parse_output_name(naming.aux_still_exr(identity, 2))
         assert parsed is not None
         assert (parsed.kind, parsed.aux, parsed.aux_index, parsed.version) == (

@@ -50,29 +50,55 @@ _AUX = "|".join(AUX_NAMES)
 
 @dataclass(frozen=True)
 class ShotIdentity:
-    """A parsed timeline clip name.
+    """Who a clip is: the shot it belongs to and what kind of clip it is.
 
-    Numeric parts stay strings so leading zeros survive the round trip.
+    **Assembled from two CSV fields rather than parsed out of a filename** (NAMING_SPEC
+    section 1, settled 2026-09-21): `Shot` gives `shot_code` and `Shot Type` gives
+    `kind` and `index`.
+
+    `kind` is drawn from `CLIP_TYPES`, which holds plates and reference stills **in one
+    tuple**. That is the shape of the change rather than a detail of it: the old model
+    hung a still off an element, and in the CSV `colorChart` is a peer of `pl01`. A
+    still therefore has no element, which is why `stem` refuses to build one for it.
+
+    `index` stays a string so a leading zero survives the round trip.
     """
 
-    show: str
-    shot: str
-    elem_type: str
-    elem_index: str
-    aux: str | None = None
-    aux_index: str | None = None
+    shot_code: str
+    kind: str
+    index: str
 
     @property
-    def shot_code(self) -> str:
-        return f"{self.show}{self.shot}"
+    def show(self) -> str:
+        """`MELT` out of `MELT0001`, which is the delivery's top folder.
+
+        Taken off the shot code rather than carried, because a shot code is letters then
+        four digits by grammar (NAMING_SPEC section 1) and carrying it would be a second
+        place for the two to disagree.
+        """
+        return self.shot_code.rstrip("0123456789")
+
+    @property
+    def is_still(self) -> bool:
+        """A reference still: one 4k EXR, never graded, keyed to the shot code."""
+        return self.kind in AUX_NAMES
 
     @property
     def elem(self) -> str:
-        return f"{self.elem_type}{self.elem_index}"
+        """`pl01`, what a plate's deliverables are named for."""
+        return f"{self.kind}{self.index}"
 
     @property
     def stem(self) -> str:
-        """`MELT0001_pl01`, the prefix shared by every deliverable of this element."""
+        """`MELT0001_pl01`, the prefix shared by every deliverable of this element.
+
+        Refuses for a still rather than returning `MELT0001_colorChart01`, which is a
+        name nothing writes: a still's deliverable is `MELT0001_colorChart_01_4k_v01.exr`,
+        with an underscore before the index and no element segment. Raising here is the
+        difference between a still that cannot be named and one named plausibly wrong.
+        """
+        if self.is_still:
+            raise ValueError(f"{self.shot_code} {self.kind} is a reference still and has no element stem")
         return f"{self.shot_code}_{self.elem}"
 
 
@@ -108,17 +134,32 @@ def parse_shot_type(written: str) -> tuple[str, str] | None:
 
 
 def parse_clip_name(name: str, show_pattern: str = DEFAULT_SHOW_PATTERN) -> ShotIdentity | None:
-    """Parse a timeline clip name. Returns None when it does not match (caller raises QC-010)."""
+    """Parse a timeline clip name into the new identity. Returns None when it does not match.
+
+    **Interim.** The shooters do not rename clips and identity arrives in the CSV, so
+    nothing in the real workflow reaches this. It survives only until chunk 3 rebuilds
+    the scan on the CSV, and it is kept rather than deleted early so the suite stays
+    green across one commit rather than two.
+
+    An old-style name naming an aux still reads as that still, keyed to the shot code:
+    `MELT0001_pl01_colorChart_01` is `colorChart` 01 of `MELT0001`, and the element it
+    used to hang off is dropped, because that is the contract now.
+    """
     match = _clip_pattern(show_pattern).match(name)
     if match is None:
         return None
+    if match["aux"] is not None and match["aux"] != "BTS":
+        return ShotIdentity(
+            shot_code=f"{match['show']}{match['shot']}",
+            kind=match["aux"],
+            index=match["auxidx"] or "01",
+        )
+    if match["aux"] is not None:
+        return None
     return ShotIdentity(
-        show=match["show"],
-        shot=match["shot"],
-        elem_type=match["type"],
-        elem_index=match["idx"],
-        aux=match["aux"],
-        aux_index=match["auxidx"],
+        shot_code=f"{match['show']}{match['shot']}",
+        kind=match["type"],
+        index=match["idx"],
     )
 
 
@@ -167,12 +208,14 @@ def audio_wav(identity: ShotIdentity, version: int) -> str:
 
 
 def aux_still_exr(identity: ShotIdentity, version: int) -> str:
-    """Single-frame reference still (colorChart, mirrorBall, greyBall, sizeRef). Always 4k."""
-    if identity.aux is None or identity.aux_index is None:
-        raise ValueError(f"{identity.stem} carries no aux still")
-    if identity.aux not in AUX_NAMES:
-        raise ValueError(f"aux still must be one of {AUX_NAMES}, got {identity.aux!r}")
-    return f"{identity.stem}_{identity.aux}_{identity.aux_index}_4k_{_ver(version)}.exr"
+    """Single-frame reference still (colorChart, mirrorBall, greyBall, sizeRef). Always 4k.
+
+    **Keyed to the shot code, with no element segment** (shooters' spec, 2026-09-21):
+    `MELT0001_colorChart_01_4k_v01.exr`, not `MELT0001_pl01_colorChart_01_...`.
+    """
+    if not identity.is_still:
+        raise ValueError(f"aux still must be one of {AUX_NAMES}, got {identity.kind!r}")
+    return f"{identity.shot_code}_{identity.kind}_{identity.index}_4k_{_ver(version)}.exr"
 
 
 # --- Delivery folder layout, NAMING_SPEC.md section 5. ---
@@ -218,7 +261,8 @@ class ParsedOutput:
 
 def _output_patterns(show_pattern: str) -> list[tuple[OutputKind, re.Pattern[str]]]:
     """One anchored pattern per kind. Mutually exclusive on the literal kind segment."""
-    sc = rf"(?P<show>{show_pattern})(?P<shot>\d{{4}})_(?P<type>{_TYPES})(?P<idx>\d{{2}})"
+    shot = rf"(?P<show>{show_pattern})(?P<shot>\d{{4}})"
+    sc = rf"{shot}_(?P<type>{_TYPES})(?P<idx>\d{{2}})"
     v = r"v(?P<ver>\d{2})"
     res = r"(?P<res>4k|HD)"
     return [
@@ -226,7 +270,7 @@ def _output_patterns(show_pattern: str) -> list[tuple[OutputKind, re.Pattern[str
         ("raw_dir", re.compile(rf"^{sc}_raw_{res}_{v}$")),
         ("ref_mp4", re.compile(rf"^{sc}_ref_{res}_{v}\.mp4$")),
         ("audio", re.compile(rf"^{sc}_audio_{v}\.wav$")),
-        ("aux_still", re.compile(rf"^{sc}_(?P<aux>{_AUX})_(?P<auxidx>\d{{2}})_4k_{v}\.exr$")),
+        ("aux_still", re.compile(rf"^{shot}_(?P<aux>{_AUX})_(?P<auxidx>\d{{2}})_4k_{v}\.exr$")),
     ]
 
 

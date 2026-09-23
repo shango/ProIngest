@@ -193,20 +193,18 @@ class _Shot:
 def effective_identity(row: ShotRow, show_pattern: str = naming.DEFAULT_SHOW_PATTERN) -> ShotIdentity | None:
     """The identity every name for this row is built from.
 
-    A shot code the editor corrected replaces the show and number (NAMING_SPEC section
-    6); element, aux and index always come from the clip name, which the editor cannot
-    change. Returns None when the clip name never parsed, or when the correction does
-    not parse either, because then no name can be built at all.
+    A shot code the editor corrected replaces the one the CSV gave (NAMING_SPEC section
+    6); the clip type and its index always come from `Shot Type`, which the editor does
+    not correct here. Returns None when the row never had an identity, or when the
+    correction does not parse either, because then no name can be built at all.
     """
     if row.identity is None:
         return None
     if not row.shot_code_override:
         return row.identity
-    parsed = naming.parse_shot_code(row.shot_code_override, show_pattern)
-    if parsed is None:
+    if naming.parse_shot_code(row.shot_code_override, show_pattern) is None:
         return None
-    show, shot = parsed
-    return replace(row.identity, show=show, shot=shot)
+    return replace(row.identity, shot_code=row.shot_code_override)
 
 
 def plannable_identity(row: ShotRow, show_pattern: str = naming.DEFAULT_SHOW_PATTERN) -> ShotIdentity | None:
@@ -254,10 +252,10 @@ def plan_row(
         audio=_audio_source(row),
         color=shot_color,
     )
-    if identity.aux is not None:
+    if identity.is_still:
         return _aux_plan(shot)
 
-    plan = RowPlan(jobs=[_picture_job(shot, kind, res) for kind, res in TYPE_TABLE[identity.elem_type]])
+    plan = RowPlan(jobs=[_picture_job(shot, kind, res) for kind, res in TYPE_TABLE[identity.kind]])
     audio = _audio_job(shot)
     if audio is not None:
         plan.jobs.append(audio)
@@ -379,7 +377,7 @@ def _audio_job(shot: _Shot) -> DeliverableJob | None:
     A plate with none is QC-040, raised by the rule registry rather than here, because a
     missing deliverable is a fact about the row and not about the plan.
     """
-    if shot.identity.elem_type not in AUDIO_TYPES or shot.audio is None:
+    if shot.identity.kind not in AUDIO_TYPES or shot.audio is None:
         return None
     return DeliverableJob(
         kind="audio",

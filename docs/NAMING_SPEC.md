@@ -21,7 +21,10 @@ Source of truth: the shooters' spec PDF. This doc restates it as rules the code 
 >   are distinct when casefolded, so nothing is ambiguous.
 > - **Clean plate is accepted as either `cl` or `cp` and always written `cp`** (OQ-72).
 >
-> The code still parses clip names until the respec lands.
+> **Built 2026-09-22.** `naming.ShotIdentity` is `(shot_code, kind, index)`, `naming.parse_shot_type`
+> carries the three reading rules, and `core/metacsv.py` assembles an identity from the two CSV
+> fields. `naming.parse_clip_name` survives only until the scan is rebuilt on the CSV, and is
+> marked interim in its own docstring.
 
 
 ```
