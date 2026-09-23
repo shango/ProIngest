@@ -641,7 +641,7 @@ NVENC was the Windows hardware encoder and **does not exist on macOS**. The macO
 ## 4. Resolution rules
 
 - 4k deliverables are exactly 3840x2160. HD deliverables are exactly 1920x1080.
-- Source must be 3840x2160 for a normal plate. Anything else: QC-023 error, row blocked, unless the user enables "allow non-4k source" in Settings, in which case the tool letterboxes/pillarboxes into 3840x2160 with black and logs QC-024 warning. No cropping ever.
+- Source must be 3840x2160 for a normal plate. Anything else: QC-023 error, row blocked, unless the user enables "allow non-4k source" in Settings, in which case the tool letterboxes/pillarboxes into 3840x2160 with black. No cropping ever. The picture is resized to the largest even size of its own shape inside the target and centred on an even pixel (`resize.fit_inside`, `resize.letterbox_offset`). In an EXR the bars are added after the colour chain, so they are linear zero rather than a log code value pushed through it; in a reference they are added after the conversion to 4:2:0. Non-square pixels are not handled: `MediaInfo` does not carry the sample aspect ratio, and no source so far has one.
 - HD is produced by Lanczos downscale (`scale=1920:1080:flags=lanczos`), no sharpening. It is a second decode of the source, not a second output of the 4k one. Section 7 says why.
 - Aspect other than 16:9 is QC-023 as above.
 

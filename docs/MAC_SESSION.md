@@ -322,3 +322,9 @@ Treat it as a working session with the editor rather than a delivery.
   frames bit for bit, the wav exactly the plate's length, the mp4 timecode the In frame's. Confirm
   on the bundled 9.0.1 that QC-113 passes, the timecode tag reads the EXR's first `timeCode`, and
   the sound stays in sync to the last frame of a long plate.
+- **Chunk G, colour and format (2026-09-23).** Every decode now states its matrix and range, and a
+  file with no matrix tag is decoded as BT.709 (D17, provisional). Measured on Linux with ffmpeg
+  6.1; the suite's `test_a_pure_red_reference_measures_bt709` and
+  `test_an_untagged_bt709_file_decodes_to_its_primary` pin it on CI. By eye on the Mac: open
+  `TEST0002_pl01_ref_HD_v01.mp4` beside the same frame in Resolve's viewer and say whether the
+  colours agree; saturated reds and greens are where a matrix error shows.

@@ -274,6 +274,50 @@ def has_nvenc(ffmpeg: Path | None = None) -> bool:
     return "h264_nvenc" in available_encoders(ffmpeg)
 
 
+# --- YCbCr to RGB and back. D17 of the 2026-09-23 review. ---
+
+DEFAULT_MATRIX = "bt709"
+"""The matrix a file that states none is decoded with, and every reference is encoded
+with. BT.709 is provisional (user, 2026-09-23: "pick a matrix for now"): the shooters'
+files state no matrix at all, and ffmpeg's own fallback for that is BT.601, which is
+the wrong answer for any HD or UHD camera file."""
+
+_SCALE_MATRIX = {
+    "bt709": "bt709",
+    "smpte170m": "smpte170m",
+    "bt470bg": "bt470",
+    "bt2020nc": "bt2020",
+    "bt2020c": "bt2020",
+    "fcc": "fcc",
+    "smpte240m": "smpte240m",
+}
+"""ffprobe's name for a matrix, to the `scale` filter's name for the same one."""
+
+
+def input_matrix(color_space: str) -> str:
+    """The matrix a file is decoded with: its own when it states one, else BT.709."""
+    return _SCALE_MATRIX.get(color_space, DEFAULT_MATRIX)
+
+
+def input_range(color_range: str) -> str:
+    """The range a file is decoded at: full only when it says so, as the real files do."""
+    return "full" if color_range in ("pc", "jpeg") else "limited"
+
+
+def to_rgb(size: tuple[int, int] | None, color_space: str, color_range: str, pixel_format: str) -> str:
+    """The filter that turns the source into float RGB, resized on the way when asked.
+
+    **The matrix and range are stated rather than left to swscale**, which reads them
+    off the frame and, for a file that states no matrix, falls back to BT.601. Every
+    real file measured so far states none. The `format` straight after makes this one
+    `scale` do the conversion, instead of an automatic one inserted later that would
+    not see these options. An RGB source ignores both.
+    """
+    resize = f"{size[0]}:{size[1]}:flags=lanczos:" if size is not None else ""
+    matrix, value_range = input_matrix(color_space), input_range(color_range)
+    return f"scale={resize}in_color_matrix={matrix}:in_range={value_range},format={pixel_format}"
+
+
 # --- Decoding a container source to numpy frames. COLOR_AND_FORMAT section 7. ---
 
 
@@ -284,6 +328,8 @@ def decode_command(
     is_sequence: bool,
     target_size: tuple[int, int] | None = None,
     ffmpeg: Path | None = None,
+    color_space: str = "",
+    color_range: str = "",
 ) -> list[str]:
     """The command that decodes `[in_frame, out_frame]` to raw float32 on stdout.
 
@@ -300,6 +346,9 @@ def decode_command(
     the HD pass is this same command with one more filter. That is the second decode
     per row, and it is deliberate: a filtergraph split to write both resolutions at
     once is more moving parts than the decode is worth.
+
+    `color_space` and `color_range` are the file's own tags, and `to_rgb` turns them
+    into an explicit matrix and range for the conversion to RGB.
     """
     tool = ffmpeg or resolve_tool("ffmpeg")
     count = frames.duration(in_frame, out_frame)
@@ -312,10 +361,8 @@ def decode_command(
         # end_frame is exclusive, so it is the first frame past the range.
         filters.append(f"trim=start_frame={in_frame}:end_frame={out_frame + 1}")
     command += ["-i", source]
-    if target_size is not None:
-        filters.append(f"scale={target_size[0]}:{target_size[1]}:flags=lanczos")
-    if filters:
-        command += ["-vf", ",".join(filters)]
+    filters.append(to_rgb(target_size, color_space, color_range, DECODE_PIXEL_FORMAT))
+    command += ["-vf", ",".join(filters)]
 
     # Map the video alone: a source with audio would otherwise reach the rawvideo
     # muxer as a second stream. fps_mode passthrough stops ffmpeg inventing or
@@ -362,6 +409,8 @@ def decode_frames(
     target_size: tuple[int, int] | None = None,
     ffmpeg: Path | None = None,
     timeout: int = DECODE_TIMEOUT,
+    color_space: str = "",
+    color_range: str = "",
 ) -> Generator[npt.NDArray[np.float32], None, None]:
     """Yield each frame of `[in_frame, out_frame]` as `(h, w, 3)` float32 RGB.
 
@@ -380,7 +429,16 @@ def decode_frames(
     width, height = target_size or source_size
     frame_bytes = width * height * _PLANES * _RAW_DTYPE.itemsize
     expected = frames.duration(in_frame, out_frame)
-    command = decode_command(source, in_frame, out_frame, is_sequence, target_size, ffmpeg)
+    command = decode_command(
+        source,
+        in_frame,
+        out_frame,
+        is_sequence,
+        target_size,
+        ffmpeg,
+        color_space=color_space,
+        color_range=color_range,
+    )
     log.info("running: %s", shlex.join(command))
 
     with tempfile.TemporaryFile() as errors:
@@ -518,6 +576,18 @@ def current_reference_crf() -> int:
 REFERENCE_PIXEL_FORMAT = "yuv420p"
 REFERENCE_AUDIO_BITRATE = "192k"
 
+REFERENCE_TO_YUV = (
+    f"scale=out_color_matrix={DEFAULT_MATRIX}:out_range=limited,format={REFERENCE_PIXEL_FORMAT}"
+)
+"""The conversion back to what x264 is handed, with the matrix the output is tagged with."""
+
+
+def pad_filter(canvas: tuple[int, int]) -> str:
+    """Letterbox the picture onto the canvas, where `resize.letterbox_offset` puts it in
+    an EXR: centred, rounded down to an even pixel."""
+    return f"pad={canvas[0]}:{canvas[1]}:trunc((ow-iw)/4)*2:trunc((oh-ih)/4)*2:black"
+
+
 REFERENCE_TAGS = [
     "-color_primaries",
     "bt709",
@@ -559,7 +629,7 @@ def lut_filter(cube: Path) -> str:
     filtergraph that fails to parse is a render that fails on a temp directory name.
     """
     escaped = str(cube).replace("\\", "\\\\").replace(":", "\\:").replace("'", "\\'")
-    return f"format={LUT_PIXEL_FORMAT},lut3d={escaped}:interp={LUT_INTERPOLATION}"
+    return f"lut3d={escaped}:interp={LUT_INTERPOLATION}"
 
 
 def encode_command(
@@ -577,6 +647,9 @@ def encode_command(
     crf: int | None = None,
     audio_tempo: float = 1.0,
     timecode: str | None = None,
+    color_space: str = "",
+    color_range: str = "",
+    canvas: tuple[int, int] | None = None,
 ) -> list[str]:
     """The command that encodes `[in_frame, out_frame]` to one reference mp4.
 
@@ -601,6 +674,12 @@ def encode_command(
       muxer copies the source's start timecode, which is the head of the handles.
     - **`-f mp4` is stated.** The output is a `.part` path, so there is no extension to
       infer a muxer from. This is the same trap `extract_audio_command` documents.
+    - **Both matrices are stated.** In through `to_rgb`, from the file's own tags, and
+      out with `REFERENCE_TO_YUV`. Left to swscale, the conversion back to 4:2:0 used
+      BT.601 under a BT.709 tag, which shifts every saturated colour (F7).
+
+    `canvas` is the size the picture is letterboxed onto, given only when the source has
+    another shape than the deliverable, which is how it keeps its shape (F9).
 
     `lut` is the viewing LUT `color.view_lut` baked for this shot, applied after the
     scale so the downscale runs on the log values, which are bounded 0..1 the way
@@ -633,12 +712,13 @@ def encode_command(
             command += ["-ss", f"{audio_skip:.6f}"]
         command += ["-i", str(audio)]
 
-    if target_size is not None:
-        filters.append(f"scale={target_size[0]}:{target_size[1]}:flags=lanczos")
+    filters.append(to_rgb(target_size, color_space, color_range, LUT_PIXEL_FORMAT))
     if lut is not None:
         filters.append(lut_filter(lut))
-    if filters:
-        command += ["-vf", ",".join(filters)]
+    filters.append(REFERENCE_TO_YUV)
+    if canvas is not None:
+        filters.append(pad_filter(canvas))
+    command += ["-vf", ",".join(filters)]
 
     # fps_mode passthrough for the same reason the decode passes it: ffmpeg must not
     # invent or drop frames to reach a constant rate, because section 6 maps output
@@ -719,6 +799,9 @@ def encode_reference(
     ffmpeg: Path | None = None,
     audio_tempo: float = 1.0,
     timecode: str | None = None,
+    color_space: str = "",
+    color_range: str = "",
+    canvas: tuple[int, int] | None = None,
 ) -> None:
     """Run the reference encode, raising FFmpegError with ffmpeg's own complaint.
 
@@ -740,6 +823,9 @@ def encode_reference(
         ffmpeg,
         audio_tempo=audio_tempo,
         timecode=timecode,
+        color_space=color_space,
+        color_range=color_range,
+        canvas=canvas,
     )
     result = run(command, timeout=ENCODE_TIMEOUT)
     if result.returncode != 0:

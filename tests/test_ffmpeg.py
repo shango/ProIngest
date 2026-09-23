@@ -52,11 +52,11 @@ class TestDecodeCommand:
     def test_a_container_seeks_with_trim_not_start_number(self) -> None:
         command = ffmpeg.decode_command("plate.mov", 3, 7, is_sequence=False)
         assert "-start_number" not in command
-        assert "trim=start_frame=3:end_frame=8" in command
+        assert command[command.index("-vf") + 1].startswith("trim=start_frame=3:end_frame=8,")
 
     def test_trim_end_frame_is_one_past_the_last_delivered_frame(self) -> None:
         command = ffmpeg.decode_command("plate.mov", 10, 10, is_sequence=False)
-        assert "trim=start_frame=10:end_frame=11" in command
+        assert command[command.index("-vf") + 1].startswith("trim=start_frame=10:end_frame=11,")
         assert command[command.index("-frames:v") + 1] == "1"
 
     def test_a_sequence_seeks_with_start_number_before_the_input(self) -> None:
@@ -69,11 +69,66 @@ class TestDecodeCommand:
     def test_a_target_size_adds_the_lanczos_scale_after_the_trim(self) -> None:
         command = ffmpeg.decode_command("plate.mov", 0, 3, is_sequence=False, target_size=(1920, 1080))
         filters = command[command.index("-vf") + 1]
-        assert filters == "trim=start_frame=0:end_frame=4,scale=1920:1080:flags=lanczos"
+        assert filters == (
+            "trim=start_frame=0:end_frame=4,"
+            "scale=1920:1080:flags=lanczos:in_color_matrix=bt709:in_range=limited,format=gbrpf32le"
+        )
 
-    def test_no_filter_at_all_when_a_sequence_needs_no_scale(self) -> None:
+    def test_a_sequence_is_only_converted_when_it_needs_no_scale(self) -> None:
         command = ffmpeg.decode_command("plate.%04d.dpx", 1001, 1004, is_sequence=True)
-        assert "-vf" not in command
+        assert command[command.index("-vf") + 1] == (
+            "scale=in_color_matrix=bt709:in_range=limited,format=gbrpf32le"
+        )
+
+
+class TestTheMatrix:
+    """D17: a file that states no matrix is decoded as BT.709, never swscale's BT.601."""
+
+    def test_a_file_that_states_nothing_is_bt709_limited(self) -> None:
+        assert ffmpeg.input_matrix("") == "bt709"
+        assert ffmpeg.input_range("") == "limited"
+
+    def test_the_real_files_full_range_is_honoured(self) -> None:
+        """Turnover199's files state `pc` and no matrix."""
+        command = ffmpeg.decode_command("C0145.MP4", 0, 1, is_sequence=False, color_range="pc")
+        assert "in_color_matrix=bt709:in_range=full" in command[command.index("-vf") + 1]
+
+    def test_a_stated_matrix_is_the_files_own(self) -> None:
+        assert ffmpeg.input_matrix("bt2020nc") == "bt2020"
+        assert ffmpeg.input_matrix("smpte170m") == "smpte170m"
+        assert ffmpeg.input_matrix("bt470bg") == "bt470"
+
+    def test_an_untagged_bt709_file_decodes_to_its_primary(self, tmp_path: Path) -> None:
+        """Pure red written with the BT.709 matrix and no tag comes back red.
+
+        Decoded as BT.601, which is swscale's fallback, the same file measured 0.90 red
+        on ffmpeg 6.1.
+        """
+        source = tmp_path / "red.mov"
+        subprocess.run(
+            [
+                "ffmpeg",
+                "-v",
+                "error",
+                "-f",
+                "lavfi",
+                "-i",
+                "color=c=0xFF0000:s=64x64:r=24:d=0.25",
+                "-vf",
+                "format=rgb24,scale=out_color_matrix=bt709:out_range=limited,format=yuv444p",
+                "-c:v",
+                "libx264",
+                "-qp",
+                "0",
+                str(source),
+            ],
+            check=True,
+        )
+        frame = next(iter(ffmpeg.decode_frames(str(source), (64, 64), 0, 0)))
+        red, green, blue = (float(frame[32, 32, channel]) for channel in range(3))
+        assert red > 0.97
+        assert green < 0.02
+        assert blue < 0.02
 
     def test_the_output_is_raw_float_planes_on_stdout(self) -> None:
         command = ffmpeg.decode_command("plate.mov", 0, 1, is_sequence=False)
@@ -255,7 +310,7 @@ class TestEncodeCommand:
             "plate.mov", Path("out.mp4.part"), 2, 5, is_sequence=False, rate="24/1"
         )
         filters = command[command.index("-vf") + 1]
-        assert filters == "trim=start_frame=2:end_frame=6,setpts=PTS-STARTPTS"
+        assert filters.startswith("trim=start_frame=2:end_frame=6,setpts=PTS-STARTPTS,")
         assert "-framerate" not in command
         assert command[command.index("-frames:v") + 1] == "4"
 
@@ -308,10 +363,12 @@ class TestEncodeCommand:
             lut=Path("/tmp/lut/MELT0001_ref_HD_v01.cube"),
         )
         filters = command[command.index("-vf") + 1].split(",")
-        assert filters[-3:] == [
-            "scale=1920:1080:flags=lanczos",
+        assert filters[-5:] == [
+            "scale=1920:1080:flags=lanczos:in_color_matrix=bt709:in_range=limited",
             "format=gbrpf32le",
             "lut3d=/tmp/lut/MELT0001_ref_HD_v01.cube:interp=tetrahedral",
+            "scale=out_color_matrix=bt709:out_range=limited",
+            "format=yuv420p",
         ]
 
     def test_the_lut_is_applied_tetrahedrally(self) -> None:
@@ -324,12 +381,73 @@ class TestEncodeCommand:
             "lut3d=/tmp/a\\:b/lut.cube:interp=tetrahedral"
         )
 
-    def test_no_lut_means_no_filter_at_all(self) -> None:
+    def test_no_lut_still_states_both_matrices(self) -> None:
         """`encode_command` still has to build a command without one, for the tests above."""
         command = ffmpeg.encode_command(
             "plate.%04d.exr", Path("out.mp4.part"), 1001, 1004, is_sequence=True, rate="24/1"
         )
-        assert "-vf" not in command
+        assert command[command.index("-vf") + 1] == (
+            "scale=in_color_matrix=bt709:in_range=limited,format=gbrpf32le,"
+            "scale=out_color_matrix=bt709:out_range=limited,format=yuv420p"
+        )
+
+    def test_a_canvas_letterboxes_after_the_conversion(self) -> None:
+        """F9: the bars are added in 4:2:0, where black is black, on even pixels."""
+        command = ffmpeg.encode_command(
+            "plate.mov",
+            Path("out.mp4.part"),
+            0,
+            3,
+            is_sequence=False,
+            rate="24/1",
+            target_size=(3840, 2026),
+            canvas=(3840, 2160),
+        )
+        assert command[command.index("-vf") + 1].endswith(
+            "format=yuv420p,pad=3840:2160:trunc((ow-iw)/4)*2:trunc((oh-ih)/4)*2:black"
+        )
+
+    def test_a_pure_red_reference_measures_bt709(self, tmp_path: Path) -> None:
+        """F7: Y of pure red is 63 under BT.709; the old encode measured 81, BT.601."""
+        source = tmp_path / "red.%04d.png"
+        subprocess.run(
+            [
+                "ffmpeg",
+                "-v",
+                "error",
+                "-f",
+                "lavfi",
+                "-i",
+                "color=c=0xFF0000:s=64x64:r=24",
+                "-frames:v",
+                "4",
+                "-start_number",
+                "1001",
+                str(source),
+            ],
+            check=True,
+        )
+        output = tmp_path / "out.mp4.part"
+        ffmpeg.encode_reference(str(source), output, 1001, 1004, is_sequence=True, rate="24/1")
+        luma = subprocess.run(
+            [
+                "ffmpeg",
+                "-v",
+                "error",
+                "-i",
+                str(output),
+                "-frames:v",
+                "1",
+                "-f",
+                "rawvideo",
+                "-pix_fmt",
+                "yuv420p",
+                "-",
+            ],
+            check=True,
+            capture_output=True,
+        ).stdout
+        assert abs(luma[32 * 64 + 32] - 63) <= 2
 
     def test_no_audio_means_the_stream_is_dropped_not_silent(self) -> None:
         command = ffmpeg.encode_command(

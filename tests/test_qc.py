@@ -273,6 +273,35 @@ class TestSourceFormat:
         assert qc.bit_depth(pixel_format) == depth
 
 
+class TestColorTags:
+    """QC-018, info: what matrix a container is decoded with, when it is not a plain BT.709."""
+
+    def container(self, color_space: str = "", color_range: str = "") -> ShotRow:
+        subject = row()
+        assert subject.media is not None
+        subject.media = replace(
+            subject.media, is_sequence=False, color_space=color_space, color_range=color_range
+        )
+        return subject
+
+    def test_a_file_that_states_no_matrix_says_bt709_is_assumed(self) -> None:
+        """Every real file of Turnover199 is this: full range, no matrix."""
+        results = qc.check_color_tags(self.container(color_range="pc"))
+        assert ids(results) == ["QC-018"]
+        assert results[0].severity == "info"
+        assert "bt709, full range" in results[0].message
+
+    def test_a_file_that_states_bt709_says_nothing(self) -> None:
+        assert qc.check_color_tags(self.container(color_space="bt709")) == []
+
+    def test_another_stated_matrix_is_used_and_said(self) -> None:
+        results = qc.check_color_tags(self.container(color_space="bt2020nc"))
+        assert "bt2020, limited range" in results[0].message
+
+    def test_a_sequence_has_no_matrix_to_choose(self) -> None:
+        assert qc.check_color_tags(row()) == []
+
+
 class TestSourceCodec:
     def test_a_decodable_codec_is_clean(self) -> None:
         assert qc.check_source_codec(row(codec="prores"), frozenset({"prores", "h264"})) == []

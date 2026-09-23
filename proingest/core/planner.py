@@ -19,7 +19,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Literal
 
-from proingest.core import clf, frames, naming
+from proingest.core import clf, frames, naming, resize
 from proingest.core.models import (
     Batch,
     Deliverable,
@@ -96,6 +96,10 @@ class DeliverableJob:
     In frame is `in / source_rate` seconds into the clip, and the sound is retimed by
     `rate / source_rate` so it follows the picture played at 24."""
 
+    source_color_space: str = ""
+    source_color_range: str = ""
+    """The media's own matrix and range tags, which the decode states explicitly (D17)."""
+
     source_start_frame: int = 0
     """First frame index of the media: the first sequence number, or 0 for a container."""
 
@@ -133,6 +137,14 @@ class DeliverableJob:
     @property
     def target_size(self) -> tuple[int, int] | None:
         return RESOLUTIONS[self.res] if self.res else None
+
+    @property
+    def fitted_size(self) -> tuple[int, int] | None:
+        """The picture's size inside `target_size`: the target, unless the source has
+        another shape, which is letterboxed rather than stretched (F9)."""
+        if self.target_size is None or self.source_size is None:
+            return self.target_size
+        return resize.fit_inside(self.source_size, self.target_size)
 
     @property
     def frame_count(self) -> int:
@@ -362,6 +374,8 @@ def _picture_job(shot: _Shot, kind: JobKind, res: Resolution) -> DeliverableJob:
         source_size=shot.media.resolution,
         rate=shot.media.rate,
         source_rate=shot.media.stated_rate or shot.media.rate,
+        source_color_space=shot.media.color_space,
+        source_color_range=shot.media.color_range,
         source_start_frame=shot.media.start_frame,
         source_start_timecode=shot.media.start_timecode,
         shot_color=shot.color,

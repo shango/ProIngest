@@ -243,6 +243,14 @@ class TestReadPixels:
         exr.write_frame(path, image(value=64.0))
         assert exr.read_pixels(path).max() == pytest.approx(64.0, rel=1e-2)
 
+    def test_a_value_past_half_is_clamped_not_infinite(self, tmp_path: Path) -> None:
+        """F28: 1e6 cast to half is inf, which a comp multiplies into its neighbours."""
+        path = tmp_path / "frame.exr"
+        exr.write_frame(path, image(value=1e6))
+        read = exr.read_pixels(path)
+        assert np.isfinite(read).all()
+        assert read.max() > 60000  # DWAA is lossy, so near the ceiling rather than on it
+
     def test_alpha_comes_back(self, tmp_path: Path) -> None:
         path = tmp_path / "frame.exr"
         exr.write_frame(path, image(channels=4))

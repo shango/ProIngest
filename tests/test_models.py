@@ -145,6 +145,16 @@ class TestMediaInfo:
         del data["tags"]
         assert MediaInfo.from_dict(data).tags == {}
 
+    def test_round_trip_with_colour_tags(self) -> None:
+        media = make_media(color_space="bt709", color_range="pc", color_transfer="bt709")
+        assert MediaInfo.from_dict(media.to_dict()) == media
+
+    def test_media_saved_before_colour_tags_existed_reads_back_empty(self) -> None:
+        data = make_media().to_dict()
+        del data["color_space"], data["color_range"]
+        assert MediaInfo.from_dict(data).color_space == ""
+        assert MediaInfo.from_dict(data).color_range == ""
+
     def test_round_trip_without_timecode(self) -> None:
         """No embedded timecode is QC-028, and must survive serialization as None."""
         media = make_media(start_timecode=None)

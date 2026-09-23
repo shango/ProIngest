@@ -103,6 +103,9 @@ CDL_NOTE_APPLIED = f"applied in {color.WORKING_SPACE}, between the source encodi
 RGB_CHANNELS = "RGB"
 RGBA_CHANNELS = "RGBA"
 
+HALF_MAX = float(np.finfo(np.float16).max)
+"""65504, the largest finite half. Anything past it is clamped here rather than cast to inf."""
+
 
 class ExrError(RuntimeError):
     """The file did not open or its header did not parse. Reported as QC-014 or QC-052."""
@@ -312,7 +315,11 @@ def write_frame(
         header["timeCode"] = _timecode_attribute(timecode_frames, fps)
 
     key = RGB_CHANNELS if pixels.shape[2] == 3 else RGBA_CHANNELS
-    half = np.ascontiguousarray(pixels, dtype=np.float16)
+    # Half float tops out at 65504 and a larger value casts to infinity without a word,
+    # which a comp then multiplies into every pixel near it (F28). Clamped to the largest
+    # finite half instead; a NaN is left as it is.
+    finite = np.clip(pixels, -HALF_MAX, HALF_MAX)
+    half = np.ascontiguousarray(finite, dtype=np.float16)
     try:
         with OpenEXR.File(header, {key: half}) as handle:
             handle.write(str(path))

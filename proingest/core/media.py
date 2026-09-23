@@ -367,7 +367,17 @@ def probe(
         mtime=mtime,
         stated_rate=stated,
         tags=tags,
+        color_space=_color_tag(stream, "color_space"),
+        color_range=_color_tag(stream, "color_range"),
+        color_transfer=_color_tag(stream, "color_transfer"),
+        color_primaries=_color_tag(stream, "color_primaries"),
     )
+
+
+def _color_tag(stream: dict[str, Any], key: str) -> str:
+    """A colour tag, or empty when the stream states none; ffprobe says "unknown"."""
+    value = str(stream.get(key, ""))
+    return "" if value in ("", "unknown", "unspecified") else value
 
 
 def _tags_from(probe: dict[str, Any], stream: dict[str, Any]) -> dict[str, str]:

@@ -233,7 +233,7 @@ def _render_sequence(
         # is closed part way through is killed and its exit code is never read.
         for pixels, output_frame in zip(stream, job.output_frames(), strict=False):
             path = job.frame_path(output_frame, temp=True)
-            _write_frame(job, path, graded.apply(pixels), output_frame)
+            _write_frame(job, path, _letterbox(job, graded.apply(pixels)), output_frame)
             deliverable.frame_checksums.append(file_digest(path))
             deliverable.size += path.stat().st_size
             written += 1
@@ -261,9 +261,15 @@ def _render_still(job: DeliverableJob, deliverable: Deliverable) -> None:
         stream.close()
     if pixels is None:
         raise RenderError(f"{job.name}: the source gave no frame at {job.in_frame}")
-    _write_frame(job, job.temp, graded.apply(pixels), next(iter(job.output_frames())))
+    _write_frame(job, job.temp, _letterbox(job, graded.apply(pixels)), next(iter(job.output_frames())))
     _record_file(deliverable, job.temp)
     deliverable.frame_count = 1
+
+
+def _letterbox(job: DeliverableJob, pixels: npt.NDArray[np.float32]) -> npt.NDArray[np.float32]:
+    """The graded frame on the target canvas. After the chain, so the bars are black."""
+    target = job.target_size
+    return pixels if target is None else resize.letterbox(pixels, target)
 
 
 def _write_frame(
@@ -298,7 +304,7 @@ def _source_pixels(job: DeliverableJob) -> Generator[npt.NDArray[np.float32], No
             frame_path = media.frame_path_for(job.source, job.source_frame(output_frame))
             if not frame_path.is_file():
                 raise RenderError(f"{job.name}: source frame {frame_path} is missing")
-            yield _fit(exr.read_pixels(frame_path), job.target_size)
+            yield _fit(exr.read_pixels(frame_path), job.fitted_size)
         return
 
     if job.source_size is None:
@@ -306,7 +312,7 @@ def _source_pixels(job: DeliverableJob) -> Generator[npt.NDArray[np.float32], No
     source = media.printf_pattern_for(job.source) if job.source_is_sequence else str(job.source)
     # Only ask ffmpeg to scale when the size actually changes: a 4k pass from a 4k
     # source should not run the source through a resampler at all.
-    scale = job.target_size if job.target_size != job.source_size else None
+    scale = job.fitted_size if job.fitted_size != job.source_size else None
     yield from ffmpeg.decode_frames(
         source,
         job.source_size,
@@ -314,6 +320,8 @@ def _source_pixels(job: DeliverableJob) -> Generator[npt.NDArray[np.float32], No
         job.out_frame,
         is_sequence=job.source_is_sequence,
         target_size=scale,
+        color_space=job.source_color_space,
+        color_range=job.source_color_range,
     )
 
 
@@ -356,7 +364,7 @@ def _render_reference(job: DeliverableJob, deliverable: Deliverable) -> None:
     source = media.printf_pattern_for(job.source) if job.source_is_sequence else str(job.source)
     # Same rule as the raw path: only scale when the size actually changes, so a 4k
     # reference off a 4k source never touches a resampler.
-    scale = job.target_size if job.target_size != job.source_size else None
+    scale = job.fitted_size if job.fitted_size != job.source_size else None
     with tempfile.TemporaryDirectory(prefix=LUT_TEMP_PREFIX) as folder:
         ffmpeg.encode_reference(
             source,
@@ -371,6 +379,9 @@ def _render_reference(job: DeliverableJob, deliverable: Deliverable) -> None:
             audio_skip=_audio_skip(job),
             audio_tempo=_audio_tempo(job),
             timecode=_start_timecode(job),
+            color_space=job.source_color_space,
+            color_range=job.source_color_range,
+            canvas=job.target_size if job.fitted_size != job.target_size else None,
         )
     if not job.temp.is_file():
         raise RenderError(f"{job.name}: the encode reported success and wrote nothing")

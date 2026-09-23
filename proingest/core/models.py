@@ -173,6 +173,18 @@ class MediaInfo:
     compares this against the project rate; nothing computes with it.
     """
 
+    color_space: str = ""
+    color_range: str = ""
+    color_transfer: str = ""
+    color_primaries: str = ""
+    """The stream's own colour tags as ffprobe names them, empty when it states none.
+
+    The decode reads only the matrix and the range: they say how YCbCr becomes RGB, which
+    comes before any colour transform and which no metadata field names. The transfer
+    and primaries are kept for QC-018 and for the record. Additive, so the schema
+    version does not move.
+    """
+
     @property
     def rate_matches_timeline(self) -> bool:
         """False only when the media states a rate and it disagrees (QC-026)."""
@@ -210,6 +222,10 @@ class MediaInfo:
             "size": self.size,
             "mtime": self.mtime,
             "stated_rate": self.stated_rate.to_dict() if self.stated_rate else None,
+            "color_space": self.color_space,
+            "color_range": self.color_range,
+            "color_transfer": self.color_transfer,
+            "color_primaries": self.color_primaries,
         }
 
     @classmethod
@@ -233,6 +249,10 @@ class MediaInfo:
             size=int(data["size"]),
             mtime=float(data["mtime"]),
             stated_rate=(FrameRate.from_dict(data["stated_rate"]) if data.get("stated_rate") else None),
+            color_space=str(data.get("color_space", "")),
+            color_range=str(data.get("color_range", "")),
+            color_transfer=str(data.get("color_transfer", "")),
+            color_primaries=str(data.get("color_primaries", "")),
         )
 
 

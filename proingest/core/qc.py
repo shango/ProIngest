@@ -6,11 +6,10 @@ missing, ambiguous, unreadable) are raised in `scan.py` instead, because they ca
 be recomputed from a saved batch, and the handful of pre-flight rules that must look
 at the disk are grouped at the bottom of this module under `preflight`.
 
-Severity comes from docs/QC_RULES.md and is not reinterpreted here. Three phase A
+Severity comes from docs/QC_RULES.md and is not reinterpreted here. Two phase A
 rules are deliberately not implemented yet: QC-024 needs decoded pixels rather than a
-header, QC-061 needs a Force re-render setting that does not exist (both in PROGRESS.md
-section 9), and QC-018, the container's colour tags against the named source encoding,
-is specified in QC_RULES.md and not yet raised anywhere.
+header, and QC-061 needs a Force re-render setting that does not exist (both in
+PROGRESS.md section 9).
 
 Rules are scoped by what the row actually is. An aux still and a BTS frame are single
 frames with no timeline range, so the duration, handle and timecode rules skip them:
@@ -117,6 +116,7 @@ RULES_OVERRIDE_KEY = "rules"
 OWNED_ROW_RULES = frozenset(
     {
         "QC-011",
+        "QC-018",
         "QC-020",
         "QC-021",
         "QC-023",
@@ -286,6 +286,25 @@ def check_source_format(row: ShotRow) -> list[QCResult]:
     ]
 
 
+def check_color_tags(row: ShotRow) -> list[QCResult]:
+    """QC-018, info: the matrix and range a container is decoded with, when it is not
+    simply the BT.709 it says it is.
+
+    The file's own matrix is used when it states one; otherwise BT.709, which is the
+    user's provisional choice (D17), so every row that takes it says so. A sequence is
+    RGB and has no matrix to choose.
+    """
+    media = row.media
+    if media is None or media.is_sequence or media.color_space == "bt709":
+        return []
+    decoded = f"{ffmpeg.input_matrix(media.color_space)}, {ffmpeg.input_range(media.color_range)} range"
+    if not media.color_space:
+        said = "states no colour matrix, so it is decoded as BT.709 (provisional)"
+    else:
+        said = f"states the {media.color_space} matrix, so it is decoded with that"
+    return [QCResult("QC-018", "info", "row", f"{media.path.name} {said}: {decoded}")]
+
+
 def check_source_codec(row: ShotRow, decoders: frozenset[str]) -> list[QCResult]:
     """QC-022: the source codec must be one this ffmpeg can decode.
 
@@ -309,9 +328,9 @@ def check_source_codec(row: ShotRow, decoders: frozenset[str]) -> list[QCResult]
 def check_source_resolution(row: ShotRow, settings: RuleSettings) -> list[QCResult]:
     """QC-023: the source must be the target resolution.
 
-    `render._fit` resamples whatever it is given to the target size, so a source of
-    the wrong shape would be squashed rather than letterboxed. This is the check that
-    stops that happening, which is why it is an error unless the setting allows it.
+    A source of another size is resampled to fit and letterboxed rather than stretched
+    (F9), which is a delivery nobody asked for, so it is still an error unless the
+    setting allows it.
     """
     if row.media is None or not is_picture_row(row):
         return []
@@ -692,6 +711,7 @@ def run_row_rules(
     results: list[QCResult] = []
     results.extend(check_duplicate_name(row, name_counts or {}))
     results.extend(check_source_encoding(row))
+    results.extend(check_color_tags(row))
     results.extend(check_source_format(row))
     results.extend(check_source_resolution(row, settings))
     results.extend(check_source_rate(row, project_rate))

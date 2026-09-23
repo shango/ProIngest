@@ -13,6 +13,7 @@ point it is verified.
 from __future__ import annotations
 
 import multiprocessing
+import subprocess
 from collections.abc import Generator
 from dataclasses import replace
 from pathlib import Path
@@ -383,6 +384,26 @@ class TestResample:
         render.render_job(job)
         assert exr.read_header(job.frame_path(1001)).resolution == (1920, 1080)
 
+    def test_a_source_of_another_shape_is_letterboxed_not_stretched(self, tmp_path: Path) -> None:
+        """F9: a 2048x1080 source fits HD at 1920x1012, centred, with black bars."""
+        source = fixtures.make_mov(tmp_path / "src" / "plate.mov", count=1, size=(2048, 1080))
+        job = sequence_job(
+            source,
+            tmp_path / "out" / "MELT0001_pl01_raw_HD_v01",
+            0,
+            0,
+            is_sequence=False,
+            start_frame=0,
+            res="HD",
+        )
+        render.render_job(replace(job, source_size=(2048, 1080)))
+        pixels = exr.read_pixels(job.frame_path(1001))
+        assert pixels.shape[:2] == (1080, 1920)
+        # DWAA is lossy in 8 pixel blocks, so the rows next to the picture carry a trace.
+        assert np.abs(pixels[:34]).max() < 1e-3
+        assert np.abs(pixels[-34:]).max() < 1e-3
+        assert np.abs(pixels[34:1046]).max() > 0.0
+
     def test_no_resolution_means_the_source_size_is_kept(self, tmp_path: Path) -> None:
         job = raw_job(tmp_path, count=1)
         render.render_job(job)
@@ -633,6 +654,32 @@ class TestReferenceMp4:
         render.render_job(job)
         stream = video_stream(job.destination)
         assert (stream["width"], stream["height"]) == (1920, 1080)
+
+    def test_a_source_of_another_shape_is_letterboxed_in_the_reference(self, tmp_path: Path) -> None:
+        source = fixtures.make_mov(tmp_path / "src" / "plate.mov", count=2, size=(2048, 1080))
+        job = replace(ref_job(tmp_path, source, 0, 1, res="HD"), source_size=(2048, 1080))
+        render.render_job(job)
+        stream = video_stream(job.destination)
+        assert (stream["width"], stream["height"]) == (1920, 1080)
+        top_row = subprocess.run(
+            [
+                "ffmpeg",
+                "-v",
+                "error",
+                "-i",
+                str(job.destination),
+                "-frames:v",
+                "1",
+                "-f",
+                "rawvideo",
+                "-pix_fmt",
+                "gray",
+                "-",
+            ],
+            check=True,
+            capture_output=True,
+        ).stdout[:1920]
+        assert max(top_row) <= 17
 
     def test_associated_audio_is_muxed_as_aac(self, tmp_path: Path) -> None:
         source = fixtures.make_mov(tmp_path / "src" / "plate.mov", count=8)

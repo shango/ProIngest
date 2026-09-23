@@ -92,3 +92,46 @@ def lanczos_resize(image: npt.NDArray[Any], width: int, height: int) -> npt.NDAr
     working = np.asarray(image, dtype=np.float32)
     working = _resample_axis(working, height, 0)
     return _resample_axis(working, width, 1)
+
+
+def fit_inside(source: tuple[int, int], target: tuple[int, int]) -> tuple[int, int]:
+    """The largest even size with the source's shape that fits inside the target.
+
+    A source of the target's shape fits exactly, so a 3840x2160 source reaches HD
+    untouched by this. Anything else keeps its shape and is letterboxed or pillarboxed
+    rather than stretched (review 2026-09-23, F9). Even, because a reference is 4:2:0.
+    """
+    scale = min(target[0] / source[0], target[1] / source[1])
+    return (
+        min(target[0], _even(source[0] * scale)),
+        min(target[1], _even(source[1] * scale)),
+    )
+
+
+def letterbox_offset(fitted: tuple[int, int], target: tuple[int, int]) -> tuple[int, int]:
+    """Where a fitted picture sits on the target canvas: centred, on even pixels.
+
+    Even for the same reason the size is, and computed once here so the EXR and the
+    reference put the picture in the same place.
+    """
+    return (target[0] - fitted[0]) // 4 * 2, (target[1] - fitted[1]) // 4 * 2
+
+
+def letterbox(image: npt.NDArray[np.float32], target: tuple[int, int]) -> npt.NDArray[np.float32]:
+    """Place an `(h, w, channels)` image on a target sized canvas of zeros.
+
+    Zero is linear black, and alpha zero outside the picture. Applied after the colour
+    chain, never before it: a zero in a log encoding is not black, and a bar decoded
+    through the chain would come out below it.
+    """
+    height, width = image.shape[:2]
+    if (width, height) == target:
+        return image
+    x, y = letterbox_offset((width, height), target)
+    canvas = np.zeros((target[1], target[0], image.shape[2]), dtype=np.float32)
+    canvas[y : y + height, x : x + width] = image
+    return canvas
+
+
+def _even(value: float) -> int:
+    return max(2, int(value / 2 + 0.5) * 2)
