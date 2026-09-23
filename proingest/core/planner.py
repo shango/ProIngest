@@ -28,7 +28,6 @@ from proingest.core.models import (
     MediaInfo,
     QCResult,
     ShotRow,
-    SideFiles,
 )
 from proingest.core.naming import Resolution, ShotIdentity
 
@@ -38,7 +37,7 @@ TEMP_SUFFIX = ".part"
 RESOLUTIONS: dict[Resolution, tuple[int, int]] = {"4k": (3840, 2160), "HD": (1920, 1080)}
 """Exact target sizes, docs/COLOR_AND_FORMAT.md section 4. Never derived from the source."""
 
-JobKind = Literal["raw_dir", "ref_mp4", "audio", "hdri", "camdata", "aux_still", "bts"]
+JobKind = Literal["raw_dir", "ref_mp4", "audio", "aux_still"]
 
 PICTURE_DELIVERABLES: tuple[tuple[JobKind, Resolution], ...] = (
     ("raw_dir", "4k"),
@@ -57,7 +56,7 @@ and it also depends on there being audio at all, so it is added separately."""
 AUDIO_TYPES = ("pl",)
 """Only the main plate delivers audio."""
 
-OWNED_RULES = frozenset({"QC-056", "QC-060"})
+OWNED_RULES = frozenset({"QC-060"})
 """Rule IDs this module raises. Cleared before it raises them again, as qc.py does."""
 
 
@@ -185,7 +184,6 @@ class _Shot:
     identity: ShotIdentity
     media: MediaInfo
     current: InOut
-    side_files: SideFiles
     directory: Path
     version: int
     audio: Path | None
@@ -251,7 +249,6 @@ def plan_row(
         identity=identity,
         media=media,
         current=current,
-        side_files=row.side_files,
         directory=naming.shot_dir(delivery_root, identity),
         version=version,
         audio=_audio_source(row),
@@ -264,7 +261,6 @@ def plan_row(
     audio = _audio_job(shot)
     if audio is not None:
         plan.jobs.append(audio)
-    plan.jobs.extend(_side_file_jobs(shot))
     return plan
 
 
@@ -395,79 +391,35 @@ def _audio_job(shot: _Shot) -> DeliverableJob | None:
     )
 
 
-def _side_file_jobs(shot: _Shot) -> list[DeliverableJob]:
-    """HDRI and camData copies, renamed to spec and versioned with the shot."""
-    jobs: list[DeliverableJob] = []
-    if shot.side_files.hdri is not None:
-        jobs.append(
-            _copy_job(shot, "hdri", shot.side_files.hdri, naming.hdri_exr(shot.identity, shot.version))
-        )
-    camdata = shot.side_files.camdata
-    if camdata is not None:
-        name = naming.camdata(shot.identity, shot.version, camdata.suffix)
-        jobs.append(_copy_job(shot, "camdata", camdata, name))
-    return jobs
-
-
-def _copy_job(shot: _Shot, kind: JobKind, source: Path, name: str) -> DeliverableJob:
-    """A byte copy under a delivery name. No frame range, nothing to scale."""
-    return DeliverableJob(
-        kind=kind,
-        source=source,
-        destination=shot.directory / name,
-        version=shot.version,
-        shot_code=shot.identity.shot_code,
-        elem=shot.identity.elem,
-    )
-
-
 def _aux_plan(shot: _Shot) -> RowPlan:
-    """An aux clip delivers one still and nothing else. NAMING_SPEC section 2.
+    """A reference still delivers one 4k EXR and nothing else. NAMING_SPEC section 2.
 
-    A reference still becomes a 4k EXR; a BTS still is copied as it is. Only the clip's
-    first frame is used, which is what QC-055 reports when the clip holds more than one.
+    Only the clip's In frame is used, which is what QC-055 reports when the clip holds
+    more than one. That is now the normal case rather than an oddity: in the real sample
+    a reference still is one timeline frame inside a 49-frame file.
     """
     first = shot.current.in_frame
-    if shot.identity.aux != "BTS":
-        return RowPlan(
-            jobs=[
-                DeliverableJob(
-                    kind="aux_still",
-                    source=shot.media.path,
-                    destination=shot.directory / naming.aux_still_exr(shot.identity, shot.version),
-                    version=shot.version,
-                    shot_code=shot.identity.shot_code,
-                    elem=shot.identity.elem,
-                    res="4k",
-                    in_frame=first,
-                    out_frame=first,
-                    source_is_sequence=shot.media.is_sequence,
-                    source_size=shot.media.resolution,
-                    rate=shot.media.rate,
-                    source_start_frame=shot.media.start_frame,
-                    source_start_timecode=shot.media.start_timecode,
-                    shot_color=clf.ShotColor(
-                        source_encoding=shot.color.source_encoding,
-                        source_encoding_origin=shot.color.source_encoding_origin,
-                    ),
-                )
-            ]
-        )
-
-    ext = shot.media.path.suffix.lstrip(".").lower()
-    if ext not in naming.BTS_EXTENSIONS:
-        return RowPlan(
-            qc=[
-                QCResult(
-                    "QC-056",
-                    "warning",
-                    "row",
-                    f"BTS still {shot.media.path.name} is not one of "
-                    f"{', '.join(naming.BTS_EXTENSIONS)}, so it has no delivery name and is "
-                    f"not planned",
-                )
-            ]
-        )
     return RowPlan(
-        jobs=[_copy_job(shot, "bts", shot.media.path, naming.bts(shot.identity, shot.version, ext))]
+        jobs=[
+            DeliverableJob(
+                kind="aux_still",
+                source=shot.media.path,
+                destination=shot.directory / naming.aux_still_exr(shot.identity, shot.version),
+                version=shot.version,
+                shot_code=shot.identity.shot_code,
+                elem=shot.identity.elem,
+                res="4k",
+                in_frame=first,
+                out_frame=first,
+                source_is_sequence=shot.media.is_sequence,
+                source_size=shot.media.resolution,
+                rate=shot.media.rate,
+                source_start_frame=shot.media.start_frame,
+                source_start_timecode=shot.media.start_timecode,
+                shot_color=clf.ShotColor(
+                    source_encoding=shot.color.source_encoding,
+                    source_encoding_origin=shot.color.source_encoding_origin,
+                ),
+            )
+        ]
     )

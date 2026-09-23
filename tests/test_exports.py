@@ -24,7 +24,6 @@ from proingest.core.models import (
     MediaInfo,
     QCResult,
     ShotRow,
-    SideFiles,
     Turnover,
 )
 
@@ -70,10 +69,6 @@ def row(clip_name: str = "MELT0001_pl01", rate: FrameRate = RATE_24, **kwargs: o
             sample_rate=48000,
             channels=2,
             bit_depth=24,
-        ),
-        side_files=SideFiles(
-            hdri=Path("/turnover/MELT0001_pl01_hdri.exr"),
-            camdata=Path("/turnover/MELT0001_pl01_camdata.txt"),
         ),
     )
     built.deliverables = [
@@ -134,14 +129,10 @@ class TestQcLogSheets:
     def log(self, tmp_path: Path) -> Path:
         return exports.write_qc_log(batch_of(row()), tmp_path / "log.xlsx", date(2026, 9, 11))
 
-    def test_the_five_sheets_the_spec_names(self, log: Path) -> None:
-        assert load_workbook(log).sheetnames == [
-            "Summary",
-            "Shots",
-            "Deliverables",
-            "Side Files",
-            "Camera Data",
-        ]
+    def test_the_three_sheets_the_spec_names(self, log: Path) -> None:
+        """Three since 2026-09-22: Side Files and Camera Data went with the deliverables
+        they described, which the tool no longer produces."""
+        assert load_workbook(log).sheetnames == ["Summary", "Shots", "Deliverables"]
 
     def test_the_summary_counts_what_ran(self, log: Path) -> None:
         summary: dict[object, object] = {key: value for key, value in sheet_rows(log, "Summary")[1:]}
@@ -193,13 +184,6 @@ class TestQcLogSheets:
     def test_one_deliverables_row_each(self, log: Path) -> None:
         assert len(sheet_rows(log, "Deliverables")) == 8
 
-    def test_side_files_pair_the_source_with_what_shipped(self, log: Path) -> None:
-        header, *rows = sheet_rows(log, "Side Files")
-        assert header == ["Shot code", "Type", "Source", "Delivered", "Checksum"]
-        kinds = {values[1]: values for values in rows}
-        assert kinds["hdri"][2] == "/turnover/MELT0001_pl01_hdri.exr"
-        assert kinds["hdri"][4] == "dd"
-
 
 class TestDeliverableRuleColumns:
     """One column per QC-1xx rule, which is what makes an NA mean anything."""
@@ -239,24 +223,6 @@ class TestDeliverableRuleColumns:
         assert first["QC-101"] == "NA"
 
 
-class TestCameraDataSheet:
-    def test_every_pair_becomes_a_row(self, tmp_path: Path) -> None:
-        camdata_path = tmp_path / "MELT0001_pl01_camdata.txt"
-        camdata_path.write_text("Camera: ARRI Alexa 35\nLens: 32mm\n")
-        target = row()
-        target.side_files.camdata = camdata_path
-        log = exports.write_qc_log(batch_of(target), tmp_path / "log.xlsx")
-        assert sheet_rows(log, "Camera Data")[1:] == [
-            ["MELT0001", "Camera", "ARRI Alexa 35"],
-            ["MELT0001", "Lens", "32mm"],
-        ]
-
-    def test_an_unreadable_file_leaves_the_sheet_empty_rather_than_failing(self, tmp_path: Path) -> None:
-        """QC-053 already reported it on the row; a pair sheet is no place for an error."""
-        log = exports.write_qc_log(batch_of(row()), tmp_path / "log.xlsx")
-        assert sheet_rows(log, "Camera Data") == [["Shot code", "Key", "Value"]]
-
-
 class TestShotTracker:
     @pytest.fixture
     def tracker(self, tmp_path: Path) -> Path:
@@ -273,8 +239,8 @@ class TestShotTracker:
         assert values[2] == "MELT0001"
         assert values[3] == "MELT0001"
         assert values[4] == "MELT0001_pl01_ref_HD_v01.mp4"
-        assert values[5] == "MELT0001_pl01_HDRI_v01.exr"
-        assert values[6] == "MELT0001_pl01_camData_v01.txt"
+        assert values[5] is None, "HDRI is the studio's column and no longer ours to fill"
+        assert values[6] is None, "CAM Data likewise"
         assert values[8] == "24"
         assert values[9] == "✓"
 

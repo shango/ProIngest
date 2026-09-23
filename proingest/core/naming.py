@@ -38,8 +38,6 @@ in the delivered names.
 
 _SHOT_TYPE_INDEX = {name.casefold(): name for name in CLIP_TYPES}
 _SHOT_TYPE_PATTERN = re.compile(r"^(?P<kind>[A-Za-z]+)(?P<index>\d{1,2})?$")
-CAMDATA_EXTENSIONS = ("txt", "rtf")
-BTS_EXTENSIONS = ("png", "jpg", "jpeg")
 
 FIRST_OUTPUT_FRAME = 1001
 """Output sequences always start here, whatever the source frame numbering is."""
@@ -78,24 +76,12 @@ class ShotIdentity:
         return f"{self.shot_code}_{self.elem}"
 
 
-@dataclass(frozen=True)
-class LensGridIdentity:
-    """A lens grid clip. Turnover level, not tied to a shot."""
-
-    camera: str
-    lens: str
-    mm: str
-
-
 def _clip_pattern(show_pattern: str) -> re.Pattern[str]:
     return re.compile(
         rf"^(?P<show>{show_pattern})(?P<shot>\d{{4}})"
         rf"_(?P<type>{_TYPES})(?P<idx>\d{{2}})"
         rf"(?:_(?P<aux>{_AUX}|BTS)_(?P<auxidx>\d{{2}}))?$"
     )
-
-
-LENS_GRID_PATTERN = re.compile(r"^(?P<camera>[A-Za-z0-9]+)_(?P<lens>[A-Za-z0-9\-]+)_lensgrid_(?P<mm>\d+)mm$")
 
 
 def parse_shot_type(written: str) -> tuple[str, str] | None:
@@ -148,24 +134,6 @@ def parse_shot_code(code: str, show_pattern: str = DEFAULT_SHOW_PATTERN) -> tupl
     return match["show"], match["shot"]
 
 
-def parse_lens_grid_name(name: str) -> LensGridIdentity | None:
-    """Parse a lens grid clip name, which uses a different pattern to shot clips."""
-    match = LENS_GRID_PATTERN.match(name)
-    if match is None:
-        return None
-    return LensGridIdentity(camera=match["camera"], lens=match["lens"], mm=match["mm"])
-
-
-def normalize_shooter(name: str) -> str:
-    """Reduce a shooter's name to what the stringout filename can carry.
-
-    The stringout pattern only accepts lowercase alphanumerics, so `Daniel Luckett`
-    and `daniel-luckett` both become `danielluckett`. The unnormalized value stays on
-    the turnover for the tracker and the QC log. See OQ-15.
-    """
-    return re.sub(r"[^a-z0-9]", "", name.lower())
-
-
 def _ver(version: int) -> str:
     return f"v{version:02d}"
 
@@ -198,17 +166,6 @@ def audio_wav(identity: ShotIdentity, version: int) -> str:
     return f"{identity.stem}_audio_{_ver(version)}.wav"
 
 
-def hdri_exr(identity: ShotIdentity, version: int) -> str:
-    return f"{identity.stem}_HDRI_{_ver(version)}.exr"
-
-
-def camdata(identity: ShotIdentity, version: int, ext: str) -> str:
-    ext = ext.lstrip(".").lower()
-    if ext not in CAMDATA_EXTENSIONS:
-        raise ValueError(f"camData extension must be one of {CAMDATA_EXTENSIONS}, got {ext!r}")
-    return f"{identity.stem}_camData_{_ver(version)}.{ext}"
-
-
 def aux_still_exr(identity: ShotIdentity, version: int) -> str:
     """Single-frame reference still (colorChart, mirrorBall, greyBall, sizeRef). Always 4k."""
     if identity.aux is None or identity.aux_index is None:
@@ -216,27 +173,6 @@ def aux_still_exr(identity: ShotIdentity, version: int) -> str:
     if identity.aux not in AUX_NAMES:
         raise ValueError(f"aux still must be one of {AUX_NAMES}, got {identity.aux!r}")
     return f"{identity.stem}_{identity.aux}_{identity.aux_index}_4k_{_ver(version)}.exr"
-
-
-def bts(identity: ShotIdentity, version: int, ext: str) -> str:
-    ext = ext.lstrip(".").lower()
-    if ext not in BTS_EXTENSIONS:
-        raise ValueError(f"BTS extension must be one of {BTS_EXTENSIONS}, got {ext!r}")
-    if identity.aux_index is None:
-        raise ValueError(f"{identity.stem} carries no BTS index")
-    return f"{identity.stem}_BTS_{identity.aux_index}_{_ver(version)}.{ext}"
-
-
-def lens_grid_png(identity: LensGridIdentity, version: int) -> str:
-    return f"{identity.camera}_{identity.lens}_lensgrid_{identity.mm}mm_{_ver(version)}.png"
-
-
-def stringout_mp4(turnover_number: int, month: int, day: int, year: int, shooter: str, version: int) -> str:
-    """`turnover001_02_23_2026_danielluckett_v01.mp4`. Shooter is normalized here."""
-    normalized = normalize_shooter(shooter)
-    if not normalized:
-        raise ValueError(f"shooter name {shooter!r} normalizes to an empty string")
-    return f"turnover{turnover_number:03d}_{month:02d}_{day:02d}_{year:04d}_{normalized}_{_ver(version)}.mp4"
 
 
 # --- Delivery folder layout, NAMING_SPEC.md section 5. ---
@@ -261,12 +197,7 @@ OutputKind = Literal[
     "raw_dir",
     "ref_mp4",
     "audio",
-    "hdri",
-    "camdata",
     "aux_still",
-    "bts",
-    "lensgrid",
-    "stringout",
 ]
 
 
@@ -290,31 +221,12 @@ def _output_patterns(show_pattern: str) -> list[tuple[OutputKind, re.Pattern[str
     sc = rf"(?P<show>{show_pattern})(?P<shot>\d{{4}})_(?P<type>{_TYPES})(?P<idx>\d{{2}})"
     v = r"v(?P<ver>\d{2})"
     res = r"(?P<res>4k|HD)"
-    camdata_ext = "|".join(CAMDATA_EXTENSIONS)
-    bts_ext = "|".join(BTS_EXTENSIONS)
     return [
         ("raw_frame", re.compile(rf"^{sc}_raw_{res}_{v}\.(?P<frame>\d{{4}})\.exr$")),
         ("raw_dir", re.compile(rf"^{sc}_raw_{res}_{v}$")),
         ("ref_mp4", re.compile(rf"^{sc}_ref_{res}_{v}\.mp4$")),
         ("audio", re.compile(rf"^{sc}_audio_{v}\.wav$")),
-        ("hdri", re.compile(rf"^{sc}_HDRI_{v}\.exr$")),
-        ("camdata", re.compile(rf"^{sc}_camData_{v}\.(?P<ext>{camdata_ext})$")),
         ("aux_still", re.compile(rf"^{sc}_(?P<aux>{_AUX})_(?P<auxidx>\d{{2}})_4k_{v}\.exr$")),
-        ("bts", re.compile(rf"^{sc}_BTS_(?P<auxidx>\d{{2}})_{v}\.(?P<ext>{bts_ext})$")),
-        (
-            "lensgrid",
-            re.compile(
-                rf"^(?P<camera>[A-Za-z0-9]+)_(?P<lens>[A-Za-z0-9\-]+)"
-                rf"_lensgrid_(?P<mm>\d+)mm_{v}\.png$"
-            ),
-        ),
-        (
-            "stringout",
-            re.compile(
-                rf"^turnover(?P<tno>\d{{3}})_(?P<mm>\d{{2}})_(?P<dd>\d{{2}})"
-                rf"_(?P<yyyy>\d{{4}})_(?P<shooter>[a-z0-9]+)_{v}\.mp4$"
-            ),
-        ),
     ]
 
 

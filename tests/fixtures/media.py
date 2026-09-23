@@ -364,33 +364,13 @@ def make_otio(
     return path
 
 
-def make_side_files(directory: Path, stem: str) -> tuple[Path, Path]:
-    """The HDRI and camData a plate is required to arrive with. NAMING_SPEC section 2.
-
-    Written outside the media folder so a filename search for the clip cannot match
-    them, which is the same separation a real turnover has.
-    """
-    directory.mkdir(parents=True, exist_ok=True)
-    sequence = make_exr_sequence(directory, base=f"{stem}_HDRI", count=1)
-    hdri = sequence.path_for(1001).rename(directory / f"{stem}_HDRI.exr")
-    camdata = directory / f"{stem}_camData.txt"
-    camdata.write_text("lens: 40mm\nfilter: ND6\n", encoding="utf-8")
-    return hdri, camdata
-
-
 def make_turnover(
     root: Path,
     shots: int = 2,
     frames: int = 8,
-    side_files: bool = False,
     source_encoding: str | None = SOURCE_ENCODING,
 ) -> Path:
-    """A turnover folder: an EXR sequence and a wav per shot, plus the .otio.
-
-    `side_files` writes the HDRI and camData every plate is supposed to arrive with,
-    which is what QC-050 and QC-051 look for. Off by default so the side file tests
-    can put their own files where they want them.
-    """
+    """A turnover folder: an EXR sequence and a wav per shot, plus the .otio."""
     root.mkdir(parents=True, exist_ok=True)
     clips: list[tuple[str, str]] = []
     audio: list[tuple[str, str]] = []
@@ -400,8 +380,6 @@ def make_turnover(
         clips.append((name, sequence.path_for(sequence.first).as_uri()))
         wav = make_wav(root / "media" / f"{name}.wav", seconds=frames / FPS)
         audio.append((f"{name}_audio", wav.as_uri()))
-        if side_files:
-            make_side_files(root / "side", name)
     make_otio(
         root / "turnover001.otio",
         clips,

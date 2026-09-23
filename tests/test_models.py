@@ -22,7 +22,6 @@ from proingest.core.models import (
     MediaInfo,
     QCResult,
     ShotRow,
-    SideFiles,
     Turnover,
 )
 from proingest.core.naming import ShotIdentity
@@ -191,7 +190,6 @@ class TestShotRow:
 
     def test_round_trip(self) -> None:
         row = make_row(
-            side_files=SideFiles(hdri=Path("/t/h.exr"), camdata=Path("/t/c.rtf")),
             audio_path=Path("/t/a.wav"),
             notes="watch the flare",
             skipped=True,
@@ -249,23 +247,6 @@ class TestShotRow:
 
 
 class TestTurnover:
-    def test_stringout_fields_complete(self) -> None:
-        turnover = Turnover("t1", Path("/t"), number=1, month=2, day=23, year=2026, shooter="dan")
-        assert turnover.has_stringout_fields
-
-    @pytest.mark.parametrize("missing", ["number", "month", "day", "year", "shooter"])
-    def test_stringout_fields_incomplete(self, missing: str) -> None:
-        fields: dict[str, object] = {
-            "number": 1,
-            "month": 2,
-            "day": 23,
-            "year": 2026,
-            "shooter": "dan",
-        }
-        fields[missing] = None if missing != "shooter" else ""
-        turnover = Turnover("t1", Path("/t"), **fields)  # type: ignore[arg-type]
-        assert not turnover.has_stringout_fields
-
     def test_round_trip(self) -> None:
         turnover = Turnover(
             "t1",

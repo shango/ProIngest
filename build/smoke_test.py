@@ -109,7 +109,7 @@ def check_scan(executable: Path, work: Path) -> Path:
     freezing drops by default, and neither failure is visible before this line.
     """
     folder = work / "turnover001_09_13_2026_shooterA"
-    media_fixtures.make_turnover(folder, shots=1, frames=FRAMES, side_files=True)
+    media_fixtures.make_turnover(folder, shots=1, frames=FRAMES)
     rules = media_fixtures.write_rules_file(work / "rules.json")
     batch = work / "smoke.pibatch"
     out = run_step(executable, ["scan", str(folder), "--rules", str(rules), "--save", str(batch)])

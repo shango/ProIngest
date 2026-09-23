@@ -55,7 +55,6 @@ from proingest.core.planner import DeliverableJob
 
 log = logging.getLogger(__name__)
 
-COPY_KINDS = qc.COPY_KINDS
 """Byte copies under a delivery name. NAMING_SPEC section 2."""
 
 WAV_SUFFIX = qc.WAV_SUFFIX
@@ -111,8 +110,6 @@ def render_job(
             _render_audio(job, deliverable)
         elif job.kind == "ref_mp4":
             _render_reference(job, deliverable)
-        elif job.kind in COPY_KINDS:
-            _render_copy(job, deliverable)
         else:
             raise RenderError(f"no renderer for a {job.kind} job")
     except ffmpeg.FFmpegError as exc:
@@ -442,16 +439,6 @@ def _render_audio(job: DeliverableJob, deliverable: Deliverable) -> None:
         ffmpeg.extract_audio(job.source, job.temp)
     if not job.temp.is_file():
         raise RenderError(f"{job.name}: no audio was produced from {job.source}")
-    _record_file(deliverable, job.temp)
-
-
-def _render_copy(job: DeliverableJob, deliverable: Deliverable) -> None:
-    """HDRI, camData and BTS: the same bytes under the delivery name.
-
-    Nothing is converted, which is why the scan filters side files by extension: a
-    rename cannot turn a jpg into an exr.
-    """
-    shutil.copyfile(job.source, job.temp)
     _record_file(deliverable, job.temp)
 
 

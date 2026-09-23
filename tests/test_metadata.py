@@ -16,7 +16,7 @@ import pytest
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication
 
-from proingest.core.models import AudioInfo, FrameRate, InOut, MediaInfo, QCResult, SideFiles
+from proingest.core.models import AudioInfo, FrameRate, InOut, MediaInfo, QCResult
 from proingest.ui.metadata import (
     MIXED,
     NO_SELECTION,
@@ -166,25 +166,6 @@ class TestWhatOneRowSays:
 
     def test_a_row_with_no_audio_has_no_audio_section(self) -> None:
         assert "Audio" not in titles(describe([row()], batch(row())))
-
-    def test_camdata_is_read_through_the_lookup_and_its_pairs_are_fields(self) -> None:
-        """Section 12.2: the only place lens, filter and camera body appear in the UI."""
-        sided = with_sides(row())
-        asked: list[Path] = []
-
-        def lookup(path: Path) -> dict[str, str]:
-            asked.append(path)
-            return {"Lens": "Zeiss Supreme Prime 35mm", "Filter": "ND 0.6"}
-
-        sections = describe([sided], batch(sided), lookup)
-        assert asked == [Path("/turnover/MELT0001_pl01_camdata.txt")]
-        assert value(sections, "Side files", "Lens") == "Zeiss Supreme Prime 35mm"
-
-    def test_nothing_reads_a_file_without_a_lookup(self) -> None:
-        """The default is a stub, so a pane built without one cannot touch a Drive mount."""
-        sided = with_sides(row())
-        labels = {f.label for f in section(describe([sided], batch(sided)), "Side files").fields}
-        assert labels == {"HDRI", "camData"}
 
     def test_the_turnover_the_row_belongs_to_is_shown(self) -> None:
         sections = describe([row()], batch(row()))
@@ -447,7 +428,6 @@ def test_describe_row_keeps_empty_sections_so_a_merge_can_line_them_up() -> None
         "Range",
         "Colour",
         "Audio",
-        "Side files",
         "Turnover",
         "QC",
     ]
@@ -465,5 +445,4 @@ def test_a_media_info_that_is_not_a_numbered_frame_has_no_pattern() -> None:
         frame_count=24,
         is_sequence=True,
     )
-    odd.side_files = SideFiles()
     assert value(describe([odd], batch(odd)), "Source media", "Pattern") == ""

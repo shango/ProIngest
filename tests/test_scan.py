@@ -38,13 +38,12 @@ class TestParseTurnoverFolder:
 class TestScanTurnover:
     def test_happy_path(self, tmp_path: Path) -> None:
         folder = tmp_path / GOOD_FOLDER
-        fixtures.make_turnover(folder, shots=2, frames=6, side_files=True)
+        fixtures.make_turnover(folder, shots=2, frames=6)
         settings = scan.ScanSettings(rules=fixtures.SMALL_RULES)
         turnover, rows = scan.scan_turnover(folder, "t1", settings)
 
         assert turnover.number == 1
         assert turnover.shooter == "danielluckett"
-        assert turnover.has_stringout_fields
         assert turnover.qc == []
         assert len(rows) == 2
         assert all(row.qc == [] for row in rows)
@@ -181,43 +180,6 @@ class TestScanTurnover:
         assert rows[0].media is not None
         assert "QC-012" not in rules(rows[0])
 
-    def test_side_files_are_discovered(self, tmp_path: Path) -> None:
-        folder = tmp_path / GOOD_FOLDER
-        fixtures.make_turnover(folder, shots=1, frames=4)
-        (folder / "media" / "MELT0001_pl01_HDRI.exr").write_bytes(b"x")
-        (folder / "media" / "MELT0001_pl01_camData.txt").write_text("iso: 800")
-        _, rows = scan.scan_turnover(folder, "t1")
-        assert rows[0].side_files.hdri is not None
-        assert rows[0].side_files.camdata is not None
-
-    def test_a_side_file_in_the_wrong_format_is_not_matched(self, tmp_path: Path) -> None:
-        """NAMING_SPEC section 2 matches `*HDRI*.exr`, not any file with HDRI in the name.
-
-        Delivery renames without converting, so a jpeg picked up here would ship under
-        an `.exr` name.
-        """
-        folder = tmp_path / GOOD_FOLDER
-        fixtures.make_turnover(folder, shots=1, frames=4)
-        (folder / "media" / "MELT0001_pl01_HDRI_preview.jpg").write_bytes(b"x")
-        (folder / "media" / "MELT0001_pl01_camData.pdf").write_bytes(b"x")
-        _, rows = scan.scan_turnover(folder, "t1")
-        assert rows[0].side_files.hdri is None
-        assert rows[0].side_files.camdata is None
-
-    def test_the_real_side_file_still_wins_beside_a_preview(self, tmp_path: Path) -> None:
-        folder = tmp_path / GOOD_FOLDER
-        fixtures.make_turnover(folder, shots=1, frames=4)
-        (folder / "media" / "MELT0001_pl01_HDRI.exr").write_bytes(b"x")
-        (folder / "media" / "MELT0001_pl01_HDRI_preview.jpg").write_bytes(b"x")
-        _, rows = scan.scan_turnover(folder, "t1")
-        assert rows[0].side_files.hdri == folder / "media" / "MELT0001_pl01_HDRI.exr"
-
-    def test_no_side_files_leaves_them_none(self, tmp_path: Path) -> None:
-        folder = tmp_path / GOOD_FOLDER
-        fixtures.make_turnover(folder, shots=1, frames=4)
-        _, rows = scan.scan_turnover(folder, "t1")
-        assert rows[0].side_files.hdri is None
-
 
 class TestSourceEncoding:
     """Reading the encoding off the clip. COLOR_AND_FORMAT section 1, OQ-44, M4.6.4."""
@@ -307,7 +269,6 @@ class TestTurnoverLevelProblems:
         fixtures.make_turnover(folder, shots=1, frames=4)
         turnover, _ = scan.scan_turnover(folder, "t1")
         assert "QC-005" in {r.rule_id for r in turnover.qc}
-        assert not turnover.has_stringout_fields
 
     def test_a_bad_turnover_does_not_raise(self, tmp_path: Path) -> None:
         """One bad folder must not take down a batch."""

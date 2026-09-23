@@ -1737,34 +1737,6 @@ class TestTheMetadataPane:
         reopened = DrivenWindow(window._settings_path)
         assert reopened.metadata.collapsed == ["Range"]
 
-    def test_camdata_is_read_once_rather_than_per_selection(
-        self, window: DrivenWindow, tmp_path: Path
-    ) -> None:
-        """The pane redraws on every arrow key and this is the one field on disk."""
-        camdata_file = tmp_path / "MELT0001_pl01_camData.txt"
-        camdata_file.write_text("Lens: Zeiss Supreme Prime 35mm\n")
-        sided = row()
-        sided.side_files.camdata = camdata_file
-        window.set_batch(batch(sided, row("MELT0002_pl01", record_in=224)))
-
-        window.shot_list.select_row(window.batch.rows[0])
-        assert "Lens: Zeiss Supreme Prime 35mm" in pane_text(window)
-        camdata_file.write_text("Lens: something else\n")
-        window.shot_list.select_row(window.batch.rows[1])
-        window.shot_list.select_row(window.batch.rows[0])
-
-        assert "Lens: Zeiss Supreme Prime 35mm" in pane_text(window), "read again off disk"
-
-    def test_unreadable_camdata_is_not_the_pane_s_problem_to_report(
-        self, window: DrivenWindow, tmp_path: Path
-    ) -> None:
-        """QC-053 says so in the Issues dock; saying it twice is two places to correct."""
-        sided = row()
-        sided.side_files.camdata = tmp_path / "gone.txt"
-        window.set_batch(batch(sided))
-        window.shot_list.select_row(window.batch.rows[0])
-        assert "camData:" in pane_text(window)
-
 
 class TestTheRunStrip:
     """The widget itself. UI_SPEC section 7.1: three states and only ever one of them."""

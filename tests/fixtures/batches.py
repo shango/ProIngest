@@ -18,7 +18,6 @@ from proingest.core.models import (
     MediaInfo,
     QCResult,
     ShotRow,
-    SideFiles,
     Turnover,
 )
 from tests.fixtures import color
@@ -88,10 +87,7 @@ def delivered(row_: ShotRow, status: str = "done", version: int = 1) -> ShotRow:
 
 
 def with_sides(row_: ShotRow) -> ShotRow:
-    row_.side_files = SideFiles(
-        hdri=Path("/turnover/MELT0001_pl01_hdri.exr"),
-        camdata=Path("/turnover/MELT0001_pl01_camdata.txt"),
-    )
+    """Audio, which is the only file beside the media the tool still delivers."""
     row_.audio_path = Path("/turnover/MELT0001_pl01.wav")
     row_.audio_clip_count = 1
     return row_

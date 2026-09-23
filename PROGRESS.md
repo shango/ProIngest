@@ -14,6 +14,33 @@ complete, M4.5 all four chunks, M4.6 all five, **M5 all twelve**, **M7**, and **
 What is left is **M8 polish** (needs a real turnover and a real colour session) and the rest
 of **M9, the user guide**.
 
+**2026-09-22, chunk 5a: the deliverables that are no longer deliverables are out of the code.**
+`Shot Type` is the whole of the tool's scope, so anything that never carries one is not the tool's
+to deliver. Gone: **the HDRI and camData side files** (`models.SideFiles` and its whole plumbing,
+the scan's `*HDRI*.exr` / `*camData*` discovery, `core/camdata.py` and `tests/test_camdata.py`,
+QC-050 to QC-053 and the planner's copy jobs), **BTS** (the planner branch, QC-056, the naming
+templates), **the lens grid** (`LensGridIdentity`, `parse_lens_grid_name`, `lens_grid_png`,
+QC-054 and QC-057 - Ben delivers it, OQ-20), and **the stringout** (`naming.stringout_mp4`,
+`normalize_shooter`, `Turnover.has_stringout_fields`, which no production code called). **QC-130
+went with them**: it checked a byte copy under a delivery name and the tool no longer makes one, so
+`render._render_copy`, `qc._verify_copy` and `COPY_KINDS` are gone and the job kinds are down to
+`raw_dir`, `ref_mp4`, `audio`, `aux_still`. **The QC log is three sheets, not five**: Side Files and
+Camera Data went with what they described. **The shot list lost its Side column** and the metadata
+pane its Side files section, along with `main_window`'s camData cache. **The tracker keeps the
+studio's HDRI and CAM Data columns and leaves them empty**, which is the honest answer: the studio's
+sheet still marks both Required and they still reach the vendor, they just no longer pass through
+this tool. **1712 tests** (1802 before, and the drop is entirely tests for things that no longer
+exist), `ruff`, `ruff format` and `mypy --strict` clean.
+
+**Two deviations from the plan's order, both deliberate.** Chunk 5 is being done **before** chunk 2,
+because the identity reshape would otherwise have to carry `hdri_exr`, `camdata`, `bts` and
+`lens_grid_png` call sites that were about to be deleted anyway. And chunk 5 is **split**: 5a is
+this, 5b is the per-shot grade cube, which is woven through `clf.py`, the batch file schema, the EXR
+header and the QC log and wants its own commit. **The three pieces of dead UI - `_color` discovery,
+the held-back turnover, normal-case ingest - are deliberately left until after chunk 3**, because
+chunk 3 is what makes them dead; removing them first would leave a window where nothing checks that
+the grade arrived.
+
 **2026-09-22, the respec build starts: chunk 1 of `docs/TO_A_WORKING_BUILD.md` is in.**
 **`proingest/core/metacsv.py` is new and it is the first code this project has had that can read
 Ben's metadata CSV at all** - there was no `import csv`, no `utf-16` and no `Shot Type` anywhere in

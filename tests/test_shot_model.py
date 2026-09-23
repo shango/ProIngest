@@ -34,7 +34,6 @@ from proingest.ui.shot_model import (
     RES,
     SECONDARY_ROLE,
     SHOT,
-    SIDE_FILES,
     SOURCE,
     STATUS,
     VERSION,
@@ -126,13 +125,11 @@ class TestWhatACellSays:
         assert text(model, 0, DURATION) == "224"
         assert text(model, 0, MAX_AVAIL) == "239"
 
-    def test_audio_and_side_files(self, model: ShotListModel) -> None:
+    def test_audio_column(self, model: ShotListModel) -> None:
         assert text(model, 0, AUDIO) == "1"
-        assert text(model, 0, SIDE_FILES) == "HDRI, camData"
 
-    def test_a_row_with_neither_says_nothing_rather_than_a_dash(self, model: ShotListModel) -> None:
+    def test_a_row_with_no_audio_says_nothing_rather_than_a_dash(self, model: ShotListModel) -> None:
         assert text(model, 1, AUDIO) == ""
-        assert text(model, 1, SIDE_FILES) == ""
 
     def test_more_than_one_audio_clip_says_how_many(self, qt_app: QApplication) -> None:
         """QC-041 is the rule; the column is where the editor sees it without opening it."""

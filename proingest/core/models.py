@@ -336,24 +336,6 @@ def _triple(values: Any) -> tuple[float, float, float]:
 
 
 @dataclass
-class SideFiles:
-    """Files found next to the media, matched by shot code and element id."""
-
-    hdri: Path | None = None
-    camdata: Path | None = None
-
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "hdri": str(self.hdri) if self.hdri else None,
-            "camdata": str(self.camdata) if self.camdata else None,
-        }
-
-    @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> SideFiles:
-        return cls(hdri=_as_path(data.get("hdri")), camdata=_as_path(data.get("camdata")))
-
-
-@dataclass
 class Deliverable:
     """One planned or written output. Populated by the planner in M2.
 
@@ -487,7 +469,6 @@ class ShotRow:
     version does not move and an older batch simply reports no CLF.
     """
 
-    side_files: SideFiles = field(default_factory=SideFiles)
     notes: str = ""
     skipped: bool = False
     skip_reason: str | None = None
@@ -571,7 +552,6 @@ class ShotRow:
             "approved": self.approved.to_dict() if self.approved else None,
             "cdl": self.cdl.to_dict() if self.cdl else None,
             "clf_path": str(self.clf_path) if self.clf_path else None,
-            "side_files": self.side_files.to_dict(),
             "notes": self.notes,
             "skipped": self.skipped,
             "skip_reason": self.skip_reason,
@@ -603,7 +583,6 @@ class ShotRow:
             approved=InOut.from_dict(data["approved"]) if data.get("approved") else None,
             cdl=CDL.from_dict(data["cdl"]) if data.get("cdl") else None,
             clf_path=_as_path(data.get("clf_path")),
-            side_files=SideFiles.from_dict(data.get("side_files", {})),
             notes=str(data.get("notes", "")),
             skipped=bool(data.get("skipped", False)),
             skip_reason=data.get("skip_reason"),
@@ -632,10 +611,12 @@ def _identity_from_dict(data: dict[str, Any] | None) -> ShotIdentity | None:
 
 @dataclass
 class Turnover:
-    """One turnover folder and the fields the stringout name needs (FR-9).
+    """One turnover folder and the fields that identify it.
 
     Number, date and shooter are prefilled from the folder name when it matches the
-    `turnover###_MM_DD_YYYY_name` pattern, and entered by hand otherwise (QC-005).
+    `turnover###_MM_DD_YYYY_name` pattern, and entered by hand otherwise (QC-005). They
+    name the turnover in the window and the headless listing; nothing builds a filename
+    out of them any more, because the tool no longer delivers the stringout (2026-09-22).
     """
 
     turnover_id: str
@@ -674,12 +655,6 @@ class Turnover:
     year: int | None = None
     shooter: str = ""
     qc: list[QCResult] = field(default_factory=list)
-
-    @property
-    def has_stringout_fields(self) -> bool:
-        return all(v is not None for v in (self.number, self.month, self.day, self.year)) and bool(
-            self.shooter
-        )
 
     def to_dict(self) -> dict[str, Any]:
         return {

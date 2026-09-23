@@ -47,7 +47,7 @@ from PySide6.QtWidgets import (
 )
 
 from proingest import __version__
-from proingest.core import batchfile, camdata, qc, scan
+from proingest.core import batchfile, qc, scan
 from proingest.core import settings as core_settings
 from proingest.core.models import (
     DEFAULT_BATCH_NAME,
@@ -299,7 +299,6 @@ class MainWindow(QMainWindow):
         # that row is what just changed. Rebuilt whole: the results are a list short
         # enough that finding the ones that moved costs more than redrawing them.
         self.shot_model.row_edited.connect(lambda _row: self.show_results())
-        self._camdata_cache: dict[Path, dict[str, str]] = {}
         self.autosave.saved.connect(lambda path: self.statusBar().showMessage(f"Saved {path.name}"))
         self.batch_bar = BatchBar(self)
         self.batch_bar.display_mode_picked.connect(self.set_display_mode)
@@ -353,7 +352,6 @@ class MainWindow(QMainWindow):
         self._batch_open = True
         self.batch_bar.set_batch_name(batch.name)
         self.batch_bar.show_delivery_root(batch.delivery_root)
-        self._camdata_cache.clear()
         self.show_results()
         self.pages.setCurrentIndex(1)
         self.update_state()
@@ -925,7 +923,7 @@ class MainWindow(QMainWindow):
         # redrawn here rather than from a fourth set of signals that would drift.
         self.deliverables.show_rows(rows)
         if rows:
-            sections = metadata.describe(rows, self.batch, self._camdata)
+            sections = metadata.describe(rows, self.batch)
             summary = metadata.selection_summary(len(rows)) if len(rows) > 1 else ""
             self.metadata.show_sections(sections, summary)
             return
@@ -934,23 +932,6 @@ class MainWindow(QMainWindow):
             self.metadata.show_sections(metadata.describe_turnover(turnover, self.batch.project_rate))
             return
         self.metadata.clear()
-
-    def _camdata(self, path: Path) -> dict[str, str]:
-        """camData's key/values, read once per file per batch (CLAUDE.md: scan once).
-
-        The only field in the pane that lives on disk rather than in the model, and the
-        pane is redrawn on every selection change, so an uncached read would be a round
-        trip to a Drive mount per arrow key. Unreadable reads as empty: QC-053 already
-        says so in the Issues dock and the pane is not the place to say it twice.
-        """
-        cached = self._camdata_cache.get(path)
-        if cached is None:
-            try:
-                cached = camdata.parse(path)
-            except OSError:
-                cached = {}
-            self._camdata_cache[path] = cached
-        return cached
 
     def _show_issue(self, rule_id: str) -> None:
         """A rule ID clicked in the pane: bring the Issues dock forward (section 12.2)."""

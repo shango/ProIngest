@@ -479,35 +479,6 @@ class TestAudio:
         assert not job.temp.exists()
 
 
-class TestCopies:
-    @pytest.mark.parametrize(
-        ("kind", "name"),
-        [
-            ("hdri", "MELT0001_pl01_HDRI_v01.exr"),
-            ("camdata", "MELT0001_pl01_camData_v01.txt"),
-            ("bts", "MELT0001_pl01_BTS_01_v01.png"),
-        ],
-    )
-    def test_a_side_file_arrives_with_the_same_bytes_under_the_delivery_name(
-        self, tmp_path: Path, kind: str, name: str
-    ) -> None:
-        source = tmp_path / "src" / "whatever.bin"
-        source.parent.mkdir(parents=True)
-        source.write_bytes(b"camera: ARRI\nlens: 40mm\n" * 100)
-        job = DeliverableJob(
-            kind=kind,  # type: ignore[arg-type]
-            source=source,
-            destination=tmp_path / "out" / name,
-            version=1,
-            shot_code="MELT0001",
-            elem="pl01",
-        )
-        deliverable = render.render_job(job)
-        assert job.destination.read_bytes() == source.read_bytes()
-        assert deliverable.checksum == render.file_digest(source)
-        assert deliverable.status == "done"
-
-
 def ref_job(
     tmp_path: Path,
     source: Path,

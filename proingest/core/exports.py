@@ -29,7 +29,7 @@ from openpyxl.styles import Alignment, Font
 from openpyxl.worksheet.worksheet import Worksheet
 
 from proingest import __version__
-from proingest.core import camdata, frames, naming, qc
+from proingest.core import frames, naming, qc
 from proingest.core.models import Batch, Deliverable, QCResult, ShotRow
 
 DATE_STAMP = "%Y%m%d"
@@ -37,7 +37,6 @@ DATE_STAMP = "%Y%m%d"
 is. It is this, because a report that sorts by name sorts by date."""
 
 _HEADER_FONT = Font(bold=True)
-_SIDE_FILE_KINDS = ("hdri", "camdata", "bts")
 
 
 def report_names(batch: Batch, when: date | None = None) -> tuple[str, str]:
@@ -124,9 +123,6 @@ than here (`exr.SOURCE_ENCODING_ORIGIN_ATTRIBUTE`)."""
 DELIVERABLE_HEADERS = (
     "Shot code", "Elem", "Kind", "Res", "Version", "Path", "Frames", "Size", "Checksum",
 )  # fmt: skip
-
-SIDE_FILE_HEADERS = ("Shot code", "Type", "Source", "Delivered", "Checksum")
-CAMERA_DATA_HEADERS = ("Shot code", "Key", "Value")
 
 
 def _write_summary(book: Workbook, batch: Batch, when: date) -> None:
@@ -241,53 +237,17 @@ def _checksum(item: Deliverable) -> str:
     return first if len(item.frame_checksums) == 1 else f"{first} .. {last}"
 
 
-def _write_side_files(book: Workbook, batch: Batch) -> None:
-    sheet = _sheet(book, "Side Files", SIDE_FILE_HEADERS)
-    for row in batch.rows:
-        sources = {"hdri": row.side_files.hdri, "camdata": row.side_files.camdata}
-        for item in row.deliverables:
-            if item.kind not in _SIDE_FILE_KINDS:
-                continue
-            source = sources.get(item.kind)
-            sheet.append(
-                [
-                    row.shot_code or "",
-                    item.kind,
-                    str(source) if source else "",
-                    str(item.path),
-                    item.checksum or "",
-                ]
-            )
-
-
-def _write_camera_data(book: Workbook, batch: Batch) -> None:
-    """Every pair out of every camData file (OQ-11, QC-053).
-
-    Unreadable files are left out rather than reported here: QC-053 already said so on
-    the row, and a sheet of key/value pairs is no place for an error message.
-    """
-    sheet = _sheet(book, "Camera Data", CAMERA_DATA_HEADERS)
-    for row in batch.rows:
-        path = row.side_files.camdata
-        if path is None:
-            continue
-        try:
-            pairs = camdata.parse(path)
-        except (OSError, UnicodeDecodeError):
-            continue
-        for key, value in pairs.items():
-            sheet.append([row.shot_code or "", key, value])
-
-
 def write_qc_log(batch: Batch, path: Path, when: date | None = None) -> Path:
-    """Write the five sheet QC log. Creates the folder; overwrites an existing file."""
+    """Write the QC log. Creates the folder; overwrites an existing file.
+
+    Three sheets since 2026-09-22, not five: Side Files and Camera Data went with the
+    deliverables they described.
+    """
     book = Workbook()
     book.remove(book.active)
     _write_summary(book, batch, when or date.today())
     _write_shots(book, batch)
     _write_deliverables(book, batch)
-    _write_side_files(book, batch)
-    _write_camera_data(book, batch)
     return _save(book, path)
 
 
@@ -347,18 +307,18 @@ def _named(row: ShotRow, kind: str, res: str | None = None) -> str:
 def tracker_row(row: ShotRow) -> list[str]:
     """One shot as the studio's 39 columns, with the thirty that are not ours empty.
 
-    The stringout column is one of ours and is left empty on purpose: the tool no
-    longer writes that file (PRD FR-9) and the grammar it would rebuild the name from
-    matches none of the 55 real ones in the tracker (OQ-41). A blank cell is the
-    honest answer until that is settled, and it is one line to fill in afterwards.
+    The stringout column is left empty because Ben produces and exports that file and
+    the tool does nothing with it at all (user, 2026-09-22, closing OQ-41). It is not
+    ours to name, so a blank cell is the whole of the answer rather than a placeholder.
     """
     cells = [""] * len(TRACKER_HEADERS)
     cells[0] = "FALSE"
     cells[2] = row.shot_code or ""
     cells[3] = row.shot_code or ""
     cells[4] = _named(row, "ref_mp4", "HD")
-    cells[5] = _named(row, "hdri")
-    cells[6] = _named(row, "camdata")
+    # HDRI and CAM Data stay the studio's columns and stay empty: neither carries a
+    # `Shot Type`, so neither is a deliverable of this tool any more (2026-09-22).
+    # They still reach the vendor, they just do not pass through here.
     cells[7] = _plate_marks(row)
     cells[8] = _tracker_fps(row)
     cells[9] = "✓" if row.audio_path else ""

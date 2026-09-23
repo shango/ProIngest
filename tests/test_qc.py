@@ -26,7 +26,6 @@ from proingest.core.models import (
     MediaInfo,
     QCResult,
     ShotRow,
-    SideFiles,
     Turnover,
 )
 from proingest.core.planner import DeliverableJob
@@ -77,7 +76,6 @@ def row(
     *,
     clip_name: str = "MELT0001_pl01",
     current: InOut | None = CHOSEN,
-    side_files: SideFiles | None = None,
     source_encoding: str | None = "ACEScct",
     **media_kwargs: object,
 ) -> ShotRow:
@@ -97,11 +95,6 @@ def row(
         audio=audio,
         audio_path=audio.path if audio else None,
         audio_clip_count=1 if audio else 0,
-        side_files=side_files
-        or SideFiles(
-            hdri=Path("/t/MELT0001_pl01_HDRI.exr"),
-            camdata=Path("/t/MELT0001_pl01_camData.txt"),
-        ),
     )
 
 
@@ -451,28 +444,6 @@ class TestAudioFormat:
         assert qc.check_audio_format(row()) == []
 
 
-class TestSideFiles:
-    def test_a_complete_plate_is_clean(self) -> None:
-        assert qc.check_side_files(row()) == []
-
-    def test_a_missing_hdri_is_qc_050(self) -> None:
-        target = row(side_files=SideFiles(camdata=Path("/t/c.txt")))
-        results = qc.check_side_files(target)
-        assert ids(results) == ["QC-050"]
-        assert results[0].severity == "warning", "OQ-18 keeps these warnings"
-
-    def test_a_missing_camdata_is_qc_051(self) -> None:
-        target = row(side_files=SideFiles(hdri=Path("/t/h.exr")))
-        assert ids(qc.check_side_files(target)) == ["QC-051"]
-
-    def test_both_missing_reports_both(self) -> None:
-        assert ids(qc.check_side_files(row(side_files=SideFiles()))) == ["QC-050", "QC-051"]
-
-    def test_only_the_plate_owes_side_files(self) -> None:
-        target = row(clip_name="MELT0001_wit01", side_files=SideFiles())
-        assert qc.check_side_files(target) == []
-
-
 class TestAuxStill:
     def test_a_single_frame_still_is_clean(self) -> None:
         chart = row(clip_name="MELT0001_pl01_colorChart_01", frame_count=1)
@@ -623,72 +594,6 @@ class TestApplyBatchRules:
         assert "QC-023" not in ids(batch.rows[0].qc)
 
 
-class TestLensGrid:
-    def test_a_present_folder_is_qc_057(self, tmp_path: Path) -> None:
-        """v01 delivers nothing for it, so the editor is told to move it by hand."""
-        (tmp_path / "SonyA7V_Tamron20-40_lensgrid_40mm").mkdir()
-        results = qc.check_lens_grid(Turnover("t1", tmp_path))
-        assert ids(results) == ["QC-057"]
-        assert results[0].severity == "info"
-        assert results[0].scope == "turnover"
-
-    def test_a_missing_folder_is_qc_054(self, tmp_path: Path) -> None:
-        results = qc.check_lens_grid(Turnover("t1", tmp_path))
-        assert ids(results) == ["QC-054"]
-        assert results[0].severity == "warning"
-
-    def test_the_folder_is_found_at_any_depth(self, tmp_path: Path) -> None:
-        (tmp_path / "extras" / "A_B_lensgrid_24mm").mkdir(parents=True)
-        assert ids(qc.check_lens_grid(Turnover("t1", tmp_path))) == ["QC-057"]
-
-    def test_a_file_is_not_a_folder(self, tmp_path: Path) -> None:
-        """OQ-20: it arrives as a folder. A stray png does not satisfy the rule."""
-        (tmp_path / "A_B_lensgrid_24mm.png").write_bytes(b"")
-        assert ids(qc.check_lens_grid(Turnover("t1", tmp_path))) == ["QC-054"]
-
-
-class TestHdriHeader:
-    def test_a_readable_hdri_is_clean(self, tmp_path: Path) -> None:
-        hdri, _ = fixtures.make_side_files(tmp_path, "MELT0001_pl01")
-        assert qc.check_hdri_header(row(side_files=SideFiles(hdri=hdri))) == []
-
-    def test_a_corrupt_hdri_is_qc_052(self, tmp_path: Path) -> None:
-        """The copy is a byte copy, so a broken HDRI would ship intact and unusable."""
-        broken = tmp_path / "MELT0001_pl01_HDRI.exr"
-        broken.write_bytes(b"not an exr")
-        results = qc.check_hdri_header(row(side_files=SideFiles(hdri=broken)))
-        assert ids(results) == ["QC-052"]
-        assert results[0].severity == "warning"
-
-    def test_a_row_with_no_hdri_is_qc_050s_business(self) -> None:
-        assert qc.check_hdri_header(row(side_files=SideFiles())) == []
-
-
-class TestCamdata:
-    def test_a_readable_file_reports_its_pair_count(self, tmp_path: Path) -> None:
-        path = tmp_path / "MELT0001_pl01_camData.txt"
-        path.write_text("Camera: ARRI Alexa 35\nLens: 32mm\n")
-        results = qc.check_camdata(row(side_files=SideFiles(camdata=path)))
-        assert ids(results) == ["QC-053"]
-        assert results[0].severity == "info"
-        assert "2 key/value pairs" in results[0].message
-
-    def test_a_file_whose_format_changed_reports_zero_rather_than_nothing(self, tmp_path: Path) -> None:
-        """The whole point of the count: an empty sheet is otherwise invisible."""
-        path = tmp_path / "MELT0001_pl01_camData.txt"
-        path.write_text("free prose with no pairs in it\n")
-        assert "0 key/value pairs" in qc.check_camdata(row(side_files=SideFiles(camdata=path)))[0].message
-
-    def test_an_unreadable_file_is_a_warning_under_the_same_id(self, tmp_path: Path) -> None:
-        missing = tmp_path / "gone.txt"
-        results = qc.check_camdata(row(side_files=SideFiles(camdata=missing)))
-        assert ids(results) == ["QC-053"]
-        assert results[0].severity == "warning"
-
-    def test_a_row_with_no_camdata_is_qc_051s_business(self) -> None:
-        assert qc.check_camdata(row(side_files=SideFiles())) == []
-
-
 class TestDeliverableRuleTable:
     """The QC log columns one sheet per rule, so the list has to be complete."""
 
@@ -704,7 +609,7 @@ class TestDeliverableRuleTable:
             assert f'"{rule_id}"' in source, f"{rule_id} has a column but is never raised"
 
     def test_every_kind_the_renderer_writes_owes_some_rule(self) -> None:
-        assert set(qc.DELIVERABLE_RULES_BY_KIND) >= qc.COPY_KINDS | {"raw_dir", "ref_mp4", "audio"}
+        assert set(qc.DELIVERABLE_RULES_BY_KIND) >= {"raw_dir", "aux_still", "ref_mp4", "audio"}
 
     def test_no_kind_claims_a_rule_that_is_not_in_the_table(self) -> None:
         for owed in qc.DELIVERABLE_RULES_BY_KIND.values():
@@ -782,14 +687,14 @@ class TestPreflight:
         batch = Batch(delivery_root=delivery, turnovers=[Turnover("t1", tmp_path)], rows=[row()])
         qc.preflight(batch)
         assert ids(batch.qc) == []
-        assert ids(batch.turnovers[0].qc) == ["QC-054", "QC-008"]
+        assert ids(batch.turnovers[0].qc) == ["QC-008"]
 
     def test_rerunning_does_not_duplicate(self, tmp_path: Path) -> None:
         batch = Batch(turnovers=[Turnover("t1", tmp_path)], rows=[row()])
         qc.preflight(batch)
         qc.preflight(batch)
         assert ids(batch.qc) == ["QC-062"]
-        assert ids(batch.turnovers[0].qc) == ["QC-054", "QC-008"]
+        assert ids(batch.turnovers[0].qc) == ["QC-008"]
 
     def test_model_rules_survive_a_preflight(self, tmp_path: Path) -> None:
         """The two registries own different IDs and must not clear each other."""
@@ -1280,36 +1185,6 @@ class TestPhaseBAudio:
         results = qc.run_phase_b(job, deliverable)
         assert ids(results) == ["QC-121"]
         assert results[0].severity == "warning"
-
-
-class TestPhaseBCopy:
-    def copy_job(self, tmp_path: Path) -> tuple[DeliverableJob, Deliverable]:
-        source = tmp_path / "src" / "cam.txt"
-        source.parent.mkdir(parents=True, exist_ok=True)
-        source.write_text("lens: 40mm\n" * 100, encoding="utf-8")
-        job = DeliverableJob(
-            kind="camdata",
-            source=source,
-            destination=tmp_path / "out" / "MELT0001_pl01_camData_v01.txt",
-            version=1,
-            shot_code="MELT0001",
-            elem="pl01",
-        )
-        return job, render.render_job(job)
-
-    def test_a_faithful_copy_passes(self, tmp_path: Path) -> None:
-        job, deliverable = self.copy_job(tmp_path)
-        assert qc.run_phase_b(job, deliverable) == []
-
-    def test_a_copy_that_differs_is_qc_130(self, tmp_path: Path) -> None:
-        job, deliverable = self.copy_job(tmp_path)
-        job.destination.write_text("tampered", encoding="utf-8")
-        assert ids(qc.run_phase_b(job, deliverable)) == ["QC-130"]
-
-    def test_a_source_that_vanished_is_qc_130(self, tmp_path: Path) -> None:
-        job, deliverable = self.copy_job(tmp_path)
-        job.source.unlink()
-        assert ids(qc.run_phase_b(job, deliverable)) == ["QC-130"]
 
 
 def delivered(name: str, kind: str, version: int = 1, res: str | None = None) -> Deliverable:

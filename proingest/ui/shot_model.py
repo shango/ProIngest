@@ -181,14 +181,13 @@ COLUMNS = (
     Column("Dur", 70),
     Column("Max", 80),
     Column("Audio", 70),
-    Column("Side", 120),
     Column("Ver", 60),
     Column("Progress", 90),
     Column("Notes", 240),
 )
 
 STATUS, SHOT, ELEM, SOURCE, RES, FPS, IN, OUT, DURATION, MAX_AVAIL = range(10)
-AUDIO, SIDE_FILES, VERSION, PROGRESS, NOTES = range(10, 15)
+AUDIO, VERSION, PROGRESS, NOTES = range(10, 14)
 
 EDITABLE_COLUMNS = (SHOT, IN, OUT, NOTES)
 """The cells the list owns and nothing else does (FR-5), in Tab order.
@@ -301,11 +300,6 @@ def _progress_fraction(row: ShotRow, run: RunProgress | None = None) -> float:
     if not row.deliverables:
         return 0.0
     return sum(_item_fraction(item, run) for item in row.deliverables) / len(row.deliverables)
-
-
-def _side_files(row: ShotRow) -> str:
-    carried = (("HDRI", row.side_files.hdri), ("camData", row.side_files.camdata))
-    return ", ".join(name for name, path in carried if path)
 
 
 def _audio(row: ShotRow) -> str:
@@ -561,7 +555,6 @@ class ShotListModel(QAbstractItemModel):
             DURATION: lambda: str(row.duration) if row.duration is not None else "",
             MAX_AVAIL: lambda: str(row.max_available_out) if row.max_available_out is not None else "",
             AUDIO: lambda: _audio(row),
-            SIDE_FILES: lambda: _side_files(row),
             VERSION: lambda: _version(row),
             PROGRESS: lambda: _progress(row, self._run),
             NOTES: lambda: row.notes,
@@ -615,9 +608,6 @@ class ShotListModel(QAbstractItemModel):
             return str(row.media.path) if row.media else None
         if column == AUDIO:
             return str(row.audio_path) if row.audio_path else None
-        if column == SIDE_FILES:
-            paths = [p for p in (row.side_files.hdri, row.side_files.camdata) if p]
-            return "\n".join(str(path) for path in paths) or None
         if column == NOTES:
             return row.notes or None
         return None

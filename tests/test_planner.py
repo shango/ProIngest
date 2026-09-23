@@ -19,7 +19,6 @@ from proingest.core.models import (
     MediaInfo,
     QCResult,
     ShotRow,
-    SideFiles,
     Turnover,
 )
 
@@ -50,7 +49,6 @@ def media(
 def row(
     clip_name: str = "MELT0001_pl01",
     audio_path: Path | None = None,
-    side_files: SideFiles | None = None,
     source: str = "/turnover/MELT0001_pl01.1001.exr",
     has_audio: bool = False,
     **overrides: object,
@@ -63,7 +61,6 @@ def row(
         snapshot=InOut(1001, 1240),
         current=InOut(1001, 1240),
         audio_path=audio_path,
-        side_files=side_files or SideFiles(),
     )
     for key, value in overrides.items():
         setattr(built, key, value)
@@ -149,13 +146,6 @@ class TestFrameRange:
         with pytest.raises(ValueError, match="not a sequence"):
             mp4.frame_path(1001)
 
-    def test_a_copy_has_no_frame_range(self) -> None:
-        plan = planner.plan_row(row(side_files=SideFiles(hdri=Path("/t/MELT0001_pl01_HDRI.exr"))), ROOT, 1)
-        copy = next(job for job in plan.jobs if job.kind == "hdri")
-        assert copy.frame_count == 0
-        with pytest.raises(ValueError, match="no frame range"):
-            copy.source_frame(1001)
-
 
 class TestAudio:
     def test_audio_comes_from_the_associated_clip(self) -> None:
@@ -186,25 +176,6 @@ class TestAudio:
             assert job.audio_source == (wav if job.kind == "ref_mp4" else None)
 
 
-class TestSideFiles:
-    def test_hdri_and_camdata_are_copied_under_delivery_names(self) -> None:
-        side = SideFiles(hdri=Path("/t/MELT0001_pl01_HDRI.exr"), camdata=Path("/t/MELT0001_pl01_camData.rtf"))
-        plan = planner.plan_row(row(side_files=side), ROOT, 1)
-        assert names(plan.jobs)[-2:] == [
-            "MELT0001_pl01_HDRI_v01.exr",
-            "MELT0001_pl01_camData_v01.rtf",
-        ]
-
-    def test_camdata_keeps_its_own_extension(self) -> None:
-        plan = planner.plan_row(row(side_files=SideFiles(camdata=Path("/t/x_camData.txt"))), ROOT, 1)
-        assert names(plan.jobs)[-1] == "MELT0001_pl01_camData_v01.txt"
-
-    def test_side_files_follow_the_shot_version(self) -> None:
-        side = SideFiles(hdri=Path("/t/MELT0001_pl01_HDRI.exr"))
-        plan = planner.plan_row(row(side_files=side), ROOT, 7)
-        assert all(job.version == 7 for job in plan.jobs)
-
-
 class TestAuxStills:
     def test_reference_still_delivers_one_4k_exr(self) -> None:
         plan = planner.plan_row(row("MELT0001_pl01_colorChart_01"), ROOT, 1)
@@ -223,25 +194,8 @@ class TestAuxStills:
         assert job.frame_count == 1
 
     def test_an_aux_clip_delivers_nothing_else(self) -> None:
-        side = SideFiles(hdri=Path("/t/MELT0001_pl01_HDRI.exr"))
-        plan = planner.plan_row(
-            row("MELT0001_pl01_sizeRef_01", side_files=side, audio_path=Path("/t/a.wav")), ROOT, 1
-        )
+        plan = planner.plan_row(row("MELT0001_pl01_sizeRef_01", audio_path=Path("/t/a.wav")), ROOT, 1)
         assert kinds(plan.jobs) == ["aux_still"]
-
-    def test_bts_is_copied_in_its_own_format(self) -> None:
-        plan = planner.plan_row(
-            row("MELT0001_pl01_BTS_01", source="/turnover/MELT0001_pl01_BTS_01.jpg"), ROOT, 1
-        )
-        assert names(plan.jobs) == ["MELT0001_pl01_BTS_01_v01.jpg"]
-        assert plan.jobs[0].kind == "bts"
-
-    def test_bts_in_an_undeliverable_format_is_reported_not_dropped(self) -> None:
-        plan = planner.plan_row(
-            row("MELT0001_pl01_BTS_01", source="/turnover/MELT0001_pl01_BTS_01.tif"), ROOT, 1
-        )
-        assert plan.jobs == []
-        assert [result.rule_id for result in plan.qc] == ["QC-056"]
 
 
 class TestVersioning:
@@ -370,8 +324,7 @@ class TestOutputNamesReadBack:
     """QC-151 in advance: what the planner writes must parse back to what it meant."""
 
     def test_every_planned_name_round_trips(self) -> None:
-        side = SideFiles(hdri=Path("/t/MELT0001_pl01_HDRI.exr"), camdata=Path("/t/x_camData.rtf"))
-        plan = planner.plan_row(row(audio_path=Path("/t/a.wav"), side_files=side), ROOT, 4)
+        plan = planner.plan_row(row(audio_path=Path("/t/a.wav")), ROOT, 4)
         for job in plan.jobs:
             parsed = naming.parse_output_name(job.name)
             assert parsed is not None, job.name
@@ -388,14 +341,10 @@ class TestOutputNamesReadBack:
         assert (parsed.kind, parsed.res, parsed.version, parsed.frame) == ("raw_frame", "4k", 2, 1001)
 
     def test_aux_names_round_trip(self) -> None:
-        for clip, source in (
-            ("MELT0001_pl01_mirrorBall_01", "/t/x.exr"),
-            ("MELT0001_pl01_BTS_01", "/t/x.png"),
-        ):
-            job = planner.plan_row(row(clip, source=source), ROOT, 1).jobs[0]
-            parsed = naming.parse_output_name(job.name)
-            assert parsed is not None
-            assert parsed.kind == job.kind
+        job = planner.plan_row(row("MELT0001_pl01_mirrorBall_01", source="/t/x.exr"), ROOT, 1).jobs[0]
+        parsed = naming.parse_output_name(job.name)
+        assert parsed is not None
+        assert parsed.kind == job.kind
 
 
 class TestShotColourOnJobs:

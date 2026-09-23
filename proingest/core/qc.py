@@ -28,7 +28,7 @@ from typing import Any
 
 import xxhash
 
-from proingest.core import camdata, clf, color, exr, ffmpeg, media, naming
+from proingest.core import clf, color, exr, ffmpeg, media, naming
 from proingest.core.models import (
     Batch,
     Deliverable,
@@ -47,7 +47,6 @@ Audio and picture rarely land on exactly the same frame boundary, so a single fr
 of slack avoids flagging every clip. Anything beyond that will be audible.
 """
 
-LENS_GRID_FRAGMENT = "lensgrid"
 """What a lens grid folder's name contains. OQ-20: it is a folder, never a clip."""
 
 AUDIO_BIT_DEPTH = 16
@@ -137,8 +136,6 @@ OWNED_ROW_RULES = frozenset(
         "QC-045",
         "QC-046",
         "QC-047",
-        "QC-050",
-        "QC-051",
         "QC-055",
     }
 )
@@ -597,25 +594,6 @@ def check_source_rate(row: ShotRow, project_rate: FrameRate) -> list[QCResult]:
     ]
 
 
-# --- side file rules --------------------------------------------------------------
-
-
-def check_side_files(row: ShotRow) -> list[QCResult]:
-    """QC-050 and QC-051: a plate missing its HDRI or its camera data.
-
-    The shooters' sheet marks both Required per plate. OQ-18 keeps them warnings: a
-    missing one chases the shooter, it does not stop the delivery.
-    """
-    if not is_plate(row):
-        return []
-    results: list[QCResult] = []
-    if row.side_files.hdri is None:
-        results.append(QCResult("QC-050", "warning", "row", "plate has no HDRI side file"))
-    if row.side_files.camdata is None:
-        results.append(QCResult("QC-051", "warning", "row", "plate has no camData side file"))
-    return results
-
-
 def check_aux_still(row: ShotRow) -> list[QCResult]:
     """QC-055: an aux still that is really a clip.
 
@@ -716,7 +694,6 @@ def run_row_rules(
     results.extend(check_audio_presence(row))
     results.extend(check_audio_sync(row, project_rate, settings))
     results.extend(check_audio_format(row))
-    results.extend(check_side_files(row))
     results.extend(check_aux_still(row))
     return results
 
@@ -763,10 +740,6 @@ OWNED_PREFLIGHT_RULES = frozenset(
         "QC-022",
         "QC-039",
         "QC-048",
-        "QC-052",
-        "QC-053",
-        "QC-054",
-        "QC-057",
         "QC-062",
         "QC-063",
     }
@@ -934,82 +907,6 @@ def check_color_chain(row: ShotRow) -> list[QCResult]:
     return [QCResult("QC-048", "info", "row", f"rendered through {legs.format(grade=grade)}")]
 
 
-def check_hdri_header(row: ShotRow) -> list[QCResult]:
-    """QC-052: an HDRI that does not open as an EXR.
-
-    The copy is a byte copy, so a corrupt HDRI would be delivered intact and unusable.
-    Reading the header is cheap and is the only way to know before delivery.
-    """
-    path = row.side_files.hdri
-    if path is None:
-        return []
-    try:
-        exr.read_header(path)
-    except (exr.ExrError, OSError) as error:
-        return [QCResult("QC-052", "warning", "row", f"{path.name} failed to open as an EXR: {error}")]
-    return []
-
-
-def check_camdata(row: ShotRow) -> list[QCResult]:
-    """QC-053: the camData file was read, and how many pairs came out of it.
-
-    An info result rather than a check: OQ-11 has never said what a camData file must
-    contain, so there is nothing to fail against. The count is the useful part, because
-    a file that yields zero pairs is a file whose format has changed, and that shows up
-    here rather than as an empty sheet nobody notices.
-
-    A file that will not open is a warning under the same ID. Nothing here raises: a
-    side file is not worth stopping a batch for.
-    """
-    path = row.side_files.camdata
-    if path is None:
-        return []
-    shot = row.shot_code or row.clip_name
-    try:
-        pairs = camdata.parse(path)
-    except (OSError, UnicodeDecodeError) as exc:
-        return [QCResult("QC-053", "warning", "row", f"{shot}: camData unreadable ({exc})")]
-    return [QCResult("QC-053", "info", "row", f"{shot}: camData parsed, {len(pairs)} key/value pairs")]
-
-
-def find_lens_grid_folder(folder: Path) -> Path | None:
-    """The lens grid folder in a turnover, or None. OQ-20: it is a folder, not a clip."""
-    if not folder.is_dir():
-        return None
-    for candidate in sorted(folder.rglob("*")):
-        if candidate.is_dir() and LENS_GRID_FRAGMENT in candidate.name.lower():
-            return candidate
-    return None
-
-
-def check_lens_grid(turnover: Turnover) -> list[QCResult]:
-    """QC-054 and QC-057: whether the turnover brought a lens grid.
-
-    Exactly one of the two always fires. Absent chases the shooter, because the
-    studio's sheet marks it Required; present is raised because v01 does not deliver
-    it and the editor has to move and rename it by hand (OQ-20).
-    """
-    found = find_lens_grid_folder(turnover.folder)
-    if found is None:
-        return [
-            QCResult(
-                "QC-054",
-                "warning",
-                "turnover",
-                "no lens grid folder in the turnover; the studio's sheet marks it required",
-            )
-        ]
-    return [
-        QCResult(
-            "QC-057",
-            "info",
-            "turnover",
-            f"lens grid folder {found.name!r} is present; v01 does not deliver it, so move and "
-            f"rename it by hand per NAMING_SPEC section 3",
-        )
-    ]
-
-
 def check_destination_writable(delivery_root: Path | None) -> list[QCResult]:
     """QC-062: the delivery root has to accept a file.
 
@@ -1155,7 +1052,6 @@ def preflight(batch: Batch, decoders: frozenset[str] | None = None) -> None:
     graded: set[str] = set()
     for turnover in batch.turnovers:
         turnover.qc = [result for result in turnover.qc if result.rule_id not in OWNED_PREFLIGHT_RULES]
-        turnover.qc.extend(check_lens_grid(turnover))
         turnover.qc.extend(check_color_session(turnover, batch.rows_for(turnover.turnover_id)))
         if turnover.color_session_edl is not None:
             graded.add(turnover.turnover_id)
@@ -1166,8 +1062,6 @@ def preflight(batch: Batch, decoders: frozenset[str] | None = None) -> None:
         row.qc.extend(check_clf(row, row.turnover_id in graded))
         row.qc.extend(check_clf_loads(row, clf_cache))
         row.qc.extend(check_color_chain(row))
-        row.qc.extend(check_hdri_header(row))
-        row.qc.extend(check_camdata(row))
 
 
 # --- phase B: verifying what was written ------------------------------------------
@@ -1194,9 +1088,6 @@ SMALL_FRAME_RATIO = 0.10
 
 WAV_BIT_DEPTH = 16
 WAV_CODEC = "pcm_s16le"
-
-COPY_KINDS = frozenset({"hdri", "camdata", "bts"})
-"""Byte copies under a delivery name. `render.COPY_KINDS`, NAMING_SPEC section 2."""
 
 
 def file_digest(path: Path) -> str:
@@ -1235,7 +1126,7 @@ def run_phase_b(job: DeliverableJob, deliverable: Deliverable) -> list[QCResult]
         "aux_still": _verify_still,
         "ref_mp4": _verify_reference,
         "audio": _verify_audio,
-    }.get(job.kind, _verify_copy if job.kind in COPY_KINDS else None)
+    }.get(job.kind)
     if verifier is None:
         return [_failure(RENDER_FAILED, f"{job.name}: no phase B checks for a {job.kind} job")]
     if not job.destination.exists():
@@ -1574,15 +1465,6 @@ def _check_extracted_duration(job: DeliverableJob) -> list[QCResult]:
     ]
 
 
-def _verify_copy(job: DeliverableJob, deliverable: Deliverable) -> list[QCResult]:
-    """QC-130: a copied side file is the same bytes under a different name."""
-    if not job.source.is_file():
-        return [_failure("QC-130", f"{job.name}: the source {job.source} is gone")]
-    if file_digest(job.destination) == file_digest(job.source):
-        return []
-    return [_failure("QC-130", f"{job.name} does not match {job.source.name}")]
-
-
 # --- QC-150 and QC-151: the row and the batch -------------------------------------
 
 DELIVERABLE_RULES: tuple[str, ...] = (
@@ -1602,7 +1484,6 @@ DELIVERABLE_RULES: tuple[str, ...] = (
     "QC-115",
     "QC-120",
     "QC-121",
-    "QC-130",
 )
 """Every deliverable-scoped phase B rule, in the order the QC log columns them.
 
@@ -1621,9 +1502,6 @@ DELIVERABLE_RULES_BY_KIND: dict[str, tuple[str, ...]] = {
     "aux_still": ("QC-103", "QC-104", "QC-105", "QC-106"),
     "ref_mp4": ("QC-110", "QC-111", "QC-112", "QC-113", "QC-114", "QC-115"),
     "audio": ("QC-120", "QC-121"),
-    "hdri": ("QC-130",),
-    "camdata": ("QC-130",),
-    "bts": ("QC-130",),
 }
 """Which rules each kind of deliverable owes, from the scope column of QC_RULES.md.
 

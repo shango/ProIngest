@@ -163,4 +163,3 @@ class TestTurnoverPersistence:
         saved = batchfile.save(batch, tmp_path / "b")
         restored = batchfile.load(saved).turnovers[0]
         assert restored.shooter == "Daniel Luckett", "the unnormalized name is kept (OQ-15)"
-        assert restored.has_stringout_fields

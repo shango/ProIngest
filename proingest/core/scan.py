@@ -26,7 +26,6 @@ from proingest.core.models import (
     MediaInfo,
     QCResult,
     ShotRow,
-    SideFiles,
     SourceEncodingOrigin,
     Turnover,
 )
@@ -35,8 +34,6 @@ TURNOVER_FOLDER_PATTERN = re.compile(
     r"^turnover(?P<number>\d{3})_(?P<month>\d{2})_(?P<day>\d{2})_(?P<year>\d{4})_(?P<shooter>.+)$"
 )
 
-HDRI_FRAGMENT = "hdri"
-HDRI_EXTENSIONS = (".exr",)
 SOURCE_ENCODING_KEY = "Input Color Space"
 """The metadata field the source encoding is read from. OQ-44, and a default until it answers.
 
@@ -49,9 +46,6 @@ guessing which of a clip's forty strings is a colour space name.
 Settable per scan (`ScanSettings.source_encoding_key`) because the answer to OQ-44 is a
 different field name and nothing else.
 """
-
-CAMDATA_FRAGMENT = "camdata"
-CAMDATA_EXTENSIONS = tuple(f".{ext}" for ext in naming.CAMDATA_EXTENSIONS)
 
 
 @dataclass
@@ -71,7 +65,7 @@ class ScanSettings:
 
 @dataclass(frozen=True)
 class TurnoverFields:
-    """The stringout name's inputs, read off the folder name."""
+    """What the folder name says a turnover is, read off it."""
 
     number: int
     month: int
@@ -219,7 +213,6 @@ def _build_row(
     )
     _derive_ranges(row, clip)
     _attach_audio(row, clip, loaded, index, settings)
-    _attach_side_files(row, index)
     qc.apply_row_rules(row, settings.project_rate, settings.rules)
     return row
 
@@ -405,35 +398,6 @@ def _attach_audio(
         row.audio = media_module.probe_audio(row.audio_path)
     except (ffmpeg.FFprobeError, ffmpeg.FFmpegNotFound) as exc:
         row.qc.append(QCResult("QC-042", "error", "row", f"audio unreadable: {exc}"))
-
-
-def _attach_side_files(row: ShotRow, index: media_module.DirectoryIndex) -> None:
-    """HDRI and camData discovered next to the media, matched by shot code and element."""
-    if row.identity is None:
-        return
-    stem = row.identity.stem
-    row.side_files = SideFiles(
-        hdri=_single_match(index, stem, HDRI_FRAGMENT, HDRI_EXTENSIONS),
-        camdata=_single_match(index, stem, CAMDATA_FRAGMENT, CAMDATA_EXTENSIONS),
-    )
-
-
-def _single_match(
-    index: media_module.DirectoryIndex, stem: str, fragment: str, extensions: tuple[str, ...]
-) -> Path | None:
-    """A side file must name both the element and the kind, and be a form we can deliver.
-
-    The extension filter is what NAMING_SPEC section 2 states (`*HDRI*.exr`,
-    `*camData*.txt|rtf`). Without it a jpeg sitting beside the real HDRI would be
-    delivered under an `.exr` name, because the planner takes the extension from the
-    delivery template and not from the file.
-    """
-    hits = [
-        entry.path
-        for entry in index.containing(fragment)
-        if stem.lower() in entry.name.lower() and entry.suffix in extensions
-    ]
-    return hits[0] if len(hits) == 1 else None
 
 
 TURNOVER_ID_PATTERN = re.compile(r"t(\d+)")
