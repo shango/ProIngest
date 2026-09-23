@@ -333,16 +333,9 @@ class TestConformedRate:
         from proingest.core import scan
 
         folder = tmp_path / "turnover001_02_23_2026_dan"
-        sequence = fixtures.make_exr_sequence(
-            folder / "media", base="MELT0001_pl01", count=6, fps=24, header_fps=30
-        )
-        fixtures.make_otio(
-            folder / "t.otio",
-            [("MELT0001_pl01", sequence.path_for(1001).as_uri())],
-            fps=24,
-            duration=6,
-            available_duration=6,
-        )
+        fixtures.make_exr_sequence(folder / "media", base="MELT0001_pl01", count=6, fps=24, header_fps=30)
+        fixtures.make_meta_csv(folder / "metadata.csv", [("MELT0001_pl01", "MELT0001", "pl01")])
+        fixtures.make_final_edl(folder / "FINAL_v01.edl", ["MELT0001_pl01"], duration=6)
         _, rows = scan.scan_turnover(folder, "t1")
         assert rows[0].media is not None
         assert rows[0].media.rate == RATE_24

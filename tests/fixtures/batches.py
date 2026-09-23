@@ -107,7 +107,8 @@ def turnover(turnover_id: str = "turnover001", **kwargs: object) -> Turnover:
     built = Turnover(
         turnover_id=turnover_id,
         folder=Path(f"/source/{turnover_id}_02_23_2026_danielluckett"),
-        timeline_path=Path(f"/source/{turnover_id}/timeline.otio"),
+        edl_path=Path(f"/source/{turnover_id}/FINAL_v01.edl"),
+        csv_path=Path(f"/source/{turnover_id}/metadata.csv"),
         timeline_start=ONE_HOUR,
     )
     for key, value in kwargs.items():

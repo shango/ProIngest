@@ -204,13 +204,19 @@ class ColorSession:
     def event_for(self, row: ShotRow) -> ConformEvent | None:
         """The event that conforms this row, or None when nothing matches it.
 
-        `MATCH_FIELD` first, compared without the extension and without case, because a
-        case difference between a Resolve export and a macOS filesystem is not a
-        disagreement about which shot this is. Reel plus source timecode is the
-        fallback, and it has to agree on both.
+        `MATCH_FIELD` first, compared **without the extension on either side** and
+        without case. Both halves earn their place: a case difference between a Resolve
+        export and a macOS filesystem is not a disagreement about which shot this is,
+        and since 2026-09-22 a row's `clip_name` is the camera filename **with** its
+        extension (`C0145.MP4`) while `FROM CLIP NAME` may or may not carry one. Comparing
+        a stem to a whole filename matched nothing at all, silently, which is the shape
+        of failure OQ-30 exists to prevent.
+
+        Reel plus source timecode is the fallback, and it has to agree on both.
         """
+        wanted = Path(row.clip_name).stem.casefold()
         for event in self.events:
-            if event.clip_stem.casefold() == row.clip_name.casefold():
+            if event.clip_stem.casefold() == wanted:
                 return event
         return self._event_by_reel(row)
 

@@ -14,6 +14,39 @@ complete, M4.5 all four chunks, M4.6 all five, **M5 all twelve**, **M7**, and **
 What is left is **M8 polish** (needs a real turnover and a real colour session) and the rest
 of **M9, the user guide**.
 
+**2026-09-22, chunk 3: the scan is rebuilt on the handover folder, and it works on the real
+media.** `scan_turnover` now reads **one folder, one `.edl`, one `.csv`** and nothing else. **Rows
+come from CSV rows rather than timeline clips**, which is the whole of the change: `Shot Type` is
+the tool's scope, so a clip that carries one becomes a row and a clip that carries none is ignored
+and counted by **QC-064** at turnover scope. **The EDL is read at the scan** (OQ-74 collapsed the
+two-phase flow), so the approved In/Out and the CDL arrive with the row rather than in a later
+ingest. QC-001 now names which of the two files is missing; two of either is refused rather than
+chosen between, because choosing between two cuts is choosing a cut. **New QC-066** covers Q2's
+first half: a row with no event has no approved cut and no grade, which is an error on the row, and
+nothing reaches for the nearest event. The row still shows the media it found so it can be trimmed
+by hand. **`scan.SOURCE_ENCODING_KEY` is gone** and the encoding is the CSV's two fields joined in
+order. `Turnover.timeline_path` became **`edl_path` and `csv_path`**.
+
+**One real defect was found and fixed on the way.** `clf.ColorSession.event_for` compared the
+event's stem to the row's whole `clip_name`. That was right while a row was named `MELT0001_pl01`;
+a row is now named `C0145.MP4`, so **every match would have failed silently** and every row would
+have carried QC-066. It compares stem to stem now. This is exactly the failure OQ-30 is written
+about, and it was invisible until the real filenames went through it.
+
+**`proingest/core/timeline.py` and `tests/test_timeline.py` are deleted.** Nothing called them once
+rows stopped coming from a timeline: the EDL is read by `clf.read_final_edl` and OTIO read the
+`.otio` that never existed. **The `opentimelineio` dependency is now unused in `proingest/`** and
+is left in `pyproject.toml` and `build/bundle.py` for a follow-up, noted rather than done.
+
+**Verified on the real folder, twice.** `Turnover199/` alone gives one error that says exactly what
+is wrong: `QC-001: Ben's EDL is missing from Turnover199`. With a synthetic EDL written over the
+same five real clips, the scan produces **five rows with the right identities** (`TEST0002_pl01`,
+`colorChart01`, `mirrorBall01`, `greyBall01`, `cp01`), the EDL's approved cut on each
+(`InOut(24, 255)` on `C0145`, which is the 232 frames the `.drt` records), a CDL on every row, and
+`S-Log3 S-Gamut3.Cine` resolved on all five. **The only blocking QC left on that folder is QC-026 on
+every row**, which is Q1 and chunk 4. Two of the review's three blockers are gone. **1605 tests**,
+`ruff`, `ruff format` and `mypy --strict` clean.
+
 **2026-09-22, chunk 2: the identity model is `(shot_code, kind, index)`, and that was a shape
 change rather than a rename.** `ShotIdentity` was `(show, shot, elem_type, elem_index, aux,
 aux_index)`, which hung a reference still off an element. In the CSV `colorChart` is a **peer** of

@@ -74,7 +74,6 @@ def fake_scan(
         turnover_id: str,
         settings: scan.ScanSettings | None = None,
         probe_cache: dict[str, MediaInfo] | None = None,
-        timeline_path: Path | None = None,
     ) -> tuple[Turnover, list[ShotRow]]:
         if on_folder is not None:
             on_folder(folder)
@@ -133,7 +132,6 @@ class TestTheHandover:
             turnover_id: str,
             settings: scan.ScanSettings | None = None,
             probe_cache: dict[str, MediaInfo] | None = None,
-            timeline_path: Path | None = None,
         ) -> tuple[Turnover, list[ShotRow]]:
             assert probe_cache is not None
             probe_cache["probed|1|2"] = media_fixtures.media_info_with_tags({})

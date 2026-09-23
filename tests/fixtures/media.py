@@ -19,7 +19,7 @@ from pathlib import Path
 import numpy as np
 import OpenEXR
 
-from proingest.core import qc, scan, timeline
+from proingest.core import qc
 from proingest.core.models import FrameRate, MediaInfo
 
 SMALL = (64, 36)
@@ -270,18 +270,6 @@ def make_still(path: Path, size: tuple[int, int] = SMALL) -> Path:
     return path
 
 
-def clip_record(name: str, metadata: dict[str, str] | None = None) -> timeline.ClipRecord:
-    """One clip record, for the scan helpers that read a clip rather than a timeline."""
-    return timeline.ClipRecord(
-        name=name,
-        track="V1",
-        record_start=0,
-        duration=4,
-        source_start=0,
-        metadata=metadata or {},
-    )
-
-
 def media_info_with_tags(tags: dict[str, str]) -> MediaInfo:
     """A probe result carrying container tags, which is the second carrier for OQ-44."""
     return MediaInfo(
@@ -304,64 +292,63 @@ what these tests rendered through before the encoding became a per clip fact.
 """
 
 
-def make_otio(
+def make_meta_csv(
+    path: Path, rows: list[tuple[str, str, str]], encoding: str | None = SOURCE_ENCODING
+) -> Path:
+    """Ben's metadata CSV, in the shape the real one has.
+
+    `rows` is (File Name, Shot, Shot Type). UTF-16 with a BOM and **`Shot Type` twice**,
+    because the real file carries Resolve's built-in at column 12 and the shooters'
+    custom field of the same name at column 44: a fixture without the collision would
+    not exercise the reader that exists to arbitrate it (QC-065).
+    """
+    gamma, space = encoding.split(" ", 1) if encoding and " " in encoding else (encoding or "", "")
+    header = ["File Name", "Shot", "Shot Type", "Gamma Notes", "Color Space Notes", "Shot Code", "Shot Type"]
+    lines = [header] + [[name, shot, kind, gamma, space, shot, kind] for name, shot, kind in rows]
+    text = "\r\n".join(",".join(f'"{cell}"' for cell in line) for line in lines) + "\r\n"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(text.encode("utf-16"))
+    return path
+
+
+def make_final_edl(
     path: Path,
-    clips: list[tuple[str, str]],
-    fps: int = FPS,
+    clips: list[str],
     duration: int = 240,
     source_start: int = 86400,
-    available_start: int = 86400,
-    available_duration: int = 300,
-    global_start: int = 864000,
-    audio_clips: list[tuple[str, str]] | None = None,
-    source_encoding: str | None = SOURCE_ENCODING,
+    record_start: int = 86400,
+    with_cdl: bool = True,
+    reel: str = "MELT0001",
 ) -> Path:
-    """Build a small OTIO timeline with the otio API, as ARCHITECTURE.md asks.
+    """Ben's final EDL: one event per clip, with the CDL that is the grade.
 
-    `clips` and `audio_clips` are (clip name, media url) pairs. Clips are laid end to
-    end in record order, which is what a consolidated turnover stringout looks like.
+    Laid end to end in record order, which is what a stringout timeline looks like.
+    `clips` are `FROM CLIP NAME` values, matched to a row by stem (`clf.event_for`).
     """
-    import opentimelineio as otio
-    from opentimelineio import opentime as ot
-
-    timeline = otio.schema.Timeline(name=path.stem)
-    timeline.global_start_time = ot.RationalTime(global_start, fps)
-
-    video_track = otio.schema.Track(name="V1", kind=otio.schema.TrackKind.Video)
-    timeline.tracks.append(video_track)
-    for name, url in clips:
-        reference = otio.schema.ExternalReference(
-            target_url=url,
-            available_range=ot.TimeRange(
-                ot.RationalTime(available_start, fps), ot.RationalTime(available_duration, fps)
-            ),
+    lines = [f"TITLE: {path.stem}", "FCM: NON-DROP FRAME", ""]
+    record = record_start
+    for index, clip in enumerate(clips, 1):
+        src_out = timecode(source_start + duration)
+        lines.append(
+            f"{index:03d}  {reel} V     C        {timecode(source_start)} {src_out} "
+            f"{timecode(record)} {timecode(record + duration)}"
         )
-        clip = otio.schema.Clip(
-            name=name,
-            media_reference=reference,
-            source_range=ot.TimeRange(ot.RationalTime(source_start, fps), ot.RationalTime(duration, fps)),
-        )
-        if source_encoding is not None:
-            # Nested the way Resolve nests what it exports, so the scan's walk by field
-            # name is exercised rather than a flat dict nothing real would produce.
-            clip.metadata["Resolve_OTIO"] = {scan.SOURCE_ENCODING_KEY: source_encoding}
-        video_track.append(clip)
-
-    if audio_clips:
-        audio_track = otio.schema.Track(name="A1", kind=otio.schema.TrackKind.Audio)
-        timeline.tracks.append(audio_track)
-        for name, url in audio_clips:
-            audio_track.append(
-                otio.schema.Clip(
-                    name=name,
-                    media_reference=otio.schema.ExternalReference(target_url=url),
-                    source_range=ot.TimeRange(ot.RationalTime(0, fps), ot.RationalTime(duration, fps)),
-                )
-            )
-
+        lines.append(f"* FROM CLIP NAME: {clip}")
+        if with_cdl:
+            lines += [
+                "*ASC_SOP (1.020000 0.990000 1.010000)"
+                "(0.001000 -0.002000 0.000000)(0.980000 1.000000 1.020000)",
+                "*ASC_SAT 1.050000",
+            ]
+        record += duration
     path.parent.mkdir(parents=True, exist_ok=True)
-    otio.adapters.write_to_file(timeline, str(path))
+    path.write_text("\n".join(lines) + "\n")
     return path
+
+
+def timecode(frame: int, fps: int = FPS) -> str:
+    seconds, rest = divmod(frame, fps)
+    return f"{seconds // 3600:02d}:{seconds // 60 % 60:02d}:{seconds % 60:02d}:{rest:02d}"
 
 
 def make_turnover(
@@ -369,27 +356,27 @@ def make_turnover(
     shots: int = 2,
     frames: int = 8,
     source_encoding: str | None = SOURCE_ENCODING,
+    shot_types: list[str] | None = None,
 ) -> Path:
-    """A turnover folder: an EXR sequence and a wav per shot, plus the .otio."""
+    """A handover folder as Ben leaves it: the media, his EDL and his metadata CSV.
+
+    One EXR sequence and one wav per shot, named for the shot the way consolidated media
+    is not - the fixture keeps the old names because the media search is by filename and
+    what matters here is that the CSV, the EDL and the files agree, not what they agree on.
+    """
     root.mkdir(parents=True, exist_ok=True)
-    clips: list[tuple[str, str]] = []
-    audio: list[tuple[str, str]] = []
+    rows: list[tuple[str, str, str]] = []
+    clips: list[str] = []
     for index in range(1, shots + 1):
-        name = f"MELT{index:04d}_pl01"
-        sequence = make_exr_sequence(root / "media", base=name, count=frames)
-        clips.append((name, sequence.path_for(sequence.first).as_uri()))
-        wav = make_wav(root / "media" / f"{name}.wav", seconds=frames / FPS)
-        audio.append((f"{name}_audio", wav.as_uri()))
-    make_otio(
-        root / "turnover001.otio",
-        clips,
-        duration=frames,
-        source_start=86400,
-        available_start=86400,
-        available_duration=frames,
-        audio_clips=audio,
-        source_encoding=source_encoding,
-    )
+        shot = f"MELT{index:04d}"
+        name = f"{shot}_pl01"
+        make_exr_sequence(root / "media", base=name, count=frames)
+        make_wav(root / "media" / f"{name}.wav", seconds=frames / FPS)
+        kind = shot_types[index - 1] if shot_types else "pl01"
+        rows.append((name, shot, kind))
+        clips.append(name)
+    make_meta_csv(root / "metadata.csv", rows, source_encoding)
+    make_final_edl(root / "FINAL_v01.edl", clips, duration=frames, source_start=86400)
     return root
 
 

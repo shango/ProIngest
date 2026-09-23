@@ -618,7 +618,16 @@ class Turnover:
 
     turnover_id: str
     folder: Path
-    timeline_path: Path | None = None
+    edl_path: Path | None = None
+    """Ben's EDL, the carrier of the approved cut and the CDL (OQ-74)."""
+
+    csv_path: Path | None = None
+    """Ben's metadata CSV, the carrier of identity and encoding.
+
+    Both are recorded rather than re-found: a batch reopened after the turnover folder
+    has been archived still says what it was scanned from.
+    """
+
     timeline_start: int = 0
     """The timeline's own start, in frames. `01:00:00:00` at 24 is 86400.
 
@@ -657,7 +666,8 @@ class Turnover:
         return {
             "turnover_id": self.turnover_id,
             "folder": str(self.folder),
-            "timeline_path": str(self.timeline_path) if self.timeline_path else None,
+            "edl_path": str(self.edl_path) if self.edl_path else None,
+            "csv_path": str(self.csv_path) if self.csv_path else None,
             "timeline_start": self.timeline_start,
             "color_session_edl": str(self.color_session_edl) if self.color_session_edl else None,
             "number": self.number,
@@ -673,7 +683,8 @@ class Turnover:
         return cls(
             turnover_id=str(data["turnover_id"]),
             folder=Path(data["folder"]),
-            timeline_path=_as_path(data.get("timeline_path")),
+            edl_path=_as_path(data.get("edl_path")),
+            csv_path=_as_path(data.get("csv_path")),
             timeline_start=int(data.get("timeline_start", 0)),
             color_session_edl=_as_path(data.get("color_session_edl")),
             number=data.get("number"),

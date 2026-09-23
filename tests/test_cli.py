@@ -8,8 +8,8 @@ import OpenEXR
 import pytest
 
 from proingest.__main__ import _ProgressPrinter, main
-from proingest.core import batchfile, clf, color, exr, qc, render
-from proingest.core.models import Batch, FrameRate, QCResult
+from proingest.core import batchfile, color, exr, qc, render
+from proingest.core.models import Batch, QCResult
 from tests.fixtures import color as color_fixtures
 from tests.fixtures import media as fixtures
 
@@ -80,8 +80,8 @@ class TestScanCommand:
     def test_errors_exit_one(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
         """A row-level error is a non-zero exit so a script can react."""
         folder = tmp_path / FOLDER
-        folder.mkdir(parents=True)
-        fixtures.make_otio(folder / "t.otio", [("MELT0001_pl01", "file:///nowhere/x.exr")], duration=4)
+        fixtures.make_turnover(folder, shots=1, frames=4)
+        fixtures.make_meta_csv(folder / "metadata.csv", [("GONE_pl01", "MELT0001", "pl01")])
         assert main(["scan", str(folder)]) == 1
         assert "QC-012" in capsys.readouterr().out
 
@@ -209,10 +209,18 @@ class TestRunCommand:
     def test_the_preflight_is_reported_before_the_render(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        """The disk-touching rules run once, when a run is about to start."""
+        """The disk-touching rules run once, when a run is about to start.
+
+        A clean turnover has nothing for them to say, which since the scan ingests the
+        EDL itself is the ordinary case: what used to print QC-008 here was a batch
+        waiting on a colour session that no longer exists as a separate step (OQ-74).
+        So what this asserts is that the pre-flight ran and let the plan through.
+        """
         batch_path = self.scanned(tmp_path)
         main(["run", str(batch_path), "--delivery-root", str(tmp_path / "delivery"), "--dry-run"])
-        assert "QC-008" in capsys.readouterr().out
+        out = capsys.readouterr().out
+        assert "0 err" in out, "the pre-flight found nothing blocking"
+        assert "deliverables from 1 shots" in out
 
     def test_a_row_error_from_the_preflight_is_printed_too(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
@@ -324,46 +332,6 @@ class TestColorSession:
         assert code == 2
         assert "could not read" in capsys.readouterr().err
         assert not delivery.exists()
-
-    def test_a_run_with_no_session_delivers_nothing_and_says_why(
-        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        """Rendering waits for colour (COLOR_AND_FORMAT section 1). QC-008 is the refusal.
-
-        Scanning, review and In/Out all still happen without one, because they are about
-        frames rather than pixels. An ungraded plate is not a lesser deliverable here, it
-        is the wrong pixels under the right filename, so nothing is written at all.
-        """
-        batch_path = self.scanned(tmp_path)
-        delivery = tmp_path / "delivery"
-        assert main(["run", str(batch_path), "--delivery-root", str(delivery)]) == 0
-        out = capsys.readouterr().out
-        assert "QC-008" in out
-        assert "nothing to render" in out
-        assert not (delivery / "MELT").exists()
-
-    def test_a_turnover_with_a_session_renders_while_another_waits(
-        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        """QC-008 is turnover scope, and this is what that buys (`qc.blocked_turnovers`)."""
-        folder = tmp_path / FOLDER
-        fixtures.make_turnover(folder, shots=1, frames=4)
-        waiting = tmp_path / "turnover002_02_24_2026_danielluckett"
-        fixtures.make_turnover(waiting, shots=1, frames=4)
-        rules = fixtures.write_rules_file(tmp_path / "rules.json")
-        batch_path = tmp_path / "batch.pibatch"
-        main(["scan", str(folder), str(waiting), "--rules", str(rules), "--save", str(batch_path)])
-
-        batch = batchfile.load(batch_path)
-        session = clf.load_session(self.session(tmp_path), FrameRate(24))
-        first = batch.turnovers[0]
-        clf.ingest(first, batch.rows_for(first.turnover_id), session)
-        batchfile.save(batch, batch_path)
-
-        delivery = tmp_path / "delivery"
-        main(["run", str(batch_path), "--delivery-root", str(delivery)])
-        assert "holding back" in capsys.readouterr().out
-        assert (delivery / "MELT" / "MELT0001").is_dir()
 
 
 class TestQcCommand:

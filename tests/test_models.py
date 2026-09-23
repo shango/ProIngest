@@ -250,7 +250,8 @@ class TestTurnover:
         turnover = Turnover(
             "t1",
             Path("/t"),
-            timeline_path=Path("/t/a.otio"),
+            edl_path=Path("/t/FINAL.edl"),
+            csv_path=Path("/t/meta.csv"),
             color_session_edl=Path("/session/MELT_FINAL.edl"),
             number=1,
             shooter="Daniel Luckett",

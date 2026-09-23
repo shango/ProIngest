@@ -353,8 +353,10 @@ def turnover_fields(turnover: Turnover, rate: FrameRate) -> list[Field]:
     if turnover.shooter:
         fields.append(Field("Shooter", turnover.shooter))
     fields.append(Field("Folder", str(turnover.folder), is_path=True))
-    if turnover.timeline_path is not None:
-        fields.append(Field("Timeline", str(turnover.timeline_path), is_path=True))
+    if turnover.edl_path is not None:
+        fields.append(Field("EDL", str(turnover.edl_path), is_path=True))
+    if turnover.csv_path is not None:
+        fields.append(Field("Metadata CSV", str(turnover.csv_path), is_path=True))
     if turnover.timeline_start:
         started = frames.frames_to_timecode(turnover.timeline_start, rate.as_float())
         fields.append(Field("Timeline start", f"{turnover.timeline_start} ({started})"))

@@ -35,6 +35,56 @@ class TestParseTurnoverFolder:
         assert scan.parse_turnover_folder(Path(f"/x/{name}")) is None
 
 
+class TestTheHandoverFolder:
+    """One folder holding the media, Ben's EDL and his metadata CSV (OQ-74)."""
+
+    def test_both_files_are_recorded_on_the_turnover(self, tmp_path: Path) -> None:
+        folder = tmp_path / GOOD_FOLDER
+        fixtures.make_turnover(folder, shots=1, frames=6)
+        turnover, _ = scan.scan_turnover(folder, "t1", scan.ScanSettings(rules=fixtures.SMALL_RULES))
+        assert turnover.edl_path is not None and turnover.edl_path.name == "FINAL_v01.edl"
+        assert turnover.csv_path is not None and turnover.csv_path.name == "metadata.csv"
+        assert turnover.color_session_edl == turnover.edl_path, "read once, at the scan"
+
+    def test_no_edl_is_qc_001_and_says_which_file(self, tmp_path: Path) -> None:
+        folder = tmp_path / GOOD_FOLDER
+        fixtures.make_turnover(folder, shots=1, frames=6)
+        (folder / "FINAL_v01.edl").unlink()
+        turnover, rows = scan.scan_turnover(folder, "t1")
+        assert {r.rule_id for r in turnover.qc} == {"QC-001"}
+        assert "EDL" in turnover.qc[0].message
+        assert rows == []
+
+    def test_no_csv_is_qc_001_and_says_which_file(self, tmp_path: Path) -> None:
+        folder = tmp_path / GOOD_FOLDER
+        fixtures.make_turnover(folder, shots=1, frames=6)
+        (folder / "metadata.csv").unlink()
+        turnover, rows = scan.scan_turnover(folder, "t1")
+        assert {r.rule_id for r in turnover.qc} == {"QC-001"}
+        assert "CSV" in turnover.qc[0].message
+        assert rows == []
+
+    @pytest.mark.parametrize("extra", ["SECOND_v02.edl", "second.csv"])
+    def test_two_of_either_is_refused_rather_than_chosen_between(self, tmp_path: Path, extra: str) -> None:
+        """Choosing between two cuts is choosing a cut, and the same goes for two CSVs."""
+        folder = tmp_path / GOOD_FOLDER
+        fixtures.make_turnover(folder, shots=1, frames=6)
+        (folder / extra).write_bytes((folder / "FINAL_v01.edl").read_bytes())
+        turnover, rows = scan.scan_turnover(folder, "t1")
+        assert {r.rule_id for r in turnover.qc} == {"QC-001"}
+        assert rows == []
+
+    def test_neither_file_is_looked_for_in_a_subfolder(self, tmp_path: Path) -> None:
+        """The handover is one folder; a recursive search would find a working copy."""
+        folder = tmp_path / GOOD_FOLDER
+        fixtures.make_turnover(folder, shots=1, frames=6)
+        nested = folder / "exports"
+        nested.mkdir()
+        (folder / "FINAL_v01.edl").rename(nested / "FINAL_v01.edl")
+        turnover, _ = scan.scan_turnover(folder, "t1")
+        assert {r.rule_id for r in turnover.qc} == {"QC-001"}
+
+
 class TestScanTurnover:
     def test_happy_path(self, tmp_path: Path) -> None:
         folder = tmp_path / GOOD_FOLDER
@@ -48,7 +98,22 @@ class TestScanTurnover:
         assert len(rows) == 2
         assert all(row.qc == [] for row in rows)
 
-    def test_rows_carry_identity_media_and_ranges(self, tmp_path: Path) -> None:
+    def test_one_row_per_csv_row_rather_than_per_timeline_clip(self, tmp_path: Path) -> None:
+        """`Shot Type` is the whole of the tool's scope, so the CSV decides what exists."""
+        folder = tmp_path / GOOD_FOLDER
+        fixtures.make_turnover(folder, shots=3, frames=4)
+        _, rows = scan.scan_turnover(folder, "t1")
+        assert [row.clip_name for row in rows] == ["MELT0001_pl01", "MELT0002_pl01", "MELT0003_pl01"]
+
+    def test_identity_comes_off_the_two_csv_fields(self, tmp_path: Path) -> None:
+        folder = tmp_path / GOOD_FOLDER
+        fixtures.make_turnover(folder, shots=1, frames=6, shot_types=["colorChart"])
+        _, rows = scan.scan_turnover(folder, "t1")
+        identity = rows[0].identity
+        assert identity is not None
+        assert (identity.shot_code, identity.kind, identity.index) == ("MELT0001", "colorChart", "01")
+
+    def test_rows_carry_media_the_encoding_and_the_cut(self, tmp_path: Path) -> None:
         folder = tmp_path / GOOD_FOLDER
         fixtures.make_turnover(folder, shots=1, frames=6)
         _, rows = scan.scan_turnover(folder, "t1")
@@ -57,213 +122,90 @@ class TestScanTurnover:
         assert row.shot_code == "MELT0001"
         assert row.identity is not None and row.identity.elem == "pl01"
         assert row.media is not None and row.media.is_sequence
-        assert row.current == row.snapshot, "a fresh scan has not been edited"
-        assert row.duration == 6
+        assert row.source_encoding == fixtures.SOURCE_ENCODING
+        assert row.source_encoding_origin == "clip metadata"
+        assert row.cdl is not None, "the CDL on the event is the grade"
+        assert row.approved is not None
+        assert row.current == row.snapshot == row.approved, "a fresh scan has not been edited"
         assert row.audio_path is not None
 
-    def test_the_path_map_reaches_the_audio_as_well_as_the_picture(self, tmp_path: Path) -> None:
-        """QC-016 rewrites the picture URL onto the local mount; the audio URL came from
-        the same machine and has to go through the same map."""
+    def test_the_encoding_is_the_two_fields_joined_in_order(self, tmp_path: Path) -> None:
+        """`Gamma Notes` then `Color Space Notes`, verbatim: QC-047 quotes it back."""
         folder = tmp_path / GOOD_FOLDER
-        fixtures.make_turnover(folder, shots=1, frames=6)
-        media_dir = folder / "media"
-        foreign = "file:///G:/turnover/media"
-        fixtures.make_otio(
-            folder / "turnover001.otio",
-            [("MELT0001_pl01", f"{foreign}/MELT0001_pl01.1001.exr")],
-            duration=6,
-            source_start=86400,
-            available_start=86400,
-            available_duration=6,
-            audio_clips=[("MELT0001_pl01_audio", f"{foreign}/MELT0001_pl01.wav")],
-        )
-        settings = scan.ScanSettings(path_map={"G:/turnover/media": str(media_dir)})
-        _, rows = scan.scan_turnover(folder, "t1", settings)
-
-        assert rows[0].media is not None, "the picture was remapped"
-        assert rows[0].audio_path == media_dir / "MELT0001_pl01.wav"
-        assert rows[0].audio is not None, "and so was the audio"
-
-    def test_snapshot_matches_the_timeline_range(self, tmp_path: Path) -> None:
-        """The snapshot is what the turnover arrived with; QC-035 compares against it."""
-        folder = tmp_path / GOOD_FOLDER
-        fixtures.make_turnover(folder, shots=1, frames=6)
+        fixtures.make_turnover(folder, shots=1, frames=6, source_encoding="S-Log3 S-Gamut3.Cine")
         _, rows = scan.scan_turnover(folder, "t1")
-        assert rows[0].snapshot is not None
-        assert rows[0].snapshot.duration == 6
+        assert rows[0].source_encoding == "S-Log3 S-Gamut3.Cine"
 
-    def test_unparseable_clip_name_still_produces_a_row(self, tmp_path: Path) -> None:
-        """QC-010: the row must appear so the editor can fix the name in place."""
+    def test_a_clip_naming_no_encoding_says_so_rather_than_guessing(self, tmp_path: Path) -> None:
         folder = tmp_path / GOOD_FOLDER
-        sequence = fixtures.make_exr_sequence(folder / "media", base="garbage", count=4)
-        fixtures.make_otio(
-            folder / "t.otio",
-            [("garbage", sequence.path_for(1001).as_uri())],
-            duration=4,
-            available_duration=4,
-        )
+        fixtures.make_turnover(folder, shots=1, frames=6, source_encoding=None)
         _, rows = scan.scan_turnover(folder, "t1")
-        assert len(rows) == 1
-        assert rows[0].identity is None
-        assert "QC-010" in rules(rows[0])
+        assert rows[0].source_encoding is None
+        assert "QC-046" in rules(rows[0])
 
-    def test_missing_media_is_qc_012(self, tmp_path: Path) -> None:
+    def test_a_clip_with_no_shot_type_is_ignored_and_counted(self, tmp_path: Path) -> None:
+        """QC-064 at turnover scope: ignoring is intended, a whole turnover ignored is not."""
         folder = tmp_path / GOOD_FOLDER
-        folder.mkdir(parents=True)
-        fixtures.make_otio(folder / "t.otio", [("MELT0001_pl01", "file:///nowhere/x.exr")], duration=4)
+        fixtures.make_turnover(folder, shots=2, frames=4, shot_types=["pl01", ""])
+        turnover, rows = scan.scan_turnover(folder, "t1")
+        assert [row.clip_name for row in rows] == ["MELT0001_pl01"]
+        found = [r for r in turnover.qc if r.rule_id == "QC-064"]
+        assert len(found) == 1
+        assert "MELT0002_pl01" in found[0].message
+        assert found[0].severity == "warning"
+
+    def test_a_turnover_nobody_filled_in_delivers_nothing_and_says_so(self, tmp_path: Path) -> None:
+        folder = tmp_path / GOOD_FOLDER
+        fixtures.make_turnover(folder, shots=2, frames=4, shot_types=["", ""])
+        turnover, rows = scan.scan_turnover(folder, "t1")
+        assert rows == []
+        assert {r.rule_id for r in turnover.qc} == {"QC-064", "QC-004"}
+
+    def test_a_row_the_edl_says_nothing_about_is_an_error_not_a_guess(self, tmp_path: Path) -> None:
+        """A neighbour's cut and a neighbour's grade both look entirely plausible."""
+        folder = tmp_path / GOOD_FOLDER
+        fixtures.make_turnover(folder, shots=2, frames=4)
+        fixtures.make_final_edl(folder / "FINAL_v01.edl", ["MELT0001_pl01"], duration=4)
+        _, rows = scan.scan_turnover(folder, "t1")
+        orphan = next(row for row in rows if row.clip_name == "MELT0002_pl01")
+        assert "QC-066" in rules(orphan)
+        assert orphan.cdl is None and orphan.approved is None
+        assert orphan.current is not None, "it still shows what arrived, so it can be trimmed by hand"
+
+    def test_media_the_csv_names_but_the_folder_lacks_is_qc_012(self, tmp_path: Path) -> None:
+        folder = tmp_path / GOOD_FOLDER
+        fixtures.make_turnover(folder, shots=1, frames=4)
+        fixtures.make_meta_csv(folder / "metadata.csv", [("GONE_pl01", "MELT0001", "pl01")])
         _, rows = scan.scan_turnover(folder, "t1")
         assert "QC-012" in rules(rows[0])
         assert rows[0].media is None
 
-    def test_qc_012_names_the_path_the_timeline_claimed(self, tmp_path: Path) -> None:
-        """Nothing stores it once the row has no media, so the rule's message is the
-        only record of what the timeline asked for (UI_SPEC section 12.3)."""
+    def test_an_unreadable_csv_is_qc_002(self, tmp_path: Path) -> None:
         folder = tmp_path / GOOD_FOLDER
-        folder.mkdir(parents=True)
-        fixtures.make_otio(folder / "t.otio", [("MELT0001_pl01", "file:///nowhere/x.exr")], duration=4)
-        _, rows = scan.scan_turnover(folder, "t1")
-        message = next(r.message for r in rows[0].qc if r.rule_id == "QC-012")
-        assert "/nowhere/x.exr is missing" in message
-
-    def test_a_clip_referencing_no_path_at_all_says_that_instead(self, tmp_path: Path) -> None:
-        folder = tmp_path / GOOD_FOLDER
-        folder.mkdir(parents=True)
-        fixtures.make_otio(folder / "t.otio", [("MELT0001_pl01", "")], duration=4)
-        _, rows = scan.scan_turnover(folder, "t1")
-        message = next(r.message for r in rows[0].qc if r.rule_id == "QC-012")
-        assert "references no path" in message
-
-    def test_ambiguous_media_is_qc_013(self, tmp_path: Path) -> None:
-        folder = tmp_path / GOOD_FOLDER
-        fixtures.make_exr_sequence(folder / "a", base="MELT0001_pl01", count=4)
-        fixtures.make_exr_sequence(folder / "b", base="MELT0001_pl01", count=4)
-        fixtures.make_otio(folder / "t.otio", [("MELT0001_pl01", "file:///nowhere/x.exr")], duration=4)
-        _, rows = scan.scan_turnover(folder, "t1")
-        assert "QC-013" in rules(rows[0])
-
-    def test_sequence_gap_is_qc_015(self, tmp_path: Path) -> None:
-        folder = tmp_path / GOOD_FOLDER
-        sequence = fixtures.make_exr_sequence(folder / "media", base="MELT0001_pl01", count=6)
-        sequence.path_for(1003).unlink()
-        fixtures.make_otio(
-            folder / "t.otio",
-            [("MELT0001_pl01", sequence.path_for(1001).as_uri())],
-            duration=4,
-            available_duration=6,
-        )
-        _, rows = scan.scan_turnover(folder, "t1")
-        assert "QC-015" in rules(rows[0])
-
-    def test_range_beyond_the_media_is_qc_029(self, tmp_path: Path) -> None:
-        folder = tmp_path / GOOD_FOLDER
-        sequence = fixtures.make_exr_sequence(folder / "media", base="MELT0001_pl01", count=4)
-        fixtures.make_otio(
-            folder / "t.otio",
-            [("MELT0001_pl01", sequence.path_for(1001).as_uri())],
-            duration=100,
-            available_duration=100,
-        )
-        _, rows = scan.scan_turnover(folder, "t1")
-        assert "QC-029" in rules(rows[0])
-
-    def test_media_found_by_name_when_the_url_is_wrong(self, tmp_path: Path) -> None:
-        """FR-2: a unique filename match resolves silently."""
-        folder = tmp_path / GOOD_FOLDER
-        fixtures.make_exr_sequence(folder / "media", base="MELT0001_pl01", count=4)
-        fixtures.make_otio(
-            folder / "t.otio",
-            [("MELT0001_pl01", "file:///wrong/place/MELT0001_pl01.1001.exr")],
-            duration=4,
-            available_duration=4,
-        )
-        _, rows = scan.scan_turnover(folder, "t1")
-        assert rows[0].media is not None
-        assert "QC-012" not in rules(rows[0])
-
-
-class TestSourceEncoding:
-    """Reading the encoding off the clip. COLOR_AND_FORMAT section 1, OQ-44, M4.6.4."""
-
-    def scanned(self, tmp_path: Path, **turnover: object) -> ShotRow:
-        folder = tmp_path / GOOD_FOLDER
-        fixtures.make_turnover(folder, shots=1, frames=4, **turnover)  # type: ignore[arg-type]
-        settings = scan.ScanSettings(rules=fixtures.SMALL_RULES)
-        return scan.scan_turnover(folder, "t1", settings)[1][0]
-
-    def test_the_clip_s_own_metadata_is_read_verbatim(self, tmp_path: Path) -> None:
-        """Stored as written, because QC-047 has to quote it back at whoever typed it."""
-        row = self.scanned(tmp_path, source_encoding="C-Log3")
-        assert row.source_encoding == "C-Log3"
-        assert row.source_encoding_origin == "clip metadata"
-
-    def test_a_clip_that_names_none_has_no_origin_either(self, tmp_path: Path) -> None:
-        """Nothing wrote it, so there is nobody to trace a wrong one back to (M4.6.5)."""
-        row = self.scanned(tmp_path, source_encoding=None)
-        assert row.source_encoding_origin is None
-
-    def test_a_clip_that_names_none_says_so_rather_than_guessing(self, tmp_path: Path) -> None:
-        row = self.scanned(tmp_path, source_encoding=None)
-        assert row.source_encoding is None
-        assert "QC-046" in rules(row)
-
-    def test_a_row_that_names_one_raises_nothing(self, tmp_path: Path) -> None:
-        row = self.scanned(tmp_path, source_encoding="ACEScct")
-        assert not {"QC-046", "QC-047"} & rules(row)
-
-    def test_a_name_the_table_cannot_resolve_is_qc_047(self, tmp_path: Path) -> None:
-        """A plate renders regardless, so it is a warning here and an error on an aux still."""
-        row = self.scanned(tmp_path, source_encoding="S-Log3")
-        assert row.source_encoding == "S-Log3"
-        assert "QC-047" in rules(row)
-
-    def test_the_container_s_tags_are_the_second_carrier(self, tmp_path: Path) -> None:
-        """The timeline first, the file second: a media file outlives the session (OQ-44)."""
-        clip = fixtures.clip_record("MELT0001_pl01", metadata={})
-        row = ShotRow(turnover_id="t1", clip_name="MELT0001_pl01")
-        row.media = fixtures.media_info_with_tags({scan.SOURCE_ENCODING_KEY: "BM Film"})
-        assert scan._source_encoding(clip, row, scan.SOURCE_ENCODING_KEY) == (
-            "BM Film",
-            "container tag",
-        )
-
-    def test_the_clip_wins_over_the_container(self, tmp_path: Path) -> None:
-        clip = fixtures.clip_record("MELT0001_pl01", metadata={scan.SOURCE_ENCODING_KEY: "C-Log3"})
-        row = ShotRow(turnover_id="t1", clip_name="MELT0001_pl01")
-        row.media = fixtures.media_info_with_tags({scan.SOURCE_ENCODING_KEY: "BM Film"})
-        assert scan._source_encoding(clip, row, scan.SOURCE_ENCODING_KEY) == (
-            "C-Log3",
-            "clip metadata",
-        )
-
-    def test_a_field_that_is_there_and_empty_is_no_field(self, tmp_path: Path) -> None:
-        """QC-046's own words: the field is absent, or empty."""
-        clip = fixtures.clip_record("MELT0001_pl01", metadata={scan.SOURCE_ENCODING_KEY: "   "})
-        row = ShotRow(turnover_id="t1", clip_name="MELT0001_pl01")
-        assert scan._source_encoding(clip, row, scan.SOURCE_ENCODING_KEY) == (None, None)
-
-    def test_the_field_name_is_a_setting(self, tmp_path: Path) -> None:
-        """OQ-44's answer is a different field name and nothing else."""
-        clip = fixtures.clip_record("MELT0001_pl01", metadata={"Camera Log": "C-Log3"})
-        row = ShotRow(turnover_id="t1", clip_name="MELT0001_pl01")
-        assert scan._source_encoding(clip, row, "camera log") == ("C-Log3", "clip metadata")
-
-
-class TestTurnoverLevelProblems:
-    def test_no_timeline_is_qc_001(self, tmp_path: Path) -> None:
-        folder = tmp_path / GOOD_FOLDER
-        folder.mkdir(parents=True)
-        turnover, rows = scan.scan_turnover(folder, "t1")
-        assert {r.rule_id for r in turnover.qc} == {"QC-001"}
-        assert rows == []
-
-    def test_unparseable_timeline_is_qc_002(self, tmp_path: Path) -> None:
-        folder = tmp_path / GOOD_FOLDER
-        folder.mkdir(parents=True)
-        (folder / "broken.otio").write_text("{nope")
+        fixtures.make_turnover(folder, shots=1, frames=4)
+        (folder / "metadata.csv").write_bytes(b"")
         turnover, rows = scan.scan_turnover(folder, "t1")
         assert "QC-002" in {r.rule_id for r in turnover.qc}
         assert rows == []
 
+    def test_an_unreadable_edl_is_qc_002(self, tmp_path: Path) -> None:
+        folder = tmp_path / GOOD_FOLDER
+        fixtures.make_turnover(folder, shots=1, frames=4)
+        (folder / "FINAL_v01.edl").write_text("not an edl\n")
+        turnover, rows = scan.scan_turnover(folder, "t1")
+        assert "QC-002" in {r.rule_id for r in turnover.qc}
+        assert rows == []
+
+    def test_nothing_reads_a_duration_or_a_path_out_of_the_csv(self, tmp_path: Path) -> None:
+        """The real file's Frames and Clip Directory describe the pre-consolidation
+        originals, so the media facts come off ffprobe and the cut off the EDL."""
+        folder = tmp_path / GOOD_FOLDER
+        fixtures.make_turnover(folder, shots=1, frames=6)
+        _, rows = scan.scan_turnover(folder, "t1")
+        assert rows[0].media is not None and rows[0].media.frame_count == 6
+
+
+class TestTurnoverLevelProblems:
     def test_unmatched_folder_name_is_qc_005(self, tmp_path: Path) -> None:
         folder = tmp_path / "messy"
         fixtures.make_turnover(folder, shots=1, frames=4)
