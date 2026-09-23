@@ -129,6 +129,18 @@ class TestScanTurnover:
         assert row.current == row.snapshot == row.approved, "a fresh scan has not been edited"
         assert row.audio_path is not None
 
+    @pytest.mark.parametrize("kind", ["cp01", "el01"])
+    def test_only_a_plate_takes_the_audio_beside_it(self, tmp_path: Path, kind: str) -> None:
+        """Only a pl has an associated audio clip (user, 2026-09-23), so a wav named for
+        another clip type is not looked for, and raises nothing."""
+        folder = tmp_path / GOOD_FOLDER
+        fixtures.make_turnover(folder, shots=1, frames=6, shot_types=[kind])
+        _, rows = scan.scan_turnover(folder, "t1", scan.ScanSettings(rules=fixtures.SMALL_RULES))
+        row = rows[0]
+        assert row.audio_path is None and row.audio is None
+        assert row.audio_clip_count == 0
+        assert not rules(row) & {"QC-040", "QC-041", "QC-042", "QC-043", "QC-044"}
+
     def test_the_encoding_is_the_two_fields_joined_in_order(self, tmp_path: Path) -> None:
         """`Gamma Notes` then `Color Space Notes`, verbatim: QC-047 quotes it back."""
         folder = tmp_path / GOOD_FOLDER

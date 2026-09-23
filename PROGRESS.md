@@ -17,6 +17,14 @@ acceptance test on the editor's machine. The branch `color/cdl-in-acescct` is pu
 on a branch push). The entries below are newest first; anything
 older than 2026-09-22 describes the tool before the review and is history.
 
+**2026-09-23, audio is the plate's alone.** The user: only shot type pl has an associated audio
+clip. The scan now searches for a matching wav only on a plate row (`scan.scan_turnover`), so a cp
+or el with a same-named wav beside it gets no audio, no wav deliverable and none of QC-041 to
+QC-044; the wav deliverable was already plate-only (`planner.AUDIO_TYPES`). **Not changed, asked**:
+a non-plate reference mp4 still carries the clip's own embedded sound, which every file in
+`Turnover199` has. **Verified**: a test for cp and el, and the suite (1625). PRD FR-1 and
+QC_RULES 041 say so. An older batch picks it up on its next Scan.
+
 **2026-09-23, release prep for 0.5.0.** Two of chunk H's open items closed, both stale text.
 **QC-043's message** said an edited row's wav is delivered untrimmed; since D2 the wav is cut to
 the edited range, so the message now says the wav is padded with silence (edited past the
