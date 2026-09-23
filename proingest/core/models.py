@@ -682,6 +682,15 @@ class Turnover:
     shooter: str = ""
     qc: list[QCResult] = field(default_factory=list)
 
+    edl_digest: str = ""
+    csv_digest: str = ""
+    """xxhash64 of the EDL and the CSV as they were scanned, empty before 2026-09-23.
+
+    What a turnover reloaded from a new folder is compared against (D16): the editor's
+    trims and skips carry over by File Name, and a changed EDL or CSV is the one case
+    where that deserves a second look. Additive, so the schema version does not move.
+    """
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "turnover_id": self.turnover_id,
@@ -696,6 +705,8 @@ class Turnover:
             "year": self.year,
             "shooter": self.shooter,
             "qc": [result.to_dict() for result in self.qc],
+            "edl_digest": self.edl_digest,
+            "csv_digest": self.csv_digest,
         }
 
     @classmethod
@@ -713,6 +724,8 @@ class Turnover:
             year=data.get("year"),
             shooter=str(data.get("shooter", "")),
             qc=[QCResult.from_dict(item) for item in data.get("qc", [])],
+            edl_digest=str(data.get("edl_digest", "")),
+            csv_digest=str(data.get("csv_digest", "")),
         )
 
 

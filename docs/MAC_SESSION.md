@@ -328,3 +328,11 @@ Treat it as a working session with the editor rather than a delivery.
   `test_an_untagged_bt709_file_decodes_to_its_primary` pin it on CI. By eye on the Mac: open
   `TEST0002_pl01_ref_HD_v01.mp4` beside the same frame in Resolve's viewer and say whether the
   colours agree; saturated reds and greens are where a matrix error shows.
+- **Chunk E, locks and recovery (2026-09-23).** On the Mac, with the real turnover: (1) press Run
+  and try to edit a cell, press Ctrl+K, click the delivery root, open Settings: all refused until
+  the banner shows. (2) The window stays responsive while "Checking the batch" and "Writing the QC
+  log" are on the strip, with the delivery root on the Drive mount. (3) Save the batch, quit, move
+  the turnover folder in the Finder, reopen the batch: the header shows QC-069. Right-click the
+  header, New Folder Location..., pick the moved folder: the rows come back with their trims and
+  skips. (4) Right-click on the frozen left columns of a header works as well as on the rest.
+  (5) Close during a run: the window closes within a few seconds of the run stopping.

@@ -1261,3 +1261,20 @@ class TestApplyPhaseB:
         qc.apply_row_rules(target, RATE_24)
         qc.apply_phase_b(Batch(rows=[target]))
         assert "QC-040" in ids(target.qc)
+
+
+class TestTurnoverFolder:
+    """QC-069 (D16): a turnover whose folder has gone cannot run from nowhere."""
+
+    def test_a_missing_folder_is_an_error_on_the_turnover(self, tmp_path: Path) -> None:
+        moved = Batch(turnovers=[Turnover("t1", tmp_path / "gone")])
+        qc.check_folders(moved)
+        assert [(r.rule_id, r.severity, r.scope) for r in moved.turnovers[0].qc] == [
+            ("QC-069", "error", "turnover")
+        ]
+
+    def test_a_folder_that_is_there_says_nothing_and_clears_it(self, tmp_path: Path) -> None:
+        here = Batch(turnovers=[Turnover("t1", tmp_path)])
+        here.turnovers[0].qc.append(QCResult("QC-069", "error", "turnover", "stale"))
+        qc.check_folders(here)
+        assert here.turnovers[0].qc == []

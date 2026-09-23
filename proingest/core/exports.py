@@ -21,10 +21,12 @@ point standing where a fact belongs.
 from __future__ import annotations
 
 from collections import Counter
+from collections.abc import Sequence
 from datetime import date
 from pathlib import Path
 
 from openpyxl import Workbook
+from openpyxl.cell.cell import ILLEGAL_CHARACTERS_RE
 from openpyxl.styles import Alignment, Font
 from openpyxl.worksheet.worksheet import Worksheet
 
@@ -37,6 +39,16 @@ DATE_STAMP = "%Y%m%d"
 is. It is this, because a report that sorts by name sorts by date."""
 
 _HEADER_FONT = Font(bold=True)
+
+
+def _append(sheet: Worksheet, values: Sequence[object]) -> None:
+    """One line, with the control characters openpyxl refuses taken out of every string.
+
+    A note or a message can carry one, pasted from somewhere, and openpyxl raises on it
+    rather than writing the cell. That raise used to escape after a run and leave the
+    window with Run greyed and Stop lit (F15).
+    """
+    sheet.append([ILLEGAL_CHARACTERS_RE.sub("", v) if isinstance(v, str) else v for v in values])
 
 
 def report_names(batch: Batch, when: date | None = None) -> tuple[str, str]:
@@ -72,7 +84,7 @@ def severity_counts(batch: Batch) -> Counter[str]:
 def _sheet(book: Workbook, title: str, headers: tuple[str, ...]) -> Worksheet:
     """A sheet with a bold, frozen header row and columns wide enough to read."""
     sheet = book.create_sheet(title)
-    sheet.append(list(headers))
+    _append(sheet, list(headers))
     for cell in sheet[1]:
         cell.font = _HEADER_FONT
         cell.alignment = Alignment(vertical="top", wrap_text=True)
@@ -140,7 +152,7 @@ def _write_summary(book: Workbook, batch: Batch, when: date) -> None:
         ("Warnings", counts["warning"]),
         ("Info", counts["info"]),
     ):
-        sheet.append([label, value])
+        _append(sheet, [label, value])
     sheet.column_dimensions["B"].width = 60
 
 
@@ -170,7 +182,8 @@ def _write_shots(book: Workbook, batch: Batch) -> None:
     for row in batch.rows:
         media = row.media
         snapshot, current = row.snapshot, row.current
-        sheet.append(
+        _append(
+            sheet,
             [
                 row.turnover_id,
                 row.clip_name,
@@ -193,7 +206,7 @@ def _write_shots(book: Workbook, batch: Batch) -> None:
                 row.skip_reason or "",
                 _rule_ids(row.qc, "warning"),
                 _rule_ids(row.qc, "error"),
-            ]
+            ],
         )
 
 
@@ -202,7 +215,8 @@ def _write_deliverables(book: Workbook, batch: Batch) -> None:
     sheet = _sheet(book, "Deliverables", DELIVERABLE_HEADERS + qc.DELIVERABLE_RULES)
     for row in batch.rows:
         for item in row.deliverables:
-            sheet.append(
+            _append(
+                sheet,
                 [
                     row.shot_code or "",
                     row.identity.elem if row.identity else "",
@@ -214,7 +228,7 @@ def _write_deliverables(book: Workbook, batch: Batch) -> None:
                     item.size,
                     _checksum(item),
                     *(qc.deliverable_rule_state(item, rule) for rule in qc.DELIVERABLE_RULES),
-                ]
+                ],
             )
 
 
@@ -364,7 +378,7 @@ def write_shot_tracker(batch: Batch, path: Path) -> Path:
     sheet = _sheet(book, "Shots", TRACKER_HEADERS)
     plates_column = TRACKER_HEADERS.index("PLATES") + 1
     for cells in tracker_rows(batch):
-        sheet.append(cells)
+        _append(sheet, cells)
         # The plate marks are two lines in one cell, as they are in the real sheet.
         sheet.cell(row=sheet.max_row, column=plates_column).alignment = Alignment(
             wrap_text=True, vertical="top"

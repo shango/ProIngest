@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from proingest.core import scan
-from proingest.core.models import Batch, ShotRow, Turnover
+from proingest.core.models import Batch, InOut, ShotRow, Turnover
 from tests.fixtures import media as fixtures
 
 GOOD_FOLDER = "turnover001_02_23_2026_danielluckett"
@@ -293,3 +293,55 @@ class TestNextTurnoverId:
 
         batch = scan.scan_batch([first, second])
         assert [turnover.turnover_id for turnover in batch.turnovers] == ["t1", "t2"]
+
+
+class TestCarryOver:
+    """D8 and D16: a turnover scanned again keeps what the editor did, by File Name."""
+
+    def rows(self, *names: str) -> list[ShotRow]:
+        return [
+            ShotRow(turnover_id="t1", clip_name=name, snapshot=InOut(10, 20), current=InOut(10, 20))
+            for name in names
+        ]
+
+    def test_the_editor_s_work_follows_the_file_name(self) -> None:
+        old, new = self.rows("C0145.MP4"), self.rows("C0145.MP4")
+        old[0].current = InOut(12, 18)
+        old[0].skipped, old[0].skip_reason, old[0].notes = True, "not needed", "sky"
+        old[0].shot_code_override = "TEST0009"
+        scan.carry_over(Turnover("t1", Path("/a")), old, Turnover("t1", Path("/b")), new)
+        assert new[0].current == InOut(12, 18)
+        assert (new[0].skipped, new[0].skip_reason, new[0].notes) == (True, "not needed", "sky")
+        assert new[0].shot_code == "TEST0009"
+
+    def test_a_trim_never_made_follows_the_new_edl(self) -> None:
+        old, new = self.rows("C0145.MP4"), self.rows("C0145.MP4")
+        new[0].snapshot = new[0].current = InOut(14, 24)
+        scan.carry_over(Turnover("t1", Path("/a")), old, Turnover("t1", Path("/b")), new)
+        assert new[0].current == InOut(14, 24)
+
+    def test_a_clip_used_twice_pairs_in_order(self) -> None:
+        """D3: each instance is its own row, so the first keeps the first's edits."""
+        old, new = self.rows("C0145.MP4", "C0145.MP4"), self.rows("C0145.MP4", "C0145.MP4")
+        old[0].notes, old[1].notes = "first", "second"
+        scan.carry_over(Turnover("t1", Path("/a")), old, Turnover("t1", Path("/b")), new)
+        assert [row.notes for row in new] == ["first", "second"]
+
+    def test_a_changed_edl_is_a_warning_on_the_turnover(self) -> None:
+        was = Turnover("t1", Path("/a"), edl_digest="1", csv_digest="2")
+        now = Turnover("t1", Path("/b"), edl_digest="3", csv_digest="2")
+        scan.carry_over(was, self.rows("C0145.MP4"), now, self.rows("C0145.MP4"))
+        assert [(r.rule_id, r.severity) for r in now.qc] == [("QC-070", "warning")]
+        assert "EDL" in now.qc[0].message and "CSV" not in now.qc[0].message
+
+    def test_nothing_changed_says_nothing(self) -> None:
+        was = Turnover("t1", Path("/a"), edl_digest="1", csv_digest="2")
+        now = Turnover("t1", Path("/b"), edl_digest="1", csv_digest="2")
+        scan.carry_over(was, [], now, [])
+        assert now.qc == []
+
+    def test_a_scan_records_both_digests(self, tmp_path: Path) -> None:
+        folder = tmp_path / GOOD_FOLDER
+        fixtures.make_turnover(folder, shots=1, frames=4)
+        turnover, _ = scan.scan_turnover(folder, "t1")
+        assert turnover.edl_digest and turnover.csv_digest

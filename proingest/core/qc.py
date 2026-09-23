@@ -765,6 +765,7 @@ def apply_batch_rules(batch: Batch, settings: RuleSettings = DEFAULT_SETTINGS) -
 OWNED_PREFLIGHT_RULES = frozenset(
     {
         "QC-008",
+        "QC-069",
         "QC-009",
         "QC-022",
         "QC-048",
@@ -1001,6 +1002,32 @@ def blocked_turnovers(batch: Batch) -> frozenset[str]:
     )
 
 
+def check_turnover_folder(turnover: Turnover) -> list[QCResult]:
+    """QC-069: the turnover's folder is not where the batch last found it (D16).
+
+    An error, so the turnover cannot run: its sources are in that folder. Fixed by
+    right-clicking the turnover and choosing its new location, which rescans it there.
+    """
+    if turnover.folder.is_dir():
+        return []
+    return [
+        QCResult(
+            "QC-069",
+            "error",
+            "turnover",
+            f"{turnover.folder} is not there any more; right-click the turnover and choose "
+            f"New Folder Location",
+        )
+    ]
+
+
+def check_folders(batch: Batch) -> None:
+    """QC-069 on every turnover, alone. What opening a batch runs; `preflight` runs it too."""
+    for turnover in batch.turnovers:
+        turnover.qc = [result for result in turnover.qc if result.rule_id != "QC-069"]
+        turnover.qc.extend(check_turnover_folder(turnover))
+
+
 def decoders_available() -> frozenset[str]:
     """What this ffmpeg can decode, or nothing when it cannot be asked.
 
@@ -1029,6 +1056,7 @@ def preflight(batch: Batch, decoders: frozenset[str] | None = None) -> None:
     for turnover in batch.turnovers:
         turnover.qc = [result for result in turnover.qc if result.rule_id not in OWNED_PREFLIGHT_RULES]
         turnover.qc.extend(check_color_session(turnover, batch.rows_for(turnover.turnover_id)))
+        turnover.qc.extend(check_turnover_folder(turnover))
         if turnover.color_session_edl is not None:
             graded.add(turnover.turnover_id)
     for row in batch.rows:

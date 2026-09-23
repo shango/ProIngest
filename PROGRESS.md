@@ -14,6 +14,26 @@ complete, M4.5 all four chunks, M4.6 all five, **M5 all twelve**, **M7**, and **
 What is left is **M8 polish** (needs a real turnover and a real colour session) and the rest
 of **M9, the user guide**.
 
+**2026-09-23, chunk E: locks and recovery.** **The batch is locked while a scan or a run has it**
+(D15): `ShotListModel.set_locked` refuses every edit, and New, Open, Settings, Skip, Add Turnover,
+Scan and the delivery root wait (F13, F14). A scan's result is dropped if its batch was replaced.
+**A run's disk work is off the UI thread** (F17): the pre-flight, the plan and both spreadsheets
+go through `ui/background.py`, one step at a time, each answer back on the UI thread; the window
+tests use its `Inline` twin and `tests/test_background.py` tests the thread. **Every spreadsheet
+line drops the control characters openpyxl refuses** (`exports._append`), and any error from
+the export is reported rather than escaping (F15). **Closing on a hung run** waits live for the
+results as before, then `Runner.shutdown` gives the pool 5 s and ends its workers instead of
+freezing the window for two more minutes (F18). **Scan re-scans every turnover and keeps the
+editor's work** by File Name (`scan.carry_over`, D8); a header's right-click offers Re-scan and
+New Folder Location (D16). A moved turnover is **QC-069** on opening and in the pre-flight; a
+changed EDL or CSV on a re-scan is **QC-070** (`Turnover.edl_digest`, `csv_digest`). **Ingest
+Colour Session is removed** (`ui/color_session.py`, the old chunk 5c), and OQ-48 is answered.
+**Verified on `Turnover199`**: moved, QC-069 raised, re-scanned from the new place with a trim and
+a skip carried over; an edited EDL raised QC-070. **Left for C**: the held-back-turnover run
+(every must-fix blocks the run, D8). **Left for H**: `proingest run --color-session`,
+`clf.ingest`, and the `color_session_folder` setting the Settings page still shows. **Next: C,
+D, H.** The branch is **not pushed**.
+
 **2026-09-23, chunk G: colour and format.** **Every decode states its matrix and range**
 (`ffmpeg.to_rgb`): the file's own when it states them, else BT.709 (D17, provisional) and
 limited. The real files state full range and no matrix, so they were decoded as BT.601 until
@@ -26,7 +46,7 @@ they are linear zero. QC-024 is retired. **Half float is clamped at 65504** rath
 inf (`exr.HALF_MAX`). Non-square pixels are not handled and are written down in
 COLOR_AND_FORMAT section 4. **Verified on `Turnover199`**: 12 written, 0 failed, a QC-018 info on
 each row. A by-eye check against Resolve is in `docs/MAC_SESSION.md`. **Next: chunk E, then C,
-D, H.** The branch is **not pushed**.
+D, H.**
 
 **2026-09-23, chunk F: the shot tracker is one line per shot code.** `exports.tracker_rows`
 groups the batch's rows by shot code and writes one line per code, described by the shot's main

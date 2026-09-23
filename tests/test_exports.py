@@ -123,6 +123,12 @@ class TestTheWrite:
         exports.write_shot_tracker(batch_of(row()), tmp_path / "r" / "tracker.xlsx")
         assert sorted(p.name for p in (tmp_path / "r").iterdir()) == ["log.xlsx", "tracker.xlsx"]
 
+    def test_a_control_character_in_a_note_is_dropped_not_raised(self, tmp_path: Path) -> None:
+        """F15: openpyxl refuses one, and the raise used to leave Run greyed for good."""
+        noted = row(notes="sky \x07replace")
+        written = exports.write_qc_log(batch_of(noted), tmp_path / "log.xlsx")
+        assert written.is_file()
+
 
 class TestQcLogSheets:
     @pytest.fixture

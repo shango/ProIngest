@@ -6,7 +6,7 @@ PySide6 6.7+. Dark theme in the spirit of DaVinci Resolve: near-black panels, th
 
 ```
 +------------------------------------------------------------------+
-| Toolbar: [New] [Open] [Save] | [Add Turnover] [Scan] [Ingest Colour Session] [Run] [Stop] | [Export] [Settings] |
+| Toolbar: [New] [Open] [Save] | [Add Turnover] [Scan] [Run] [Stop] | [Export] [Settings] |
 +------------------------------------------------------------------+
 | Batch bar: batch name, delivery root path (click to change), In/Out toggle [Frames|Source TC|Record TC], search box |
 +------------------------------------------------------------------+
@@ -34,7 +34,7 @@ editable metadata pane: In, Out, Shot Code, Notes and Skip are edited in their c
 nowhere else. That was true in the original spec, briefly untrue on 2026-09-11 when the
 viewers were given trim buttons, and is true again.
 
-Nothing opens a modal during review except Settings, file dialogs, and the report an ingest ends with (section 15), which is the answer to a file dialog rather than an interruption of the review.
+Nothing opens a modal during review except Settings and file dialogs.
 
 **Every toolbar button carries a hover tooltip** (asked for 2026-09-12, built in M5.11): one
 short sentence saying what the button does, in present tense, naming what changes, plus its
@@ -404,35 +404,28 @@ monitor. What is left in this tool is the occasional one-off trim of an already 
 (PRD FR-5), and that is done by typing a number, which the In/Out cells have always supported in
 four formats (section 5).
 
-## 15. Ingest Colour Session
+## 15. Scan, re-scan and a moved turnover (2026-09-23)
 
-The toolbar action that does PRD section 6 step 4, built in M5.7.3 and **narrowed 2026-09-21**:
-the cut and the grade are read at scan from the EDL in the turnover folder, so this exists for a
-**revised** export. The editor points at the new EDL; the tool writes what it says onto one
-turnover's rows - the approved In/Out and the CDL that is the grade - and keeps its location on
-the turnover as the record of where the answers came from (`core/clf.py`).
+**Ingest Colour Session is gone** (review 2026-09-23, chunk E). The cut and the grade are read at
+scan from the EDL in the turnover folder, and a correction reaches the batch the way D8 says: the
+editor drops the fixed EDL, CSV or clip into the folder and re-scans.
 
-- **One turnover at a time**, because that is the scope the session is recorded at (OQ-50) and
-  the scope QC-008 holds a run back at: a turnover still waiting on colour is a different
-  turnover from this one. The selection says which - a group header, or rows that are all in the
-  same turnover - a batch of one turnover never asks, and a selection that spans two does.
-- **The chooser opens at the turnover's own folder** (corrected 2026-09-21): the EDL, the CSV
-  and the media arrive together, so a revised EDL almost always lands beside the one already
-  read. Where it ended up is remembered for the next one. The `_color` convention of OQ-53 is
-  retired with the single-folder handover and no longer appears anywhere in the spec.
-- **The EDL is read at the first row with media's rate**, and a turnover carrying more than one
-  says which was used rather than choosing silently (OQ-19). A turnover whose rows have no media
-  has no rate to read it at, and is told so before the chooser opens rather than after it.
-- **The approved cut overwrites a trim already made** and the report names the rows that lost one
-  (FR-5). The one-off trim made *after* an ingest is the supported one, and QC-045 reports it.
-- **The report says what `proingest run --color-session` prints**: the counts, and the three
-  lists a person acts on - rows with no event, trims the approved cut replaced, and shot codes
-  the approved cut overwrote. The labels live on `IngestReport` so the two surfaces cannot drift.
-- **The rules re-run afterwards**, because the ingest moves In and Out on the rows it matched and
-  the durations the thresholds judge have changed. QC-008 and QC-009 are pre-flight and clear at
-  the next Run.
-- **Nothing is discovered and nothing is offered after a scan** (2026-09-22). The EDL arrives in
-  the turnover folder with the media and is read at scan, so there is no second location to look
-  in and no session to offer. `clf.find_session` and the Yes/No dialog built for it in M5.13 are
-  removed with the `_color` convention they searched. The button remains, for a revised EDL the
-  editor points at.
+- **Scan re-scans every turnover in the batch.** Right-clicking a turnover's header offers
+  **Re-scan** for that one turnover and **New Folder Location...** for one that has moved (D16).
+- **What the editor did is carried over by File Name** (`scan.carry_over`), in CSV order, so a
+  clip used twice pairs first with first: a trim the editor made, the shot code correction, the
+  skip and its reason, the notes, and the delivered state. A trim never made follows the new EDL.
+  **QC-070** says so when the EDL or CSV changed since the last scan.
+- **A re-scan that finds no rows keeps the rows it had**, and the turnover's QC says why (QC-001,
+  QC-002): the editor's work waits for the scan that follows the fix.
+- **A moved turnover says so on its header when the batch is opened** (QC-069, an error that
+  holds it back), and New Folder Location re-scans it from where it went.
+
+## 15a. Locks (D15)
+
+**While a scan or a run has the batch in hand, nothing may change it.** The list refuses every
+edit and its right-click entries are greyed; New, Open, Settings, Skip, Add Turnover, Scan and the
+delivery root wait. An edit made under a run changed the reports without changing the render (F14),
+and New or Open under a scan took its result into the other batch (F13). A run's own disk work -
+the pre-flight, the plan and the two spreadsheets - runs off the UI thread (`ui/background.py`)
+under the same lock, so a slow mount is a busy window rather than a frozen one (F17).

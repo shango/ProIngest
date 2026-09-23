@@ -333,6 +333,7 @@ class ShotListModel(QAbstractItemModel):
         self._dots: dict[tuple[RowState, bool], QPixmap] = {}
         self._name_counts: dict[str, int] = {}
         self._run: RunProgress | None = None
+        self._locked = False
 
     # --- what it is showing ----------------------------------------------------------
 
@@ -366,6 +367,21 @@ class ShotListModel(QAbstractItemModel):
                     self.index(count - 1, OUT, parent),
                     [Qt.ItemDataRole.DisplayRole, SECONDARY_ROLE],
                 )
+
+    @property
+    def locked(self) -> bool:
+        return self._locked
+
+    def set_locked(self, locked: bool) -> None:
+        """Refuse every edit while a scan or a run is going (D15).
+
+        A trim, a skip or a shot code changed during a run changes what the reports say
+        without changing what was rendered (F14), so nothing can be changed until it ends.
+        """
+        if locked == self._locked:
+            return
+        self._locked = locked
+        self.refresh_rows()
 
     def set_run(self, progress: RunProgress | None) -> None:
         """Show what a run is doing, or go back to reading the rows' own statuses.
@@ -644,7 +660,7 @@ class ShotListModel(QAbstractItemModel):
         """
         base = super().flags(index)
         row = self.row_at(index)
-        if row is None or index.column() not in EDITABLE_COLUMNS:
+        if row is None or self._locked or index.column() not in EDITABLE_COLUMNS:
             return base
         if index.column() in (IN, OUT) and row.current is None:
             return base
@@ -671,7 +687,7 @@ class ShotListModel(QAbstractItemModel):
         error the model reports anywhere: the editor has already shown it inline, and a
         QC result for a value that was never stored would outlive the typing that caused it.
         """
-        if role != Qt.ItemDataRole.EditRole:
+        if role != Qt.ItemDataRole.EditRole or self._locked:
             return False
         row = self.row_at(index)
         if row is None or index.column() not in EDITABLE_COLUMNS:
@@ -694,7 +710,7 @@ class ShotListModel(QAbstractItemModel):
         again is not a second interrogation about a decision already explained.
         """
         row = self.row_at(index)
-        if row is None or row.skipped == skipped:
+        if row is None or self._locked or row.skipped == skipped:
             return False
         row.skipped = skipped
         if skipped:

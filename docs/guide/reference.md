@@ -27,25 +27,33 @@ One sentence each, the same sentences the buttons themselves show when you hover
 | **Open...** | Opens a saved .pibatch file in place of what is on screen. |
 | **Save** | Writes the batch to its .pibatch file, asking where the first time. |
 | **Add Turnover** | Adds a turnover folder and scans it straight away. |
-| **Scan** | Re-tries only the turnovers that came back with no shots. |
-| **Ingest Colour Session** | Applies a revised cut and CDL onto one turnover without a re-scan. |
+| **Scan** | Re-scans every turnover, keeping trims, skips and notes by File Name. |
 | **Run** | Renders every shot that is not skipped, then writes both spreadsheets. |
 | **Stop** | Stops the run. What is in flight finishes; nothing further starts. |
 | **Export** | Writes the QC log and the shot tracker without rendering. |
 | **Settings** | Opens the settings page: thresholds, naming, colour and logging. |
 
 **A greyed button says why it is greyed.** Hover it. "No batch is open", "A scan is going",
-"Every turnover already has shots" - that is usually the whole answer, and it is the reason the
+"A run is going" - that is usually the whole answer, and it is the reason the
 toolbar shows everything from the first launch rather than hiding what cannot be used yet.
 
 **Run is the exception worth knowing.** It is not greyed when a turnover's export carries no
 CDL, because it will run: it refuses that turnover and writes nothing, which is correct and looks
 exactly like a dead button. Its tooltip says so first.
 
-**Ingest Colour Session is for a revised export.** The cut and the grade are read at scan from
-the `.edl` in the turnover folder, so in the normal case there is nothing to press. When the
-colourist sends a new one, point the button at it: ingesting reads the newer export over the
-older one, and the report says which rows changed.
+**Scan is how a correction arrives.** The cut and the grade are read at scan from the `.edl` in
+the turnover folder. When something is wrong - a revised EDL, a fixed CSV, a missing clip - drop
+the corrected file into the folder and press Scan. Your trims, skips, notes and shot code
+corrections are kept, matched by File Name, and the turnover says so (QC-070) when its EDL or CSV
+changed. A trim you never made follows the new EDL.
+
+**Right-click a turnover's header** for the same thing on one turnover (**Re-scan**), or for
+**New Folder Location...** when the folder has moved. A batch reopened after its turnover moved
+says so on that header (QC-069) and will not run until you point it at the new folder.
+
+**While a scan or a run is going the batch is locked.** Nothing in the list can be edited, and
+New, Open, Settings and the delivery root wait until it ends, because a change made under a run
+would change the reports without changing what was rendered.
 
 **Export writes the two spreadsheets without rendering anything.** A run writes them when it
 finishes too; Export is for the batch as it stands now - after a scan, to hand the QC log

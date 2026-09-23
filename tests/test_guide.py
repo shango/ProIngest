@@ -57,7 +57,6 @@ BUTTON_LABELS = {
     toolbar_help.SAVE: "Save",
     toolbar_help.ADD_TURNOVER: "Add Turnover",
     toolbar_help.SCAN: "Scan",
-    toolbar_help.INGEST: "Ingest Colour Session",
     toolbar_help.RUN: "Run",
     toolbar_help.STOP: "Stop",
     toolbar_help.EXPORT: "Export",

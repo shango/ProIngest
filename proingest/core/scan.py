@@ -107,6 +107,7 @@ def scan_turnover(
         return turnover, []
     edl_path, csv_path = handover
     turnover.edl_path, turnover.csv_path = edl_path, csv_path
+    turnover.edl_digest, turnover.csv_digest = qc.file_digest(edl_path), qc.file_digest(csv_path)
 
     try:
         meta = metacsv.read(csv_path, settings.show_pattern)
@@ -462,3 +463,50 @@ def scan_batch(
     # QC-011 is the one row rule that needs every row, so it can only run once they exist.
     qc.apply_batch_rules(batch, settings.rules)
     return batch
+
+
+def carry_over(old: Turnover, old_rows: list[ShotRow], new: Turnover, new_rows: list[ShotRow]) -> None:
+    """A turnover rescanned, where it was (D8) or from a new folder (D16), keeps what the
+    editor did to it.
+
+    Rows are matched by File Name, in CSV order, so a clip used twice (D3) pairs its
+    first row with the first and its second with the second. What carries over is the
+    editor's: a trim, but only one the editor made, so an EDL that moved the cut is not
+    overridden by the cut it replaced; the shot code correction, the skip and its reason,
+    the notes, and the delivered state. Everything else is the new scan's.
+
+    A changed EDL or CSV is a warning on the turnover, QC-070: the edits carried over
+    were made against the old one.
+    """
+    waiting: dict[str, list[ShotRow]] = {}
+    for row in old_rows:
+        waiting.setdefault(row.clip_name.casefold(), []).append(row)
+    for row in new_rows:
+        matches = waiting.get(row.clip_name.casefold())
+        if not matches:
+            continue
+        before = matches.pop(0)
+        if before.was_edited:
+            row.current = before.current
+        row.shot_code_override = before.shot_code_override
+        row.skipped, row.skip_reason = before.skipped, before.skip_reason
+        row.notes = before.notes
+        row.deliverables = before.deliverables
+    changed = [
+        name
+        for name, was, now in (
+            ("EDL", old.edl_digest, new.edl_digest),
+            ("CSV", old.csv_digest, new.csv_digest),
+        )
+        if was and was != now
+    ]
+    if changed:
+        new.qc.append(
+            QCResult(
+                "QC-070",
+                "warning",
+                "turnover",
+                f"the {' and the '.join(changed)} changed since this batch last scanned "
+                f"{old.folder.name}; the trims and skips carried over were made against the old one",
+            )
+        )

@@ -60,18 +60,13 @@ Every edit re-checks that row and saves itself a moment later, so there is nothi
 to press. **⌘S** names the batch file the first time.
 
 **4. Nothing to do here in the normal case.** The cut and the grade are read at scan, from the
-`.edl` sitting in the turnover folder. **Ingest Colour Session** stays for one job: the
-colourist sends a **revised** export and you want it applied without a full re-scan. One
-turnover at a time.
+`.edl` sitting in the turnover folder: the approved In and Out, and the CDL each shot is graded
+with.
 
-What it writes onto the rows: the approved In and Out from the trim the colourist and the AD sat
-through, and the CDL each shot is graded with. It then tells you how many shots matched, how many
-are graded, and the two lists worth looking at - shots the export says nothing about, and trims
-the approved cut overwrote.
-
-**The approved cut wins over a trim you already made**, and the report names the rows that lost
-one. Trimming again afterwards is allowed; it is what step 3 is for, and any row that moved is
-flagged in the QC log as delivered at something other than what was approved (QC-045).
+**When something needs fixing, fix the folder and press Scan.** A revised EDL, a corrected CSV or
+a missing clip goes into the turnover folder, and Scan reads it again. Your trims, skips and notes
+are kept, matched by File Name; a shot you never trimmed takes the new cut. Any row you did trim
+is flagged in the QC log as delivered at something other than what was approved (QC-045).
 
 **5. Say where it goes.** In the bar above the list, click **Set delivery root...** and pick the
 folder. The button is amber until there is one and shows the path after that. It is remembered

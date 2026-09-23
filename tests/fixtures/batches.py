@@ -148,6 +148,10 @@ def ingested(built: Batch, tmp_path: Path) -> Batch:
     session.mkdir(parents=True, exist_ok=True)
     for turnover_ in built.turnovers:
         turnover_.color_session_edl = session / "MELT_FINAL_v01.edl"
+        # A real folder, because a run's pre-flight holds back a turnover whose folder
+        # has gone (QC-069).
+        turnover_.folder = tmp_path / "source" / turnover_.folder.name
+        turnover_.folder.mkdir(parents=True, exist_ok=True)
     for row_ in built.rows:
         if row_.shot_code is None:
             continue
