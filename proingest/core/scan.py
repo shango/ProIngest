@@ -145,7 +145,9 @@ def scan_turnover(
     rows = [_build_row(entry, index, turnover_id, settings, cache) for entry in meta.rows]
     turnover.qc.extend(_conform_all(rows, session))
     for row in rows:
-        _attach_audio(row, index, settings)
+        # Only the plate has an associated audio clip (user, 2026-09-23).
+        if qc.is_plate(row):
+            _attach_audio(row, index, settings)
         qc.apply_row_rules(row, settings.project_rate, settings.rules)
     return turnover, rows
 

@@ -498,9 +498,9 @@ def check_audio_presence(row: ShotRow) -> list[QCResult]:
     """QC-040 and QC-041: a plate with no audio, or with more than one candidate.
 
     Only the plate delivers audio (`planner.AUDIO_TYPES`), so only the plate is asked
-    whether it has any. More than one audio file matching the clip's name is a warning
-    on any row: the scan uses none of them rather than guess, and which one it should
-    have been is a human question.
+    whether it has any, and only the plate is searched for audio at all (`scan`), so
+    QC-041 can only fire on one: more than one audio file matching its name, where the
+    scan uses none rather than guess, and which it should have been is a human question.
     """
     results: list[QCResult] = []
     # Audio inside the plate's own file is audio: it was delivered and reported
