@@ -8,7 +8,7 @@ commit.
 
 ## 1. Resume here
 
-**State at 2026-09-23, version 0.5.0. The review of 2026-09-23 is worked through: chunks A to
+**State at 2026-09-23, version 0.5.1. The review of 2026-09-23 is worked through: chunks A to
 H of `docs/REVIEW_2026-09-23.md` section 5 are all built**, each in its own commit with the entry
 below. The real turnover, `Turnover199`, scans with no must-fix and renders every deliverable.
 What is left is the Mac: `docs/MAC_SESSION.md`, "The 0.5.0 build, in order", starting with the
@@ -16,6 +16,10 @@ acceptance test on the editor's machine. The branch `color/cdl-in-acescct` is pu
 0.5.0 release; CI builds `ProIngest-0.5.0.dmg` on PR #12 (the workflow runs on pull requests, not
 on a branch push). The entries below are newest first; anything
 older than 2026-09-22 describes the tool before the review and is history.
+
+**2026-09-23, 0.5.1.** A version bump and nothing else, so the build carrying the plate-only
+audio change has its own name: `ProIngest-0.5.1.dmg`. The four places (`pyproject.toml`,
+`proingest/__init__.py`, `build/build.py`, `docs/guide/install.md`) and `uv.lock`.
 
 **2026-09-23, audio is the plate's alone.** The user: only shot type pl has an associated audio
 clip. The scan now searches for a matching wav only on a plate row (`scan.scan_turnover`), so a cp
