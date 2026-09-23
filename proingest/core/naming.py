@@ -19,6 +19,25 @@ DEFAULT_SHOW_PATTERN = r"[A-Z]{2,6}"
 
 ELEMENT_TYPES = ("pl", "cp", "el", "wit", "re")
 AUX_NAMES = ("colorChart", "mirrorBall", "greyBall", "sizeRef")
+
+CLIP_TYPES = ELEMENT_TYPES + AUX_NAMES
+"""Every value `Shot Type` may carry, plates and reference stills alike.
+
+NAMING_SPEC section 1: a reference still is a peer of a plate here, not something
+hanging off one. `Shot Type` is the whole of the tool's scope (user, 2026-09-22), so a
+value outside this tuple is a clip the tool does not deliver.
+"""
+
+SHOT_TYPE_ALIASES = {"cl": "cp"}
+"""Spellings the shooters use that are not the spelling the deliverable carries.
+
+`cl` for a clean plate is the user's own habit and `cp` is what their spec sheet says
+everywhere (OQ-72). Accepting both costs one row and writing `cp` keeps one spelling
+in the delivered names.
+"""
+
+_SHOT_TYPE_INDEX = {name.casefold(): name for name in CLIP_TYPES}
+_SHOT_TYPE_PATTERN = re.compile(r"^(?P<kind>[A-Za-z]+)(?P<index>\d{1,2})?$")
 CAMDATA_EXTENSIONS = ("txt", "rtf")
 BTS_EXTENSIONS = ("png", "jpg", "jpeg")
 
@@ -77,6 +96,29 @@ def _clip_pattern(show_pattern: str) -> re.Pattern[str]:
 
 
 LENS_GRID_PATTERN = re.compile(r"^(?P<camera>[A-Za-z0-9]+)_(?P<lens>[A-Za-z0-9\-]+)_lensgrid_(?P<mm>\d+)mm$")
+
+
+def parse_shot_type(written: str) -> tuple[str, str] | None:
+    """A `Shot Type` value as (kind, index), or None when it names nothing we deliver.
+
+    Case insensitive, because the shooters do not keep the camel case. Safe rather than
+    lenient: the nine codes are distinct casefolded, so nothing is ambiguous.
+
+    **A bare code means index `01`.** Three of the five rows in the real sample are bare
+    (`colorChart`, `mirrorBall`, `greyBall`), so this carries weight rather than being a
+    kindness. `cl` is accepted and comes back `cp` (OQ-72).
+
+    What comes back is always the spelling in NAMING_SPEC section 1, never the shooter's,
+    so two deliverables cannot differ by capitalisation alone.
+    """
+    match = _SHOT_TYPE_PATTERN.match(written.strip())
+    if match is None:
+        return None
+    key = match["kind"].casefold()
+    kind = _SHOT_TYPE_INDEX.get(SHOT_TYPE_ALIASES.get(key, key))
+    if kind is None:
+        return None
+    return kind, (match["index"] or "1").zfill(2)
 
 
 def parse_clip_name(name: str, show_pattern: str = DEFAULT_SHOW_PATTERN) -> ShotIdentity | None:

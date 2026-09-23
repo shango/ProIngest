@@ -74,6 +74,66 @@ class TestParseClipName:
         assert naming.parse_clip_name("MELT0001_pl01", show_pattern=r"[A-Z]{2}") is None
 
 
+class TestParseShotType:
+    """The `Shot Type` vocabulary (NAMING_SPEC section 1, the reading rules)."""
+
+    @pytest.mark.parametrize(
+        ("written", "expected"),
+        [
+            ("pl01", ("pl", "01")),
+            ("cp02", ("cp", "02")),
+            ("el01", ("el", "01")),
+            ("wit01", ("wit", "01")),
+            ("re01", ("re", "01")),
+            ("colorChart", ("colorChart", "01")),
+            ("mirrorBall", ("mirrorBall", "01")),
+            ("greyBall", ("greyBall", "01")),
+            ("sizeRef", ("sizeRef", "01")),
+        ],
+    )
+    def test_every_clip_type(self, written: str, expected: tuple[str, str]) -> None:
+        assert naming.parse_shot_type(written) == expected
+
+    @pytest.mark.parametrize("written", ["PL01", "pL01", "COLORCHART", "colorchart", "SIZEREF"])
+    def test_case_insensitive(self, written: str) -> None:
+        """The shooters do not keep the camel case, so nothing may depend on it."""
+        assert naming.parse_shot_type(written) is not None
+
+    def test_output_spelling_is_the_specs_not_the_shooters(self) -> None:
+        assert naming.parse_shot_type("colorchart") == ("colorChart", "01")
+
+    @pytest.mark.parametrize("written", ["pl", "cp", "colorChart", "greyBall"])
+    def test_a_bare_code_means_01(self, written: str) -> None:
+        """Load bearing: three of the five real sample rows are bare."""
+        assert naming.parse_shot_type(written) is not None
+        assert naming.parse_shot_type(written)[1] == "01"  # type: ignore[index]
+
+    def test_one_digit_index_is_padded(self) -> None:
+        assert naming.parse_shot_type("pl2") == ("pl", "02")
+
+    @pytest.mark.parametrize("written", ["cl", "CL", "cl01"])
+    def test_clean_plate_is_accepted_as_cl_and_written_cp(self, written: str) -> None:
+        """OQ-72: the user types `cl`, their own spec sheet says `cp` everywhere."""
+        assert naming.parse_shot_type(written) == ("cp", "01")
+
+    @pytest.mark.parametrize(
+        "written",
+        ["", "   ", "Wide", "Close Up", "Banana", "BTS", "lensgrid", "pl001", "pl_01", "01"],
+    )
+    def test_anything_else_resolves_to_nothing(self, written: str) -> None:
+        """Including `BTS` and `lensgrid`, which are no longer deliverables, and `Wide`,
+        which is what Resolve's built-in framing field is for."""
+        assert naming.parse_shot_type(written) is None
+
+    def test_the_codes_are_distinct_casefolded(self) -> None:
+        """Why ignoring case is safe rather than lenient."""
+        folded = [name.casefold() for name in naming.CLIP_TYPES]
+        assert len(set(folded)) == len(folded)
+
+    def test_aliases_do_not_collide_with_a_real_code(self) -> None:
+        assert not set(naming.SHOT_TYPE_ALIASES) & {name.casefold() for name in naming.CLIP_TYPES}
+
+
 class TestParseShotCode:
     """A shot code the editor corrected has to split back into show and number."""
 

@@ -14,6 +14,30 @@ complete, M4.5 all four chunks, M4.6 all five, **M5 all twelve**, **M7**, and **
 What is left is **M8 polish** (needs a real turnover and a real colour session) and the rest
 of **M9, the user guide**.
 
+**2026-09-22, the respec build starts: chunk 1 of `docs/TO_A_WORKING_BUILD.md` is in.**
+**`proingest/core/metacsv.py` is new and it is the first code this project has had that can read
+Ben's metadata CSV at all** - there was no `import csv`, no `utf-16` and no `Shot Type` anywhere in
+`proingest/` before it. It reads **identity and encoding and nothing else**, which is a rule rather
+than a scope note: the real file's `Frames` say 516 / 168 / 312 / 420 / 360 against delivered files
+of 280 / 49 / 49 / 49 / 248 and its `Clip Directory` points at the pre-consolidation originals, so
+`MetaRow` deliberately has no field a caller could read a duration, a frame count or a path out of,
+and a test asserts that absence. **`csv.reader`, never `csv.DictReader`**, because of the duplicate
+`Shot Type` column. **QC-065 is built**: the reader takes the column that resolves to a known clip
+type, prefers the later one where both resolve (Resolve writes its own fields before the custom
+set), and warns only when both resolve and disagree - one resolving and one not is the normal shape
+of a shooter using Resolve's built-in *framing* field as designed, so `Wide` beside `cp01` is
+silent. **QC-010 is narrowed to the half-filled row** as the rules doc already says: no `Shot Type`
+at all is an ignored clip for QC-064 to count, while a `Shot Type` nothing resolves to, or one with
+a blank or malformed `Shot`, is an error on a row that still appears so somebody can fix it.
+**`naming.parse_shot_type` landed here rather than in chunk 2**, stated as a deviation, because
+chunk 1's arbitration needs it: it is the seed of chunk 2's `(shot_code, kind, index)` model and
+carries the three reading rules - casefolded, a bare code means `01`, `cl` is written `cp`.
+**Verified on the real folder**: `Turnover199/Turnover199.csv` reads to five rows with `Shot Type`
+of `pl01`, `colorChart`, `mirrorBall`, `greyBall` and `cp01`, zero ignored, zero QC, and
+`color.resolve_encoding` returns `S-Log3 S-Gamut3.Cine` on all five. The committed tests are
+synthetic, because that folder is git-ignored. **1802 tests** (was 1739), `ruff`, `ruff format` and
+`mypy --strict` clean. **Q1 is asked and unanswered**; chunk 4 waits on it and nothing else does.
+
 **2026-09-22, latest: the sample folder is `Turnover199/` again, and the docs were brought back
 into line with it.** The user renamed `Turnover199_ForBEN/` back to **`Turnover199/`** and deleted
 `Turnover199.ale` and `.DS_Store` with the rename. The folder now holds five MP4s, `Turnover199.csv`
