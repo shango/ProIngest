@@ -19,7 +19,15 @@ from typing import Any, Literal
 from proingest.core import frames
 from proingest.core.naming import ShotIdentity
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
+"""The batch file's schema.
+
+**2 since 2026-09-22**, when `clf_path` and `side_files` left the row with the
+deliverables they described. A version 1 batch is **refused rather than migrated**
+(TO_A_WORKING_BUILD.md Q5): it is less code than a migration nobody will run, and no
+real batch exists yet - say so if one turns up, because that is what makes this the
+wrong call.
+"""
 
 DEFAULT_WORKERS = 4
 """Capped rather than one per core on purpose.
@@ -165,6 +173,22 @@ class MediaInfo:
     compares this against the project rate; nothing computes with it.
     """
 
+    drop_frame: bool = False
+    """The media states drop-frame timecode, which no 24 fps frame count can honour (QC-027).
+    Its timecode is then not read at all. Additive, so the schema version does not move."""
+
+    color_space: str = ""
+    color_range: str = ""
+    color_transfer: str = ""
+    color_primaries: str = ""
+    """The stream's own colour tags as ffprobe names them, empty when it states none.
+
+    The decode reads only the matrix and the range: they say how YCbCr becomes RGB, which
+    comes before any colour transform and which no metadata field names. The transfer
+    and primaries are kept for QC-018 and for the record. Additive, so the schema
+    version does not move.
+    """
+
     @property
     def rate_matches_timeline(self) -> bool:
         """False only when the media states a rate and it disagrees (QC-026)."""
@@ -202,6 +226,11 @@ class MediaInfo:
             "size": self.size,
             "mtime": self.mtime,
             "stated_rate": self.stated_rate.to_dict() if self.stated_rate else None,
+            "drop_frame": self.drop_frame,
+            "color_space": self.color_space,
+            "color_range": self.color_range,
+            "color_transfer": self.color_transfer,
+            "color_primaries": self.color_primaries,
         }
 
     @classmethod
@@ -225,6 +254,11 @@ class MediaInfo:
             size=int(data["size"]),
             mtime=float(data["mtime"]),
             stated_rate=(FrameRate.from_dict(data["stated_rate"]) if data.get("stated_rate") else None),
+            drop_frame=bool(data.get("drop_frame", False)),
+            color_space=str(data.get("color_space", "")),
+            color_range=str(data.get("color_range", "")),
+            color_transfer=str(data.get("color_transfer", "")),
+            color_primaries=str(data.get("color_primaries", "")),
         )
 
 
@@ -333,24 +367,6 @@ class CDL:
 def _triple(values: Any) -> tuple[float, float, float]:
     a, b, c = values
     return (float(a), float(b), float(c))
-
-
-@dataclass
-class SideFiles:
-    """Files found next to the media, matched by shot code and element id."""
-
-    hdri: Path | None = None
-    camdata: Path | None = None
-
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "hdri": str(self.hdri) if self.hdri else None,
-            "camdata": str(self.camdata) if self.camdata else None,
-        }
-
-    @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> SideFiles:
-        return cls(hdri=_as_path(data.get("hdri")), camdata=_as_path(data.get("camdata")))
 
 
 @dataclass
@@ -475,22 +491,19 @@ class ShotRow:
     It reaches the EXR header as the readable version of the grade (COLOR_AND_FORMAT,
     EXR metadata). On the row rather than fetched from the EDL at render time so that a
     reopened batch writes the same header without the session package still being on the
-    disk. Where it and `clf_path` disagree the CLF is what is in the pixels.
+    disk. It is the whole of the grade: there are no per-shot grade files (2026-09-22).
     """
 
-    clf_path: Path | None = None
-    """The CLF the colour session delivered for this shot, or None when it delivered none.
-
-    Recorded on the row because it is what the QC log's CLF column names and what a
-    reader compares a delivered EXR header against. The grade itself never lives here:
-    the transform is loaded in the worker that applies it. Additive, so the schema
-    version does not move and an older batch simply reports no CLF.
-    """
-
-    side_files: SideFiles = field(default_factory=SideFiles)
     notes: str = ""
     skipped: bool = False
     skip_reason: str | None = None
+    rerun: bool = False
+    """The editor asked for this row to be rendered again at the next version (D12).
+
+    A row whose deliverables all landed is skipped by the next Run; this is the one way to
+    render it anyway. Consumed by the planner, which clears it once the row is planned.
+    Additive, so the schema version does not move."""
+
     deliverables: list[Deliverable] = field(default_factory=list)
     qc: list[QCResult] = field(default_factory=list)
 
@@ -570,11 +583,10 @@ class ShotRow:
             "source_encoding_origin": self.source_encoding_origin,
             "approved": self.approved.to_dict() if self.approved else None,
             "cdl": self.cdl.to_dict() if self.cdl else None,
-            "clf_path": str(self.clf_path) if self.clf_path else None,
-            "side_files": self.side_files.to_dict(),
             "notes": self.notes,
             "skipped": self.skipped,
             "skip_reason": self.skip_reason,
+            "rerun": self.rerun,
             "deliverables": [item.to_dict() for item in self.deliverables],
             "qc": [result.to_dict() for result in self.qc],
         }
@@ -602,11 +614,10 @@ class ShotRow:
             source_encoding_origin=data.get("source_encoding_origin"),
             approved=InOut.from_dict(data["approved"]) if data.get("approved") else None,
             cdl=CDL.from_dict(data["cdl"]) if data.get("cdl") else None,
-            clf_path=_as_path(data.get("clf_path")),
-            side_files=SideFiles.from_dict(data.get("side_files", {})),
             notes=str(data.get("notes", "")),
             skipped=bool(data.get("skipped", False)),
             skip_reason=data.get("skip_reason"),
+            rerun=bool(data.get("rerun", False)),
             deliverables=[Deliverable.from_dict(item) for item in data.get("deliverables", [])],
             qc=[QCResult.from_dict(item) for item in data.get("qc", [])],
         )
@@ -632,15 +643,26 @@ def _identity_from_dict(data: dict[str, Any] | None) -> ShotIdentity | None:
 
 @dataclass
 class Turnover:
-    """One turnover folder and the fields the stringout name needs (FR-9).
+    """One turnover folder and the fields that identify it.
 
     Number, date and shooter are prefilled from the folder name when it matches the
-    `turnover###_MM_DD_YYYY_name` pattern, and entered by hand otherwise (QC-005).
+    `turnover###_MM_DD_YYYY_name` pattern, and entered by hand otherwise (QC-005). They
+    name the turnover in the window and the headless listing; nothing builds a filename
+    out of them any more, because the tool no longer delivers the stringout (2026-09-22).
     """
 
     turnover_id: str
     folder: Path
-    timeline_path: Path | None = None
+    edl_path: Path | None = None
+    """Ben's EDL, the carrier of the approved cut and the CDL (OQ-74)."""
+
+    csv_path: Path | None = None
+    """Ben's metadata CSV, the carrier of identity and encoding.
+
+    Both are recorded rather than re-found: a batch reopened after the turnover folder
+    has been archived still says what it was scanned from.
+    """
+
     timeline_start: int = 0
     """The timeline's own start, in frames. `01:00:00:00` at 24 is 86400.
 
@@ -663,7 +685,7 @@ class Turnover:
     reopening a `.pibatch` restores it and a second batch does not disturb it.
 
     It is the location only. What the session said is on the rows, in `approved`, `cdl`
-    and `clf_path`, so a batch reopened after the package has been archived still
+    and the CDL, so a batch reopened after the session has been archived still
     renders the grade it was ingested with. Additive, so the schema version does not
     move and a batch saved before this has ingested nothing.
     """
@@ -675,17 +697,21 @@ class Turnover:
     shooter: str = ""
     qc: list[QCResult] = field(default_factory=list)
 
-    @property
-    def has_stringout_fields(self) -> bool:
-        return all(v is not None for v in (self.number, self.month, self.day, self.year)) and bool(
-            self.shooter
-        )
+    edl_digest: str = ""
+    csv_digest: str = ""
+    """xxhash64 of the EDL and the CSV as they were scanned, empty before 2026-09-23.
+
+    What a turnover reloaded from a new folder is compared against (D16): the editor's
+    trims and skips carry over by File Name, and a changed EDL or CSV is the one case
+    where that deserves a second look. Additive, so the schema version does not move.
+    """
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "turnover_id": self.turnover_id,
             "folder": str(self.folder),
-            "timeline_path": str(self.timeline_path) if self.timeline_path else None,
+            "edl_path": str(self.edl_path) if self.edl_path else None,
+            "csv_path": str(self.csv_path) if self.csv_path else None,
             "timeline_start": self.timeline_start,
             "color_session_edl": str(self.color_session_edl) if self.color_session_edl else None,
             "number": self.number,
@@ -694,6 +720,8 @@ class Turnover:
             "year": self.year,
             "shooter": self.shooter,
             "qc": [result.to_dict() for result in self.qc],
+            "edl_digest": self.edl_digest,
+            "csv_digest": self.csv_digest,
         }
 
     @classmethod
@@ -701,7 +729,8 @@ class Turnover:
         return cls(
             turnover_id=str(data["turnover_id"]),
             folder=Path(data["folder"]),
-            timeline_path=_as_path(data.get("timeline_path")),
+            edl_path=_as_path(data.get("edl_path")),
+            csv_path=_as_path(data.get("csv_path")),
             timeline_start=int(data.get("timeline_start", 0)),
             color_session_edl=_as_path(data.get("color_session_edl")),
             number=data.get("number"),
@@ -710,6 +739,8 @@ class Turnover:
             year=data.get("year"),
             shooter=str(data.get("shooter", "")),
             qc=[QCResult.from_dict(item) for item in data.get("qc", [])],
+            edl_digest=str(data.get("edl_digest", "")),
+            csv_digest=str(data.get("csv_digest", "")),
         )
 
 

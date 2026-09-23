@@ -15,8 +15,9 @@ from pathlib import Path
 
 import pytest
 
-from proingest.core import naming, qc, render
+from proingest.core import qc, render
 from proingest.core.models import (
+    CDL,
     AudioInfo,
     Batch,
     Deliverable,
@@ -25,12 +26,12 @@ from proingest.core.models import (
     MediaInfo,
     QCResult,
     ShotRow,
-    SideFiles,
     Turnover,
 )
 from proingest.core.planner import DeliverableJob
 from tests.fixtures import color as color_fixtures
 from tests.fixtures import media as fixtures
+from tests.fixtures.names import identity_of
 
 RATE_24 = FrameRate(24)
 RATE_30 = FrameRate(30)
@@ -76,7 +77,6 @@ def row(
     *,
     clip_name: str = "MELT0001_pl01",
     current: InOut | None = CHOSEN,
-    side_files: SideFiles | None = None,
     source_encoding: str | None = "ACEScct",
     **media_kwargs: object,
 ) -> ShotRow:
@@ -88,7 +88,7 @@ def row(
     return ShotRow(
         turnover_id="t1",
         clip_name=clip_name,
-        identity=naming.parse_clip_name(clip_name),
+        identity=identity_of(clip_name),
         source_encoding=source_encoding,
         media=media(stated, **media_kwargs),  # type: ignore[arg-type]
         snapshot=CHOSEN,
@@ -96,11 +96,6 @@ def row(
         audio=audio,
         audio_path=audio.path if audio else None,
         audio_clip_count=1 if audio else 0,
-        side_files=side_files
-        or SideFiles(
-            hdri=Path("/t/MELT0001_pl01_HDRI.exr"),
-            camdata=Path("/t/MELT0001_pl01_camData.txt"),
-        ),
     )
 
 
@@ -117,24 +112,6 @@ def audio_of(frames: int, sample_rate: int = 48000, rate: FrameRate = RATE_24) -
 
 def ids(results: list[QCResult]) -> list[str]:
     return [result.rule_id for result in results]
-
-
-class TestTimelineRate:
-    def test_matching_rate_is_clean(self) -> None:
-        turnover = Turnover("t1", Path("/t"))
-        assert qc.check_timeline_rate(turnover, RATE_24, RATE_24) == []
-
-    def test_mismatched_rate_is_qc_025(self) -> None:
-        turnover = Turnover("t1", Path("/t"))
-        results = qc.check_timeline_rate(turnover, RATE_30, RATE_24)
-        assert ids(results) == ["QC-025"]
-        assert results[0].severity == "error"
-        assert results[0].scope == "turnover"
-
-    def test_ntsc_does_not_pass_as_24(self) -> None:
-        """23.976 and 24 are different rates, and exact comparison keeps them apart."""
-        turnover = Turnover("t1", Path("/t"))
-        assert ids(qc.check_timeline_rate(turnover, NTSC, RATE_24)) == ["QC-025"]
 
 
 class TestSourceRate:
@@ -155,8 +132,13 @@ class TestSourceRate:
     def test_a_row_with_no_media_is_skipped(self) -> None:
         assert qc.check_source_rate(ShotRow(turnover_id="t1", clip_name="x"), RATE_24) == []
 
-    def test_ntsc_source_against_a_24_project_is_flagged(self) -> None:
-        assert ids(qc.check_source_rate(row(stated=NTSC), RATE_24)) == ["QC-026"]
+    def test_ntsc_source_against_a_24_project_is_the_normal_conform(self) -> None:
+        """Every real file states 24000/1001 and is rendered at 24 (user, 2026-09-23)."""
+        assert qc.check_source_rate(row(stated=NTSC), RATE_24) == []
+
+    def test_25_fps_against_a_24_project_is_an_error(self) -> None:
+        results = qc.check_source_rate(row(stated=FrameRate(25)), RATE_24)
+        assert ids(results) == ["QC-026"] and results[0].severity == "error"
 
 
 class TestAudioSync:
@@ -178,6 +160,19 @@ class TestAudioSync:
         results = qc.check_audio_sync(row(audio=audio_of(300)), RATE_24)
         assert ids(results) == ["QC-043"]
         assert "longer" in results[0].message
+
+    def test_an_edit_past_the_audio_says_the_wav_is_padded(self) -> None:
+        """The wav is cut to the edited range, so sound it lacks becomes silence."""
+        longer = InOut(CHOSEN.in_frame, CHOSEN.out_frame + 60)
+        results = qc.check_audio_sync(row(audio=audio_of(240), current=longer), RATE_24)
+        assert ids(results) == ["QC-043"]
+        assert "padded with silence" in results[0].message
+
+    def test_an_edit_inside_the_audio_says_the_wav_is_cut(self) -> None:
+        shorter = InOut(CHOSEN.in_frame, CHOSEN.out_frame - 60)
+        results = qc.check_audio_sync(row(audio=audio_of(240), current=shorter), RATE_24)
+        assert ids(results) == ["QC-043"]
+        assert "cut to it" in results[0].message
 
     def test_audio_recorded_at_the_wrong_rate_shows_as_drift(self) -> None:
         """A 240 frame take cut at 30 fps is 8 seconds; at 24 that is 192 frames."""
@@ -240,7 +235,7 @@ class TestSourceFormat:
         """8 bit throws away shadow detail and 4:2:0 throws away two thirds of the chroma."""
         results = qc.check_source_format(row(pixel_format=pixel_format))
         assert ids(results) == ["QC-020"]
-        assert results[0].severity == "error"
+        assert results[0].severity == "warning", "allowed with a warning since 2026-09-19 (F21)"
 
     @pytest.mark.parametrize("pixel_format", ["yuv422p10le", "yuv444p12le", "rgb48le", "gbrp10le"])
     def test_integer_containers_are_qc_021(self, pixel_format: str) -> None:
@@ -272,6 +267,35 @@ class TestSourceFormat:
     )
     def test_bit_depth_reads_ffmpeg_names(self, pixel_format: str, depth: int) -> None:
         assert qc.bit_depth(pixel_format) == depth
+
+
+class TestColorTags:
+    """QC-018, info: what matrix a container is decoded with, when it is not a plain BT.709."""
+
+    def container(self, color_space: str = "", color_range: str = "") -> ShotRow:
+        subject = row()
+        assert subject.media is not None
+        subject.media = replace(
+            subject.media, is_sequence=False, color_space=color_space, color_range=color_range
+        )
+        return subject
+
+    def test_a_file_that_states_no_matrix_says_bt709_is_assumed(self) -> None:
+        """Every real file of Turnover199 is this: full range, no matrix."""
+        results = qc.check_color_tags(self.container(color_range="pc"))
+        assert ids(results) == ["QC-018"]
+        assert results[0].severity == "info"
+        assert "bt709, full range" in results[0].message
+
+    def test_a_file_that_states_bt709_says_nothing(self) -> None:
+        assert qc.check_color_tags(self.container(color_space="bt709")) == []
+
+    def test_another_stated_matrix_is_used_and_said(self) -> None:
+        results = qc.check_color_tags(self.container(color_space="bt2020nc"))
+        assert "bt2020, limited range" in results[0].message
+
+    def test_a_sequence_has_no_matrix_to_choose(self) -> None:
+        assert qc.check_color_tags(row()) == []
 
 
 class TestSourceCodec:
@@ -418,16 +442,23 @@ class TestAudioPresence:
         assert ids(results) == ["QC-040"]
         assert results[0].severity == "warning"
 
+    def test_audio_inside_the_plate_s_own_file_counts(self) -> None:
+        """F20: every real plate carries its sound embedded, and was told it had none."""
+        embedded = row()
+        assert embedded.media is not None
+        embedded.media.has_audio = True
+        assert qc.check_audio_presence(embedded) == []
+
     def test_only_the_plate_owes_audio(self) -> None:
         """An element or witness clip delivers no wav, so silence is expected."""
         assert qc.check_audio_presence(row(clip_name="MELT0001_el01")) == []
 
-    def test_several_overlapping_clips_is_qc_041(self) -> None:
+    def test_several_matching_audio_files_is_qc_041(self) -> None:
         target = row(audio=audio_of(240))
         target.audio_clip_count = 3
         results = qc.check_audio_presence(target)
         assert ids(results) == ["QC-041"]
-        assert "3 audio clips" in results[0].message
+        assert "3 audio files" in results[0].message
 
 
 class TestAudioFormat:
@@ -448,28 +479,6 @@ class TestAudioFormat:
 
     def test_no_audio_is_not_a_format_problem(self) -> None:
         assert qc.check_audio_format(row()) == []
-
-
-class TestSideFiles:
-    def test_a_complete_plate_is_clean(self) -> None:
-        assert qc.check_side_files(row()) == []
-
-    def test_a_missing_hdri_is_qc_050(self) -> None:
-        target = row(side_files=SideFiles(camdata=Path("/t/c.txt")))
-        results = qc.check_side_files(target)
-        assert ids(results) == ["QC-050"]
-        assert results[0].severity == "warning", "OQ-18 keeps these warnings"
-
-    def test_a_missing_camdata_is_qc_051(self) -> None:
-        target = row(side_files=SideFiles(hdri=Path("/t/h.exr")))
-        assert ids(qc.check_side_files(target)) == ["QC-051"]
-
-    def test_both_missing_reports_both(self) -> None:
-        assert ids(qc.check_side_files(row(side_files=SideFiles()))) == ["QC-050", "QC-051"]
-
-    def test_only_the_plate_owes_side_files(self) -> None:
-        target = row(clip_name="MELT0001_wit01", side_files=SideFiles())
-        assert qc.check_side_files(target) == []
 
 
 class TestAuxStill:
@@ -499,11 +508,11 @@ class TestSourceEncodingRule:
     def test_a_resolvable_encoding_raises_nothing(self) -> None:
         assert qc.check_source_encoding(row(source_encoding="C-Log3")) == []
 
-    def test_a_plate_that_names_none_is_qc_046_info(self) -> None:
-        """The CLF is the whole chain there, so what is lost is a line of provenance."""
+    def test_a_plate_that_names_none_is_qc_046_error(self) -> None:
+        """The grade is applied in ACEScct and this is what gets the clip there."""
         results = qc.check_source_encoding(row(source_encoding=None))
         assert ids(results) == ["QC-046"]
-        assert results[0].severity == "info"
+        assert results[0].severity == "error"
 
     def test_an_aux_still_that_names_none_is_qc_046_error(self) -> None:
         """The one picture the tool converts on its own authority, so it cannot be delivered."""
@@ -511,10 +520,10 @@ class TestSourceEncodingRule:
         assert ids(results) == ["QC-046"]
         assert results[0].severity == "error"
 
-    def test_a_plate_naming_something_unresolvable_is_qc_047_warning(self) -> None:
+    def test_a_plate_naming_something_unresolvable_is_qc_047_error(self) -> None:
         results = qc.check_source_encoding(row(source_encoding="S-Log3"))
         assert ids(results) == ["QC-047"]
-        assert results[0].severity == "warning"
+        assert results[0].severity == "error"
 
     def test_an_aux_still_naming_something_unresolvable_is_qc_047_error(self) -> None:
         results = qc.check_source_encoding(self.chart(source_encoding="Arri LogC9"))
@@ -536,22 +545,21 @@ class TestSourceEncodingRule:
 class TestColorChain:
     """QC-048: what the row was rendered through, recorded rather than inferred (OQ-46)."""
 
-    def test_a_graded_row_names_its_clf(self) -> None:
-        graded = row(source_encoding="ACEScct")
-        graded.clf_path = Path("/session/MELT0001_grade.clf")
+    def test_a_row_with_a_cdl_names_the_three_legs(self) -> None:
+        graded = row(source_encoding="C-Log3")
+        graded.cdl = CDL((1.0,) * 3, (0.0,) * 3, (1.0,) * 3, 1.0, "", "")
         results = qc.check_color_chain(graded)
         assert ids(results) == ["QC-048"]
         assert results[0].severity == "info"
-        assert "MELT0001_grade.clf alone" in results[0].message
+        assert "CanonLog3 CinemaGamut D55 to ACEScct, the CDL, ACEScct to ACEScg" in results[0].message
 
     def test_an_ungraded_row_names_the_input_transform(self) -> None:
         message = qc.check_color_chain(row(source_encoding="C-Log3"))[0].message
-        assert "no grade file" in message
+        assert "no grade" in message
         assert "CanonLog3 CinemaGamut D55 to ACEScg" in message
 
     def test_an_aux_still_says_it_is_never_graded(self) -> None:
         chart = row(clip_name="MELT0001_pl01_colorChart_01", source_encoding="BM Film")
-        chart.clf_path = Path("/session/MELT0001_grade.clf")
         message = qc.check_color_chain(chart)[0].message
         assert "aux still" in message
         assert "never graded" in message
@@ -559,7 +567,7 @@ class TestColorChain:
 
     def test_a_row_with_neither_says_so(self) -> None:
         message = qc.check_color_chain(row(source_encoding=None))[0].message
-        assert "no grade file and no source encoding" in message
+        assert "no source encoding: nothing to render through" in message
 
     def test_it_is_recorded_by_a_preflight(self, tmp_path: Path) -> None:
         """Here rather than with the model rules: the CLF is resolved by the planner."""
@@ -569,17 +577,31 @@ class TestColorChain:
 
 
 class TestDuplicateNames:
-    def test_a_unique_name_is_clean(self) -> None:
-        assert qc.check_duplicate_name(row(), {"MELT0001_pl01": 1}) == []
+    """QC-011, must-fix since 2026-09-23 (D6): keyed on what the files are named from."""
 
-    def test_a_repeated_name_is_qc_011(self) -> None:
-        results = qc.check_duplicate_name(row(), {"MELT0001_pl01": 2})
+    def test_a_unique_identity_is_clean(self) -> None:
+        assert qc.check_duplicate_name(row(), {"MELT0001 pl01": 1}) == []
+
+    def test_a_repeated_identity_is_qc_011(self) -> None:
+        results = qc.check_duplicate_name(row(), {"MELT0001 pl01": 2})
         assert ids(results) == ["QC-011"]
-        assert results[0].severity == "warning"
+        assert results[0].severity == "error"
 
     def test_counts_come_from_the_batch(self) -> None:
         batch = Batch(rows=[row(), row(), row(clip_name="MELT0002_pl01")])
-        assert qc.clip_name_counts(batch) == {"MELT0001_pl01": 2, "MELT0002_pl01": 1}
+        assert qc.clip_name_counts(batch) == {"MELT0001 pl01": 2, "MELT0002 pl01": 1}
+
+    def test_the_same_clip_twice_as_two_shots_is_fine(self) -> None:
+        """D3: a clip used twice is two rows with two shot codes, and that is normal (F2)."""
+        second = row()
+        second.shot_code_override = "MELT0002"
+        batch = Batch(rows=[row(), second])
+        assert qc.clip_name_counts(batch) == {"MELT0001 pl01": 1, "MELT0002 pl01": 1}
+
+    def test_a_skipped_row_collides_with_nothing(self) -> None:
+        skipped = row()
+        skipped.skipped = True
+        assert qc.clip_name_counts(Batch(rows=[row(), skipped])) == {"MELT0001 pl01": 1}
 
 
 class TestRuleSettings:
@@ -617,72 +639,6 @@ class TestApplyBatchRules:
         assert "QC-023" not in ids(batch.rows[0].qc)
 
 
-class TestLensGrid:
-    def test_a_present_folder_is_qc_057(self, tmp_path: Path) -> None:
-        """v01 delivers nothing for it, so the editor is told to move it by hand."""
-        (tmp_path / "SonyA7V_Tamron20-40_lensgrid_40mm").mkdir()
-        results = qc.check_lens_grid(Turnover("t1", tmp_path))
-        assert ids(results) == ["QC-057"]
-        assert results[0].severity == "info"
-        assert results[0].scope == "turnover"
-
-    def test_a_missing_folder_is_qc_054(self, tmp_path: Path) -> None:
-        results = qc.check_lens_grid(Turnover("t1", tmp_path))
-        assert ids(results) == ["QC-054"]
-        assert results[0].severity == "warning"
-
-    def test_the_folder_is_found_at_any_depth(self, tmp_path: Path) -> None:
-        (tmp_path / "extras" / "A_B_lensgrid_24mm").mkdir(parents=True)
-        assert ids(qc.check_lens_grid(Turnover("t1", tmp_path))) == ["QC-057"]
-
-    def test_a_file_is_not_a_folder(self, tmp_path: Path) -> None:
-        """OQ-20: it arrives as a folder. A stray png does not satisfy the rule."""
-        (tmp_path / "A_B_lensgrid_24mm.png").write_bytes(b"")
-        assert ids(qc.check_lens_grid(Turnover("t1", tmp_path))) == ["QC-054"]
-
-
-class TestHdriHeader:
-    def test_a_readable_hdri_is_clean(self, tmp_path: Path) -> None:
-        hdri, _ = fixtures.make_side_files(tmp_path, "MELT0001_pl01")
-        assert qc.check_hdri_header(row(side_files=SideFiles(hdri=hdri))) == []
-
-    def test_a_corrupt_hdri_is_qc_052(self, tmp_path: Path) -> None:
-        """The copy is a byte copy, so a broken HDRI would ship intact and unusable."""
-        broken = tmp_path / "MELT0001_pl01_HDRI.exr"
-        broken.write_bytes(b"not an exr")
-        results = qc.check_hdri_header(row(side_files=SideFiles(hdri=broken)))
-        assert ids(results) == ["QC-052"]
-        assert results[0].severity == "warning"
-
-    def test_a_row_with_no_hdri_is_qc_050s_business(self) -> None:
-        assert qc.check_hdri_header(row(side_files=SideFiles())) == []
-
-
-class TestCamdata:
-    def test_a_readable_file_reports_its_pair_count(self, tmp_path: Path) -> None:
-        path = tmp_path / "MELT0001_pl01_camData.txt"
-        path.write_text("Camera: ARRI Alexa 35\nLens: 32mm\n")
-        results = qc.check_camdata(row(side_files=SideFiles(camdata=path)))
-        assert ids(results) == ["QC-053"]
-        assert results[0].severity == "info"
-        assert "2 key/value pairs" in results[0].message
-
-    def test_a_file_whose_format_changed_reports_zero_rather_than_nothing(self, tmp_path: Path) -> None:
-        """The whole point of the count: an empty sheet is otherwise invisible."""
-        path = tmp_path / "MELT0001_pl01_camData.txt"
-        path.write_text("free prose with no pairs in it\n")
-        assert "0 key/value pairs" in qc.check_camdata(row(side_files=SideFiles(camdata=path)))[0].message
-
-    def test_an_unreadable_file_is_a_warning_under_the_same_id(self, tmp_path: Path) -> None:
-        missing = tmp_path / "gone.txt"
-        results = qc.check_camdata(row(side_files=SideFiles(camdata=missing)))
-        assert ids(results) == ["QC-053"]
-        assert results[0].severity == "warning"
-
-    def test_a_row_with_no_camdata_is_qc_051s_business(self) -> None:
-        assert qc.check_camdata(row(side_files=SideFiles())) == []
-
-
 class TestDeliverableRuleTable:
     """The QC log columns one sheet per rule, so the list has to be complete."""
 
@@ -698,7 +654,7 @@ class TestDeliverableRuleTable:
             assert f'"{rule_id}"' in source, f"{rule_id} has a column but is never raised"
 
     def test_every_kind_the_renderer_writes_owes_some_rule(self) -> None:
-        assert set(qc.DELIVERABLE_RULES_BY_KIND) >= qc.COPY_KINDS | {"raw_dir", "ref_mp4", "audio"}
+        assert set(qc.DELIVERABLE_RULES_BY_KIND) >= {"raw_dir", "aux_still", "ref_mp4", "audio"}
 
     def test_no_kind_claims_a_rule_that_is_not_in_the_table(self) -> None:
         for owed in qc.DELIVERABLE_RULES_BY_KIND.values():
@@ -756,7 +712,7 @@ class TestFreeSpace:
         batch.rows[0].media.size = 1 << 60
         results = qc.check_free_space(batch)
         assert ids(results) == ["QC-063"]
-        assert results[0].severity == "warning"
+        assert results[0].severity == "error"
         assert results[0].scope == "batch"
 
     def test_no_delivery_root_is_qc_062s_business(self) -> None:
@@ -776,14 +732,14 @@ class TestPreflight:
         batch = Batch(delivery_root=delivery, turnovers=[Turnover("t1", tmp_path)], rows=[row()])
         qc.preflight(batch)
         assert ids(batch.qc) == []
-        assert ids(batch.turnovers[0].qc) == ["QC-054", "QC-008"]
+        assert ids(batch.turnovers[0].qc) == ["QC-008"]
 
     def test_rerunning_does_not_duplicate(self, tmp_path: Path) -> None:
         batch = Batch(turnovers=[Turnover("t1", tmp_path)], rows=[row()])
         qc.preflight(batch)
         qc.preflight(batch)
         assert ids(batch.qc) == ["QC-062"]
-        assert ids(batch.turnovers[0].qc) == ["QC-054", "QC-008"]
+        assert ids(batch.turnovers[0].qc) == ["QC-008"]
 
     def test_model_rules_survive_a_preflight(self, tmp_path: Path) -> None:
         """The two registries own different IDs and must not clear each other."""
@@ -794,7 +750,7 @@ class TestPreflight:
 
 
 class TestBlockingResults:
-    """FR-6's scopes: only a batch scope error stops the run (`qc.blocking_results`)."""
+    """D8: every must-fix stops the run, wherever it is (`qc.must_fix`)."""
 
     def test_a_batch_scope_error_blocks(self) -> None:
         batch = Batch(rows=[row()])
@@ -806,13 +762,28 @@ class TestBlockingResults:
         batch.qc.append(QCResult("QC-063", "warning", "batch", "not much room left"))
         assert qc.blocking_results(batch) == []
 
-    def test_a_turnover_scope_error_holds_that_turnover_back_rather_than_the_run(
-        self, tmp_path: Path
-    ) -> None:
+    def test_a_turnover_scope_error_stops_the_run(self, tmp_path: Path) -> None:
         batch = Batch(delivery_root=tmp_path, turnovers=[Turnover("t1", tmp_path)], rows=[row()])
         qc.preflight(batch)
-        assert qc.blocking_results(batch) == []
-        assert qc.blocked_turnovers(batch) == frozenset({"t1"})
+        assert (tmp_path.name, "QC-008") in [(where, result.rule_id) for where, result in qc.must_fix(batch)]
+
+    def test_a_row_scope_error_stops_the_run_and_says_which_row(self, tmp_path: Path) -> None:
+        broken = row()
+        broken.qc.append(QCResult("QC-012", "error", "row", "no such file"))
+        found = qc.must_fix(Batch(delivery_root=tmp_path, rows=[broken]))
+        assert [(where, result.rule_id) for where, result in found] == [("MELT0001_pl01", "QC-012")]
+
+    def test_a_skipped_row_s_error_does_not(self, tmp_path: Path) -> None:
+        broken = row()
+        broken.skipped = True
+        broken.qc.append(QCResult("QC-012", "error", "row", "no such file"))
+        assert qc.must_fix(Batch(delivery_root=tmp_path, rows=[broken])) == []
+
+    def test_phase_b_is_not_a_reason_to_refuse_the_next_run(self, tmp_path: Path) -> None:
+        """QC-150 says the last run failed a deliverable; the fix is to run again (D11)."""
+        failed = row()
+        failed.qc.append(QCResult("QC-150", "error", "row", "1 deliverable is not done"))
+        assert qc.must_fix(Batch(delivery_root=tmp_path, rows=[failed])) == []
 
 
 def ingested_batch(tmp_path: Path, *rows: ShotRow, edl_name: str = "MELT_FINAL.edl") -> Batch:
@@ -841,7 +812,7 @@ class TestColorSessionRule:
     def test_an_archived_package_is_not_an_error(self, tmp_path: Path) -> None:
         """Ingest put what the session said on the rows, so nothing reads the EDL again."""
         graded = row()
-        graded.clf_path = color_fixtures.plate_clf(tmp_path / "MELT0001.clf")
+        graded.cdl = CDL((1.0,) * 3, (0.0,) * 3, (1.0,) * 3, 1.0, "", "")
         batch = ingested_batch(tmp_path, graded)
         edl = batch.turnovers[0].color_session_edl
         assert edl is not None
@@ -853,18 +824,18 @@ class TestColorSessionRule:
         batch = ingested_batch(tmp_path, row())
         results = qc.check_color_session(batch.turnovers[0], batch.rows)
         assert ids(results) == ["QC-008"]
-        assert "no grade file for any row" in results[0].message
+        assert "no CDL for any row" in results[0].message
 
     def test_one_graded_row_is_enough_to_satisfy_it(self, tmp_path: Path) -> None:
         graded, ungraded = row(), row(clip_name="MELT0002_pl01")
-        graded.clf_path = color_fixtures.plate_clf(tmp_path / "MELT0001.clf")
+        graded.cdl = CDL((1.0,) * 3, (0.0,) * 3, (1.0,) * 3, 1.0, "", "")
         batch = ingested_batch(tmp_path, graded, ungraded)
         assert qc.check_color_session(batch.turnovers[0], batch.rows) == []
 
     def test_it_is_scoped_per_turnover(self, tmp_path: Path) -> None:
         """One turnover can wait on colour while another renders, which is the point."""
         graded = row()
-        graded.clf_path = color_fixtures.plate_clf(tmp_path / "MELT0001.clf")
+        graded.cdl = CDL((1.0,) * 3, (0.0,) * 3, (1.0,) * 3, 1.0, "", "")
         batch = ingested_batch(tmp_path, graded)
         waiting = Turnover("t2", tmp_path)
         batch.turnovers.append(waiting)
@@ -883,13 +854,6 @@ class TestClfRule:
         assert ids(results) == ["QC-009"]
         assert results[0].severity == "error"
 
-    def test_a_clf_that_has_gone_missing_is_an_error(self, tmp_path: Path) -> None:
-        gone = row()
-        gone.clf_path = tmp_path / "MELT0001.clf"
-        results = qc.check_clf(gone, has_session=True)
-        assert ids(results) == ["QC-009"]
-        assert "no longer there" in results[0].message
-
     def test_it_is_silent_until_a_session_has_been_ingested(self, tmp_path: Path) -> None:
         """With none the whole turnover is QC-008, and repeating it per row buries it."""
         assert qc.check_clf(row(), has_session=False) == []
@@ -899,49 +863,10 @@ class TestClfRule:
         chart = row(clip_name="MELT0001_pl01_colorChart_01")
         assert qc.check_clf(chart, has_session=True) == []
 
-    def test_a_graded_row_passes(self, tmp_path: Path) -> None:
+    def test_a_graded_row_passes(self) -> None:
         graded = row()
-        graded.clf_path = color_fixtures.plate_clf(tmp_path / "MELT0001.clf")
+        graded.cdl = CDL((1.0,) * 3, (0.0,) * 3, (1.0,) * 3, 1.0, "", "")
         assert qc.check_clf(graded, has_session=True) == []
-
-
-class TestClfLoadsRule:
-    """QC-019 and QC-039: the CLF is there, and it is unusable or it is not linear."""
-
-    def test_a_clf_openciolor_will_not_load_is_an_error(self, tmp_path: Path) -> None:
-        broken = tmp_path / "MELT0001.clf"
-        broken.write_text("this is not a CLF\n")
-        unusable = row()
-        unusable.clf_path = broken
-        assert ids(qc.check_clf_loads(unusable, {})) == ["QC-019"]
-
-    def test_a_clf_with_a_display_rendering_in_it_is_an_error(self, tmp_path: Path) -> None:
-        """The expensive one: it renders fine and the plate claims to be linear."""
-        baked = row()
-        baked.clf_path = color_fixtures.display_clf(tmp_path / "MELT0001.clf")
-        results = qc.check_clf_loads(baked, {})
-        assert ids(results) == ["QC-039"]
-        assert results[0].severity == "error"
-
-    def test_a_session_clf_passes(self, tmp_path: Path) -> None:
-        graded = row()
-        graded.clf_path = color_fixtures.plate_clf(tmp_path / "MELT0001.clf")
-        assert qc.check_clf_loads(graded, {}) == []
-
-    def test_the_elements_of_one_shot_load_their_clf_once(self, tmp_path: Path) -> None:
-        """Loading builds an OCIO processor and probes it; four per shot is a wait."""
-        path = color_fixtures.plate_clf(tmp_path / "MELT0001.clf")
-        cache: dict[Path, list[QCResult]] = {}
-        for clip in ("MELT0001_pl01", "MELT0001_bg01"):
-            graded = row(clip_name=clip)
-            graded.clf_path = path
-            qc.check_clf_loads(graded, cache)
-        assert list(cache) == [path]
-
-    def test_a_missing_clf_is_left_to_qc_009(self, tmp_path: Path) -> None:
-        gone = row()
-        gone.clf_path = tmp_path / "gone.clf"
-        assert qc.check_clf_loads(gone, {}) == []
 
 
 class TestApprovedRule:
@@ -1276,36 +1201,6 @@ class TestPhaseBAudio:
         assert results[0].severity == "warning"
 
 
-class TestPhaseBCopy:
-    def copy_job(self, tmp_path: Path) -> tuple[DeliverableJob, Deliverable]:
-        source = tmp_path / "src" / "cam.txt"
-        source.parent.mkdir(parents=True, exist_ok=True)
-        source.write_text("lens: 40mm\n" * 100, encoding="utf-8")
-        job = DeliverableJob(
-            kind="camdata",
-            source=source,
-            destination=tmp_path / "out" / "MELT0001_pl01_camData_v01.txt",
-            version=1,
-            shot_code="MELT0001",
-            elem="pl01",
-        )
-        return job, render.render_job(job)
-
-    def test_a_faithful_copy_passes(self, tmp_path: Path) -> None:
-        job, deliverable = self.copy_job(tmp_path)
-        assert qc.run_phase_b(job, deliverable) == []
-
-    def test_a_copy_that_differs_is_qc_130(self, tmp_path: Path) -> None:
-        job, deliverable = self.copy_job(tmp_path)
-        job.destination.write_text("tampered", encoding="utf-8")
-        assert ids(qc.run_phase_b(job, deliverable)) == ["QC-130"]
-
-    def test_a_source_that_vanished_is_qc_130(self, tmp_path: Path) -> None:
-        job, deliverable = self.copy_job(tmp_path)
-        job.source.unlink()
-        assert ids(qc.run_phase_b(job, deliverable)) == ["QC-130"]
-
-
 def delivered(name: str, kind: str, version: int = 1, res: str | None = None) -> Deliverable:
     return Deliverable(kind=kind, name=name, path=Path("/d") / name, version=version, res=res, status="done")
 
@@ -1367,6 +1262,17 @@ class TestNamesReparse:
         batch = self.batch_with(delivered("MELT0001_pl01_raw_HD_v01", "raw_dir", res="4k"))
         assert ids(qc.check_names_reparse(batch)) == ["QC-151"]
 
+    def test_a_well_formed_name_for_another_shot_is_qc_151(self) -> None:
+        """F22: the shape was checked and the shot was not."""
+        batch = self.batch_with(delivered("MELT0002_pl01_raw_4k_v01", "raw_dir", res="4k"))
+        results = qc.check_names_reparse(batch)
+        assert ids(results) == ["QC-151"]
+        assert "MELT0002" in results[0].message
+
+    def test_a_well_formed_name_for_another_element_is_qc_151(self) -> None:
+        batch = self.batch_with(delivered("MELT0001_pl02_raw_4k_v01", "raw_dir", res="4k"))
+        assert "pl02" in qc.check_names_reparse(batch)[0].message
+
     def test_a_deliverable_that_never_landed_is_not_asked(self) -> None:
         """QC-150 owns an unwritten deliverable; this rule is about delivered names."""
         item = delivered("nonsense", "raw_dir")
@@ -1398,3 +1304,31 @@ class TestApplyPhaseB:
         qc.apply_row_rules(target, RATE_24)
         qc.apply_phase_b(Batch(rows=[target]))
         assert "QC-040" in ids(target.qc)
+
+
+class TestTurnoverFolder:
+    """QC-069 (D16): a turnover whose folder has gone cannot run from nowhere."""
+
+    def test_a_missing_folder_is_an_error_on_the_turnover(self, tmp_path: Path) -> None:
+        moved = Batch(turnovers=[Turnover("t1", tmp_path / "gone")])
+        qc.check_folders(moved)
+        assert [(r.rule_id, r.severity, r.scope) for r in moved.turnovers[0].qc] == [
+            ("QC-069", "error", "turnover")
+        ]
+
+    def test_a_folder_that_is_there_says_nothing_and_clears_it(self, tmp_path: Path) -> None:
+        here = Batch(turnovers=[Turnover("t1", tmp_path)])
+        here.turnovers[0].qc.append(QCResult("QC-069", "error", "turnover", "stale"))
+        qc.check_folders(here)
+        assert here.turnovers[0].qc == []
+
+
+class TestDropFrame:
+    """QC-027 (F24): drop-frame timecode is must-fix, and no longer passes for none."""
+
+    def test_a_drop_frame_source_is_qc_027_not_qc_028(self) -> None:
+        dropped = row(start_timecode=None)
+        assert dropped.media is not None
+        dropped.media.drop_frame = True
+        results = qc.check_timecode(dropped)
+        assert [(r.rule_id, r.severity) for r in results] == [("QC-027", "error")]

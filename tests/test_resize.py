@@ -15,7 +15,7 @@ import numpy as np
 import pytest
 
 from proingest.core import ffmpeg
-from proingest.core.resize import lanczos_resize
+from proingest.core.resize import fit_inside, lanczos_resize, letterbox, letterbox_offset
 
 FOUR_K = (2160, 3840)
 HD = (1080, 1920)
@@ -175,3 +175,32 @@ class TestAgreesWithFfmpeg:
         theirs = ffmpeg_scaled(source, 192, 108, tmp_path)
         ours = np.clip(lanczos_resize(source, 192, 108), 0, 255)
         assert np.abs(theirs - ours).max() <= 1.5
+
+
+class TestLetterbox:
+    """F9: a source of another shape keeps its shape, on a black canvas."""
+
+    def test_the_target_shape_fits_exactly(self) -> None:
+        assert fit_inside((3840, 2160), (1920, 1080)) == (1920, 1080)
+
+    def test_a_wider_source_is_letterboxed(self) -> None:
+        assert fit_inside((4096, 2160), (3840, 2160)) == (3840, 2026)
+
+    def test_a_narrower_source_is_pillarboxed(self) -> None:
+        assert fit_inside((2880, 2160), (3840, 2160)) == (2880, 2160)
+        assert letterbox_offset((2880, 2160), (3840, 2160)) == (480, 0)
+
+    def test_the_offset_is_centred_on_an_even_pixel(self) -> None:
+        assert letterbox_offset((3840, 2026), (3840, 2160)) == (0, 66)
+
+    def test_the_bars_are_zero_and_the_picture_is_untouched(self) -> None:
+        picture = np.ones((4, 8, 3), dtype=np.float32)
+        boxed = letterbox(picture, (8, 12))
+        assert boxed.shape == (12, 8, 3)
+        assert boxed[:4].max() == 0.0
+        assert boxed[4:8].min() == 1.0
+        assert boxed[8:].max() == 0.0
+
+    def test_a_frame_already_the_target_is_returned_as_is(self) -> None:
+        picture = np.ones((4, 8, 3), dtype=np.float32)
+        assert letterbox(picture, (8, 4)) is picture

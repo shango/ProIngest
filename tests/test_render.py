@@ -13,7 +13,8 @@ point it is verified.
 from __future__ import annotations
 
 import multiprocessing
-from collections.abc import Generator
+import subprocess
+from collections.abc import Callable, Generator
 from dataclasses import replace
 from pathlib import Path
 
@@ -22,8 +23,8 @@ import numpy.typing as npt
 import OpenEXR
 import pytest
 
-from proingest.core import batchfile, clf, color, exr, ffmpeg, frames, media, naming, qc, render
-from proingest.core.models import Batch, Deliverable, FrameRate, QCResult, ShotRow
+from proingest.core import clf, color, exr, ffmpeg, frames, media, naming, qc, render
+from proingest.core.models import CDL, Batch, Deliverable, FrameRate, QCResult, ShotRow
 from proingest.core.planner import DeliverableJob
 from tests.fixtures import color as color_fixtures
 from tests.fixtures import media as fixtures
@@ -201,7 +202,7 @@ class TestPlateBranch:
     def expected(self, shot_color: clf.ShotColor) -> float:
         """The source pixel through the same chain, asked of OCIO rather than typed out."""
         pixels = np.array([[list(self.SOURCE_PIXEL)]], dtype=np.float32)
-        color.apply(pixels, color.processor(*shot_color.plate_transforms(shot_color.load())))
+        color.apply(pixels, color.processor(*shot_color.plate_transforms()))
         return float(pixels[0, 0, 0])
 
     def test_the_source_is_transformed_and_not_passed_through(self, tmp_path: Path) -> None:
@@ -209,29 +210,25 @@ class TestPlateBranch:
         assert red == pytest.approx(self.expected(color_fixtures.UNGRADED), abs=0.002)
         assert red != pytest.approx(self.SOURCE_PIXEL[0], abs=0.01)
 
-    def test_the_shot_s_clf_is_what_is_applied(self, tmp_path: Path) -> None:
+    def test_the_shot_s_cdl_is_what_is_applied(self, tmp_path: Path) -> None:
         """A different grade has to give a different plate, or nothing was applied."""
         graded = clf.ShotColor(
             source_encoding=color_fixtures.SOURCE_ENCODING,
-            clf_path=color_fixtures.plate_clf(tmp_path / "MELT0001.clf"),
+            cdl=CDL((1.4, 1.0, 0.7), (0.0,) * 3, (1.0,) * 3, 1.1, "", ""),
         )
-        with_clf = self.delivered(tmp_path / "graded", shot_color=graded)
+        with_cdl = self.delivered(tmp_path / "graded", shot_color=graded)
         without = self.delivered(tmp_path / "plain")
-        assert float(with_clf[0, 0, 0]) != pytest.approx(float(without[0, 0, 0]), abs=0.002)
-        assert float(with_clf[0, 0, 0]) == pytest.approx(self.expected(graded), abs=0.002)
+        assert float(with_cdl[0, 0, 0]) != pytest.approx(float(without[0, 0, 0]), abs=0.002)
+        assert float(with_cdl[0, 0, 0]) == pytest.approx(self.expected(graded), abs=0.002)
 
-    def test_the_header_names_the_clf_that_was_applied(self, tmp_path: Path) -> None:
-        """The header and the pixels come from the one `LoadedClf`, so they cannot differ."""
-        path = color_fixtures.plate_clf(tmp_path / "MELT0001_grade.clf")
-        shot_color = clf.ShotColor(source_encoding=color_fixtures.SOURCE_ENCODING, clf_path=path)
+    def test_the_header_names_the_encoding_that_was_applied(self, tmp_path: Path) -> None:
+        shot_color = clf.ShotColor(source_encoding=color_fixtures.SOURCE_ENCODING)
         job = raw_job(tmp_path, count=1, shot_color=shot_color)
         render.render_job(job)
         with OpenEXR.File(str(job.frame_path(1001))) as handle:
             # Copied rather than held: the mapping the bindings hand back empties when
             # the file closes, and an assertion on it outside the block passes on nothing.
             header = dict(handle.header())
-        assert header[exr.CLF_ATTRIBUTE] == "MELT0001_grade.clf"
-        assert header[exr.CLF_HASH_ATTRIBUTE] == clf.clf_digest(path)
         assert header[exr.SOURCE_ENCODING_ATTRIBUTE] == color_fixtures.SOURCE_ENCODING
 
     def test_alpha_does_not_go_through_the_chain(self) -> None:
@@ -387,6 +384,26 @@ class TestResample:
         render.render_job(job)
         assert exr.read_header(job.frame_path(1001)).resolution == (1920, 1080)
 
+    def test_a_source_of_another_shape_is_letterboxed_not_stretched(self, tmp_path: Path) -> None:
+        """F9: a 2048x1080 source fits HD at 1920x1012, centred, with black bars."""
+        source = fixtures.make_mov(tmp_path / "src" / "plate.mov", count=1, size=(2048, 1080))
+        job = sequence_job(
+            source,
+            tmp_path / "out" / "MELT0001_pl01_raw_HD_v01",
+            0,
+            0,
+            is_sequence=False,
+            start_frame=0,
+            res="HD",
+        )
+        render.render_job(replace(job, source_size=(2048, 1080)))
+        pixels = exr.read_pixels(job.frame_path(1001))
+        assert pixels.shape[:2] == (1080, 1920)
+        # DWAA is lossy in 8 pixel blocks, so the rows next to the picture carry a trace.
+        assert np.abs(pixels[:34]).max() < 1e-3
+        assert np.abs(pixels[-34:]).max() < 1e-3
+        assert np.abs(pixels[34:1046]).max() > 0.0
+
     def test_no_resolution_means_the_source_size_is_kept(self, tmp_path: Path) -> None:
         job = raw_job(tmp_path, count=1)
         render.render_job(job)
@@ -477,35 +494,6 @@ class TestAudio:
             render.render_job(job)
         assert not job.destination.exists()
         assert not job.temp.exists()
-
-
-class TestCopies:
-    @pytest.mark.parametrize(
-        ("kind", "name"),
-        [
-            ("hdri", "MELT0001_pl01_HDRI_v01.exr"),
-            ("camdata", "MELT0001_pl01_camData_v01.txt"),
-            ("bts", "MELT0001_pl01_BTS_01_v01.png"),
-        ],
-    )
-    def test_a_side_file_arrives_with_the_same_bytes_under_the_delivery_name(
-        self, tmp_path: Path, kind: str, name: str
-    ) -> None:
-        source = tmp_path / "src" / "whatever.bin"
-        source.parent.mkdir(parents=True)
-        source.write_bytes(b"camera: ARRI\nlens: 40mm\n" * 100)
-        job = DeliverableJob(
-            kind=kind,  # type: ignore[arg-type]
-            source=source,
-            destination=tmp_path / "out" / name,
-            version=1,
-            shot_code="MELT0001",
-            elem="pl01",
-        )
-        deliverable = render.render_job(job)
-        assert job.destination.read_bytes() == source.read_bytes()
-        assert deliverable.checksum == render.file_digest(source)
-        assert deliverable.status == "done"
 
 
 def ref_job(
@@ -622,6 +610,23 @@ class TestReferenceMp4:
         assert video_stream(job.destination)["codec_name"] == "h264"
         assert deliverable.status == "done"
 
+    def test_a_24000_1001_file_is_delivered_at_24_frame_for_frame(self, tmp_path: Path) -> None:
+        """Every real file states 24000/1001 (user, 2026-09-23). QC-113 refused all four
+        references of the real turnover before the encode read the file as 24."""
+        source = fixtures.make_mov(tmp_path / "src" / "plate.mov", count=8, rate="24000/1001")
+        job = replace(ref_job(tmp_path, source, 2, 5), source_rate=NTSC)
+        render.render_job(job)
+        assert video_stream(job.destination)["r_frame_rate"] == "24/1"
+        assert ffmpeg.count_frames(job.destination) == 4
+
+    def test_the_reference_carries_the_in_frames_timecode(self, tmp_path: Path) -> None:
+        """Not the file's start, which is the head of the handles. The EXRs carry the In."""
+        source = fixtures.make_mov(tmp_path / "src" / "plate.mov", count=8)
+        job = replace(ref_job(tmp_path, source, 2, 5), source_start_frame=0)
+        render.render_job(job)
+        tags = video_stream(job.destination).get("tags", {})
+        assert isinstance(tags, dict) and tags.get("timecode") == "01:00:00:02"
+
     def test_an_exr_sequence_reference_plays_at_the_timeline_rate(self, tmp_path: Path) -> None:
         """The image2 demuxer defaults to 25, so this is the `-framerate` trap."""
         fixture = fixtures.make_exr_sequence(tmp_path / "src", count=6, first=1001)
@@ -649,6 +654,32 @@ class TestReferenceMp4:
         render.render_job(job)
         stream = video_stream(job.destination)
         assert (stream["width"], stream["height"]) == (1920, 1080)
+
+    def test_a_source_of_another_shape_is_letterboxed_in_the_reference(self, tmp_path: Path) -> None:
+        source = fixtures.make_mov(tmp_path / "src" / "plate.mov", count=2, size=(2048, 1080))
+        job = replace(ref_job(tmp_path, source, 0, 1, res="HD"), source_size=(2048, 1080))
+        render.render_job(job)
+        stream = video_stream(job.destination)
+        assert (stream["width"], stream["height"]) == (1920, 1080)
+        top_row = subprocess.run(
+            [
+                "ffmpeg",
+                "-v",
+                "error",
+                "-i",
+                str(job.destination),
+                "-frames:v",
+                "1",
+                "-f",
+                "rawvideo",
+                "-pix_fmt",
+                "gray",
+                "-",
+            ],
+            check=True,
+            capture_output=True,
+        ).stdout[:1920]
+        assert max(top_row) <= 17
 
     def test_associated_audio_is_muxed_as_aac(self, tmp_path: Path) -> None:
         source = fixtures.make_mov(tmp_path / "src" / "plate.mov", count=8)
@@ -711,6 +742,43 @@ class TestReferenceMp4:
             render.render_job(job)
         assert not job.destination.exists()
         assert not job.temp.exists()
+
+
+NTSC = FrameRate(24000, 1001)
+
+
+class TestTrimmedAudio:
+    """D2: the wav is the plate's range, sped up to follow the picture played at 24."""
+
+    def audio_job(self, tmp_path: Path, source: Path, in_frame: int, out_frame: int) -> DeliverableJob:
+        return DeliverableJob(
+            kind="audio",
+            source=source,
+            destination=tmp_path / "out" / "MELT0001_pl01_audio_v01.wav",
+            version=1,
+            shot_code="MELT0001",
+            elem="pl01",
+            in_frame=in_frame,
+            out_frame=out_frame,
+            rate=FPS,
+            source_rate=NTSC,
+        )
+
+    def test_the_wav_is_exactly_the_plates_length_at_24(self, tmp_path: Path) -> None:
+        source = fixtures.make_mov(tmp_path / "src" / "p.mov", count=48, rate="24000/1001", with_audio=True)
+        job = self.audio_job(tmp_path, source, 24, 35)
+        deliverable = render.render_job(job)
+        assert deliverable.status == "done", deliverable.qc
+        assert media.probe_audio(job.destination).duration_samples == 12 * 48000 // 24
+
+    def test_the_skip_is_measured_at_the_files_own_rate(self, tmp_path: Path) -> None:
+        job = self.audio_job(tmp_path, Path("p.mov"), 24, 35)
+        assert render._audio_skip(job) == pytest.approx(24 * 1001 / 24000)
+        assert render._audio_tempo(job) == pytest.approx(1.001)
+
+    def test_a_file_already_at_24_is_not_retimed(self, tmp_path: Path) -> None:
+        job = replace(self.audio_job(tmp_path, Path("p.mov"), 24, 35), source_rate=FPS)
+        assert render._audio_tempo(job) == 1.0
 
 
 class TestAudioAlignment:
@@ -854,6 +922,55 @@ class TestExecute:
         assert not any(job.temp.exists() for job in jobs)
 
 
+class TestAWorkerThatDies:
+    """F12. A dead worker breaks the whole pool, and every result of the run went with it."""
+
+    def pool(self, dies: Callable[[DeliverableJob, int], bool]) -> type:
+        """A stand-in pool: `dies(job, round)` says whether that job's worker dies."""
+        from concurrent.futures import Future
+        from concurrent.futures.process import BrokenProcessPool
+
+        rounds = [0]
+
+        class Pool:
+            def __init__(self, *args: object, **kwargs: object) -> None:
+                rounds[0] += 1
+
+            def __enter__(self) -> Pool:
+                return self
+
+            def __exit__(self, *args: object) -> None:
+                pass
+
+            def submit(self, _fn: object, job: DeliverableJob) -> Future[Deliverable]:
+                future: Future[Deliverable] = Future()
+                if dies(job, rounds[0]):
+                    future.set_exception(BrokenProcessPool("a worker died abruptly"))
+                else:
+                    landed = job.to_deliverable()
+                    landed.status = "done"
+                    future.set_result(landed)
+                return future
+
+        return Pool
+
+    def test_the_results_already_in_are_kept(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        jobs = [raw_job(tmp_path / f"j{index}", count=2) for index in range(3)]
+        monkeypatch.setattr(render, "ProcessPoolExecutor", self.pool(lambda job, _round: job is jobs[1]))
+        results = render.execute(jobs, workers=2)
+        assert [d.status for d in results] == ["done", "failed", "done"]
+        assert ids(results[1].qc) == [render.RENDER_FAILED]
+        assert "worker stopped" in results[1].qc[0].message
+
+    def test_a_job_lost_with_the_pool_gets_one_more(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Measured: a killed worker took every job in flight on the others with it."""
+        jobs = [raw_job(tmp_path / f"j{index}", count=2) for index in range(3)]
+        monkeypatch.setattr(render, "ProcessPoolExecutor", self.pool(lambda _job, round_: round_ == 1))
+        assert [d.status for d in render.execute(jobs, workers=2)] == ["done", "done", "done"]
+
+
 class TestTheCompressionLevelReachingAWorker:
     """M5.12, FR-12 Output. It travels on the channel M5.8.3 built for the override.
 
@@ -906,17 +1023,17 @@ class TestApplyResults:
 
 
 class TestPostRenderQC:
-    """Phase B runs inside `render_job`, immediately after the atomic rename."""
+    """Phase B runs inside `render_job`, on the temp, before the rename (D11, F11)."""
 
     def test_a_clean_render_carries_no_qc_results(self, tmp_path: Path) -> None:
         deliverable = render.render_job(raw_job(tmp_path, count=3))
         assert deliverable.status == "done"
         assert deliverable.qc == []
 
-    def test_a_failed_check_marks_the_deliverable_and_keeps_the_file(
+    def test_a_failed_check_leaves_nothing_that_looks_finished(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """QC_RULES phase B: a file that failed a check is evidence, so it stays."""
+        """D11: no final name, no temp, no sidecar; the record names the output and why."""
         job = raw_job(tmp_path, count=2)
         monkeypatch.setattr(
             qc,
@@ -926,26 +1043,25 @@ class TestPostRenderQC:
         deliverable = render.render_job(job)
 
         assert deliverable.status == "failed"
-        assert job.destination.is_dir(), "the file stays for inspection"
-        marker = job.destination.with_name(job.destination.name + batchfile.FAILED_MARKER)
-        assert marker.is_file()
-        assert "QC-105" in marker.read_text()
+        assert ids(deliverable.qc) == ["QC-105"]
+        assert not job.destination.exists()
+        assert not job.temp.exists()
+        assert sorted(p.name for p in job.destination.parent.iterdir()) == []
 
-    def test_the_marker_is_what_a_reopened_batch_reads(
+    def test_the_check_reads_the_temp_and_reports_the_final_name(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """A crash after the check still reopens as failed rather than as done."""
+        """F11: the rename used to come first, so a failing file sat under its final name."""
         job = raw_job(tmp_path, count=2)
-        monkeypatch.setattr(
-            qc,
-            "run_phase_b",
-            lambda _job, _deliverable: [QCResult("QC-106", "error", "deliverable", "changed")],
-        )
-        deliverable = render.render_job(job)
-        deliverable.status = "done"  # as a stale batch file would have it
-        batch = Batch(rows=[ShotRow(turnover_id="t1", clip_name="x", deliverables=[deliverable])])
-        batchfile.reconcile_with_filesystem(batch)
-        assert batch.rows[0].deliverables[0].status == "failed"
+        seen: list[tuple[Path, str, bool]] = []
+
+        def look(checked: DeliverableJob, _deliverable: object) -> list[QCResult]:
+            seen.append((checked.destination, checked.name, job.destination.exists()))
+            return []
+
+        monkeypatch.setattr(qc, "run_phase_b", look)
+        render.render_job(job)
+        assert seen == [(job.temp, job.name, False)]
 
     def test_a_warning_alone_does_not_fail_the_deliverable(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

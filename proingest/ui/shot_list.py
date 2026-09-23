@@ -23,6 +23,7 @@ from PySide6.QtCore import (
     QEvent,
     QModelIndex,
     QPersistentModelIndex,
+    QPoint,
     QRect,
     QSize,
     QSortFilterProxyModel,
@@ -37,6 +38,7 @@ from PySide6.QtWidgets import (
     QFrame,
     QInputDialog,
     QLineEdit,
+    QMenu,
     QStyle,
     QStyledItemDelegate,
     QStyleOptionViewItem,
@@ -112,6 +114,19 @@ def show_parse(editor: QLineEdit, parsed: ParsedInput) -> None:
     """
     editor.setStyleSheet("" if parsed.ok else f"color: {ERROR_COLOR.name()}")
     editor.setToolTip("" if parsed.ok else parsed.error or "")
+
+
+RESET_TEXT = "Reset"
+"""A shot's right-click entry once its cause is fixed: what failed runs again, same version."""
+
+RERUN_TEXT = "Re-run"
+"""A shot's right-click entry: render it again at the next version, complete or not."""
+
+RESCAN_TEXT = "Re-scan"
+"""A turnover heading's right-click entry: read the folder again, keeping the edits (D8)."""
+
+RELOCATE_TEXT = "New Folder Location..."
+"""A turnover heading's right-click entry: reload it from where it moved to (D16)."""
 
 
 class TwoLineDelegate(QStyledItemDelegate):
@@ -325,6 +340,12 @@ class FrozenColumns(QTreeView):
 
 class ShotListView(QTreeView):
     filter_cleared = Signal()
+
+    rescan_requested = Signal(object)
+    """A `Turnover` whose heading was right-clicked for Re-scan (D8)."""
+
+    relocate_requested = Signal(object)
+    """A `Turnover` whose heading was right-clicked for New Folder Location (D16)."""
     """`select_row` emptied the filter to reach a hidden row; the search box should follow."""
 
     """The list. Two levels, always expanded, fixed order, one row per shot."""
@@ -365,6 +386,11 @@ class ShotListView(QTreeView):
 
         self.frozen = FrozenColumns(self)
         self._wire_frozen()
+
+        # Both views, because the frozen one covers the start of every heading.
+        for view in (self, self.frozen):
+            view.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+            view.customContextMenuRequested.connect(lambda pos, view=view: self._show_menu(view, pos))
 
         for signal in (model.modelReset, model.layoutChanged):
             signal.connect(self._fit_group_headers)
@@ -479,6 +505,46 @@ class ShotListView(QTreeView):
         if self.shot_model.row_at(source) is not None:
             return None
         return self.shot_model.turnover_at(source)
+
+    def menu_for(self, index: QModelIndex) -> QMenu | None:
+        """The right-click menu for a proxy index, or None when it has nothing to offer.
+
+        Built apart from showing it so a test can trigger an entry: an offscreen menu
+        opened with `exec` is a hung suite. Everything in it is greyed while the list is
+        locked (D15).
+        """
+        source = self.proxy.mapToSource(index)
+        if not source.isValid():
+            return None
+        row = self.shot_model.row_at(source)
+        if row is not None:
+            return self._row_menu(source, row)
+        turnover = self.shot_model.turnover_at(source)
+        if turnover is None:
+            return None
+        menu = QMenu(self)
+        for text, signal in ((RESCAN_TEXT, self.rescan_requested), (RELOCATE_TEXT, self.relocate_requested)):
+            action = menu.addAction(text)
+            action.setEnabled(not self.shot_model.locked)
+            action.triggered.connect(lambda _checked=False, signal=signal: signal.emit(turnover))
+        return menu
+
+    def _row_menu(self, source: QModelIndex, row: ShotRow) -> QMenu:
+        """A shot's entries: Reset what failed, or Re-run what is complete (D11, D12)."""
+        menu = QMenu(self)
+        locked = self.shot_model.locked
+        reset = menu.addAction(RESET_TEXT)
+        reset.setEnabled(not locked and any(item.status == "failed" for item in row.deliverables))
+        reset.triggered.connect(lambda: self.shot_model.reset_row(source))
+        rerun = menu.addAction(RERUN_TEXT)
+        rerun.setEnabled(not locked and bool(row.deliverables) and not row.rerun)
+        rerun.triggered.connect(lambda: self.shot_model.rerun_row(source))
+        return menu
+
+    def _show_menu(self, view: QTreeView, pos: QPoint) -> None:
+        menu = self.menu_for(view.indexAt(pos))
+        if menu is not None:
+            menu.exec(view.viewport().mapToGlobal(pos))
 
     def select_row(self, row: ShotRow) -> None:
         """Put the cursor on a shot somebody pointed at from somewhere else.

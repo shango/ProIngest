@@ -13,9 +13,8 @@ which is restored before it is shown and saved when it closes. **Every dialog it
 is its own method**, so a test can answer one: an offscreen modal is a hung suite rather
 than a failed assertion.
 
-**A run is `ui/run_controller.py`'s, the pool under it is `ui/runner.py`'s, and the
-colour session ingest is `ui/color_session.py`'s**, in the same way a scan is
-`ui/scanner.py`'s: what is left here is the batch, the surfaces, and which of them a
+**A run is `ui/run_controller.py`'s and the pool under it is `ui/runner.py`'s**, in
+the same way a scan is `ui/scanner.py`'s: what is left here is the batch, the surfaces, and which of them a
 collaborator is allowed to ask for. `batch`, `batch_open`, `settings`, `show_results`,
 `show_issues` and `update_state` are public for that reason and for no other.
 """
@@ -24,7 +23,6 @@ from __future__ import annotations
 
 import logging
 from base64 import b64decode, b64encode
-from collections.abc import Sequence
 from pathlib import Path
 
 from PySide6.QtCore import QByteArray, Qt, QUrl
@@ -33,7 +31,6 @@ from PySide6.QtWidgets import (
     QDialog,
     QDockWidget,
     QFileDialog,
-    QInputDialog,
     QLabel,
     QMainWindow,
     QMessageBox,
@@ -47,7 +44,7 @@ from PySide6.QtWidgets import (
 )
 
 from proingest import __version__
-from proingest.core import batchfile, camdata, qc, scan
+from proingest.core import batchfile, qc, scan
 from proingest.core import settings as core_settings
 from proingest.core.models import (
     DEFAULT_BATCH_NAME,
@@ -56,7 +53,7 @@ from proingest.core.models import (
     ShotRow,
     Turnover,
 )
-from proingest.ui import color_session, metadata, settings_form, toolbar_help
+from proingest.ui import metadata, settings_form, toolbar_help
 from proingest.ui.autosave import AutoSaver
 from proingest.ui.batch_bar import BatchBar
 from proingest.ui.deliverables import DeliverablesDock
@@ -87,7 +84,6 @@ Issues dock beside it, because a timeline that produced no rows always said why 
 ISSUES_LINK = "See the Issues dock"
 
 BATCH_FILTER = "ProIngest batch (*.pibatch)"
-EDL_FILTER = "Final EDL (*.edl)"
 
 BOTTOM_TABS = ("Issues", "Log", "Deliverables")
 
@@ -161,9 +157,7 @@ class MainWindow(QMainWindow):
         self.action_add_turnover = self._action("Add Turnover")
         self.action_add_turnover.triggered.connect(self.add_turnover)
         self.action_scan = self._action("Scan")
-        self.action_scan.triggered.connect(self.scan_unscanned)
-        self.action_ingest = self._action("Ingest Colour Session")
-        self.action_ingest.triggered.connect(lambda: color_session.ingest(self))
+        self.action_scan.triggered.connect(self.rescan_all)
         self.action_run = self._action("Run", QKeySequence("Ctrl+R"))
         self.action_run.triggered.connect(lambda: self.run.start())
         self.action_stop = self._action("Stop", QKeySequence("Ctrl+."))
@@ -190,7 +184,6 @@ class MainWindow(QMainWindow):
             (toolbar_help.SAVE, self.action_save),
             (toolbar_help.ADD_TURNOVER, self.action_add_turnover),
             (toolbar_help.SCAN, self.action_scan),
-            (toolbar_help.INGEST, self.action_ingest),
             (toolbar_help.RUN, self.action_run),
             (toolbar_help.STOP, self.action_stop),
             (toolbar_help.EXPORT, self.action_export),
@@ -242,7 +235,6 @@ class MainWindow(QMainWindow):
         batch_menu = menus.addMenu("Batch")
         batch_menu.addAction(self.action_add_turnover)
         batch_menu.addAction(self.action_scan)
-        batch_menu.addAction(self.action_ingest)
         batch_menu.addAction(self.action_toggle_skip)
         batch_menu.addSeparator()
         batch_menu.addAction(self.action_run)
@@ -263,7 +255,6 @@ class MainWindow(QMainWindow):
             (
                 self.action_add_turnover,
                 self.action_scan,
-                self.action_ingest,
                 self.action_run,
                 self.action_stop,
             ),
@@ -293,13 +284,14 @@ class MainWindow(QMainWindow):
         """
         self.shot_model = ShotListModel(self)
         self.shot_list = ShotListView(self.shot_model, self)
+        self.shot_list.rescan_requested.connect(lambda turnover: self.rescan([turnover]))
+        self.shot_list.relocate_requested.connect(self.relocate_turnover)
         self.autosave = AutoSaver(self)
         self.shot_model.row_edited.connect(lambda _row: self.autosave.schedule())
         # A commit re-runs that row's rules (M5.3), so what the dock is showing about
         # that row is what just changed. Rebuilt whole: the results are a list short
         # enough that finding the ones that moved costs more than redrawing them.
         self.shot_model.row_edited.connect(lambda _row: self.show_results())
-        self._camdata_cache: dict[Path, dict[str, str]] = {}
         self.autosave.saved.connect(lambda path: self.statusBar().showMessage(f"Saved {path.name}"))
         self.batch_bar = BatchBar(self)
         self.batch_bar.display_mode_picked.connect(self.set_display_mode)
@@ -335,6 +327,10 @@ class MainWindow(QMainWindow):
 
         self._batch_path: Path | None = None
         self._batch_open = False
+        self._scanning_into: Batch | None = None
+        """The batch a scan in flight belongs to. Its results go nowhere else (F13)."""
+        self._rescanning: dict[str, tuple[Turnover, list[ShotRow]]] = {}
+        """Turnovers being scanned again, with what they held, for `scan.carry_over`."""
 
     # --- the batch lifecycle ----------------------------------------------------------
 
@@ -353,7 +349,6 @@ class MainWindow(QMainWindow):
         self._batch_open = True
         self.batch_bar.set_batch_name(batch.name)
         self.batch_bar.show_delivery_root(batch.delivery_root)
-        self._camdata_cache.clear()
         self.show_results()
         self.pages.setCurrentIndex(1)
         self.update_state()
@@ -390,7 +385,7 @@ class MainWindow(QMainWindow):
         delivery was checked against is a record of that work, so changing the defaults
         next month must not silently re-judge a batch that shipped last week.
         """
-        if not self._may_abandon_current():
+        if self._busy() or not self._may_abandon_current():
             return
         batch = Batch()
         if self._settings.rules:
@@ -403,7 +398,7 @@ class MainWindow(QMainWindow):
 
     def open_batch(self) -> None:
         """Read a `.pibatch`, back it up, and check that its two roots are still there."""
-        if not self._may_abandon_current():
+        if self._busy() or not self._may_abandon_current():
             return
         path = self.ask_open_path()
         if path is None:
@@ -421,6 +416,8 @@ class MainWindow(QMainWindow):
         except OSError as exc:
             self.report_problem("Could not back up batch", f"{path.name} was not opened: {exc}")
             return
+        # A moved turnover says so on its heading before anything else is asked (D16).
+        qc.check_folders(loaded)
         self.set_batch(loaded, path)
         self._check_roots(loaded)
 
@@ -461,6 +458,8 @@ class MainWindow(QMainWindow):
         as its own copy, and the checks re-run so the list and the Issues dock describe
         the batch under the numbers that are now in force.
         """
+        if self._busy():
+            return
         dialog = self.settings_dialog()
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
@@ -496,8 +495,8 @@ class MainWindow(QMainWindow):
             return qc.RuleSettings()
 
     def choose_delivery_root(self) -> None:
-        """The batch bar's path, click to change (UI_SPEC section 13)."""
-        if not self._batch_open:
+        """The batch bar's path, click to change (UI_SPEC section 13). Locked while busy (D15)."""
+        if not self._batch_open or self._busy():
             return
         chosen = self.ask_folder("Delivery root", self.batch.delivery_root)
         if chosen is None:
@@ -505,6 +504,10 @@ class MainWindow(QMainWindow):
         self.batch.delivery_root = chosen
         self.batch_bar.show_delivery_root(chosen)
         self.autosave.schedule()
+
+    def _busy(self) -> bool:
+        """A scan or a run in hand: the batch is locked until it ends (D15)."""
+        return self.scanner.busy or self.run.busy
 
     def _may_abandon_current(self) -> bool:
         """Write or discard what the open batch still owes, and say whether to go on."""
@@ -551,7 +554,7 @@ class MainWindow(QMainWindow):
         Adding from outside the source root is allowed and moves the root, because the
         root is a starting point and not a fence (UI_SPEC section 13).
         """
-        if not self._batch_open or self.scanner.busy:
+        if not self._batch_open or self._busy():
             return
         folder = self.ask_folder("Add Turnover", self.batch.source_root)
         if folder is None:
@@ -562,21 +565,36 @@ class MainWindow(QMainWindow):
         self.batch.source_root = folder.parent
         self._scan([(folder, scan.next_turnover_id(self.batch))])
 
-    def scan_unscanned(self) -> None:
-        """Scan the turnovers that have no rows. The retry, and nothing else.
+    def rescan_all(self) -> None:
+        """Scan: read every turnover again, keeping what the editor did (D8)."""
+        self.rescan(list(self.batch.turnovers) if self._batch_open else [])
 
-        **A turnover that has rows is never re-scanned here**, because a scan rebuilds
-        rows and the rows carry the editor's In/Out, shot code and notes. What this is
-        for is the turnover whose mount was down or whose timeline had not finished
-        downloading: fix it, press Scan, and it fills in. Re-scanning a scanned turnover
-        without discarding the edits on it is OQ-48.
+    def rescan(self, turnovers: list[Turnover]) -> None:
+        """Read these turnovers again where they are, carrying the edits over.
+
+        How a correction reaches the batch (D8): the editor drops the fixed EDL, CSV or
+        clip into the folder and re-scans. What the editor did to the rows - trims,
+        skips, notes, shot code corrections, delivered state - is carried over by File
+        Name (`scan.carry_over`), and QC-070 says so when the EDL or CSV changed.
         """
-        if not self._batch_open or self.scanner.busy:
+        if not self._batch_open or self._busy() or not turnovers:
             return
-        self._scan([(t.folder, t.turnover_id) for t in self._unscanned()])
+        for turnover in turnovers:
+            self._rescanning[turnover.turnover_id] = (
+                turnover,
+                list(self.batch.rows_for(turnover.turnover_id)),
+            )
+        self._scan([(turnover.folder, turnover.turnover_id) for turnover in turnovers])
 
-    def _unscanned(self) -> list[Turnover]:
-        return [t for t in self.batch.turnovers if not self.batch.rows_for(t.turnover_id)]
+    def relocate_turnover(self, turnover: Turnover) -> None:
+        """A turnover heading's New Folder Location: re-scan it from where it went (D16)."""
+        if not self._batch_open or self._busy():
+            return
+        folder = self.ask_folder("New Folder Location", turnover.folder.parent)
+        if folder is None:
+            return
+        self._rescanning[turnover.turnover_id] = (turnover, list(self.batch.rows_for(turnover.turnover_id)))
+        self._scan([(folder, turnover.turnover_id)])
 
     def _scan(self, folders: list[tuple[Path, str]]) -> None:
         """Hand the folders to the worker thread and show that something is happening."""
@@ -590,8 +608,9 @@ class MainWindow(QMainWindow):
         )
         self.progress.setRange(0, 0)
         self.progress.setVisible(True)
-        self.update_state()
+        self._scanning_into = self.batch
         self.scanner.start(folders, settings, self.batch.probe_cache)
+        self.update_state()
 
     def _say_scanning(self, folder: Path) -> None:
         self.statusBar().showMessage(f"Scanning {folder.name}...")
@@ -604,11 +623,23 @@ class MainWindow(QMainWindow):
         The probe cache is merged rather than replaced: the worker started from a copy,
         so anything the UI thread learned meanwhile is still ours to keep.
 
+        A turnover scanned again replaces the one it was, rows and all, with the edits
+        carried over. **A re-scan that found no rows keeps the rows it had**: the folder
+        is missing its EDL or CSV, the new turnover's QC says so, and the editor's work
+        is still there for the scan that follows the fix.
+
         QC-011 is the reason the batch rules re-run rather than only the new rows': a
-        duplicate clip name is a fact about every row in the batch, and a turnover
-        arriving can create one in a turnover that was already there.
+        duplicate is a fact about every row in the batch.
         """
         batch = self.batch
+        if self._scanning_into is not None and batch is not self._scanning_into:
+            log.warning("a scan of %s finished after its batch was closed; dropped", turnover.folder)
+            return
+        previous = self._rescanning.pop(turnover.turnover_id, None)
+        if previous is not None and rows:
+            old, old_rows = previous
+            scan.carry_over(old, old_rows, turnover, rows)
+            batch.rows = [row for row in batch.rows if row.turnover_id != turnover.turnover_id]
         existing = next(
             (i for i, t in enumerate(batch.turnovers) if t.turnover_id == turnover.turnover_id),
             None,
@@ -616,8 +647,6 @@ class MainWindow(QMainWindow):
         if existing is None:
             batch.turnovers.append(turnover)
         else:
-            # Only a turnover with no rows is ever scanned twice, so there is nothing to
-            # take out of `batch.rows` here: what is replaced is the turnover's own QC.
             batch.turnovers[existing] = turnover
         batch.rows.extend(rows)
         batch.probe_cache.update(probe_cache)
@@ -626,14 +655,14 @@ class MainWindow(QMainWindow):
         self.show_results()
         self.autosave.schedule()
         self.update_state()
-        # Last, with the rows on the model: a session exported by convention is offered
-        # now rather than left for a toolbar button the editor has to know to press.
-        color_session.offer_found(self, turnover)
 
     def _scan_finished(self) -> None:
+        self._rescanning.clear()
+        self._scanning_into = None
         self.progress.setVisible(False)
         self.progress.setRange(0, 100)
-        self.statusBar().showMessage(f"{len(self.batch.rows)} shots")
+        if self._batch_open:
+            self.statusBar().showMessage(f"{len(self.batch.rows)} shots")
         self.update_state()
 
     # --- what is enabled, and what the centre shows -----------------------------------
@@ -649,18 +678,23 @@ class MainWindow(QMainWindow):
         scanning = self.scanner.busy
         running = self.run.busy
         busy = scanning or running
-        for action in (self.action_cycle_display, self.action_find, self.action_toggle_skip):
+        # D15: nothing that changes the batch while a scan or a run has it in hand. A
+        # trim or a delivery root changed during a run changes the reports and not the
+        # render (F14); New or Open during a scan took its result into another batch (F13).
+        self.shot_model.set_locked(busy)
+        for action in (self.action_cycle_display, self.action_find):
             action.setEnabled(open_batch)
+        self.action_toggle_skip.setEnabled(open_batch and not busy)
         self.action_save.setEnabled(open_batch)
         self.action_add_turnover.setEnabled(open_batch and not busy)
-        self.action_scan.setEnabled(open_batch and not busy and bool(self._unscanned()))
-        self.action_ingest.setEnabled(open_batch and not busy and bool(self.batch.rows))
-        # New and Open swap the batch the run is writing into, so they go with it.
-        self.action_new.setEnabled(not running)
-        self.action_open.setEnabled(not running)
+        self.action_scan.setEnabled(open_batch and not busy and bool(self.batch.turnovers))
+        self.action_new.setEnabled(not busy)
+        self.action_open.setEnabled(not busy)
+        self.action_settings.setEnabled(not busy)
+        self.batch_bar.delivery_root.setEnabled(not busy)
         self.action_run.setEnabled(open_batch and not busy and bool(self.batch.rows))
         self.action_export.setEnabled(open_batch and not busy and bool(self.batch.rows))
-        self.action_stop.setEnabled(running and not self.run.cancelled)
+        self.action_stop.setEnabled(self.run.stoppable)
         self._refresh_tooltips(open_batch=open_batch, scanning=scanning, running=running)
 
         if not open_batch:
@@ -686,7 +720,7 @@ class MainWindow(QMainWindow):
         state = toolbar_help.ToolbarState(
             batch_open=open_batch,
             has_rows=open_batch and bool(self.batch.rows),
-            has_unscanned=open_batch and bool(self._unscanned()),
+            has_turnovers=open_batch and bool(self.batch.turnovers),
             has_session=open_batch and any(t.color_session_edl is not None for t in self.batch.turnovers),
             scanning=scanning,
             rendering=running,
@@ -789,51 +823,6 @@ class MainWindow(QMainWindow):
         chosen = QFileDialog.getExistingDirectory(self, title, self._start_folder(start))
         return self._remember(Path(chosen)) if chosen else None
 
-    def ask_edl_path(self) -> Path | None:
-        """Which final EDL to ingest. The editor points at the EDL, not the folder.
-
-        It opens at the colour session folder Settings remembers rather than at the
-        batch's source root: a session and a turnover live nowhere near each other on
-        the mount, which is why that setting exists (FR-12).
-        """
-        start = self._settings.color_session_folder or self._settings.last_folder
-        chosen, _filter = QFileDialog.getOpenFileName(self, "Ingest Colour Session", start, EDL_FILTER)
-        return Path(chosen) if chosen else None
-
-    def ask_turnover(self, turnovers: Sequence[Turnover]) -> Turnover | None:
-        """Which turnover, when the selection does not say. Folder names, not ids.
-
-        The folder is what the editor picked in Add Turnover and what the session was
-        exported for; `turnover001` is the tool's own handle for it.
-        """
-        names = color_session.turnover_labels(turnovers)
-        chosen, accepted = QInputDialog.getItem(
-            self, "Ingest Colour Session", color_session.WHICH_TURNOVER, names, 0, False
-        )
-        if not accepted:
-            return None
-        return turnovers[names.index(chosen)]
-
-    def ask_ingest_found(self, turnover: Turnover, folder: Path) -> bool:
-        """A session found beside the turnover: ingest it now, or not (section 15)."""
-        answer = QMessageBox.question(
-            self,
-            color_session.SESSION_FOUND_TITLE,
-            color_session.SESSION_FOUND.format(name=turnover.folder.name, folder=folder),
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.Yes,
-        )
-        return answer == QMessageBox.StandardButton.Yes
-
-    def report_ingest(self, text: str) -> None:
-        """What the ingest did. A modal, because it is the answer to one just opened.
-
-        Not the review UI_SPEC section 1 keeps modals out of: every list in it is
-        something to act on now - a row with no event will not render - and the
-        alternative is a status bar line that is gone before it has been read.
-        """
-        QMessageBox.information(self, color_session.INGEST_TITLE, text)
-
     def ask_unsaved(self) -> QMessageBox.StandardButton:
         """Save, Discard or Cancel, for edits that could not be written."""
         return QMessageBox.warning(
@@ -925,7 +914,7 @@ class MainWindow(QMainWindow):
         # redrawn here rather than from a fourth set of signals that would drift.
         self.deliverables.show_rows(rows)
         if rows:
-            sections = metadata.describe(rows, self.batch, self._camdata)
+            sections = metadata.describe(rows, self.batch)
             summary = metadata.selection_summary(len(rows)) if len(rows) > 1 else ""
             self.metadata.show_sections(sections, summary)
             return
@@ -934,23 +923,6 @@ class MainWindow(QMainWindow):
             self.metadata.show_sections(metadata.describe_turnover(turnover, self.batch.project_rate))
             return
         self.metadata.clear()
-
-    def _camdata(self, path: Path) -> dict[str, str]:
-        """camData's key/values, read once per file per batch (CLAUDE.md: scan once).
-
-        The only field in the pane that lives on disk rather than in the model, and the
-        pane is redrawn on every selection change, so an uncached read would be a round
-        trip to a Drive mount per arrow key. Unreadable reads as empty: QC-053 already
-        says so in the Issues dock and the pane is not the place to say it twice.
-        """
-        cached = self._camdata_cache.get(path)
-        if cached is None:
-            try:
-                cached = camdata.parse(path)
-            except OSError:
-                cached = {}
-            self._camdata_cache[path] = cached
-        return cached
 
     def _show_issue(self, rule_id: str) -> None:
         """A rule ID clicked in the pane: bring the Issues dock forward (section 12.2)."""

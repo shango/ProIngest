@@ -8,11 +8,531 @@ commit.
 
 ## 1. Resume here
 
-**State at 2026-09-16. Every feature milestone is built, and so is packaging.** M1 to M4
-complete, M4.5 all four chunks, M4.6 all five, **M5 all twelve**, **M7**, and **M9.4**.
-**1730 tests**, `ruff`, `ruff format` and `mypy --strict` clean over `proingest tests build`.
-What is left is **M8 polish** (needs a real turnover and a real colour session) and the rest
-of **M9, the user guide**.
+**State at 2026-09-23, version 0.5.0. The review of 2026-09-23 is worked through: chunks A to
+H of `docs/REVIEW_2026-09-23.md` section 5 are all built**, each in its own commit with the entry
+below. The real turnover, `Turnover199`, scans with no must-fix and renders every deliverable.
+What is left is the Mac: `docs/MAC_SESSION.md`, "The 0.5.0 build, in order", starting with the
+acceptance test on the editor's machine. The branch `color/cdl-in-acescct` is pushed for the
+0.5.0 release; CI builds `ProIngest-0.5.0.dmg` on PR #12 (the workflow runs on pull requests, not
+on a branch push). The entries below are newest first; anything
+older than 2026-09-22 describes the tool before the review and is history.
+
+**2026-09-23, release prep for 0.5.0.** Two of chunk H's open items closed, both stale text.
+**QC-043's message** said an edited row's wav is delivered untrimmed; since D2 the wav is cut to
+the edited range, so the message now says the wav is padded with silence (edited past the
+recorded sound) or cut (edited inside it), with a test for each. **The docs** (QC_RULES 043, 120,
+121; COLOR_AND_FORMAT section 3's audio line) no longer call the wav a byte copy, which it is now
+only on a row with no range. **PRD FR-10** now describes the log's two In/Out pairs, Delivered and
+Final: the code was right, since the colourist's export became the turnover the shooters' range
+and the approved range are one range. **Still open**: OQ-63 (refuse an M2 motion effect) and
+non-square pixels when letterboxing; neither affects `Turnover199`. **Verified**: the suite (1623).
+
+**2026-09-23, chunk H: cleanup, docs, and 0.5.0.** **Dead code out**: `clf.ingest` and
+`IngestReport`, `proingest run --color-session` (the scan reads the EDL; a scanned batch is
+graded), `naming.parse_clip_name` and its BTS pattern (now `tests/fixtures/names.identity_of`,
+the tests' shorthand), `qc.check_timeline_rate` (QC-025 was already retired), `ffmpeg.has_nvenc`,
+`media.url_to_path`, `DirectoryIndex.containing`, `naming.turnovers_dir`,
+`frames.output_frame_for`, the `color_session_folder` setting, and **the `opentimelineio` and
+`otio-cmx3600-adapter` dependencies** with their bundling (`build/bundle.py`, PACKAGING.md;
+CLAUDE.md's frame math rule no longer names otio). **`ffmpeg.tool_info` was not dead**: PACKAGING
+wants the ffmpeg version in every QC log and nothing put it there; the Summary sheet now does.
+**The QC log's Shots sheet has a Notes column**, which UI_SPEC section 2 and D14 promised.
+QC-041's message now says what the scan does (several matching wavs: none used). **Docs**:
+ARCHITECTURE.md's module list is rewritten from the files; PRD, UI_SPEC, NAMING_SPEC, QC_RULES and
+the guide no longer describe side files, BTS, the lens grid, the stringout, a timeline input or
+the ingest step. `HANDOFF.md` is deleted and section 1 opens on today's state. **0.5.0** in the
+four places, `uv.lock` relocked. `docs/MAC_SESSION.md` opens the Mac work with "The 0.5.0
+build, in order". **Verified**: the suite, and on `Turnover199` the CLI reports 0.5.0, plans
+nothing on a complete batch, and writes a QC log naming the ffmpeg build. **Left open**: PRD
+FR-10's three In/Out columns against the log's two, QC-043/120/121 still describing the wav as a
+byte copy, and FR-1's "refuse an M2 motion effect" (OQ-63), which is not built.
+
+**2026-09-23, chunk D: failure and re-run.** **A deliverable is verified on its temp and renamed
+only when it passes** (D11, F11): `render_job` runs phase B on a copy of the job pointed at the
+`.part` (`DeliverableJob.display_name` keeps the messages on the final name), and a failure deletes
+the temp. **The `.failed` sidecar is gone**, with `batchfile.FAILED_MARKER`. **What the last run
+left decides the next** (`planner._prior_state`, D12): complete rows are skipped with QC-061,
+now built; what a stopped run never wrote, or a landed file deleted since, runs at the same
+version; a row with a failed output waits for right-click **Reset** (`qc.reset_row`), which runs
+what failed at the same version; right-click **Re-run** (`ShotRow.rerun`) writes the next version.
+**A worker that dies costs only what was in flight** (F12): `execute` keeps every result already
+in and gives the lost jobs one more pool. **Measured on `Turnover199`**: a SIGKILL of one worker
+25 s into a re-run of the plate lost all five in-flight jobs to the broken pool, which is why the
+second pool exists; with it all five landed at v02 and nothing was left under `.part`. A complete
+batch re-run plans nothing. **Next: H.**
+
+**2026-09-23, chunk C: the two QC tiers, and the correctness findings.** **Any must-fix anywhere
+stops the run** (D8, D9): `qc.must_fix` lists every error in the batch, its turnovers and every
+row that is not skipped, each with where it is, and Run and `proingest run` both refuse on it.
+The held-back turnover (M5.7.1, `qc.blocked_turnovers`, `plan_batch(skip_turnovers=)`) is gone.
+Phase B is not tiered. **Rules moved to section 4's tiers**: QC-004, QC-029, QC-063 (a shortfall;
+an unreadable mount stays a warning) and QC-065 are errors, QC-020 is a warning (F21). **QC-011 is
+keyed on shot code, type and index** and is an error (D6, F2); the list recounts it after a shot
+code edit or a skip. **QC-027 is raised** for drop-frame timecode (`MediaInfo.drop_frame`, F24).
+**00:00:00:00 is a timecode** (F8). **QC-040 counts embedded audio** (F20). **QC-151 compares shot
+code and element** (F22). **The show pattern travels on the job** so QC-102 reads names back with it,
+and `scan`, `run` and `qc` take `--show-pattern` (F23). **Case**: `.EDL`, `.CSV`, column names and
+`File Name` match in any case, and a `Shot` that only parses upper-cased is upper-cased (F27).
+QC-016 is retired. **Verified on `Turnover199`**: no must-fix; QC-040 gone. **My call, flagged to
+the user**: a skipped row's errors do not block, since it renders nothing. **Next: D, then H.**
+
+**2026-09-23, chunk E: locks and recovery.** **The batch is locked while a scan or a run has it**
+(D15): `ShotListModel.set_locked` refuses every edit, and New, Open, Settings, Skip, Add Turnover,
+Scan and the delivery root wait (F13, F14). A scan's result is dropped if its batch was replaced.
+**A run's disk work is off the UI thread** (F17): the pre-flight, the plan and both spreadsheets
+go through `ui/background.py`, one step at a time, each answer back on the UI thread; the window
+tests use its `Inline` twin and `tests/test_background.py` tests the thread. **Every spreadsheet
+line drops the control characters openpyxl refuses** (`exports._append`), and any error from
+the export is reported rather than escaping (F15). **Closing on a hung run** waits live for the
+results as before, then `Runner.shutdown` gives the pool 5 s and ends its workers instead of
+freezing the window for two more minutes (F18). **Scan re-scans every turnover and keeps the
+editor's work** by File Name (`scan.carry_over`, D8); a header's right-click offers Re-scan and
+New Folder Location (D16). A moved turnover is **QC-069** on opening and in the pre-flight; a
+changed EDL or CSV on a re-scan is **QC-070** (`Turnover.edl_digest`, `csv_digest`). **Ingest
+Colour Session is removed** (`ui/color_session.py`, the old chunk 5c), and OQ-48 is answered.
+**Verified on `Turnover199`**: moved, QC-069 raised, re-scanned from the new place with a trim and
+a skip carried over; an edited EDL raised QC-070. **Left for C**: the held-back-turnover run
+(every must-fix blocks the run, D8). **Left for H**: `proingest run --color-session`,
+`clf.ingest`, and the `color_session_folder` setting the Settings page still shows. **Next: C,
+D, H.** The branch is **not pushed**.
+
+**2026-09-23, chunk G: colour and format.** **Every decode states its matrix and range**
+(`ffmpeg.to_rgb`): the file's own when it states them, else BT.709 (D17, provisional) and
+limited. The real files state full range and no matrix, so they were decoded as BT.601 until
+now. **The reference states BT.709 on the way out too** (`ffmpeg.REFERENCE_TO_YUV`): Y of pure
+red measured 81 (BT.601) under a BT.709 tag, now 63. `MediaInfo` carries the four colour tags
+(additive, no schema move) and **QC-018 is built** as an info saying which matrix was used.
+**A source of another shape is letterboxed, not stretched** (`resize.fit_inside`,
+`resize.letterbox`, `ffmpeg.pad_filter`): the EXR's bars are added after the colour chain, so
+they are linear zero. QC-024 is retired. **Half float is clamped at 65504** rather than cast to
+inf (`exr.HALF_MAX`). Non-square pixels are not handled and are written down in
+COLOR_AND_FORMAT section 4. **Verified on `Turnover199`**: 12 written, 0 failed, a QC-018 info on
+each row. A by-eye check against Resolve is in `docs/MAC_SESSION.md`. **Next: chunk E, then C,
+D, H.**
+
+**2026-09-23, chunk F: the shot tracker is one line per shot code.** `exports.tracker_rows`
+groups the batch's rows by shot code and writes one line per code, described by the shot's main
+plate (the `pl` with the lowest index): Plate Video is its HD reference, PLATES its 4K and HD
+sequences, Shot Audio? its wav. **Only rows that landed count**: skipped, blocked, cancelled and
+failed rows contribute nothing, where before a cancelled run still ticked plates it never wrote.
+**FPS is always `24`**, since everything is delivered at 24. The studio's dash glyph is written as
+`\u2014` so the source carries no em dash. **Verified on `Turnover199`**: five rows, one tracker line,
+`TEST0002_pl01_ref_HD_v01.mp4`, both plates ticked, 24, audio ticked. `QC_RULES.md`'s tracker table
+follows. **Next: chunks E and G** (`docs/REVIEW_2026-09-23.md` section 5). The branch is **not pushed**: the push was refused by the permission check and the
+user was asked to run it.
+
+**2026-09-23, chunk B and version 0.4.0: every deliverable is written at 24, and the real turnover
+renders.** **QC-026 is silent at 24000/1001** against the project's 24 (`qc._pulled_down`, exact),
+and any other rate is still an error: the user made 25 or 30 a must-fix. **The reference encode reads
+a container with `-r 24` on the input**, which delivers the same frames bit for bit at 24/1;
+restamping after the trim with `setpts` was tried first and left the encoder at 23.976. **The mp4's
+timecode is the In frame's** (`-timecode`), not the head of the handles. **The wav is cut to the
+plate** and sped up by `rate / source_rate` (1.001) with `atempo`, so it is exactly the plate's
+length at 24 (QC-120 now checks that, integer samples, one either way). **Verified on `Turnover199` with the real EDL: 12 written, 0 failed, 0 errors**, `pl01` 4k reference 232 frames at 24/1 with timecode 09:37:03:18, the wav 464000 samples, the EXRs 1001 to 1232. **1619 tests**, `ruff`, `ruff format` and `mypy --strict` clean. `DeliverableJob` grew
+`source_rate`, the rate the file's own frames and sound run at, which only audio timing reads.
+**Version 0.4.0** in `pyproject.toml`, `proingest/__init__.py`, `build/build.py` and
+`docs/guide/install.md`, and **`uv.lock` is no longer stale** (it said 0.2.0). A line in
+`docs/MAC_SESSION.md` asks for the sync to be confirmed on the bundled ffmpeg 9.0.1.
+
+**2026-09-23, chunk A of `docs/REVIEW_2026-09-23.md`: an EDL event is matched by source timecode,
+and the real turnover now scans with the right cut and grade on every row.** `ColorSession.candidates`
+returns every event that could be a row's: a named event when `FROM CLIP NAME` agrees, an unnamed one
+when its whole source range sits inside the file's own timecode. **The reel is never read** and
+`MATCH_FIELD` and `_event_by_reel` are gone. The scan now matches all rows at once (`_conform_all`),
+because ambiguity is a cross-row fact: **new QC-067** (error) when two events fall inside one file or
+one event inside two, **new QC-068** (info, turnover) for an event no row claims. The parser keeps a
+picture event's comments across an `A` line under the same number, reads `W001` heads as events, and
+drops zero-length events. **Verified on `Turnover199` with Ben's real EDL**: `C0145` 24-255 (232),
+`C0152` 24-239 (216), the three stills at frame 24, a CDL on all five, and QC-026 the only blocker
+left, which is chunk B. **1613 tests**, `ruff`, `ruff format` and `mypy --strict` clean.
+
+**2026-09-23, newest: a full code, architecture and workflow review, and the user's answers to all
+of it. Read `docs/REVIEW_2026-09-23.md` first; its section 5 is now the plan.** Two things changed
+the ground. **(1) Ben's real EDL arrived** as `Turnover199/Turnover199.edl` and it carries **no
+`FROM CLIP NAME` on any event and reel `AX` on all five**, so `clf.MATCH_FIELD` and the reel fallback
+both miss and **every real row is QC-066 today** (measured). Source timecode matches all five
+unambiguously, 24 frames into each file with the `.drt`'s durations, so OQ-30 is answered: match by
+timecode containment. The parser itself read the events and CDLs correctly. **(2) Eighteen
+decisions (D1 to D18)**, among them: every source rendered at 24 frame for frame, 24000/1001 silent, 25 or 30 a must-fix;
+audio trimmed to the event and retimed 1000/1001; **the plate is the cut only** (`PRD.md:103` said
+the opposite and was corrected); stills use their event's frame, never a guess; an unrecognised
+`Shot Type` and a duplicate identity are must-fix; **two QC tiers, must-fix and info**, with the
+proposed assignment in section 4 **awaiting the user's line-by-line approval**; no `.failed`
+sidecar, a failed row names its output and is reset to re-run; one tracker line per shot code;
+BT.709 provisionally (OQ-60). Also found by running: reference mp4s fail QC-113 at 24000/1001, the
+reference timecode is the source start, and a deliverable is renamed before it is verified. The
+end-to-end trace landed 8 of 12 deliverables on the real media with QC-026 patched out in scratch.
+**`uv.lock` still pins `proingest` 0.2.0 against `pyproject.toml`'s 0.3.0**, so any `uv run`
+rewrites it; left for chunk H. **Docs only, 1605 tests.** `WORKFLOW.md` steps 17, 18, 22, 23, 25 and
+rules 5 and 6a, `PRD.md`, `UI_SPEC.md`, OQ-30 and OQ-60 now say what was decided. **The Build Track
+board is retired** (user, 2026-09-23): it was last published at version 78 and `build-track.html` is
+no longer updated, so section 8's description of it is historical.
+
+**2026-09-22, chunk 3: the scan is rebuilt on the handover folder, and it works on the real
+media.** `scan_turnover` now reads **one folder, one `.edl`, one `.csv`** and nothing else. **Rows
+come from CSV rows rather than timeline clips**, which is the whole of the change: `Shot Type` is
+the tool's scope, so a clip that carries one becomes a row and a clip that carries none is ignored
+and counted by **QC-064** at turnover scope. **The EDL is read at the scan** (OQ-74 collapsed the
+two-phase flow), so the approved In/Out and the CDL arrive with the row rather than in a later
+ingest. QC-001 now names which of the two files is missing; two of either is refused rather than
+chosen between, because choosing between two cuts is choosing a cut. **New QC-066** covers Q2's
+first half: a row with no event has no approved cut and no grade, which is an error on the row, and
+nothing reaches for the nearest event. The row still shows the media it found so it can be trimmed
+by hand. **`scan.SOURCE_ENCODING_KEY` is gone** and the encoding is the CSV's two fields joined in
+order. `Turnover.timeline_path` became **`edl_path` and `csv_path`**.
+
+**One real defect was found and fixed on the way.** `clf.ColorSession.event_for` compared the
+event's stem to the row's whole `clip_name`. That was right while a row was named `MELT0001_pl01`;
+a row is now named `C0145.MP4`, so **every match would have failed silently** and every row would
+have carried QC-066. It compares stem to stem now. This is exactly the failure OQ-30 is written
+about, and it was invisible until the real filenames went through it.
+
+**`proingest/core/timeline.py` and `tests/test_timeline.py` are deleted.** Nothing called them once
+rows stopped coming from a timeline: the EDL is read by `clf.read_final_edl` and OTIO read the
+`.otio` that never existed. **The `opentimelineio` dependency is now unused in `proingest/`** and
+is left in `pyproject.toml` and `build/bundle.py` for a follow-up, noted rather than done.
+
+**Verified on the real folder, twice.** `Turnover199/` alone gives one error that says exactly what
+is wrong: `QC-001: Ben's EDL is missing from Turnover199`. With a synthetic EDL written over the
+same five real clips, the scan produces **five rows with the right identities** (`TEST0002_pl01`,
+`colorChart01`, `mirrorBall01`, `greyBall01`, `cp01`), the EDL's approved cut on each
+(`InOut(24, 255)` on `C0145`, which is the 232 frames the `.drt` records), a CDL on every row, and
+`S-Log3 S-Gamut3.Cine` resolved on all five. **The only blocking QC left on that folder is QC-026 on
+every row**, which is Q1 and chunk 4. Two of the review's three blockers are gone. **1605 tests**,
+`ruff`, `ruff format` and `mypy --strict` clean.
+
+**2026-09-22, chunk 2: the identity model is `(shot_code, kind, index)`, and that was a shape
+change rather than a rename.** `ShotIdentity` was `(show, shot, elem_type, elem_index, aux,
+aux_index)`, which hung a reference still off an element. In the CSV `colorChart` is a **peer** of
+`pl01`, so the still now stands on its own: `CLIP_TYPES` holds plates and stills in one tuple, a
+still is keyed to the shot code, and `aux_still_exr` builds
+**`MELT0001_colorChart_01_4k_v01.exr`** with no element segment - `_output_patterns`' `aux_still`
+row moved with it, because QC-151 round-trips the two. **`ShotIdentity.stem` raises for a still**
+rather than returning `MELT0001_colorChart01`, a name nothing writes: a still that cannot be named
+beats one named plausibly wrong, which is this project's recurring failure mode. `show` is derived
+off the shot code rather than carried, since the grammar is letters then four digits and two copies
+could disagree. `effective_identity` lost its premise that the element comes from the clip name.
+**`parse_clip_name` survives, deliberately, and returns the new shape**: nothing in the real
+workflow reaches it, and keeping it until chunk 3 rebuilds the scan is what keeps one commit green
+instead of two. Its docstring says so and `docs/NAMING_SPEC.md` section 1 records it. **1653
+tests**, `ruff`, `ruff format` and `mypy --strict` clean.
+
+**2026-09-22, chunk 5b: there is no per-shot grade file anywhere in the code.** The CDL on the
+EDL event is the whole grade (user, 2026-09-22, "no `.cube`, anywhere"), and what that removed is
+larger than a file type. Gone from `clf.py`: `GRADE_EXTENSIONS`, `LoadedClf`, `load_clf`,
+`clf_digest`, `index_clfs`, `ColorSession.clfs` and `clf_for`, `AmbiguousClfError`, and
+**`_probe_grade_only` with `TONE_MAP_STEP_FLOOR`, `LOG_WHITE` and `LOG_NEAR_WHITE`** - the probe
+that asked whether a cube had a display rendering baked into it, which was the sharpest check in the
+tool and has nothing left to check. **QC-019 and QC-039 are retired with it**, and QC-009's message
+no longer offers "no CDL and no cube". `ShotColor` lost `clf_path` and `load()`, so
+`plate_transforms()` and `view_transforms()` take no argument and a worker no longer reads a file
+per job. **The EXR header lost `proingest/clf` and `proingest/clf_hash`**, and `proingest/cdl_note`
+now has only one thing it can say, the CDL always being what was applied. `ShotRow.clf_path` is
+gone, with the QC log's **Grade file** column and the metadata pane's field.
+
+**The batch schema is version 2** and a version 1 file is **refused rather than migrated**
+(TO_A_WORKING_BUILD.md Q5). The refusal already existed and says what it is; the bump is one line.
+**This is the assumption to correct if it is wrong**: it is the right call only because no real
+`.pibatch` exists yet, so say so if one does.
+
+**`clf.find_session`, `session_folders` and `SESSION_FOLDER` went too**, with the post-scan offer in
+the window (M5.13): OQ-53's `_color` convention is dissolved rather than superseded, so its removal
+does not wait on chunk 3. The Settings field survives as what it always also was, where the Ingest
+chooser opens. **The two UI pieces that do wait for chunk 3 are the held-back turnover (M5.7.1) and
+normal-case ingest (M5.7.3).** **1652 tests**, `ruff`, `ruff format` and `mypy --strict` clean.
+
+**2026-09-22, chunk 5a: the deliverables that are no longer deliverables are out of the code.**
+`Shot Type` is the whole of the tool's scope, so anything that never carries one is not the tool's
+to deliver. Gone: **the HDRI and camData side files** (`models.SideFiles` and its whole plumbing,
+the scan's `*HDRI*.exr` / `*camData*` discovery, `core/camdata.py` and `tests/test_camdata.py`,
+QC-050 to QC-053 and the planner's copy jobs), **BTS** (the planner branch, QC-056, the naming
+templates), **the lens grid** (`LensGridIdentity`, `parse_lens_grid_name`, `lens_grid_png`,
+QC-054 and QC-057 - Ben delivers it, OQ-20), and **the stringout** (`naming.stringout_mp4`,
+`normalize_shooter`, `Turnover.has_stringout_fields`, which no production code called). **QC-130
+went with them**: it checked a byte copy under a delivery name and the tool no longer makes one, so
+`render._render_copy`, `qc._verify_copy` and `COPY_KINDS` are gone and the job kinds are down to
+`raw_dir`, `ref_mp4`, `audio`, `aux_still`. **The QC log is three sheets, not five**: Side Files and
+Camera Data went with what they described. **The shot list lost its Side column** and the metadata
+pane its Side files section, along with `main_window`'s camData cache. **The tracker keeps the
+studio's HDRI and CAM Data columns and leaves them empty**, which is the honest answer: the studio's
+sheet still marks both Required and they still reach the vendor, they just no longer pass through
+this tool. **1712 tests** (1802 before, and the drop is entirely tests for things that no longer
+exist), `ruff`, `ruff format` and `mypy --strict` clean.
+
+**Two deviations from the plan's order, both deliberate.** Chunk 5 is being done **before** chunk 2,
+because the identity reshape would otherwise have to carry `hdri_exr`, `camdata`, `bts` and
+`lens_grid_png` call sites that were about to be deleted anyway. And chunk 5 is **split**: 5a is
+this, 5b is the per-shot grade cube, which is woven through `clf.py`, the batch file schema, the EXR
+header and the QC log and wants its own commit. **The three pieces of dead UI - `_color` discovery,
+the held-back turnover, normal-case ingest - are deliberately left until after chunk 3**, because
+chunk 3 is what makes them dead; removing them first would leave a window where nothing checks that
+the grade arrived.
+
+**2026-09-22, the respec build starts: chunk 1 of `docs/TO_A_WORKING_BUILD.md` is in.**
+**`proingest/core/metacsv.py` is new and it is the first code this project has had that can read
+Ben's metadata CSV at all** - there was no `import csv`, no `utf-16` and no `Shot Type` anywhere in
+`proingest/` before it. It reads **identity and encoding and nothing else**, which is a rule rather
+than a scope note: the real file's `Frames` say 516 / 168 / 312 / 420 / 360 against delivered files
+of 280 / 49 / 49 / 49 / 248 and its `Clip Directory` points at the pre-consolidation originals, so
+`MetaRow` deliberately has no field a caller could read a duration, a frame count or a path out of,
+and a test asserts that absence. **`csv.reader`, never `csv.DictReader`**, because of the duplicate
+`Shot Type` column. **QC-065 is built**: the reader takes the column that resolves to a known clip
+type, prefers the later one where both resolve (Resolve writes its own fields before the custom
+set), and warns only when both resolve and disagree - one resolving and one not is the normal shape
+of a shooter using Resolve's built-in *framing* field as designed, so `Wide` beside `cp01` is
+silent. **QC-010 is narrowed to the half-filled row** as the rules doc already says: no `Shot Type`
+at all is an ignored clip for QC-064 to count, while a `Shot Type` nothing resolves to, or one with
+a blank or malformed `Shot`, is an error on a row that still appears so somebody can fix it.
+**`naming.parse_shot_type` landed here rather than in chunk 2**, stated as a deviation, because
+chunk 1's arbitration needs it: it is the seed of chunk 2's `(shot_code, kind, index)` model and
+carries the three reading rules - casefolded, a bare code means `01`, `cl` is written `cp`.
+**Verified on the real folder**: `Turnover199/Turnover199.csv` reads to five rows with `Shot Type`
+of `pl01`, `colorChart`, `mirrorBall`, `greyBall` and `cp01`, zero ignored, zero QC, and
+`color.resolve_encoding` returns `S-Log3 S-Gamut3.Cine` on all five. The committed tests are
+synthetic, because that folder is git-ignored. **1802 tests** (was 1739), `ruff`, `ruff format` and
+`mypy --strict` clean. **Q1 is asked and unanswered**; chunk 4 waits on it and nothing else does.
+
+**2026-09-22, latest: the sample folder is `Turnover199/` again, and the docs were brought back
+into line with it.** The user renamed `Turnover199_ForBEN/` back to **`Turnover199/`** and deleted
+`Turnover199.ale` and `.DS_Store` with the rename. The folder now holds five MP4s, `Turnover199.csv`
+and `Turnover199.drt`, and nothing else. **The ALE is gone from disk**, so
+`docs/SAMPLE_TURNOVER_199.md` section 8 is now its only record; a note at the head of that section
+says so, and marks the paths quoted inside it as verbatim evidence that is not to be renamed.
+**Fifteen stale `Turnover199_ForBEN` references across nine files were corrected.** Thirteen were
+plain paths and were renamed; four sentences that described the *replacement* were rewritten by hand,
+because a blind find-and-replace turns "X replaced Y" into "X replaced X"; two are quotations of the
+deleted ALE's `Source File Path` and were deliberately left. **`.gitignore` keeps both patterns**:
+`/Turnover199_ForBEN/` stays as a guard so a clone still carrying the old name cannot un-ignore
+775 MB into a `git add .`. **Re-verified on the renamed folder**: `find_timeline_files` returns `[]`,
+`scan_turnover` returns **0 rows** on `QC-001`, and `find . -iname "*.edl"` over the whole tree
+returns nothing - **the cut and the CDL still have no carrier in the sample**, which is Part 1.2 of
+`TO_A_WORKING_BUILD.md` and unchanged. **CI is green on `cab9ffa`** (run `35794121651`, all four
+jobs), and the dmg artifact `ProIngest-macos-arm64` is 107 MiB and downloadable until 2026-12-21.
+**`TEST0001/` at the repo root stays** (user, 2026-09-22): it is a **sample of the exported folder
+structure**, informational, not a turnover from anyone, and not an input to anything. It is nine
+empty directories named to the delivery spec. Note for whoever needs it to survive a fresh clone:
+it is untracked and **not** git-ignored, and git does not track empty directories, so today it
+exists only on this machine. **Docs only. No code changed, 1739 tests.**
+
+**2026-09-22, the plan: `docs/TO_A_WORKING_BUILD.md`.** The page a cold session should open first.
+Part 1 is what is needed from the user, Part 2 is seven chunks with a verification step each, Part 3
+is the shortest path if only some of Part 1 arrives. **Two things block a working build**: the
+**Q1** decision (what QC-026 should do at 23.976 - recommended: silent on a 1000/1001 relationship
+to the project rate, so a genuinely unconformed 25 or 30 fps file still errors), and **one real
+turnover folder as Ben hands it over**, media plus his EDL plus his CSV, because nothing in the EDL
+half of the tool has ever met a real file and `clf.MATCH_FIELD` matching on the wrong field silently
+applies a neighbouring clip's grade. Two more artifacts improve it rather than unblock it: one
+original camera file (OQ-60) and OQ-55's test export, which can arrive in the same folder. Everything
+else in Part 1 - Q2 to Q6, OQ-59, OQ-35 - carries a stated default and will be built to it.
+
+**2026-09-22, last: a code and architecture review, `docs/REVIEW_2026-09-22.md`.** Asked for by the
+user to quash assumptions about the workflow. **On `Turnover199` the tool today produces zero
+deliverables and three errors per row**, demonstrated rather than argued: `parse_clip_name` returns
+None on `C0145.MP4` (QC-010), `scan.SOURCE_ENCODING_KEY` is still `Input Color Space` and neither the
+CSV nor the container carries it (QC-046/047), and **QC-026 fires on every clip** because the
+delivered files state 24000/1001 while the project asserts 24. **That third one is a live spec
+defect, not staleness**: a Resolve conform is a timeline property and Copy with trim does not rewrite
+the file's rate, so QC-026 as specified is guaranteed to error on every clip of every Sony turnover,
+and `media.py`'s own docstring anticipates the shape of it while solving only the frame-math half.
+It is **Q1** and it wants a decision. Also recorded: **there is no CSV reader at all** (no `import
+csv`, no `utf-16`, no `Shot Type` anywhere in `proingest/`); **the identity model is structurally
+wrong** rather than stale, because `ShotIdentity` hangs a reference still off an element where the
+CSV makes `colorChart` a peer of `pl01`; **the EDL is read at the wrong time**, since `plan_batch`
+still documents the two-phase ingest OQ-74 collapsed; and **QC-018 cannot be built until `MediaInfo`
+grows colour fields**, which it has none of. Five more questions are open in section 3 of the review,
+none built to a default. **Still no code changed.**
+
+**2026-09-22, later: the tool's scope is now exactly `Shot Type`, and a second sample arrived with
+it filled in.** The alignment pass the user asked for produced five rulings, all recorded. **(1) The
+`_color` folder is gone**: OQ-53 is dissolved, and `WORKFLOW.md`, `COLOUR_SESSION_EXPORT.md` and
+`UI_SPEC.md` no longer describe a discovery convention, so M5.13's `clf.find_session` and its
+post-scan offer come out of the code. **(2) Ben produces and exports the final stringout, and the
+tool does nothing with it at all** - not built, read, transcoded, renamed or checked - which closes
+OQ-41 and removes `naming.stringout_mp4`. **The EDL is exported off that same stringout timeline**,
+so its events state the final clip durations by construction. **(3) No `.cube`, anywhere.**
+**(4) `Shot Type` is the whole of the tool's scope**: a row that carries one gets that type's
+deliverables, and **a clip with no `Shot Type` is ignored** rather than being QC-010. That drops
+HDRI, camData and BTS as deliverables (QC-050 to QC-053 and QC-056 retired, `core/camdata.py`
+removed), and the studio sheet marks HDRI and Camera Data **Required**, so they now reach the vendor
+without passing through this tool. New **QC-064** counts the ignored clips at turnover scope, because
+otherwise a turnover whose metadata was never filled in delivers nothing and says nothing.
+**(5) Ben delivers the lens grid**, closing OQ-20 and OQ-73(c) and retiring QC-054 and QC-057.
+
+**`Turnover199/` was re-exported with the metadata filled in** (git-ignored, its own `.gitignore` entry,
+`docs/SAMPLE_TURNOVER_199.md` section 7 is the durable record). Same five clips, re-exported `.drt`
+and CSV **with the metadata filled in**: `Shot` = `TEST0002`, and `Shot Type` = `pl01`,
+`colorChart`, `mirrorBall`, `greyBall`, `cp01`. Plates carry an explicit index and stills are bare,
+so "a bare code means `01`" is load bearing rather than lenient. **The CSV has 44 columns and
+`Shot Type` appears twice**: position 12 is Resolve's built-in, position 44 is a custom field the
+shooters created with the same name, proved out of the `.drt`'s field definitions. They agree here
+and nothing guarantees they agree next time, and Resolve's built-in `Shot Type` is a **framing**
+field, so a shooter using it as intended puts `Wide` in one and `pl01` in the other.
+**`csv.DictReader` silently keeps the last duplicate**, so the reader must take the column that
+resolves to a known clip type and QC the disagreement. `Shot Code` likewise duplicates `Shot`, and
+`Color Chart` / `VFX Grey Ball` / `VFX Mirror Ball` are Resolve built-in flags that agree with
+`Shot Type` on three of the four still types with **no `sizeRef` equivalent**. The **`.drt` carries
+the custom field names and none of the values** (all 75 hex blobs, 26 zstd frames decoded), so the
+CSV is the sole carrier on a second independent check. The shooters' custom field set also holds
+**`HDRI`, `BTS Images` and `Scans`**, all unfilled, plus four misspellings of their own
+(`Sensor Dimentions`, `Aputure Stop`, `Date Filmmed`, `Time Filmmed`) and six fields defined twice,
+which is how the `Shot Type` collision happened.
+
+**ALE was raised again as a live alternative and is now scoped** (OQ-75). Three of four unknowns are
+answered from the Resolve manual, Avid's EDL Manager guide and Pomfort: Resolve exports the CDL as
+`ASC_SOP` / `ASC_SAT` columns via **Timelines > Export > ALE and CDL**; it writes a column for every
+populated metadata field, and custom fields since **20.3** while the shooters run **21.1.0.0017**, so
+an ALE could replace the CSV outright; and an ALE carries **no record timecode**, so it is a clip log
+rather than a cut. **Then the user supplied a real ALE the same day and it is answered** (`SAMPLE_TURNOVER_199.md`
+section 8). **The ALE replaces the CSV and cannot replace the EDL.** 50 columns carrying `Shot`,
+`Shot Type`, `Gamma Notes`, `Color Space Notes`, `ASC_SOP`, `ASC_SAT`, `Shot Code` and a
+`Source File Path` that points at the delivered media, with **no duplicate column name**, so it beats
+the CSV on four counts. But **`End - Start` is the whole delivered file on all five clips** (280,
+248, 49, 49, 49, matching ffprobe) while the `.drt` beside it records `In` 24 and `Duration`
+232 / 216 / 1 on the same clips: **the export ignored a trim that existed in the same project**, and
+its rows are in timeline record order, so it was a timeline export that knew the cut and declined to
+state it. **Then the user skipped it**: "Let's skip the ALE" (OQ-75 closed, not adopted). The
+carriers stay as built - **Ben's EDL for the cut and the grade, Ben's CSV for identity and
+encoding**. It could not carry the cut, did not fix the misspelling problem it was wanted for (its
+only encoding columns are the same hand-typed `Gamma Notes` and `Color Space Notes`, and
+**`Input Color Space` is absent** because Ben's dropdown choice is a clip property rather than a
+metadata field), duplicated the CDL the EDL already has, and its timecodes are a hybrid - `Start`
+is the original clip's head with the delivered file's length, so it sits 43 to 167 frames before
+the delivered file's own TC, by a different amount per clip. What it did offer was one failure mode
+the CSV reader can handle itself, a stated frame rate, and `RESOLVE_SIZING`, identity on every clip
+here. **What would reopen it: Ben reframing shots**, since nothing else in the folder would show a
+lost reposition. **Recorded as an accepted gap rather than an oversight.** **Two findings survive the decision and are now load bearing, because the CSV is
+confirmed as the carrier rather than merely the incumbent.** First, the **duplicate `Shot Type`
+column** is now **QC-065**: Resolve's built-in at column 12 and the shooters' custom field of the
+same name at column 44, agreeing in this sample by luck, with the built-in being a *framing* field
+whose intended values are `Wide` and the like. The reader takes the column that resolves to a known
+clip type, prefers the custom field where both do, and warns when they differ; `csv.DictReader`
+silently keeps the last duplicate, which is why it is a named rule. Second, **the metadata CSV in
+that folder is stale.** Its `Clip Directory` points at
+the pre-consolidation originals and its `Frames` are 516 / 168 / 312 / 420 / 360 against delivered
+files of 280 / 49 / 49 / 49 / 248, so **nothing may read a duration, a frame count or a path out of
+a metadata CSV**; `File Name` still matches, so identity and encoding off it are still safe. Also:
+**tail handles are not reliably 24** (`C0152` has 8), and a reference still is **one timeline frame
+inside a 49-frame file**.
+
+**Docs only, again. No code has moved and the 1739 tests are untouched.** What is now stale in
+`proingest/` is everything the previous entry lists plus: the side-file discovery in `scan.py`,
+`core/camdata.py`, `naming.stringout_mp4`, `naming.lens_grid_png`, the BTS and HDRI planner
+branches, `clf.find_session` and the cube in `clf.py`.
+
+**2026-09-22: the user described the real workflow end to end, and every document was corrected
+to it in one pass. The code has not moved yet.** The user asked for the misinformation to be found
+and fixed; `docs/DOC_AUDIT_2026-09-21.md` is the finding list and records **58 stale claims across
+16 files**. What was wrong: the `.otio` was still the required input in 25 places including
+`PRD.md` and `CLAUDE.md`'s own description of the project; ProRes 4444 in 7; `Input Color Space` as
+the encoding field in 8; and identity coming from the clip name in 18. **The workflow as stated**:
+shooters debayer **only** where the camera system records RAW, to a basic file type with nothing
+baked in and no colours chosen; set every clip to 24.000; cut a stringout; fill `Shot`, `Shot Type`,
+`Gamma Notes` and `Color Space Notes`; then **Copy with trim, consolidating, not transcoding**.
+**Ben** does the final trims and the grade and exports **an EDL with the CDL and a metadata CSV**,
+and those sit **in the same folder as the media**. The tool does folders, filenames, every export
+format and the colour. Decisions taken along the way, all recorded: **there are no per-shot grade
+files** (the `.cube` is gone, QC-019 and QC-039 retired with it); **the project rate is 24 and the
+tool asserts it**, since a CMX 3600 EDL carries no frame rate and the `.drt` is not read; **`cp` is
+the clean-plate code** after the user corrected themselves twice (OQ-72 closed, no alias needed);
+**`Shot Type` names what the clip is** rather than only an element, over the vocabulary `pl`, `cp`,
+`el`, `wit`, `re`, `colorChart`, `mirrorBall`, `greyBall`, `sizeRef`, `BTS`, `lensgrid`; and
+**there is nothing to scan until Ben hands over the folder**, which collapses the two-phase flow
+(OQ-74) and retires OQ-53's `_color` discovery convention built in M5.13. `docs/WORKFLOW.md` was
+rewritten from scratch and is the page to read. **New questions**: OQ-73 (`raw` and `lensgrid` in
+the `Shot Type` list), OQ-75 (ALE instead of the CDL, deferred, raised by the user). **Three pieces
+of built UI now do nothing and should be removed**: the `_color` discovery (M5.13), the held-back
+turnover behaviour (M5.7.1), and normal-case ingest (M5.7.3, which survives only for a revised
+EDL). **1739 tests**, untouched: no code changed.
+
+**2026-09-21: OQ-70 is answered, the encoding carrier is verified end to end, and AMF was raised
+and deferred.** The user supplied an updated shooters' spec CSV and settled the identity question:
+**the shooters fill Resolve's `Shot Type` metadata field with the element code** (`pl` plate, `cl`
+clean, and so on) while `Shot` keeps the shot code, a bare code means index `01`, each shot code has
+exactly one of each reference still, and **parsing must be case insensitive** because the camel case
+is not kept. `docs/NAMING_SPEC.md` section 1 is rewritten to that contract. Two things in the new
+spec CSV change the build: **a reference still is now keyed to the shot code, not to an element**, so
+`MELT0001_colorChart_01_4k_v01.exr` replaces `MELT0001_pl01_colorChart_01_4k_v01.exr` and both
+directions of `naming.py` move with it; and the user's `cl` for clean plate contradicts the spec's own
+`cp01` everywhere, which is **OQ-72** and the one naming blocker left. The spec CSV also carries seven
+resolution typos (`3840x2161`, `3840x2162`) that must not be copied into a QC table. **The encoding
+chain is verified end to end**: `f"{Gamma Notes} {Color Space Notes}"` resolves to `S-Log3
+S-Gamut3.Cine` on all five sample rows with no new `INPUT_TRANSFORMS` row, order matters, and how much
+shooter sloppiness is safely absorbable is now a **proof**, since casefolding and stripping punctuation
+is injective over the pinned config (54 spaces, 166 names and aliases, zero collisions). What no parser
+can absorb is a valid name for the wrong space: `S-Gamut3` typed for `S-Gamut3.Cine` resolves silently
+and costs **2.17% mean, 41.8% peak** in ACEScg, so the rule stays exact-match-or-QC-047 and the CSV's
+own `Camera Manufacturer` and `Camera Type` become a warning cross-check that needs a QC ID. **OQ-60 was
+reproduced**: the default decode is bit-for-bit a BT.601 decode, differs from BT.709 on 99.35% of pixels,
+and is **1.94% mean, 21.3% peak** in ACEScg, so it remains the largest known defect and still waits on one
+original camera file. The `.drt` was re-decoded and **carries none of the metadata** (all 81 blobs
+searched), confirming the CSV is the sole carrier; the shooters run **Resolve 21.1.0.0017**; and the user
+ruled that **`Input Gamma` is ignored**. **AMF was raised as a direction and deferred the same day: the
+EDL stays and the CDL stays in it** (**OQ-71**, which records that Resolve 19.0.1 exports AMF with a VFX
+Request preset, that OCIO reads it only through a prototype, and that adopting it means borrowing
+`studio-config-v4.0.0`'s URN table rather than upgrading to it, since v4 deletes the `ACES 1.0 - SDR
+Video` view `color.VIEW` names). **Nothing was built**, by the rule; this entry, the OQ ledger, the naming
+spec and the sample page are the whole change. **1739 tests**, unchanged.
+
+**2026-09-19, later: the sample turnover arrived, and it answered the file-side questions
+in the direction the plan did not want.** The user dropped `Turnover199/` into the working tree
+(775 MB, now git-ignored): five Sony A7V clips as Resolve's Copy with trim wrote them, a `.drt`
+timeline and a Media Pool metadata CSV. **`docs/SAMPLE_TURNOVER_199.md` is the evidence page** and
+records how to read each file. What it settled: **the trimmed camera file carries no gamma or
+gamut metadata** (Resolve rewraps the MP4 and strips Sony's `rtmd` track; ffprobe reads every
+colour field `unknown`, only the range flag survives, full), so OQ-58's preferred route cannot be
+built; the encoding is named in **exactly one place**, the CSV's `Gamma Notes` = `S-Log3` and
+`Color Space Notes` = `S-Gamut3.Cine`, and who filled those fields is **OQ-68**, the user's to
+answer, because two sources say Resolve reads Sony MP4 acquisition metadata only through a script.
+**The decode is a matrix off, measured**: with no matrix declared ffmpeg decodes these UHD files
+as BT.601, and an explicit BT.709 decode differs on 97% of pixels, so OQ-60 is a blocker before
+any Sony plate ships. The `.drt` is the file Media Management writes beside trimmed media
+automatically (manual), and it carries the timeline rate (24.0), record positions, source starts
+and 24-frame handles that an EDL cannot, and no grade (OQ-57, OQ-68). Clip names were **not**
+renamed: the clip name is the camera filename with extension, the shot code sits in the `Shot`
+metadata field, and nothing carries the element type (OQ-62, now a question for the user). The
+files are 24000/1001 and Resolve's timeline is 24.000 with `IsForceConformed` on every clip
+(**OQ-69**). Three single-frame clips on the timeline confirm the stills half of OQ-4. **Nothing
+was built**, by the rule; `docs/OPEN_QUESTIONS.md` has OQ-58, 60, 61, 62, 57, 4, 19, 44 and 1
+amended and OQ-68, OQ-69 added; the review's ledger is updated in place. Still wanted from the
+user: OQ-68's four answers, one original camera file or its `M01.XML` sidecar, OQ-59's two
+decisions. **Then the user answered, the same evening**: Resolve exports the CSV and **the shooter types the encoding into `Gamma Notes` and `Color Space Notes` by hand**; the shooters conform every clip to 24.000 in Resolve from the camera's 23.98 before Copy with trim, and the outputs must be even 24 (the conform is right and the tool already copes, OQ-69); and, corrected an hour later, **clips are not renamed**: the camera filenames are what is delivered and **the shot code is metadata**, the `Shot` field reaching the tool through the CSV, so NAMING_SPEC section 1's contract moves to a metadata value and the CSV is load bearing for identity as well as encoding (OQ-62). Where the element type and the still type live is **OQ-70**, open, since every sample row says only `TEST0001`. An original camera file is offered. **1739 tests**, unchanged.
+
+**2026-09-19: a review the user asked for found the plan misaligned with the real workflow,
+and nothing is to be built on an assumption from here.** Read `docs/REVIEW_2026-09-19.md`
+first: it is the whole session on one page. The user stated that **the shooters deliver
+camera-native files, never ProRes 4444 or EXR** (OQ-56, reversing OQ-3 and the premise of
+COLOR_AND_FORMAT section 2, QC-020 and QC-021), that **they export nothing for the tool and
+there is no OTIO** (OQ-57: the scan has to be rebuilt from Ben's EDL and the folder), that clip
+names carry extensions (OQ-62), that 4:2:0 is allowed with a warning, and that a **per-turnover
+default input transform** is required (OQ-59, two decisions pending). A code audit found the
+decode asserts no range or matrix and QC-018 was never built (OQ-60), the approved cut is
+dropped silently without media timecode (OQ-65), and four smaller items (OQ-63, OQ-64, OQ-66,
+OQ-67). Researched and confirmed: Resolve's CDL export is node one only; ffmpeg decodes every
+compressed camera codec and no RAW; Sony and Canon record their log full range. **Nothing was
+built this session**, deliberately: the respec waits on one real trimmed clip the user is
+sending (OQ-58, OQ-61, OQ-62). PR #12, the CDL-in-ACEScct chain, is green and unmerged; its
+docs still describe ProRes sources and an OTIO scan. The memory `verified-facts-only` records
+the rule. **1739 tests.**
+
+**2026-09-18, later: the grade is the CDL in the final EDL, applied in ACEScct, and the cube
+is the exception.** The user decided it, after the cube correction below: Resolve's CDL export
+carries the primaries of **node one** and nothing else, so the colourist grades in node one of a
+**colour managed** session whose timeline is **ACEScct** by standard, Resolve converts each clip
+into ACEScct from its `Input Color Space`, and the tool does the same from the same metadata,
+applies the CDL, and converts to ACEScg. That reverses OQ-37 and decides OQ-46: the tool
+converts on both sides of the grade again, and the input transform table is load bearing on
+every plate, so **QC-046 and QC-047 are errors everywhere**. A `.cube` from Generate LUT out of
+that same session is the clip's node graph, ACEScct in and out, and where one names a shot it
+**takes the CDL's place**; it is how a curve reaches a plate. The chain is
+`ShotColor.plate_transforms` and nowhere else. **QC-039 measures a step, not a ratio**, through
+the cube alone in ACEScct, floor 0.07, because a grade-only cube is log in and log out and the
+ratio would have refused every one. `color.WORKING_SPACE` is a constant shown read-only in
+Settings, not a setting: a value that disagreed with the session grades wrong silently.
+`docs/COLOUR_SESSION_EXPORT.md` is rewritten for the colourist (a managed session, the wheels in
+node one, Offset rather than Lift, Luma Mix 0, a cube only when the wheels could not do it) and
+**OQ-55 is the test export**, which now has four things to show rather than one. Branch
+`color/cdl-in-acescct`. The note "The grade is the CDL, applied in ACEScct" below has the
+detail and the reasoning. **1739 tests.**
 
 **2026-09-18: the per-shot grade file is a `.cube`, not a CLF, because Resolve writes no
 CLF.** The user pointed out there was no evidence Resolve exports one, and there is none: the
@@ -168,8 +688,9 @@ delivered header.
 **Nothing is left that can be finished on this machine.** M8 wants a real turnover and a real
 colour session; M9's shipped screenshots want the Mac; the rest is questions for a person.
 "Next task" below groups them by what each is waiting on. **Of the two open questions that were
-about correctness rather than scope, OQ-47 closed on 2026-09-13**, which leaves OQ-46 - and
-that one is a question to ask a person, not a thing to build.
+about correctness rather than scope, OQ-47 closed on 2026-09-13**, and OQ-46 was decided by the
+user on 2026-09-18; what is left of it is OQ-55, the test export, which is a thing to ask a
+person for rather than a thing to build.
 
 **One of the three things added to the plan on 2026-09-12 is still unbuilt**: the user guide
 itself (PRD FR-17, the new M9), though **M9.4's harness now takes its pictures**. The other two
@@ -189,6 +710,52 @@ frame in place. **Both ends of that sentence were overtaken on 2026-09-12**: ACE
 from the chain and the input transform no longer runs ahead of a CLF, **which M4.6.2 built on
 2026-09-12**. The composition machinery is untouched and is what the whole thing still rests on. **The display referred block it kept under a fence
 is gone**, deleted with its tests in M4.5.4 as planned.
+
+### The grade is the CDL, applied in ACEScct, 2026-09-18: the carrier decided
+
+**What the user decided.** The colourist's session is colour managed, ACES 1.3, timeline
+ACEScct, each clip's Input Color Space set to its camera encoding. The grade is exported once
+per turnover as the CDL lines on the final EDL's events, from Timelines > Export > CDL. The tool
+reads the clip's encoding from its metadata, converts into ACEScct, applies the CDL, converts
+to ACEScg. The user's words: "The grade file is now just a CDL for trims and color adjustments
+and metadata on the files indicating which input transform to use. So, I will make ACEScct the
+standard for the colorists batch session colorspace."
+
+**Why this and not the cube.** Resolve's manual: the CDL export writes only the primary
+corrections in the first node of each clip. The morning's export page had a Color Space
+Transform in node one so that a cube would contain the whole conversion, which would have made
+the CDL identity; the two setups are mutually exclusive. The CDL route matches how a colourist
+actually works (managed), needs one export per turnover instead of one per shot, has no naming
+and no pairing for the normal case, is exact arithmetic and readable, and removes the "does the
+cube contain the conversion" risk. What it costs: the metadata field is load bearing on every
+plate, the tool has to know the working space, and the grade is limited to the wheels of node
+one (Gain to slope, Gamma to power, Offset to offset, Lift approximated, Luma Mix 0). The cube
+covers the shot that needs more.
+
+**What moved in code.** `color.WORKING_SPACE`, `color.to_working`, `color.from_working`,
+`color.cdl_transform` (OpenColorIO's default no-clamp style, OQ-55); `ShotColor.plate_transforms`
+builds `[to_working, cube or CDL, from_working]` or the one leg; `clf.has_grade(row)` is the one
+definition graded shares across the ingest report, QC-008, QC-009 and QC-048; `load_clf` probes
+`is_grade_only` by the step at the top of ACEScct through the cube alone
+(`TONE_MAP_STEP_FLOOR = 0.07`; identity 0.2, slope 0.5 gives 0.1, display renderings 0.02 to
+0.04 across every encoding in play, measured on 2026-09-18); QC-046 and QC-047 block every row
+the tool transforms; QC-048 names the three legs; the EXR `proingest/cdl_note` reads `applied in
+ACEScct, between the source encoding and ACEScg`, or the old record-only text where a cube took
+the CDL's place; the Settings page shows the working space read-only; the CLI prints events,
+CDLs and cubes. `tests/fixtures/color.make_session` writes no cube, `plate_clf` is grade-only,
+and every test row fixture names an encoding. **Do not** rename `core/clf.py`, `clf_path` or the
+`proingest/clf` attributes: schema for a word.
+
+**Why the probe changed shape.** The ratio measurement (OQ-47) was right while a cube ended in
+scene linear, where an offset in log becomes a scale that cancels in a ratio. A grade-only cube
+is log in and log out: identity gives 1.0 over 0.8, which is 1.25, under the 1.4 floor, so the
+old probe would have refused every correct cube. In log space an offset moves both samples
+together and a difference is what it cannot move. Pushing the probe through the tool's linear
+leg instead was considered and rejected: the exponential leg turns a display rendering's 0.02
+step into a ratio of 1.8 and passes it.
+
+**What has not been seen.** Nothing about this chain has come out of a real session. OQ-55
+lists the four facts it rests on and the one export that shows all of them.
 
 ### The grade file is a cube, 2026-09-18: what Resolve actually exports
 
@@ -279,7 +846,7 @@ are being built, each its own commit on `ux/first-run-and-discovery`:
 ### First five minutes
 
 ```
-.venv/bin/python -m pytest tests/ -q          # 1730, about 100 seconds
+.venv/bin/python -m pytest tests/ -q          # 1739, about 100 seconds
 .venv/bin/python -m ruff check . && .venv/bin/python -m ruff format --check . && .venv/bin/python -m mypy proingest tests build
 ```
 
@@ -1771,9 +2338,14 @@ waiting on, because that is the thing that decides whether a session can start i
 - **OQ-44**, to whoever briefs the shooters: which metadata field carries the log name and
   exactly what string goes in it, remembering that "S-Log3" names four colour spaces in the
   pinned config.
-- **OQ-46**, against one real export: whether a session's CLF really does start at the source
-  encoding. If it does not and the tool converts too, it converts **twice** - nothing fails,
-  every check passes, and both images look plausible.
+- **The clip (OQ-58, OQ-61, OQ-62) and the two OQ-59 decisions**, before any of the respec, the
+  EDL-only scan or the turnover default is started. `docs/REVIEW_2026-09-19.md` lists what to
+  probe on the clip and what to ask Ben and the shooters.
+- **OQ-55**, against one real export: one shot graded with the wheels in node one of an ACEScct
+  session, its EDL, its stringout and a cube of the same clip. The tool renders it both ways and
+  each reference is compared to the stringout. It checks the four things the CDL chain rests on
+  (the timeline space, the CDL round trip and clamp style, the camera transforms agreeing with
+  Resolve's, the cube being the grade alone), none of which has been seen from a real session.
 
 **Nothing is left that can be done here.** `REVIEW.md`'s S1 and S2 were the last of it and
 they closed on 2026-09-14. What is still deferred there is micro-smells, performance that needs

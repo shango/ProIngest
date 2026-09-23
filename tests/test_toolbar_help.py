@@ -18,6 +18,7 @@ import pytest
 from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import QApplication
 
+from proingest.core.models import Batch
 from proingest.ui import toolbar_help as help_
 from proingest.ui.toolbar_help import ToolbarState, note, tooltip
 from tests.fixtures.batches import batch, row
@@ -52,7 +53,6 @@ class TestTheWording:
             help_.SAVE,
             help_.ADD_TURNOVER,
             help_.SCAN,
-            help_.INGEST,
             help_.RUN,
             help_.STOP,
             help_.EXPORT,
@@ -120,14 +120,14 @@ class TestWhyItIsUnavailable:
         assert note(help_.ADD_TURNOVER, rendering, enabled=False) == help_.RENDERING
         assert note(help_.ADD_TURNOVER, open_batch, enabled=False) == ""
 
-    def test_scan_says_there_is_nothing_left_to_re_try(self) -> None:
-        """The commonest greyed button of the four, and the least obvious."""
-        state = ToolbarState(batch_open=True, has_rows=True, has_unscanned=False)
-        assert note(help_.SCAN, state, enabled=False) == help_.NOTHING_UNSCANNED
+    def test_scan_says_there_is_nothing_to_re_scan(self) -> None:
+        state = ToolbarState(batch_open=True, has_turnovers=False)
+        assert note(help_.SCAN, state, enabled=False) == help_.NO_TURNOVERS
 
-    def test_ingest_says_it_needs_something_to_write_onto(self) -> None:
-        state = ToolbarState(batch_open=True, has_rows=False)
-        assert note(help_.INGEST, state, enabled=False) == help_.NO_ROWS_TO_INGEST
+    def test_new_and_open_wait_for_a_scan_too(self) -> None:
+        """D15: a scan's result would land in whichever batch was open when it came back."""
+        state = ToolbarState(batch_open=True, scanning=True)
+        assert note(help_.NEW, state, enabled=False) == help_.SCANNING
 
     def test_run_says_to_add_a_turnover(self) -> None:
         """UI_SPEC section 1's own example of what a disabled tooltip is for."""
@@ -206,10 +206,10 @@ class TestTheWindowSaysTheRightOne:
         expected = f"{help_.WHAT_IT_DOES[help_.RUN]}  {native(window.action_run)}"
         assert window.action_run.toolTip() == expected
 
-    def test_scan_explains_itself_once_every_turnover_has_shots(self, window: DrivenWindow) -> None:
-        window.set_batch(batch(row()))
+    def test_scan_explains_itself_when_there_is_no_turnover(self, window: DrivenWindow) -> None:
+        window.set_batch(Batch())
         assert not window.action_scan.isEnabled()
-        assert window.action_scan.toolTip().endswith(help_.NOTHING_UNSCANNED)
+        assert window.action_scan.toolTip().endswith(help_.NO_TURNOVERS)
 
     def test_no_real_tooltip_is_wider_than_the_limit(self, window: DrivenWindow) -> None:
         """The value test uses an assumed shortcut; this uses the ones actually set."""

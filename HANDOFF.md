@@ -1,112 +1,55 @@
-# Session close, 18 September 2026 (the grade file is a cube, and the thread is open)
+# Handoff, 23 September 2026
 
-**This file is disposable and it is not the handoff record.** `PROGRESS.md` section 1 is, and it
-is written to be picked up cold. This is a note about what one session did and where it stopped,
-kept because context is being cleared. Delete it once it has been read. **If it disagrees with
-`PROGRESS.md` or the docs, they win.**
+**This is a short pointer, not the record.** `PROGRESS.md` section 1 holds the record: one entry
+per chunk, newest first, each saying what was built and how it was verified. If this file
+disagrees with `PROGRESS.md` or the docs, they are right and this file is wrong. Delete it once
+it has been read.
 
-## Resume here: the colour session's exports
+## Where things stand
 
-**The open thread.** On 18 September the user pointed out there is no evidence Resolve exports
-a `.clf`, and there is none: Resolve reads CLF and writes `.cube` through Generate LUT (17, 33
-or 65 point), and writes no `.cdl` or `.ccc` either, the CDL travelling as comment lines inside
-an EDL from Timelines > Export > CDL. Every colour document since 11 September had assumed a CLF
-per shot. **PR #10, merged**, corrected it: the tool accepts `.cube` beside `.clf`
-(`clf.GRADE_EXTENSIONS`), every user-facing "CLF" reads "grade file", and
-**`docs/COLOUR_SESSION_EXPORT.md` is the page to hand the colourist**. OQ-54 is the question.
-The user said they will return to work more on this.
+- **All eight chunks of the 2026-09-23 review are built** (`docs/REVIEW_2026-09-23.md` section 5),
+  one commit each, in the order A, B, F, G, E, C, D, H. The version is **0.5.0**.
+- Branch `color/cdl-in-acescct` is **pushed** for the 0.5.0 release. CI builds
+  `ProIngest-0.5.0.dmg` on PR #12, as the `ProIngest-macos-arm64` artifact of the run.
+- **The final check was green:** 1621 tests pass (the count fell because tests for removed code
+  went with it), and `ruff`, `ruff format` and `mypy --strict` are clean.
+- **The real turnover, `Turnover199`, works end to end:**
+  - its five rows scan with no must-fix;
+  - all 12 deliverables render;
+  - the tracker has one line;
+  - a second Run plans nothing.
 
-**What is settled.** The three files per turnover (final EDL with the CDL in it, one 65 point
-cube per shot named with the shot code, the stringout), the folder they go in
-(`_color/<turnover folder name>/` beside the turnovers, OQ-53), and that the EDL is named
-`<turnover folder name>_final_v01.edl` and a re-export replaces it, because the discovery wants
-exactly one EDL in the folder. There is no separate CDL file to name.
+## Next
 
-**What is not settled, and is the whole risk.** Generate LUT bakes the clip's node graph and
-nothing outside it, so whether a cube starts at the camera encoding and ends in linear ACEScg
-depends on how the session is set up. The export page asks for DaVinci YRGB unmanaged, a Color
-Space Transform from the clip's encoding to ACEScct as the first node, one from ACEScct to ACES
-AP1 linear as the last, and the viewing transform on the timeline node, never the clip. Two
-things about that are unverified: **whether Generate LUT really bakes Color Space Transform
-nodes** (the 18.6 manual's "Exporting LUTs" page says it does, alongside Primaries and Custom
-Curves; that page returned 404 when fetched directly and was read through search snippets), and
-**whether Ben will work that way** rather than colour managed in ACES. A managed session gives a
-grade-only cube, ACEScct in and out, and the tool would then have to convert around it, which
-is the double conversion OQ-46 is about.
+1. Download the dmg from the CI run on PR #12.
+2. On the Mac, work through `docs/MAC_SESSION.md`, "The 0.5.0 build, in order". It opens with the
+   acceptance test on Turnover199, then the per-chunk checks for B, G, E and D.
 
-**The next step is not code.** One shot graded in the export page's setup, its cube and its EDL
-handed over. Ingest it into a scratch batch, check QC-039 passes and that the reference matches
-the stringout. That answers OQ-54, OQ-31, OQ-33 and OQ-46 together. If it turns out Ben works
-colour managed, the work is to reinstate the ACEScct leg around the cube in `core/color.py`,
-which the 12 September session deleted and `COLOR_AND_FORMAT.md` describes; the input
-transform table is still there because the aux still uses it.
+## Calls I made for the user to confirm
 
-**Things a returning session might be tempted to do and should not.** Do not rename
-`core/clf.py`, `ShotRow.clf_path` or the `proingest/clf` EXR attributes; the module docstring
-says why, and it is a schema change for a word. Do not change the chain again before a real
-export exists: it has been rewritten three times on assumptions, and this is the fourth.
+These were reported to the user; they are recorded in `PROGRESS.md` too.
 
-## The rest of the session, in one paragraph
+- **Scan re-scans every turnover and keeps the editor's edits**, matched by File Name
+  (`scan.carry_over`). For that reason the Ingest Colour Session button was removed.
+- **A skipped row's must-fix does not block the run** (`qc.must_fix`).
+- **A failed row waits for the editor's right-click Reset.** Outputs a stopped run never wrote
+  resume on their own, at the same version.
+- **Jobs lost when a worker dies get one more pool** (`render._run_pool`). This matters because a
+  dead worker takes every job then in flight with it; that was measured on the real turnover.
+- **QC-018, an info, fires on every real row**: the files state no colour matrix, so each one is
+  decoded as BT.709 (D17, provisional).
 
-Before the cube thread, the same day: the UX pass (PR #7, six items, version 0.2.0) was merged,
-two docs PRs followed it (#8, #9), and a 0.2.0 dmg was pulled with `gh` and sits in
-`~/Downloads` on the WSL side, not yet on a Mac. **1730 tests**, `ruff`, `ruff format` and
-`mypy --strict` clean, CI green on `main`. Build Track at version 66.
+## Left open
 
-## What a new session should know first
+- FR-1's "refuse an M2 motion effect" (OQ-63) is not built.
+- Non-square pixels are not handled when letterboxing (COLOR_AND_FORMAT section 4).
 
-**`main` carries everything.** PR #7 merged on 17 September as a merge commit, CI green on all
-four jobs (run 35308641062), and the branch is deleted. A fresh clone needs no checkout.
+## Working notes
 
-**The colour session convention is a default, not an agreement.** `clf.find_session` looks for
-`<Settings "Ingest opens at" folder>/<turnover folder name>/` first, then
-`<turnover parent>/_color/<turnover folder name>/`, and wants exactly one `.edl` in it at any
-depth. `docs/WORKFLOW.md` step 9a tells the colourist to export there. Nobody has told the
-colourist yet. If they cannot write beside the turnovers, the Settings folder is the override and
-needs no code. OQ-53 has the reasoning; UI_SPEC section 15 has the mechanism.
-
-**The CLI does not discover.** `proingest run --color-session <edl>` is pointed at an EDL as it
-always was. Parity was deliberately left out of scope; it is a small change if wanted.
-
-**A version bump touches four files and the lock.** `pyproject.toml`, `proingest/__init__.py`,
-`docs/guide/install.md` (the dmg name; `tests/test_guide.py` pins it to `__version__`),
-`build/build.py`'s docstring, then `uv lock`, because CI installs with `--frozen` and fails if
-the lock's project version has fallen behind.
-
-## The two things worth not re-deriving
-
-**Inserting a test class in the middle of another one silently steals its tests.** Adding a new
-`class Test...` block after one method of `TestRunningABatch` moved every following method into
-the new class. Nothing failed; the names in the failure output were simply wrong. New classes go
-before the next `class` line, and `grep -n "^class "` before committing is cheap.
-
-**Every place that decides a turnover cannot run now shows a dialog, and a test that used to
-assert the status bar line has to give its batch a session first.** `test_a_batch_that_plans_nothing_says_so_rather_than_starting`
-is the example: it is about skipped rows planning nothing, and without `ingested(...)` it now
-hits the held-back dialog instead.
-
-## After the merge: pulling a build
-
-The user asked for the `gh` command to fetch the disk image CI builds, and then could not find
-it, because it lands on the **WSL side**, not in Windows Downloads. Both things worth keeping:
-
-```
-gh run download -R shango/ProIngest -n ProIngest-macos-arm64 -D ~/Downloads \
-  $(gh run list -R shango/ProIngest --branch main --status success --limit 1 --json databaseId -q '.[0].databaseId')
-```
-
-`gh` unpacks the zip, so what arrives is the bare `ProIngest-0.2.0.dmg`. On this machine that is
-`/home/sgold/Downloads/`, reachable from Windows as `\\wsl$\<distro>\home\sgold\Downloads\`;
-pass `-D /mnt/c/Users/<you>/Downloads` to land it on the Windows side instead. A file `gh`
-downloads carries no quarantine mark. The one from run 35314948016 (the merge of PR #8, `main`
-at b882269) is sitting in `~/Downloads` here now, 115 MB, and has not yet reached a Mac.
-
-## What is next
-
-`PROGRESS.md` section 1's "Next task" is the list and it is current. In one line each:
-
-- **A person:** tell the colourist the convention (OQ-53) and ask OQ-44 and OQ-46; OQ-9, the
-  developer identity; OQ-49, the guide's form.
-- **The Mac:** `docs/MAC_SESSION.md`, which gained two lines this session: the amber delivery
-  root button, and the Deliverables tab's widths and colours.
-- **A real turnover and a real colour session:** the whole of M8.
+- **Do not update `build-track.html`.** It is retired (user, 2026-09-23).
+- **Scratch renders of Turnover199** are in the session scratchpad under `g/`: the batch files
+  `b.pibatch` and `d.pibatch`, plus `delivery/`. They are disposable.
+- **Per-chunk rules:**
+  - one commit per chunk, with the `PROGRESS.md` entry in the same commit;
+  - a `docs/MAC_SESSION.md` line for anything that only a Mac can confirm;
+  - no em dashes in any file.

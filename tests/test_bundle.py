@@ -12,11 +12,8 @@ is `build/smoke_test.py`'s job, which the packaging CI job runs against a real b
 
 from __future__ import annotations
 
-import importlib.util
 import tomllib
 from pathlib import Path
-
-import pytest
 
 from build import bundle
 from proingest import __version__
@@ -68,21 +65,9 @@ class TestDatas:
         run time would report its absence: it would simply ship looking wrong."""
         assert str(bundle.REPO_ROOT / "proingest" / "ui" / "theme.qss") in self.sources(LINUX)
 
-    def test_the_cmx3600_source_file_is_collected(self) -> None:
-        """The EDL adapter is named `cmx_3600` but lives in `otio_cmx3600_adapter`, so
-        otio's `import_module` attempt always misses and only its fallback, which reads
-        the `.py` named in the manifest off disk, ever works. No source file, no EDL."""
-        assert any(name.endswith("cmx_3600.py") for name in self.sources(LINUX))
-
-    def test_the_otio_plugin_manifests_are_collected(self) -> None:
-        manifests = [name for name in self.sources(LINUX) if name.endswith("plugin_manifest.json")]
-        assert any("builtin_adapters" in name for name in manifests)
-        assert any("cmx3600" in name for name in manifests)
-
-    def test_the_entry_point_metadata_is_collected(self) -> None:
-        """otio finds the CMX3600 adapter through an `opentimelineio.plugins` entry
-        point, which lives in the distribution metadata and not in the package."""
-        assert any(".dist-info" in name for name in self.sources(LINUX))
+    def test_opentimelineio_is_not_bundled(self) -> None:
+        """Gone 2026-09-23: `clf.read_final_edl` reads the EDL, and nothing imports otio."""
+        assert not any("otio" in name or "opentimelineio" in name for name in self.sources(LINUX))
 
     def test_ffmpeg_s_licence_ships_with_the_binaries_on_macos(self) -> None:
         names = {Path(source).name for source in self.sources(DARWIN)}
@@ -93,16 +78,8 @@ class TestDatas:
 
 
 class TestHiddenImports:
-    @pytest.mark.parametrize("name", bundle.hidden_imports())
-    def test_every_hidden_import_exists(self, name: str) -> None:
-        """A hidden import is a string, so a renamed or moved module fails silently:
-        PyInstaller reports it among hundreds of lines and the build still succeeds."""
-        assert importlib.util.find_spec(name) is not None
-
-    def test_the_otio_json_adapter_is_among_them(self) -> None:
-        """The adapter that reads the `.otio` every turnover arrives as. Without it the
-        app starts and cannot open anything."""
-        assert "opentimelineio.adapters.otio_json" in bundle.hidden_imports()
+    def test_there_are_none_since_otio_went(self) -> None:
+        assert bundle.hidden_imports() == []
 
 
 class TestInfoPlist:

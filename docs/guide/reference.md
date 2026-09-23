@@ -27,27 +27,34 @@ One sentence each, the same sentences the buttons themselves show when you hover
 | **Open...** | Opens a saved .pibatch file in place of what is on screen. |
 | **Save** | Writes the batch to its .pibatch file, asking where the first time. |
 | **Add Turnover** | Adds a turnover folder and scans it straight away. |
-| **Scan** | Re-tries only the turnovers that came back with no shots. |
-| **Ingest Colour Session** | Writes a colour session's cut, CDL and grades onto one turnover. |
+| **Scan** | Re-scans every turnover, keeping trims, skips and notes by File Name. |
 | **Run** | Renders every shot that is not skipped, then writes both spreadsheets. |
 | **Stop** | Stops the run. What is in flight finishes; nothing further starts. |
 | **Export** | Writes the QC log and the shot tracker without rendering. |
 | **Settings** | Opens the settings page: thresholds, naming, colour and logging. |
 
 **A greyed button says why it is greyed.** Hover it. "No batch is open", "A scan is going",
-"Every turnover already has shots" - that is usually the whole answer, and it is the reason the
+"A run is going" - that is usually the whole answer, and it is the reason the
 toolbar shows everything from the first launch rather than hiding what cannot be used yet.
 
-**Run is the exception worth knowing.** It is not greyed when a turnover has no colour session
-ingested, because it will run: it refuses every turnover and writes nothing, which is correct
-and looks exactly like a dead button. Its tooltip says so first.
+**Run will not start while anything must be fixed.** It is not greyed for it: pressing it lists
+every must-fix - the red rows and headers - with where each one is. Correct them in the turnover
+folder, press Scan, and Run again. A skipped shot's problems do not count, because a skipped shot
+delivers nothing.
 
-**Ingest Colour Session is the by-hand route.** A scan looks for the turnover's session
-first: a folder named exactly as the turnover folder, inside the folder Settings' "Ingest opens
-at" names, or else inside `_color` beside the turnovers, holding one final `.edl` and the
-`.cube` files. Found, it asks whether to ingest it; a folder with two `.edl` files in it is not
-guessed between and the button is the answer. Ingesting twice reads the newer export over the
-older one, and the report says which rows changed.
+**Scan is how a correction arrives.** The cut and the grade are read at scan from the `.edl` in
+the turnover folder. When something is wrong - a revised EDL, a fixed CSV, a missing clip - drop
+the corrected file into the folder and press Scan. Your trims, skips, notes and shot code
+corrections are kept, matched by File Name, and the turnover says so (QC-070) when its EDL or CSV
+changed. A trim you never made follows the new EDL.
+
+**Right-click a turnover's header** for the same thing on one turnover (**Re-scan**), or for
+**New Folder Location...** when the folder has moved. A batch reopened after its turnover moved
+says so on that header (QC-069) and will not run until you point it at the new folder.
+
+**While a scan or a run is going the batch is locked.** Nothing in the list can be edited, and
+New, Open, Settings and the delivery root wait until it ends, because a change made under a run
+would change the reports without changing what was rendered.
 
 **Export writes the two spreadsheets without rendering anything.** A run writes them when it
 finishes too; Export is for the batch as it stands now - after a scan, to hand the QC log
@@ -58,8 +65,8 @@ the files went.
 ## The shot list
 
 One row per shot, grouped under a header naming the turnover folder and counting what is under
-it. **Space** on a header collapses it. Order is timeline order within a turnover and cannot be
-changed; **⌘F** and the search box narrow the list to a shot code fragment, keeping the header
+it. **Space** on a header collapses it. Order is the metadata CSV's order within a turnover and
+cannot be changed; **⌘F** and the search box narrow the list to a shot code fragment, keeping the header
 above whatever survives.
 
 The first three columns - the dot, Shot and Elem - **stay put while the rest scrolls sideways**,
@@ -70,7 +77,7 @@ so a row can still be identified while reading a column at the far right of it.
 | dot | the row's state, below |
 | **Shot** | the shot code. **Yours to edit** |
 | Elem | which element of the shot this is: `pl` main plate, `cp` clean plate, `el` element, `wit` witness cam, `re` recon |
-| Source | the media file the timeline clip resolved to |
+| Source | the media file the CSV's `File Name` resolved to |
 | Res | its resolution |
 | FPS | its frame rate |
 | **In** | first delivered frame. **Yours to edit** |
@@ -78,10 +85,9 @@ so a row can still be identified while reading a column at the far right of it.
 | Dur | how long the delivery is, from In and Out |
 | Max | how much there is to work with, handles included |
 | Audio | whether sound was found, and how much |
-| Side | which extras were found: HDRI, camData, stills |
 | Ver | which version this shot is at |
 | Progress | jobs done over jobs planned, during a run |
-| **Notes** | free text, and it goes to the tracker. **Yours to edit** |
+| **Notes** | free text, kept with the batch. The tracker has no Notes column. **Yours to edit** |
 
 ### The dot
 
@@ -89,7 +95,7 @@ so a row can still be identified while reading a column at the far right of it.
 |---|---|
 | grey | nothing wrong, nothing delivered yet |
 | amber | a warning, and the row is tinted faintly |
-| red | an error: this row is blocked and will not deliver |
+| red | must fix: nothing in the batch runs until it is fixed and re-scanned |
 | hollow | you skipped it |
 | accent | rendering now |
 | green | delivered |
@@ -140,9 +146,8 @@ typing instant, and saves a moment later. A batch that has never been saved asks
 ![The metadata pane](images/metadata-pane.png)
 
 Everything known about the selected shot that has no column: codec, pixel format, start
-timecode, file sizes, the camera data, the turnover, and the paths themselves. Nine sections -
-Identity, Source media, Frame rate, Range, Colour, Audio, Side files, Turnover and QC - each
-collapsible and each remembering whether you shut it.
+timecode, file sizes, the turnover, and the paths themselves. Eight sections - Identity, Source
+media, Frame rate, Range, Colour, Audio, Turnover and QC - each collapsible and each remembering whether you shut it.
 
 - **Read only**, always. The list owns every edit, so there is one place a value can be changed
   and one place validation can disagree with itself.
@@ -155,8 +160,8 @@ collapsible and each remembering whether you shut it.
 - **Select several shots** and it shows what they agree on and marks the rest `mixed`. That is
   how one clip at the wrong resolution in a turnover of thirty is found without reading thirty
   rows.
-- Its **Colour** section is where you check that a shot got the grade file you expected: it names the
-  source encoding, where that name came from, and the grade file itself.
+- Its **Colour** section is where you check what a shot is graded with: it names the source
+  encoding as the shooter typed it, where that name came from, and the CDL from the row's event.
 
 ## The Issues tab
 
@@ -169,7 +174,7 @@ Rule numbers are stable and never change meaning, so `QC-030` means the same thi
 window, in the log and in the spreadsheet. `docs/QC_RULES.md` is the full list.
 
 Checks run in two passes. The first is about the turnover **before** anything is written -
-format, resolution, ranges, handles, audio, side files - and re-runs every time you edit a row.
+format, resolution, ranges, handles, audio - and re-runs every time you edit a row.
 The second is about each delivered file the moment it lands, and it is the one that catches a
 render that went wrong rather than a source that arrived wrong.
 
@@ -194,9 +199,9 @@ Time, level, shot and message, over a filter bar: a minimum level, a search box,
 
 ## The Deliverables tab
 
-What the selected shot delivers: one line per output - the two EXR sequences, the two mp4s, the
-wav, each side file - with its kind, resolution, version, status, frame count, size, the rule
-numbers it failed if any, and the path. Select several shots and it lists all of theirs.
+What the selected shot delivers: one line per output - a plate's two EXR sequences and two mp4s,
+a main plate's wav, a reference still's one EXR - with its kind, resolution, version, status,
+frame count, size, the rule numbers it failed if any, and the path. Select several shots and it lists all of theirs.
 
 - **Read only.** A run writes deliverables; nothing else does.
 - **Double-click a line to open the folder it is in.**
@@ -229,9 +234,14 @@ are missing.
 **A version is resolved once per shot, per run.** A shot delivered at v01 comes back at v02, and
 the whole shot moves together rather than one deliverable at a time.
 
-**Every file is written to a temporary name and renamed when it is complete**, so a crash never
-leaves something that looks finished. A file that fails its checks is **kept** and marked,
-because a file that failed a check is evidence; one that never finished is deleted.
+**Every file is written to a temporary name, checked there, and renamed only when it passes**, so
+neither a crash nor a failed check leaves something that looks finished. A file that fails is
+deleted, and its shot is marked failed naming the file and the check.
+
+**The next Run picks up where the last left off.** A shot that is complete is left alone; right-click
+it and choose **Re-run** to write it again at the next version. What a stopped run never wrote is
+written at the same version. A shot with a failed file waits: fix the cause, right-click it,
+choose **Reset**, and Run writes what failed at the same version.
 
 ## Settings
 
@@ -244,8 +254,8 @@ button that opens with no batch loaded, because it is where a new batch's number
 |---|---|
 | General | how many shots render at once, and a media path rewrite for timelines exported on Windows |
 | Rules | every threshold the checks compare against: shortest and longest shot, expected handles, expected resolution, audio sync tolerance |
-| Colour | where the Ingest chooser opens, and a read-only view of the ACES config, the output transform and the input transform table |
-| Naming | the pattern every clip name is parsed with and every delivered name is built from |
+| Colour | a read-only view of the ACES config, the output transform and the input transform table |
+| Naming | the pattern every shot code is parsed with and every delivered name is built from |
 | Output | the reference mp4's quality and the EXR compression level |
 | Advanced | how much is logged, an ffmpeg to use instead of the bundled one, and where the log file is |
 
@@ -262,9 +272,8 @@ month therefore cannot silently re-judge a batch that shipped last week.
 plausible - the same rule as In and Out.
 
 There is **no colour mode and no source encoding setting**: each clip's own metadata names what
-it is encoded in. And where the colour session lives is not here either - it is ingested per
-turnover and kept with the batch, because it is a record of what that work was rendered from
-rather than a preference.
+it is encoded in. And there is nothing to choose for the grade either: the cut and the grade are
+the `.edl` in the turnover folder, read at every scan, and the batch records which file it read.
 
 ## Every shortcut
 

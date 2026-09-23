@@ -1,23 +1,30 @@
 """Turning a turnover folder into shot rows.
 
-This is steps 1 to 4 of the data flow in docs/ARCHITECTURE.md: load the timeline,
-parse clip names, resolve and probe media, derive frame ranges and snapshots.
+**One folder, one phase** (OQ-74, settled 2026-09-22). Ben hands over the media, his
+EDL and his metadata CSV together, and there is nothing to scan before he does. So this
+reads three things and nothing else: the folder for media, the CSV for **who each clip
+is and what it is encoded as**, and the EDL for **the approved cut and the CDL**.
 
-Only the QC results that are *discovered while scanning* are raised here, meaning
-the ones that cannot be recomputed from the saved model later: media that could not
-be found, matched ambiguously or failed to probe, and paths that were remapped.
-Rules that are pure functions of the model, such as duration limits, resolution and
-fps, belong to the rule registry in M4 so they can re-run after every edit.
+**Rows come from CSV rows, not from timeline clips.** `Shot Type` is the whole of the
+tool's scope: a clip that carries one becomes a row, and a clip that carries none is
+**ignored** and counted by QC-064 at turnover scope. That rule is why QC-064 exists - a
+turnover whose metadata was never filled in would otherwise deliver nothing and say
+nothing.
+
+Only the QC results that are *discovered while scanning* are raised here, meaning the
+ones that cannot be recomputed from the saved model later: media that could not be
+found, matched ambiguously or failed to probe. Rules that are pure functions of the
+model, such as duration limits, resolution and fps, belong to the rule registry so they
+can re-run after every edit.
 """
 
 from __future__ import annotations
 
 import re
-from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from proingest.core import ffmpeg, naming, qc, timeline
+from proingest.core import clf, ffmpeg, metacsv, naming, qc
 from proingest.core import media as media_module
 from proingest.core.models import (
     Batch,
@@ -26,32 +33,14 @@ from proingest.core.models import (
     MediaInfo,
     QCResult,
     ShotRow,
-    SideFiles,
-    SourceEncodingOrigin,
     Turnover,
 )
+
+EDL_SUFFIX = ".edl"
 
 TURNOVER_FOLDER_PATTERN = re.compile(
     r"^turnover(?P<number>\d{3})_(?P<month>\d{2})_(?P<day>\d{2})_(?P<year>\d{4})_(?P<shooter>.+)$"
 )
-
-HDRI_FRAGMENT = "hdri"
-HDRI_EXTENSIONS = (".exr",)
-SOURCE_ENCODING_KEY = "Input Color Space"
-"""The metadata field the source encoding is read from. OQ-44, and a default until it answers.
-
-Resolve's own Media Pool column of that name holds the input transform, which is the
-string COLOR_AND_FORMAT section 1 asks the shooters to write verbatim, so it is the
-field most likely to already be filled in rather than a new one somebody has to
-remember. **One named field, never a comment somewhere**: a search would be the tool
-guessing which of a clip's forty strings is a colour space name.
-
-Settable per scan (`ScanSettings.source_encoding_key`) because the answer to OQ-44 is a
-different field name and nothing else.
-"""
-
-CAMDATA_FRAGMENT = "camdata"
-CAMDATA_EXTENSIONS = tuple(f".{ext}" for ext in naming.CAMDATA_EXTENSIONS)
 
 
 @dataclass
@@ -65,13 +54,10 @@ class ScanSettings:
     """Thresholds the rule registry compares against, so the scan's first pass of QC
     matches what the Settings page will later re-run with."""
 
-    source_encoding_key: str = SOURCE_ENCODING_KEY
-    """Which metadata field names the clip's source encoding (OQ-44)."""
-
 
 @dataclass(frozen=True)
 class TurnoverFields:
-    """The stringout name's inputs, read off the folder name."""
+    """What the folder name says a turnover is, read off it."""
 
     number: int
     month: int
@@ -103,18 +89,69 @@ def scan_turnover(
     turnover_id: str,
     settings: ScanSettings | None = None,
     probe_cache: dict[str, MediaInfo] | None = None,
-    timeline_path: Path | None = None,
 ) -> tuple[Turnover, list[ShotRow]]:
     """Scan one turnover folder into a Turnover and its rows.
 
-    Never raises for a bad turnover: a missing or unreadable timeline comes back as
-    a Turnover carrying QC-001 or QC-002 and no rows, so one bad folder cannot take
-    down a batch.
+    Never raises for a bad turnover: a folder missing either handover file, or carrying
+    one that will not parse, comes back as a Turnover with QC-001 or QC-002 and no rows,
+    so one bad folder cannot take down a batch.
     """
     settings = settings or ScanSettings()
     cache = probe_cache if probe_cache is not None else {}
 
     turnover = Turnover(turnover_id=turnover_id, folder=folder)
+    _prefill(turnover, folder)
+
+    handover = _handover_files(folder, turnover)
+    if handover is None:
+        return turnover, []
+    edl_path, csv_path = handover
+    turnover.edl_path, turnover.csv_path = edl_path, csv_path
+    turnover.edl_digest, turnover.csv_digest = qc.file_digest(edl_path), qc.file_digest(csv_path)
+
+    try:
+        meta = metacsv.read(csv_path, settings.show_pattern)
+    except metacsv.MetaCsvError as exc:
+        turnover.qc.append(QCResult("QC-002", "error", "turnover", f"{csv_path.name}: {exc}"))
+        return turnover, []
+
+    try:
+        session = clf.load_session(edl_path, settings.project_rate, settings.show_pattern)
+    except clf.ColorSessionError as exc:
+        turnover.qc.append(QCResult("QC-002", "error", "turnover", f"{edl_path.name}: {exc}"))
+        return turnover, []
+
+    # The EDL is read here rather than ingested later: OQ-74 collapsed the two-phase
+    # flow, so there is one moment at which the folder is in front of the tool.
+    turnover.color_session_edl = edl_path
+    turnover.qc.extend(_ignored_clips(meta.ignored))
+
+    if not meta.rows:
+        turnover.qc.append(
+            QCResult(
+                "QC-004",
+                "error",
+                "turnover",
+                f"{csv_path.name} describes no clip carrying a Shot Type, so there is nothing to deliver",
+            )
+        )
+        return turnover, []
+    if not session.events:
+        turnover.qc.append(
+            QCResult("QC-004", "error", "turnover", f"{edl_path.name} carries no video events")
+        )
+
+    index = media_module.index_directory(folder)
+    rows = [_build_row(entry, index, turnover_id, settings, cache) for entry in meta.rows]
+    turnover.qc.extend(_conform_all(rows, session))
+    for row in rows:
+        _attach_audio(row, index, settings)
+        qc.apply_row_rules(row, settings.project_rate, settings.rules)
+    return turnover, rows
+
+
+def _prefill(turnover: Turnover, folder: Path) -> None:
+    """Number, date and shooter off the folder name, or QC-005 asking for them by hand."""
     prefill = parse_turnover_folder(folder)
     if prefill is None:
         turnover.qc.append(
@@ -126,201 +163,221 @@ def scan_turnover(
                 f"number, date and shooter need manual entry",
             )
         )
-    else:
-        turnover.number = prefill.number
-        turnover.month = prefill.month
-        turnover.day = prefill.day
-        turnover.year = prefill.year
-        turnover.shooter = prefill.shooter
+        return
+    turnover.number = prefill.number
+    turnover.month = prefill.month
+    turnover.day = prefill.day
+    turnover.year = prefill.year
+    turnover.shooter = prefill.shooter
 
-    chosen = timeline_path or _choose_timeline(folder, turnover)
-    if chosen is None:
-        return turnover, []
-    turnover.timeline_path = chosen
 
-    try:
-        loaded = timeline.load(chosen, settings.project_rate)
-    except timeline.DropFrameError as exc:
-        turnover.qc.append(QCResult("QC-027", "error", "turnover", str(exc)))
-        return turnover, []
-    except timeline.EdlTimecodeError as exc:
-        turnover.qc.append(QCResult("QC-025", "error", "turnover", str(exc)))
-        return turnover, []
-    except timeline.TimelineError as exc:
-        turnover.qc.append(QCResult("QC-002", "error", "turnover", str(exc)))
-        return turnover, []
+def _handover_files(folder: Path, turnover: Turnover) -> tuple[Path, Path] | None:
+    """Ben's EDL and his metadata CSV, or QC-001 saying which is missing.
 
-    turnover.timeline_start = loaded.global_start
-    """Kept because record timecode is read against it and the timeline is gone by the
-    time anyone asks (UI_SPEC section 2's Record TC display)."""
+    **Exactly one of each, directly in the folder.** Two EDLs is not something to choose
+    between: choosing between two cuts is choosing a cut, and the same argument covers
+    two CSVs. Not recursive, because the handover is one folder (OQ-74) and a recursive
+    search would find a colourist's working copy in a subfolder as readily as the export.
+    """
+    # By suffix in any case: `.EDL` is as much Ben's export as `.edl` (F27).
+    edls = sorted(p for p in folder.iterdir() if p.is_file() and p.suffix.lower() == EDL_SUFFIX)
+    csvs = metacsv.find(folder)
 
-    turnover.qc.extend(qc.check_timeline_rate(turnover, loaded.rate, settings.project_rate))
-
-    if loaded.is_edl:
+    missing = [name for name, found in (("Ben's EDL", edls), ("his metadata CSV", csvs)) if not found]
+    if missing:
         turnover.qc.append(
-            QCResult("QC-003", "warning", "turnover", "EDL used instead of OTIO; reduced validation")
+            QCResult("QC-001", "error", "turnover", f"{' and '.join(missing)} is missing from {folder}")
         )
-    if loaded.is_drop_frame:
-        turnover.qc.append(QCResult("QC-027", "error", "turnover", "timeline uses drop-frame timecode"))
-    if not loaded.video:
-        turnover.qc.append(
-            QCResult("QC-004", "warning", "turnover", "timeline contains no video clips on any track")
-        )
-        return turnover, []
-
-    index = media_module.index_directory(folder)
-    rows = [_build_row(clip, loaded, index, turnover_id, settings, cache) for clip in loaded.video]
-    return turnover, rows
-
-
-def _choose_timeline(folder: Path, turnover: Turnover) -> Path | None:
-    """Pick the timeline, recording QC-001 when there is none."""
-    candidates = timeline.find_timeline_files(folder)
-    if not candidates:
-        turnover.qc.append(QCResult("QC-001", "error", "turnover", f"no .otio or .edl found in {folder}"))
         return None
-    return candidates[0]
+
+    for label, found in (("EDL", edls), ("metadata CSV", csvs)):
+        if len(found) > 1:
+            names = ", ".join(path.name for path in found)
+            turnover.qc.append(
+                QCResult(
+                    "QC-001",
+                    "error",
+                    "turnover",
+                    f"{folder} holds {len(found)} {label} files ({names}); one handover is one of each, "
+                    f"and choosing between them would be choosing a cut",
+                )
+            )
+            return None
+    return edls[0], csvs[0]
+
+
+def _ignored_clips(ignored: list[str]) -> list[QCResult]:
+    """QC-064: the clips with no `Shot Type`, which are not delivered and are not errors.
+
+    The counterweight to the rule that created it. Ignoring such a clip is the intended
+    behaviour; a whole turnover ignored is what wants saying out loud.
+    """
+    if not ignored:
+        return []
+    return [
+        QCResult(
+            "QC-064",
+            "warning",
+            "turnover",
+            f"{len(ignored)} clips carry no Shot Type and were ignored: {', '.join(sorted(ignored))}",
+        )
+    ]
 
 
 def _build_row(
-    clip: timeline.ClipRecord,
-    loaded: timeline.Timeline,
+    entry: metacsv.MetaRow,
     index: media_module.DirectoryIndex,
     turnover_id: str,
     settings: ScanSettings,
     cache: dict[str, MediaInfo],
 ) -> ShotRow:
-    """One timeline clip into one shot row, with whatever QC the scan uncovered."""
-    row = ShotRow(
-        turnover_id=turnover_id,
-        clip_name=clip.name,
-        track=clip.track,
-        record_in=clip.record_start,
-        record_out=clip.record_end,
-    )
+    """One CSV row into one shot row: identity, media and encoding. The EDL comes after,
+    across every row at once (`_conform_all`), because a match is only unambiguous when no
+    other row claims the same event."""
+    row = ShotRow(turnover_id=turnover_id, clip_name=entry.file_name)
+    row.qc.extend(entry.qc)
+    if entry.kind is not None and entry.index is not None and not row.errors():
+        row.identity = naming.ShotIdentity(shot_code=entry.shot, kind=entry.kind, index=entry.index)
 
-    row.identity = naming.parse_clip_name(clip.name, settings.show_pattern)
-    if row.identity is None:
-        row.qc.append(
-            QCResult(
-                "QC-010",
-                "error",
-                "row",
-                f"clip name {clip.name!r} does not match the naming regex",
-            )
-        )
-
-    item = _resolve_media(clip, index, settings, row)
+    item = _resolve_media(entry.file_name, index, row)
     if item is not None:
-        _probe_into(row, item, cache, loaded.rate)
+        _probe_into(row, item, cache, settings.project_rate)
 
-    row.source_encoding, row.source_encoding_origin = _source_encoding(
-        clip, row, settings.source_encoding_key
-    )
-    _derive_ranges(row, clip)
-    _attach_audio(row, clip, loaded, index, settings)
-    _attach_side_files(row, index)
-    qc.apply_row_rules(row, settings.project_rate, settings.rules)
+    # Verbatim, because what QC-047 has to be able to quote back is the string somebody
+    # typed. The CSV is the only carrier: the delivered container declares nothing.
+    row.source_encoding = entry.written_encoding or None
+    row.source_encoding_origin = "clip metadata" if row.source_encoding else None
     return row
 
 
-def _source_encoding(
-    clip: timeline.ClipRecord, row: ShotRow, key: str
-) -> tuple[str | None, SourceEncodingOrigin | None]:
-    """What this clip says it is encoded in, verbatim, and which carrier said it.
+def _conform_all(rows: list[ShotRow], session: clf.ColorSession) -> list[QCResult]:
+    """Pair every row with its EDL event, and return what the turnover should hear.
 
-    **The clip's own metadata first and the container's tags second** (OQ-44). The
-    timeline is where a person filled the field in; a container tag is the same string
-    travelling in the file instead, and it comes second because a consolidated media
-    file can outlive the session that wrote it. An empty value is no value, which is
-    what QC-046 reports.
-
-    Read here because this is the only moment the timeline and the probe are both in
-    front of the tool, and stored as written rather than resolved: what a shooter typed
-    is what QC-047 has to be able to quote back.
-
-    The origin travels with the name because a wrong encoding is traced back to whoever
-    wrote it, and the two carriers are written by different people at different times
-    (`models.SourceEncodingOrigin`). It rides to the delivered EXR header from here.
+    A row with no event (QC-066) or with a match that could go two ways (QC-067) gets
+    neither a cut nor a grade and cannot render. Nothing here reaches for the nearest
+    event or picks one of two: a neighbour's cut and a neighbour's grade both look
+    entirely plausible. Such a row still gets the whole media as its range, so the
+    editor can see what arrived. An event no row claims is QC-068, for the record.
     """
-    sources: list[tuple[SourceEncodingOrigin, Mapping[str, str]]] = [("clip metadata", clip.metadata)]
-    if row.media is not None:
-        sources.append(("container tag", row.media.tags))
-    for origin, fields in sources:
-        value = _named_value(fields, key)
-        if value is not None:
-            return value, origin
-    return None, None
+    found = [session.candidates(row) for row in rows]
+    claims: dict[int, list[str]] = {}
+    for row, events in zip(rows, found, strict=True):
+        for event in events:
+            claims.setdefault(id(event), []).append(row.clip_name)
+
+    for row, events in zip(rows, found, strict=True):
+        if not events:
+            row.qc.append(
+                QCResult(
+                    "QC-066",
+                    "error",
+                    "row",
+                    f"no event in the EDL falls inside {row.clip_name}, "
+                    f"so the row has no approved cut and no grade",
+                )
+            )
+            _whole_media(row)
+        elif len(events) > 1:
+            ids = ", ".join(event.event_id for event in events)
+            row.qc.append(
+                QCResult(
+                    "QC-067",
+                    "error",
+                    "row",
+                    f"EDL events {ids} all fall inside {row.clip_name}; "
+                    f"the tool will not choose between them",
+                )
+            )
+            _whole_media(row)
+        elif len(claims[id(events[0])]) > 1:
+            names = ", ".join(claims[id(events[0])])
+            row.qc.append(
+                QCResult(
+                    "QC-067",
+                    "error",
+                    "row",
+                    f"EDL event {events[0].event_id} falls inside more than one file ({names}); "
+                    f"the tool will not choose between them",
+                )
+            )
+            _whole_media(row)
+        else:
+            _conform(row, events[0])
+
+    unclaimed = [event.event_id for event in session.events if id(event) not in claims]
+    if not unclaimed:
+        return []
+    return [
+        QCResult(
+            "QC-068",
+            "info",
+            "turnover",
+            f"EDL events {', '.join(unclaimed)} fall inside no file the CSV describes",
+        )
+    ]
 
 
-def _named_value(fields: Mapping[str, str], key: str) -> str | None:
-    """One named field, matched without case or surrounding space. Empty is absent."""
-    wanted = key.strip().casefold()
-    for name, value in fields.items():
-        if name.strip().casefold() == wanted and value.strip():
-            return value.strip()
-    return None
+def _conform(row: ShotRow, event: clf.ConformEvent) -> None:
+    """The approved cut and the CDL off this row's one EDL event."""
+
+    row.record_in, row.record_out = event.record_in, event.record_out
+    row.cdl = event.cdl
+    approved = clf.approved_in_out(event, row.media) if row.media else None
+    if approved is None:
+        _whole_media(row)
+        return
+    row.approved = approved
+    row.snapshot = approved
+    row.current = approved
+    if row.media is not None and (
+        approved.in_frame < row.media.start_frame or approved.out_frame > row.media.max_available_out
+    ):
+        row.qc.append(
+            QCResult(
+                "QC-029",
+                "error",
+                "row",
+                f"the EDL references frames {approved.in_frame}-{approved.out_frame} but the media "
+                f"holds {row.media.start_frame}-{row.media.max_available_out}",
+            )
+        )
+
+
+def _whole_media(row: ShotRow) -> None:
+    """Every frame there is, for a row the EDL said nothing usable about."""
+    if row.media is None:
+        return
+    chosen = InOut(row.media.start_frame, row.media.max_available_out)
+    row.snapshot = chosen
+    row.current = chosen
 
 
 def _resolve_media(
-    clip: timeline.ClipRecord,
-    index: media_module.DirectoryIndex,
-    settings: ScanSettings,
-    row: ShotRow,
+    file_name: str, index: media_module.DirectoryIndex, row: ShotRow
 ) -> media_module.Sequence | media_module.FileEntry | None:
-    """FR-2: prefer the referenced URL, then fall back to a filename search."""
-    claimed: Path | None = None
-    if clip.media_url:
-        referenced = media_module.url_to_path(clip.media_url)
-        claimed = media_module.remap(referenced, settings.path_map)
-        if claimed != referenced:
-            row.qc.append(QCResult("QC-016", "warning", "row", f"media path remapped to {claimed}"))
-        located = _index_entry_for(index, claimed)
-        if located is not None:
-            return located
+    """The media the CSV's `File Name` names, found in the turnover folder.
 
-    matches = index.media_matching(clip.name)
+    **By name, and only by name.** The CSV's `Clip Directory` points at the
+    pre-consolidation originals in the real sample, so a path out of it would resolve to
+    a file on somebody else's drive or to nothing at all; `File Name` is the one field in
+    that file measured to still match what was delivered.
+    """
+    matches = index.media_matching(Path(file_name).stem)
     if not matches:
-        # The claimed path is named because it is the only record of what the timeline
-        # asked for: nothing stores it once the row has no media, and it is the first
-        # thing anybody wants when a shot will not resolve (UI_SPEC section 12.3).
-        wanted = f"{claimed} is missing" if claimed else "the clip references no path"
         row.qc.append(
             QCResult(
                 "QC-012",
                 "error",
                 "row",
-                f"media not found for {clip.name!r}: {wanted} and no file in the turnover matches the name",
+                f"the CSV names {file_name!r} and no file in the turnover folder matches it",
             )
         )
         return None
     if len(matches) > 1:
         described = ", ".join(sorted(_describe(match) for match in matches))
-        row.qc.append(QCResult("QC-013", "error", "row", f"media ambiguous for {clip.name!r}: {described}"))
+        row.qc.append(QCResult("QC-013", "error", "row", f"media ambiguous for {file_name!r}: {described}"))
         return None
     return matches[0]
-
-
-def _index_entry_for(
-    index: media_module.DirectoryIndex, path: Path
-) -> media_module.Sequence | media_module.FileEntry | None:
-    """Find the indexed item a resolved path points at.
-
-    The index is consulted rather than the filesystem so that a referenced frame of
-    a sequence resolves to the whole sequence, and so nothing stats twice.
-    """
-    for sequence in index.sequences:
-        if sequence.directory == path.parent and sequence.base == _sequence_base(path):
-            return sequence
-    for entry in index.singles:
-        if entry.path == path:
-            return entry
-    return None
-
-
-def _sequence_base(path: Path) -> str:
-    match = media_module.SEQUENCE_PATTERN.match(path.stem)
-    return match["base"] if match else path.stem
 
 
 def _describe(item: media_module.Sequence | media_module.FileEntry) -> str:
@@ -349,55 +406,17 @@ def _probe_into(
         row.qc.append(QCResult("QC-015", "warning", "row", f"sequence has missing frames: {shown}{more}"))
 
 
-def _derive_ranges(row: ShotRow, clip: timeline.ClipRecord) -> None:
-    """Map the timeline's source range onto real source frame indices.
+def _attach_audio(row: ShotRow, index: media_module.DirectoryIndex, settings: ScanSettings) -> None:
+    """The audio beside this clip, found by name.
 
-    The snapshot is set here and never changes again; it is what the turnover
-    arrived with and what the QC log compares the editor's final values against.
+    An EDL cannot associate audio and there is no other timeline, so a same-name search
+    is the whole mechanism rather than a fallback (FR-1). Counting rules (QC-040,
+    QC-041) are left to the rule registry; this only records what was found.
     """
-    if row.media is None:
-        return
-    start = row.media.start_frame + clip.source_offset()
-    chosen = InOut(start, start + clip.duration - 1)
-    row.snapshot = chosen
-    row.current = chosen
-
-    if start < row.media.start_frame or chosen.out_frame > row.media.max_available_out:
-        row.qc.append(
-            QCResult(
-                "QC-029",
-                "warning",
-                "row",
-                f"timeline references frames {chosen.in_frame}-{chosen.out_frame} but the media "
-                f"holds {row.media.start_frame}-{row.media.max_available_out}",
-            )
-        )
-
-
-def _attach_audio(
-    row: ShotRow,
-    clip: timeline.ClipRecord,
-    loaded: timeline.Timeline,
-    index: media_module.DirectoryIndex,
-    settings: ScanSettings,
-) -> None:
-    """Associate audio from the timeline, or by name when the source was an EDL.
-
-    Counting rules (QC-040, QC-041) are left to the rule registry; this only records
-    what was found.
-    """
-    associated = loaded.audio_for(clip)
-    row.audio_clip_count = len(associated)
-    if associated and associated[0].media_url:
-        # Through the same path map as the picture: the audio URL came from the same
-        # machine, so it needs the same rewrite onto the local mount.
-        referenced = media_module.url_to_path(associated[0].media_url)
-        row.audio_path = media_module.remap(referenced, settings.path_map)
-    elif loaded.is_edl:
-        # FR-1: an EDL cannot associate audio, so fall back to a same-name search.
-        by_name = index.audio_matching(clip.name)
-        if len(by_name) == 1:
-            row.audio_path = by_name[0].path
+    by_name = index.audio_matching(Path(row.clip_name).stem)
+    row.audio_clip_count = len(by_name)
+    if len(by_name) == 1:
+        row.audio_path = media_module.remap(by_name[0].path, settings.path_map)
 
     if row.audio_path is None or not row.audio_path.is_file():
         return
@@ -405,35 +424,6 @@ def _attach_audio(
         row.audio = media_module.probe_audio(row.audio_path)
     except (ffmpeg.FFprobeError, ffmpeg.FFmpegNotFound) as exc:
         row.qc.append(QCResult("QC-042", "error", "row", f"audio unreadable: {exc}"))
-
-
-def _attach_side_files(row: ShotRow, index: media_module.DirectoryIndex) -> None:
-    """HDRI and camData discovered next to the media, matched by shot code and element."""
-    if row.identity is None:
-        return
-    stem = row.identity.stem
-    row.side_files = SideFiles(
-        hdri=_single_match(index, stem, HDRI_FRAGMENT, HDRI_EXTENSIONS),
-        camdata=_single_match(index, stem, CAMDATA_FRAGMENT, CAMDATA_EXTENSIONS),
-    )
-
-
-def _single_match(
-    index: media_module.DirectoryIndex, stem: str, fragment: str, extensions: tuple[str, ...]
-) -> Path | None:
-    """A side file must name both the element and the kind, and be a form we can deliver.
-
-    The extension filter is what NAMING_SPEC section 2 states (`*HDRI*.exr`,
-    `*camData*.txt|rtf`). Without it a jpeg sitting beside the real HDRI would be
-    delivered under an `.exr` name, because the planner takes the extension from the
-    delivery template and not from the file.
-    """
-    hits = [
-        entry.path
-        for entry in index.containing(fragment)
-        if stem.lower() in entry.name.lower() and entry.suffix in extensions
-    ]
-    return hits[0] if len(hits) == 1 else None
 
 
 TURNOVER_ID_PATTERN = re.compile(r"t(\d+)")
@@ -474,3 +464,50 @@ def scan_batch(
     # QC-011 is the one row rule that needs every row, so it can only run once they exist.
     qc.apply_batch_rules(batch, settings.rules)
     return batch
+
+
+def carry_over(old: Turnover, old_rows: list[ShotRow], new: Turnover, new_rows: list[ShotRow]) -> None:
+    """A turnover rescanned, where it was (D8) or from a new folder (D16), keeps what the
+    editor did to it.
+
+    Rows are matched by File Name, in CSV order, so a clip used twice (D3) pairs its
+    first row with the first and its second with the second. What carries over is the
+    editor's: a trim, but only one the editor made, so an EDL that moved the cut is not
+    overridden by the cut it replaced; the shot code correction, the skip and its reason,
+    the notes, and the delivered state. Everything else is the new scan's.
+
+    A changed EDL or CSV is a warning on the turnover, QC-070: the edits carried over
+    were made against the old one.
+    """
+    waiting: dict[str, list[ShotRow]] = {}
+    for row in old_rows:
+        waiting.setdefault(row.clip_name.casefold(), []).append(row)
+    for row in new_rows:
+        matches = waiting.get(row.clip_name.casefold())
+        if not matches:
+            continue
+        before = matches.pop(0)
+        if before.was_edited:
+            row.current = before.current
+        row.shot_code_override = before.shot_code_override
+        row.skipped, row.skip_reason = before.skipped, before.skip_reason
+        row.notes = before.notes
+        row.deliverables = before.deliverables
+    changed = [
+        name
+        for name, was, now in (
+            ("EDL", old.edl_digest, new.edl_digest),
+            ("CSV", old.csv_digest, new.csv_digest),
+        )
+        if was and was != now
+    ]
+    if changed:
+        new.qc.append(
+            QCResult(
+                "QC-070",
+                "warning",
+                "turnover",
+                f"the {' and the '.join(changed)} changed since this batch last scanned "
+                f"{old.folder.name}; the trims and skips carried over were made against the old one",
+            )
+        )

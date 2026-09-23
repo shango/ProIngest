@@ -170,20 +170,21 @@ def sections() -> tuple[Section, ...]:
             COLOUR,
             (
                 Field(
-                    "app.color_session_folder",
-                    "Ingest opens at",
-                    "folder",
-                    "Where the colour session chooser starts, and the first place a "
-                    "scan looks for a turnover's session: a folder here named as the "
-                    "turnover folder is, then _color beside the turnover. Which session "
-                    "a turnover was ingested from is kept on the turnover, not here.",
-                ),
-                Field(
                     "readonly.config",
                     "ACES config",
                     "readonly",
                     "Pinned rather than tracking the latest, so a dependency bump cannot "
                     "change what a reference looks like (OQ-29).",
+                ),
+                Field(
+                    "readonly.working_space",
+                    "Working space",
+                    "readonly",
+                    "Where the colour session's CDL is applied: the timeline colour space "
+                    "the session is set to, by standard. The tool converts each clip into "
+                    "it from the encoding its metadata names, applies the CDL, and carries "
+                    "the result to ACEScg. A session set to anything else grades wrong "
+                    "without an error, so this is a standard rather than a setting.",
                 ),
                 Field(
                     "readonly.output_transform",
@@ -290,10 +291,11 @@ def sections() -> tuple[Section, ...]:
 
 
 def readonly_values() -> dict[str, str]:
-    """The Colour section's three read-only lines, read from core rather than copied."""
+    """The Colour section's four read-only lines, read from core rather than copied."""
     table = "\n".join(f"{written} = {space}" for written, space in sorted(color.INPUT_TRANSFORMS.items()))
     return {
         "readonly.config": color.BUILTIN_CONFIG,
+        "readonly.working_space": color.WORKING_SPACE,
         "readonly.output_transform": f"{color.VIEW} on {color.DISPLAY}",
         "readonly.input_transforms": table,
         "readonly.log_file": str(paths.log_dir() / logsetup.LOG_FILENAME),
@@ -306,7 +308,6 @@ def to_values(app: AppSettings, rules: qc.RuleSettings) -> dict[str, Any]:
         "app.workers": app.workers,
         "app.path_map": dict(app.path_map),
         "app.show_pattern": app.show_pattern,
-        "app.color_session_folder": app.color_session_folder,
         "app.log_level": app.log_level,
         "app.ffmpeg_path": app.ffmpeg_path,
         "app.reference_crf": app.reference_crf,
@@ -345,7 +346,6 @@ def apply_values(
     app.workers = int(values.get("app.workers", app.workers))
     app.path_map = dict(values.get("app.path_map", app.path_map))
     app.show_pattern = str(values.get("app.show_pattern", app.show_pattern))
-    app.color_session_folder = str(values.get("app.color_session_folder", app.color_session_folder))
     app.log_level = logsetup.name_of(logsetup.level_of(str(values.get("app.log_level", app.log_level))))
     app.ffmpeg_path = str(values.get("app.ffmpeg_path", app.ffmpeg_path))
     app.reference_crf = int(values.get("app.reference_crf", app.reference_crf))

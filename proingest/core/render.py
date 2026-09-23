@@ -4,10 +4,11 @@ Nothing here decides what to write or what to call it: the planner settled both.
 module is the execution half, and its one invariant is that a deliverable either
 exists complete and verified, or does not exist at all.
 
-**Every job writes to `job.temp` and renames onto `job.destination` on success.** That
-is the `.part` path the job already carries, a folder for a sequence and a file for
-everything else. A crash, a full disk or a killed worker therefore leaves a `.part`
-behind and never a file that looks finished. `resolve_version` in the planner ignores
+**Every job writes to `job.temp`, is verified there, and is renamed onto
+`job.destination` only when it passes** (D11, F11). That is the `.part` path the job
+already carries, a folder for a sequence and a file for everything else. A crash, a full
+disk, a killed worker or a failed check therefore leaves a `.part` or nothing, and never
+a file that looks finished. `resolve_version` in the planner ignores
 `.part` names for the same reason, so a leftover cannot inflate the next version
 either.
 
@@ -26,7 +27,7 @@ CLF, and so does this module: the plate branch builds one OCIO processor per job
 applies it to every frame on its way to an EXR, and the view branch bakes the same chain
 plus the ACES output transform into a `.cube` that ffmpeg applies as it encodes. Neither
 branch decides anything about colour. What to apply arrives on the job as a
-`clf.ShotColor`, which is a path, a colour space name and the CDL, because that is what
+`clf.ShotColor`, which is a colour space name and the CDL, because that is what
 survives the pickle into a worker process.
 """
 
@@ -39,7 +40,7 @@ import tempfile
 import threading
 from collections.abc import Callable, Generator, Sequence
 from concurrent.futures import ProcessPoolExecutor, as_completed
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from multiprocessing.queues import Queue as MPQueue
 from multiprocessing.synchronize import Event as EventType
 from pathlib import Path
@@ -49,13 +50,12 @@ import numpy as np
 import numpy.typing as npt
 import PyOpenColorIO as ocio
 
-from proingest.core import batchfile, clf, color, exr, ffmpeg, logsetup, media, naming, qc, resize
+from proingest.core import color, exr, ffmpeg, frames, logsetup, media, naming, qc, resize
 from proingest.core.models import DEFAULT_WORKERS, Batch, Deliverable, QCResult
 from proingest.core.planner import DeliverableJob
 
 log = logging.getLogger(__name__)
 
-COPY_KINDS = qc.COPY_KINDS
 """Byte copies under a delivery name. NAMING_SPEC section 2."""
 
 WAV_SUFFIX = qc.WAV_SUFFIX
@@ -111,8 +111,6 @@ def render_job(
             _render_audio(job, deliverable)
         elif job.kind == "ref_mp4":
             _render_reference(job, deliverable)
-        elif job.kind in COPY_KINDS:
-            _render_copy(job, deliverable)
         else:
             raise RenderError(f"no renderer for a {job.kind} job")
     except ffmpeg.FFmpegError as exc:
@@ -124,15 +122,20 @@ def render_job(
         _discard(job.temp)
         raise
 
+    # Verified where it was written, under the name it will have: a deliverable that
+    # fails a check never takes its final name, even for the moment between the rename
+    # and the check (F11).
+    at_temp = replace(job, destination=job.temp, display_name=job.name)
+    deliverable.qc.extend(qc.run_phase_b(at_temp, deliverable))
+    if any(result.severity == "error" for result in deliverable.qc):
+        _discard(job.temp)
+        deliverable.status = "failed"
+        log.warning("%s failed post-render QC and was not delivered", job.name)
+        return deliverable
+
     job.temp.replace(job.destination)
     deliverable.status = "done"
     log.info("wrote %s", job.destination)
-
-    deliverable.qc.extend(qc.run_phase_b(job, deliverable))
-    if any(result.severity == "error" for result in deliverable.qc):
-        deliverable.status = "failed"
-        _mark_failed(job.destination, deliverable)
-        log.warning("%s failed post-render QC", job.destination)
     return deliverable
 
 
@@ -160,19 +163,6 @@ def _discard(temp: Path) -> None:
         temp.unlink(missing_ok=True)
 
 
-def _mark_failed(destination: Path, deliverable: Deliverable) -> None:
-    """Leave a `.failed` sidecar naming what went wrong, per QC_RULES phase B.
-
-    The file itself stays: a deliverable that failed a check is evidence, and someone
-    has to be able to open it and see what the check saw. The marker is what
-    `batchfile.reconcile_with_filesystem` reads back, so a crash after this point
-    still reopens as failed rather than as done.
-    """
-    lines = [f"{result.rule_id} {result.severity}: {result.message}" for result in deliverable.qc]
-    marker = destination.with_name(destination.name + batchfile.FAILED_MARKER)
-    marker.write_text("\n".join(lines) + "\n", encoding="utf-8")
-
-
 def _record_file(deliverable: Deliverable, path: Path) -> None:
     deliverable.checksum = file_digest(path)
     deliverable.size = path.stat().st_size
@@ -186,12 +176,9 @@ class _PlateBranch:
     """The shot's plate chain, built once per job and applied to every frame.
 
     Building a processor is expensive and applying it is not, which is why this is
-    resolved at the top of a job rather than inside the frame loop. It carries the
-    `LoadedClf` as well as the processor because the EXR header states what was
-    applied, and the header and the pixels must not be able to disagree.
+    resolved at the top of a job rather than inside the frame loop.
     """
 
-    loaded_clf: clf.LoadedClf | None
     cpu: ocio.CPUProcessor
 
     def apply(self, pixels: npt.NDArray[np.float32]) -> npt.NDArray[np.float32]:
@@ -213,10 +200,8 @@ class _PlateBranch:
 
 
 def _plate_branch(job: DeliverableJob) -> _PlateBranch:
-    """Resolve the job's colour: load the CLF, compose the chain, build the processor."""
-    shot_color = job.shot_color
-    loaded = shot_color.load()
-    return _PlateBranch(loaded_clf=loaded, cpu=color.processor(*shot_color.plate_transforms(loaded)))
+    """Resolve the job's colour: compose the chain and build the processor."""
+    return _PlateBranch(cpu=color.processor(*job.shot_color.plate_transforms()))
 
 
 def _render_sequence(
@@ -241,7 +226,7 @@ def _render_sequence(
         # is closed part way through is killed and its exit code is never read.
         for pixels, output_frame in zip(stream, job.output_frames(), strict=False):
             path = job.frame_path(output_frame, temp=True)
-            _write_frame(job, path, graded.apply(pixels), output_frame, graded)
+            _write_frame(job, path, _letterbox(job, graded.apply(pixels)), output_frame)
             deliverable.frame_checksums.append(file_digest(path))
             deliverable.size += path.stat().st_size
             written += 1
@@ -269,9 +254,15 @@ def _render_still(job: DeliverableJob, deliverable: Deliverable) -> None:
         stream.close()
     if pixels is None:
         raise RenderError(f"{job.name}: the source gave no frame at {job.in_frame}")
-    _write_frame(job, job.temp, graded.apply(pixels), next(iter(job.output_frames())), graded)
+    _write_frame(job, job.temp, _letterbox(job, graded.apply(pixels)), next(iter(job.output_frames())))
     _record_file(deliverable, job.temp)
     deliverable.frame_count = 1
+
+
+def _letterbox(job: DeliverableJob, pixels: npt.NDArray[np.float32]) -> npt.NDArray[np.float32]:
+    """The graded frame on the target canvas. After the chain, so the bars are black."""
+    target = job.target_size
+    return pixels if target is None else resize.letterbox(pixels, target)
 
 
 def _write_frame(
@@ -279,7 +270,6 @@ def _write_frame(
     path: Path,
     pixels: npt.NDArray[Any],
     output_frame: int,
-    graded: _PlateBranch,
 ) -> None:
     exr.write_frame(
         path,
@@ -287,7 +277,6 @@ def _write_frame(
         timecode_frames=job.timecode_for(output_frame),
         fps=job.rate.as_float() if job.rate else 24.0,
         shot_color=job.shot_color,
-        loaded_clf=graded.loaded_clf,
     )
 
 
@@ -308,7 +297,7 @@ def _source_pixels(job: DeliverableJob) -> Generator[npt.NDArray[np.float32], No
             frame_path = media.frame_path_for(job.source, job.source_frame(output_frame))
             if not frame_path.is_file():
                 raise RenderError(f"{job.name}: source frame {frame_path} is missing")
-            yield _fit(exr.read_pixels(frame_path), job.target_size)
+            yield _fit(exr.read_pixels(frame_path), job.fitted_size)
         return
 
     if job.source_size is None:
@@ -316,7 +305,7 @@ def _source_pixels(job: DeliverableJob) -> Generator[npt.NDArray[np.float32], No
     source = media.printf_pattern_for(job.source) if job.source_is_sequence else str(job.source)
     # Only ask ffmpeg to scale when the size actually changes: a 4k pass from a 4k
     # source should not run the source through a resampler at all.
-    scale = job.target_size if job.target_size != job.source_size else None
+    scale = job.fitted_size if job.fitted_size != job.source_size else None
     yield from ffmpeg.decode_frames(
         source,
         job.source_size,
@@ -324,6 +313,8 @@ def _source_pixels(job: DeliverableJob) -> Generator[npt.NDArray[np.float32], No
         job.out_frame,
         is_sequence=job.source_is_sequence,
         target_size=scale,
+        color_space=job.source_color_space,
+        color_range=job.source_color_range,
     )
 
 
@@ -366,7 +357,7 @@ def _render_reference(job: DeliverableJob, deliverable: Deliverable) -> None:
     source = media.printf_pattern_for(job.source) if job.source_is_sequence else str(job.source)
     # Same rule as the raw path: only scale when the size actually changes, so a 4k
     # reference off a 4k source never touches a resampler.
-    scale = job.target_size if job.target_size != job.source_size else None
+    scale = job.fitted_size if job.fitted_size != job.source_size else None
     with tempfile.TemporaryDirectory(prefix=LUT_TEMP_PREFIX) as folder:
         ffmpeg.encode_reference(
             source,
@@ -379,6 +370,11 @@ def _render_reference(job: DeliverableJob, deliverable: Deliverable) -> None:
             lut=_view_lut(job, Path(folder)),
             audio=job.audio_source,
             audio_skip=_audio_skip(job),
+            audio_tempo=_audio_tempo(job),
+            timecode=_start_timecode(job),
+            color_space=job.source_color_space,
+            color_range=job.source_color_range,
+            canvas=job.target_size if job.fitted_size != job.target_size else None,
         )
     if not job.temp.is_file():
         raise RenderError(f"{job.name}: the encode reported success and wrote nothing")
@@ -404,7 +400,7 @@ def _view_lut(job: DeliverableJob, folder: Path) -> Path:
     ffmpeg command this module logs verbatim says which shot the cube belonged to.
     """
     shot_color = job.shot_color
-    transforms = shot_color.view_transforms(shot_color.load())
+    transforms = shot_color.view_transforms()
     return color.view_lut(folder / f"{job.destination.stem}{LUT_SUFFIX}", *transforms)
 
 
@@ -421,10 +417,36 @@ def _audio_skip(job: DeliverableJob) -> float:
     extend past the delivered range, so a shot extended into the handles outruns it; see
     the `apad` note in `ffmpeg.encode_command` for why that does not truncate the picture.
     """
-    if job.audio_source is None or job.in_frame is None or job.rate is None:
+    if job.in_frame is None or (job.kind == "ref_mp4" and job.audio_source is None):
+        return 0.0
+    rate = job.source_rate or job.rate
+    if rate is None:
         return 0.0
     offset = job.in_frame - job.source_start_frame
-    return max(0, offset) * job.rate.denominator / job.rate.numerator
+    # At the source's own rate, because that is the rate its sound was recorded against.
+    return max(0, offset) * rate.denominator / rate.numerator
+
+
+def _audio_tempo(job: DeliverableJob) -> float:
+    """How much faster the sound plays so it follows the picture played at 24.
+
+    1.001 for the shooters' 24000/1001 files, 1.0 for a file already at 24. D2 of
+    `docs/REVIEW_2026-09-23.md`: the picture is delivered frame for frame at 24, so it
+    runs 0.1% faster than it was shot, and the sound does too or it drifts off it.
+    """
+    if job.rate is None or job.source_rate is None:
+        return 1.0
+    return (job.rate.numerator * job.source_rate.denominator) / (
+        job.rate.denominator * job.source_rate.numerator
+    )
+
+
+def _start_timecode(job: DeliverableJob) -> str | None:
+    """The reference's own timecode: the In frame's, which is what the EXRs carry too."""
+    if job.rate is None or job.in_frame is None or job.source_start_timecode is None:
+        return None
+    first = frames.timecode_frames_for(job.in_frame, job.source_start_frame, job.source_start_timecode)
+    return frames.frames_to_timecode(first, job.rate.as_float())
 
 
 # --- Audio and byte copies. ---
@@ -436,22 +458,21 @@ def _render_audio(job: DeliverableJob, deliverable: Deliverable) -> None:
     Copying rather than re-encoding is the point: a delivered wav that came in as a
     wav has the same checksum as the source, which is what QC-120 compares.
     """
-    if job.source.suffix.lower() == WAV_SUFFIX:
-        shutil.copyfile(job.source, job.temp)
+    if job.in_frame is None or job.rate is None:
+        if job.source.suffix.lower() == WAV_SUFFIX:
+            shutil.copyfile(job.source, job.temp)
+        else:
+            ffmpeg.extract_audio(job.source, job.temp)
     else:
-        ffmpeg.extract_audio(job.source, job.temp)
+        ffmpeg.extract_audio(
+            job.source,
+            job.temp,
+            skip=_audio_skip(job),
+            tempo=_audio_tempo(job),
+            duration=job.frame_count * job.rate.denominator / job.rate.numerator,
+        )
     if not job.temp.is_file():
         raise RenderError(f"{job.name}: no audio was produced from {job.source}")
-    _record_file(deliverable, job.temp)
-
-
-def _render_copy(job: DeliverableJob, deliverable: Deliverable) -> None:
-    """HDRI, camData and BTS: the same bytes under the delivery name.
-
-    Nothing is converted, which is why the scan filters side files by extension: a
-    rename cannot turn a jpg into an exr.
-    """
-    shutil.copyfile(job.source, job.temp)
     _record_file(deliverable, job.temp)
 
 
@@ -572,6 +593,44 @@ def _worker(job: DeliverableJob) -> Deliverable:
     return deliverable
 
 
+def _run_pool(
+    jobs: Sequence[DeliverableJob],
+    indices: list[int],
+    workers: int,
+    context: Any,
+    initargs: tuple[Any, ...],
+    results: dict[int, Deliverable],
+) -> list[int]:
+    """Render the jobs at `indices` in one pool, into `results`. Returns the ones lost to a
+    worker that died, each already recorded as failed in case there is no second round."""
+    lost: list[int] = []
+    with ProcessPoolExecutor(
+        max_workers=max(1, workers),
+        mp_context=context,
+        initializer=_worker_init,
+        initargs=initargs,
+    ) as pool:
+        futures = {pool.submit(_worker, jobs[index]): index for index in indices}
+        for future in as_completed(futures):
+            index = futures[future]
+            try:
+                results[index] = future.result()
+            except Exception as exc:
+                results[index] = _lost(jobs[index], exc)
+                lost.append(index)
+    return sorted(lost)
+
+
+def _lost(job: DeliverableJob, error: BaseException) -> Deliverable:
+    """The record of a job whose worker died before it could say how it went."""
+    failed = job.to_deliverable()
+    failed.status = "failed"
+    reason = str(error) or type(error).__name__
+    message = f"{job.name}: the worker stopped: {reason}"
+    failed.qc.append(QCResult(RENDER_FAILED, "error", "deliverable", message))
+    return failed
+
+
 def _drain(queue: MPQueue[Progress | None], on_progress: Callable[[Progress], None] | None) -> None:
     """Forward progress to the caller until the None sentinel arrives.
 
@@ -636,25 +695,28 @@ def execute(
     reference_crf = ffmpeg.current_reference_crf()
     exr_compression_level = exr.current_compression_level()
 
+    initargs = (
+        queue,
+        cancel,
+        log_queue,
+        log_level,
+        ffmpeg_override,
+        reference_crf,
+        exr_compression_level,
+    )
     results: dict[int, Deliverable] = {}
     try:
-        with ProcessPoolExecutor(
-            max_workers=max(1, workers),
-            mp_context=context,
-            initializer=_worker_init,
-            initargs=(
-                queue,
-                cancel,
-                log_queue,
-                log_level,
-                ffmpeg_override,
-                reference_crf,
-                exr_compression_level,
-            ),
-        ) as pool:
-            futures = {pool.submit(_worker, job): index for index, job in enumerate(jobs)}
-            for future in as_completed(futures):
-                results[futures[future]] = future.result()
+        waiting = list(range(len(jobs)))
+        # Two rounds at most. A worker that dies breaks the whole pool, and every job in
+        # flight on the others is lost with it, not only the one that died (measured on
+        # the real turnover). The lost ones get one more pool; what finished keeps what
+        # it wrote (F12). A job that kills its worker twice is failed.
+        for _round in range(2):
+            lost = _run_pool(jobs, waiting, workers, context, initargs, results)
+            if not lost or cancel.is_set():
+                break
+            log.warning("a render worker died; running the %d jobs it took with it again", len(lost))
+            waiting = lost
     finally:
         queue.put(None)
         drain.join(timeout=_DRAIN_TIMEOUT)

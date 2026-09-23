@@ -9,8 +9,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from proingest.core import naming
 from proingest.core.models import (
+    CDL,
     Batch,
     Deliverable,
     FrameRate,
@@ -18,10 +18,9 @@ from proingest.core.models import (
     MediaInfo,
     QCResult,
     ShotRow,
-    SideFiles,
     Turnover,
 )
-from tests.fixtures import color
+from tests.fixtures.names import identity_of
 
 RATE_24 = FrameRate(24)
 ONE_HOUR = 86400
@@ -51,11 +50,16 @@ def row(
     record_in: int = 0,
     **kwargs: object,
 ) -> ShotRow:
-    """One scanned row, trimmed to 8-231 the way a turnover arrives."""
+    """One scanned row, trimmed to 8-231 the way a turnover arrives.
+
+    It names a source encoding because a real clip does, and since 2026-09-18 a plate
+    without one is QC-046 as an error rather than a line of provenance.
+    """
     built = ShotRow(
         turnover_id=turnover_id,
         clip_name=clip_name,
-        identity=naming.parse_clip_name(clip_name),
+        identity=identity_of(clip_name),
+        source_encoding="ACEScct",
         media=media(path=Path(f"/turnover/{clip_name}.mov")),
         record_in=record_in,
         record_out=record_in + 223,
@@ -83,10 +87,7 @@ def delivered(row_: ShotRow, status: str = "done", version: int = 1) -> ShotRow:
 
 
 def with_sides(row_: ShotRow) -> ShotRow:
-    row_.side_files = SideFiles(
-        hdri=Path("/turnover/MELT0001_pl01_hdri.exr"),
-        camdata=Path("/turnover/MELT0001_pl01_camdata.txt"),
-    )
+    """Audio, which is the only file beside the media the tool still delivers."""
     row_.audio_path = Path("/turnover/MELT0001_pl01.wav")
     row_.audio_clip_count = 1
     return row_
@@ -106,7 +107,8 @@ def turnover(turnover_id: str = "turnover001", **kwargs: object) -> Turnover:
     built = Turnover(
         turnover_id=turnover_id,
         folder=Path(f"/source/{turnover_id}_02_23_2026_danielluckett"),
-        timeline_path=Path(f"/source/{turnover_id}/timeline.otio"),
+        edl_path=Path(f"/source/{turnover_id}/FINAL_v01.edl"),
+        csv_path=Path(f"/source/{turnover_id}/metadata.csv"),
         timeline_start=ONE_HOUR,
     )
     for key, value in kwargs.items():
@@ -136,20 +138,34 @@ def batch(
 def ingested(built: Batch, tmp_path: Path) -> Batch:
     """Give a batch the colour session a run needs, in place. QC-008 refuses one without.
 
-    A real CLF per shot, because QC-009 checks the file is there and QC-019 and QC-039
-    load it; the EDL is a location and nothing reads it after an ingest, so it is a path
-    rather than a file. `clf.ingest` is what does this from a real package - this is the
-    same end state, built for the tests that are about the window rather than the
+    A CDL per row, because that is the whole of the grade since 2026-09-22 and QC-009
+    checks for it; the EDL is a location and nothing reads it after an ingest, so it is
+    a path rather than a file. `clf.ingest` is what does this from a real EDL - this is
+    the same end state, built for the tests that are about the window rather than the
     session.
     """
     session = tmp_path / "session"
     session.mkdir(parents=True, exist_ok=True)
     for turnover_ in built.turnovers:
         turnover_.color_session_edl = session / "MELT_FINAL_v01.edl"
+        # A real folder, because a run's pre-flight holds back a turnover whose folder
+        # has gone (QC-069).
+        turnover_.folder = tmp_path / "source" / turnover_.folder.name
+        turnover_.folder.mkdir(parents=True, exist_ok=True)
     for row_ in built.rows:
         if row_.shot_code is None:
             continue
-        row_.clf_path = color.plate_clf(session / f"{row_.shot_code}_grade_v01.clf")
+        row_.cdl = CDL(
+            slope=(1.02, 0.99, 1.01),
+            offset=(0.001, -0.002, 0.0),
+            power=(0.98, 1.0, 1.02),
+            saturation=1.05,
+            sop_text=(
+                "*ASC_SOP (1.020000 0.990000 1.010000)"
+                "(0.001000 -0.002000 0.000000)(0.980000 1.000000 1.020000)"
+            ),
+            sat_text="*ASC_SAT 1.050000",
+        )
         if row_.current is not None:
             row_.approved = row_.current
     return built

@@ -4,8 +4,8 @@ COLOR_AND_FORMAT section 1. Every failure this guards against is a plausible loo
 wrong image rather than a crash, which is why the anchors here are real numbers and not
 just shapes: mid grey has to land on 0.18 and a highlight has to stay above 1.0.
 
-Since M4.6.2 this module supplies **one** leg of its own, source encoding to linear
-ACEScg, and a graded chain takes none of it: the CLF is the whole transform (OQ-37).
+Since 2026-09-18 the grade is the CDL applied in ACEScct, so this module supplies the leg
+into ACEScct and the leg out of it, and the one leg chain is for a shot with no grade.
 """
 
 from __future__ import annotations
@@ -17,6 +17,7 @@ import PyOpenColorIO as ocio
 import pytest
 
 from proingest.core import color, ffmpeg
+from proingest.core.models import CDL
 
 SOURCE = "ACEScct"
 """The encoding these tests read their pixels as.
@@ -114,10 +115,10 @@ class TestResolveEncoding:
 
 
 class TestInputTransform:
-    """The one leg this module supplies, and only where there is no CLF (OQ-37)."""
+    """The one leg chain, for a shot with no grade: an aux still."""
 
     def test_it_lands_in_the_plate_space_rather_than_a_working_space(self) -> None:
-        """One leg, source to ACEScg. The ACEScct the grade used to start at is gone."""
+        """One leg, source to ACEScg, with no grade to stop in ACEScct for."""
         transform = color.input_transform(SOURCE)
         assert transform.getSrc() == SOURCE
         assert transform.getDst() == color.PLATE_SPACE
@@ -157,6 +158,82 @@ class TestInputTransform:
         """A string a shooter wrote, caught at the edge rather than mid render."""
         with pytest.raises(color.ColorError, match="Arri LogC9"):
             color.input_transform("Arri LogC9")
+
+
+class TestWorkingSpace:
+    """The two legs around the grade, and the CDL between them (OQ-46, decided 2026-09-18)."""
+
+    def test_the_working_space_is_acescct(self) -> None:
+        """The standard the colourist's session is set to. A different value here replays
+        the grade in the wrong space and nothing errors."""
+        assert color.WORKING_SPACE == "ACEScct"
+        assert color.config().getColorSpace(color.WORKING_SPACE) is not None
+
+    def test_the_leg_in_ends_at_the_working_space(self) -> None:
+        transform = color.to_working("S-Log3 S-Gamut3.Cine")
+        assert transform.getSrc() == "S-Log3 S-Gamut3.Cine"
+        assert transform.getDst() == color.WORKING_SPACE
+
+    def test_the_leg_out_starts_there_and_ends_at_the_plate_space(self) -> None:
+        transform = color.from_working()
+        assert transform.getSrc() == color.WORKING_SPACE
+        assert transform.getDst() == color.PLATE_SPACE
+
+    def test_the_two_legs_together_are_the_input_transform(self) -> None:
+        """Mid grey from a camera log lands on 0.18 either way; the grade sits between."""
+        pixels = grey_frame(420 / 1023)
+        color.apply(pixels, color.processor(color.to_working("S-Log3 S-Gamut3.Cine"), color.from_working()))
+        assert pixels[0, 0] == pytest.approx([0.18, 0.18, 0.18], abs=1e-3)
+
+    def test_the_leg_in_refuses_an_unknown_encoding_by_name(self) -> None:
+        with pytest.raises(color.ColorError, match="Arri LogC9"):
+            color.to_working("Arri LogC9")
+
+    def test_the_cdl_carries_the_numbers_off_the_edl(self) -> None:
+        cdl = CDL(
+            slope=(1.02, 0.99, 1.01),
+            offset=(0.001, -0.002, 0.0),
+            power=(0.98, 1.0, 1.02),
+            saturation=1.05,
+            sop_text="",
+            sat_text="",
+        )
+        transform = color.cdl_transform(cdl)
+        assert transform.getSlope() == pytest.approx([1.02, 0.99, 1.01])
+        assert transform.getOffset() == pytest.approx([0.001, -0.002, 0.0])
+        assert transform.getPower() == pytest.approx([0.98, 1.0, 1.02])
+        assert transform.getSat() == pytest.approx(1.05)
+
+    def test_the_cdl_does_not_clamp(self) -> None:
+        """Resolve's node graph is float and clamps nothing; a clamp in ACEScct would
+        throw away the values above 1.0 and the negatives an out of gamut colour takes."""
+        cdl = CDL(
+            slope=(2.0, 2.0, 2.0),
+            offset=(0.0, 0.0, 0.0),
+            power=(1.0, 1.0, 1.0),
+            saturation=1.0,
+            sop_text="",
+            sat_text="",
+        )
+        assert color.cdl_transform(cdl).getStyle() == ocio.CDL_NO_CLAMP
+        pixels = grey_frame(0.8, -0.1)
+        color.apply(pixels, color.processor(color.cdl_transform(cdl)))
+        assert pixels[0, 0, 0] == pytest.approx(1.6)
+        assert pixels[0, 1, 0] == pytest.approx(-0.2)
+
+    def test_an_offset_in_acescct_is_a_stop_where_it_says_it_is(self) -> None:
+        """One stop is 1 / 17.52 of the ACEScct range, and the plate doubles for it."""
+        cdl = CDL(
+            slope=(1.0, 1.0, 1.0),
+            offset=(1 / 17.52,) * 3,
+            power=(1.0, 1.0, 1.0),
+            saturation=1.0,
+            sop_text="",
+            sat_text="",
+        )
+        pixels = grey_frame(ACESCCT_MID_GREY)
+        color.apply(pixels, color.processor(color.cdl_transform(cdl), color.from_working()))
+        assert pixels[0, 0] == pytest.approx([0.36, 0.36, 0.36], abs=1e-3)
 
 
 class TestProcessor:

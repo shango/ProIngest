@@ -16,7 +16,7 @@ import pytest
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication
 
-from proingest.core.models import AudioInfo, FrameRate, InOut, MediaInfo, QCResult, SideFiles
+from proingest.core.models import AudioInfo, FrameRate, InOut, MediaInfo, QCResult
 from proingest.ui.metadata import (
     MIXED,
     NO_SELECTION,
@@ -56,7 +56,6 @@ class TestWhatOneRowSays:
         sections = describe([row()], batch(row()))
         assert value(sections, "Identity", "Clip name") == "MELT0001_pl01"
         assert value(sections, "Identity", "Show") == "MELT"
-        assert value(sections, "Identity", "Shot") == "0001"
         assert value(sections, "Identity", "Element") == "pl 01"
 
     def test_an_edited_shot_code_says_that_it_was_edited(self) -> None:
@@ -130,20 +129,19 @@ class TestWhatOneRowSays:
         assert "Trimmed" not in labels
 
     def test_the_colour_section_carries_what_m4_6_put_on_the_row(self) -> None:
-        """Not in section 12.2's original table: the encoding, where it came from and
-        the CLF arrived with M4.6 and have no column in the list either."""
+        """Not in section 12.2's original table: the encoding and where it came from
+        arrived with M4.6 and have no column in the list either."""
         graded = row(
             source_encoding="Sony S-Log3/S-Gamut3.Cine",
             source_encoding_origin="clip metadata",
-            clf_path=Path("/session/MELT0001.clf"),
         )
         sections = describe([graded], batch(graded))
         assert value(sections, "Colour", "Source encoding") == "Sony S-Log3/S-Gamut3.Cine"
         assert value(sections, "Colour", "Named by") == "clip metadata"
-        assert value(sections, "Colour", "Grade file") == "/session/MELT0001.clf"
 
     def test_a_row_with_no_colour_facts_has_no_colour_section(self) -> None:
-        assert "Colour" not in titles(describe([row()], batch(row())))
+        bare = row(source_encoding=None)
+        assert "Colour" not in titles(describe([bare], batch(bare)))
 
     def test_audio_reports_its_own_length_against_the_picture(self) -> None:
         sounded = with_sides(row())
@@ -165,25 +163,6 @@ class TestWhatOneRowSays:
 
     def test_a_row_with_no_audio_has_no_audio_section(self) -> None:
         assert "Audio" not in titles(describe([row()], batch(row())))
-
-    def test_camdata_is_read_through_the_lookup_and_its_pairs_are_fields(self) -> None:
-        """Section 12.2: the only place lens, filter and camera body appear in the UI."""
-        sided = with_sides(row())
-        asked: list[Path] = []
-
-        def lookup(path: Path) -> dict[str, str]:
-            asked.append(path)
-            return {"Lens": "Zeiss Supreme Prime 35mm", "Filter": "ND 0.6"}
-
-        sections = describe([sided], batch(sided), lookup)
-        assert asked == [Path("/turnover/MELT0001_pl01_camdata.txt")]
-        assert value(sections, "Side files", "Lens") == "Zeiss Supreme Prime 35mm"
-
-    def test_nothing_reads_a_file_without_a_lookup(self) -> None:
-        """The default is a stub, so a pane built without one cannot touch a Drive mount."""
-        sided = with_sides(row())
-        labels = {f.label for f in section(describe([sided], batch(sided)), "Side files").fields}
-        assert labels == {"HDRI", "camData"}
 
     def test_the_turnover_the_row_belongs_to_is_shown(self) -> None:
         sections = describe([row()], batch(row()))
@@ -250,7 +229,8 @@ class TestTheEdgeStates:
         assert value(sections, "Turnover", "QC-054") == "no lens grid folder"
 
     def test_a_section_with_nothing_in_it_is_dropped(self) -> None:
-        assert "Colour" not in titles(describe([row()], batch(row())))
+        bare = row(source_encoding=None)
+        assert "Colour" not in titles(describe([bare], batch(bare)))
 
 
 class TestMoreThanOneRow:
@@ -277,8 +257,8 @@ class TestMoreThanOneRow:
         assert value(describe(rows, batch(*rows)), "Source media", "Resolution") == MIXED
 
     def test_a_field_only_one_row_has_is_a_disagreement(self) -> None:
-        rows = [row(clf_path=Path("/session/a.clf")), row("MELT0002_pl01")]
-        assert value(describe(rows, batch(*rows)), "Colour", "Grade file") == MIXED
+        rows = [row(source_encoding_origin="clip metadata"), row("MELT0002_pl01")]
+        assert value(describe(rows, batch(*rows)), "Colour", "Named by") == MIXED
 
     def test_qc_is_counted_across_the_selection_rather_than_merged(self) -> None:
         """Two rows with different problems agree on nothing, and `mixed` would be the
@@ -445,7 +425,6 @@ def test_describe_row_keeps_empty_sections_so_a_merge_can_line_them_up() -> None
         "Range",
         "Colour",
         "Audio",
-        "Side files",
         "Turnover",
         "QC",
     ]
@@ -463,5 +442,4 @@ def test_a_media_info_that_is_not_a_numbered_frame_has_no_pattern() -> None:
         frame_count=24,
         is_sequence=True,
     )
-    odd.side_files = SideFiles()
     assert value(describe([odd], batch(odd)), "Source media", "Pattern") == ""

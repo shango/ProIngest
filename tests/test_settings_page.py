@@ -75,6 +75,7 @@ class TestTheForm:
     def test_the_pinned_colour_values_are_read_rather_than_copied(self) -> None:
         values = settings_form.readonly_values()
         assert values["readonly.config"] == color.BUILTIN_CONFIG
+        assert values["readonly.working_space"] == color.WORKING_SPACE == "ACEScct"
         assert color.VIEW in values["readonly.output_transform"]
         for written, space in color.INPUT_TRANSFORMS.items():
             assert f"{written} = {space}" in values["readonly.input_transforms"]
@@ -189,13 +190,13 @@ class TestTheDialog:
 
     def test_the_folder_chooser_writes_into_the_field(self, dialog: SettingsDialog, tmp_path: Path) -> None:
         dialog.ask_folder = lambda start: str(tmp_path)  # type: ignore[method-assign]
-        row_widget = editor(dialog, "app.color_session_folder")
+        row_widget = editor(dialog, "app.ffmpeg_path")
         assert isinstance(row_widget, QWidget) and not isinstance(row_widget, QLineEdit)
         edit = row_widget.findChild(QLineEdit)
         assert isinstance(edit, QLineEdit)
         dialog._choose_into(edit)
         app, _ = dialog.result_settings()
-        assert app.color_session_folder == str(tmp_path)
+        assert app.ffmpeg_path == str(tmp_path)
 
     def test_a_read_only_value_is_never_written_back(self, dialog: SettingsDialog) -> None:
         assert not [key for key in dialog.values() if key.startswith("readonly.")]

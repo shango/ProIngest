@@ -11,7 +11,6 @@ from pathlib import Path
 
 import numpy as np
 import OpenEXR
-import PyOpenColorIO as ocio
 import pytest
 
 from proingest.core import clf, color, exr, frames
@@ -146,16 +145,6 @@ class TestWrittenMetadata:
         with OpenEXR.File(str(path)) as handle:
             assert exr.SOURCE_ENCODING_ATTRIBUTE not in handle.header()
 
-    def test_an_ungraded_frame_carries_no_clf_attributes_at_all(self, tmp_path: Path) -> None:
-        """Absent rather than empty: an empty name would read as a lost filename."""
-        path = tmp_path / "frame.exr"
-        exr.write_frame(path, image())
-        with OpenEXR.File(str(path)) as handle:
-            header = handle.header()
-        assert exr.CLF_ATTRIBUTE not in header
-        assert exr.CLF_HASH_ATTRIBUTE not in header
-        assert not any(name in header for name in exr.CDL_ATTRIBUTES)
-
     def test_primaries_are_written(self, tmp_path: Path) -> None:
         path = tmp_path / "frame.exr"
         exr.write_frame(path, image())
@@ -185,7 +174,6 @@ class TestProvenance:
 
     def shot_color(self, tmp_path: Path) -> clf.ShotColor:
         return clf.ShotColor(
-            clf_path=tmp_path / "MELT0001_grade.clf",
             cdl=CDL(
                 slope=(1.02, 0.99, 1.01),
                 offset=(0.001, -0.002, 0.0),
@@ -197,24 +185,10 @@ class TestProvenance:
         )
 
     def written(self, tmp_path: Path) -> dict[str, object]:
-        shot_color = self.shot_color(tmp_path)
-        path_to_clf = shot_color.clf_path or Path()
-        loaded = clf.LoadedClf(
-            path=path_to_clf,
-            digest="abc123",
-            transform=ocio.FileTransform(src=str(path_to_clf)),
-            is_scene_linear=True,
-        )
         path = tmp_path / "frame.exr"
-        exr.write_frame(path, image(), shot_color=shot_color, loaded_clf=loaded)
+        exr.write_frame(path, image(), shot_color=self.shot_color(tmp_path))
         with OpenEXR.File(str(path)) as handle:
             return dict(handle.header())
-
-    def test_the_clf_is_named_and_hashed(self, tmp_path: Path) -> None:
-        """The hash identifies the grade: a re-exported CLF gets a new one."""
-        header = self.written(tmp_path)
-        assert header[exr.CLF_ATTRIBUTE] == "MELT0001_grade.clf"
-        assert header[exr.CLF_HASH_ATTRIBUTE] == "abc123"
 
     def test_the_cdl_goes_in_as_numbers(self, tmp_path: Path) -> None:
         header = self.written(tmp_path)
@@ -231,10 +205,10 @@ class TestProvenance:
         assert str(header[sop]).startswith("*ASC_SOP (1.020000")
         assert header[sat] == "*ASC_SAT 1.050000"
 
-    def test_the_header_says_the_cdl_was_not_the_thing_applied(self, tmp_path: Path) -> None:
-        """Two grade artifacts in one header is only safe if the file says which is which."""
-        header = self.written(tmp_path)
-        assert exr.CLF_ATTRIBUTE in str(header[exr.CDL_ATTRIBUTES[-1]])
+    def test_the_header_says_the_cdl_was_applied_and_where(self, tmp_path: Path) -> None:
+        """There are no per-shot grade files, so the CDL is always what was applied."""
+        assert self.written(tmp_path)[exr.CDL_ATTRIBUTES[-1]] == exr.CDL_NOTE_APPLIED
+        assert color.WORKING_SPACE in exr.CDL_NOTE_APPLIED
 
     def test_a_frame_carries_its_own_timecode(self, tmp_path: Path) -> None:
         path = tmp_path / "frame.exr"
@@ -268,6 +242,14 @@ class TestReadPixels:
         path = tmp_path / "frame.exr"
         exr.write_frame(path, image(value=64.0))
         assert exr.read_pixels(path).max() == pytest.approx(64.0, rel=1e-2)
+
+    def test_a_value_past_half_is_clamped_not_infinite(self, tmp_path: Path) -> None:
+        """F28: 1e6 cast to half is inf, which a comp multiplies into its neighbours."""
+        path = tmp_path / "frame.exr"
+        exr.write_frame(path, image(value=1e6))
+        read = exr.read_pixels(path)
+        assert np.isfinite(read).all()
+        assert read.max() > 60000  # DWAA is lossy, so near the ceiling rather than on it
 
     def test_alpha_comes_back(self, tmp_path: Path) -> None:
         path = tmp_path / "frame.exr"

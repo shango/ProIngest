@@ -104,27 +104,6 @@ class TestLookups:
         fixtures.make_wav(tmp_path / "MELT0001_pl01.wav")
         assert len(media.index_directory(tmp_path).audio_matching("MELT0001_pl01")) == 1
 
-    def test_containing_finds_side_files(self, tmp_path: Path) -> None:
-        (tmp_path / "MELT0001_pl01_HDRI.exr").write_bytes(b"not really an exr")
-        (tmp_path / "MELT0001_pl01_camData.txt").write_text("iso: 800")
-        index = media.index_directory(tmp_path)
-        assert len(index.containing("HDRI")) == 1
-        assert len(index.containing("camdata")) == 1, "matching is case-insensitive"
-
-
-class TestUrlToPath:
-    @pytest.mark.parametrize(
-        ("url", "expected"),
-        [
-            ("/Volumes/GoogleDrive/turnover/a.exr", "/Volumes/GoogleDrive/turnover/a.exr"),
-            ("file:///Volumes/GoogleDrive/a.exr", "/Volumes/GoogleDrive/a.exr"),
-            ("file:///G:/turnover/a.exr", "G:/turnover/a.exr"),
-            ("file:///Volumes/My%20Drive/a.exr", "/Volumes/My Drive/a.exr"),
-        ],
-    )
-    def test_converts(self, url: str, expected: str) -> None:
-        assert media.url_to_path(url) == Path(expected)
-
 
 class TestRemap:
     MAP: ClassVar[dict[str, str]] = {"/Volumes/GoogleDrive/Shared drives": "G:/Shared drives"}
@@ -152,6 +131,21 @@ class TestRemap:
 
 
 class TestProbe:
+    def test_a_start_of_00_00_00_00_is_a_timecode(self, tmp_path: Path) -> None:
+        """F8: frame 0 read as no timecode, and the EXRs lost `timeCode`."""
+        source = fixtures.make_mov(tmp_path / "zero.mov", count=2, timecode="00:00:00:00")
+        assert media.probe(source).start_timecode == 0
+
+    def test_drop_frame_timecode_is_flagged(self) -> None:
+        """F24: `;` marks drop-frame, which the timecode reader refuses (QC-027)."""
+        assert media._is_drop_frame({"format": {"tags": {"timecode": "01:00:00;00"}}, "streams": []})
+        assert not media._is_drop_frame({"format": {"tags": {"timecode": "01:00:00:00"}}, "streams": []})
+
+    def test_a_file_name_in_another_case_still_finds_its_file(self, tmp_path: Path) -> None:
+        """F27: the CSV's File Name is typed by a person."""
+        fixtures.make_mov(tmp_path / "C0145.MOV", count=2)
+        assert len(media.index_directory(tmp_path).media_matching("c0145")) == 1
+
     def test_exr_sequence(self, tmp_path: Path) -> None:
         fixtures.make_exr_sequence(tmp_path, count=6, first=1001, size=(64, 36))
         sequence = media.index_directory(tmp_path).sequences[0]
@@ -333,16 +327,9 @@ class TestConformedRate:
         from proingest.core import scan
 
         folder = tmp_path / "turnover001_02_23_2026_dan"
-        sequence = fixtures.make_exr_sequence(
-            folder / "media", base="MELT0001_pl01", count=6, fps=24, header_fps=30
-        )
-        fixtures.make_otio(
-            folder / "t.otio",
-            [("MELT0001_pl01", sequence.path_for(1001).as_uri())],
-            fps=24,
-            duration=6,
-            available_duration=6,
-        )
+        fixtures.make_exr_sequence(folder / "media", base="MELT0001_pl01", count=6, fps=24, header_fps=30)
+        fixtures.make_meta_csv(folder / "metadata.csv", [("MELT0001_pl01", "MELT0001", "pl01")])
+        fixtures.make_final_edl(folder / "FINAL_v01.edl", ["MELT0001_pl01"], duration=6)
         _, rows = scan.scan_turnover(folder, "t1")
         assert rows[0].media is not None
         assert rows[0].media.rate == RATE_24

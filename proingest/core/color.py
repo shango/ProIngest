@@ -1,23 +1,25 @@
 """The colour transforms every deliverable is built from.
 
-COLOR_AND_FORMAT section 1. Colour is finished before the tool runs: a colour session
-in Resolve exports one CLF per shot and the tool applies it. Nothing here authors
-colour, and nothing here is a hand written curve or matrix. Every transform comes from
-OpenColorIO's built-in ACES config, which travels inside the wheel, so no config files
-ship and there is nothing for an installer to get wrong.
+COLOR_AND_FORMAT section 1. Colour is decided before the tool runs: a colour session in
+Resolve exports one final EDL whose events carry the ASC CDL, and the tool applies that
+CDL in the session's working space, ACEScct. Nothing here authors colour, and nothing
+here is a hand written curve or matrix. Every transform comes from OpenColorIO's
+built-in ACES config, which travels inside the wheel, so no config files ship and there
+is nothing for an installer to get wrong.
 
-The chain, with this module supplying every leg except the CLF:
+The chain, with this module supplying every leg except the grade:
 
-    source encoding -> [the shot's CLF] -> linear ACEScg   the plate branch
-                                        -> sRGB display    the view branch
+    source encoding -> ACEScct -> [the shot's CDL, or its cube] -> linear ACEScg   plate
+                                                                -> sRGB display    view
 
-**The CLF is the whole of a graded chain.** It starts at whatever the clip is encoded in
-and ends in linear ACEScg (OQ-37, answered 2026-09-12), so this module supplies nothing
-ahead of it and `output_transform` is the only leg a graded chain takes from here.
-`input_transform` is the same source to ACEScg leg for the chains that have no CLF: an
-aux still, which is delivered ungraded by design, and any row the colour session has no
-grade for. The CLF itself is loaded rather than built (`core/clf.py`), which is why this
-module composes transforms and hands back a processor instead of owning the whole chain.
+**The tool converts on both sides of the grade** (decided 2026-09-18, OQ-46). The grade is
+the primaries the colourist set in node one of a colour managed session whose timeline
+is ACEScct, so it means something only in ACEScct: `to_working` gets the clip there from
+whatever its metadata says it is encoded in, and `from_working` carries the graded
+result to ACEScg. A `.cube` from Generate LUT out of that same session is the same
+grade with the whole node graph in it, ACEScct in and out, and stands in the same slot
+(`core/clf.py`). `input_transform` is the one leg chain for a shot with no grade at all:
+an aux still, which is delivered ungraded by design.
 
 Building a processor is expensive and applying it is not, so the two are separate
 calls. Build one per shot, apply it per frame. The view branch is built once per shot
@@ -32,6 +34,8 @@ from pathlib import Path
 import numpy as np
 import numpy.typing as npt
 import PyOpenColorIO as ocio
+
+from proingest.core.models import CDL
 
 
 class ColorError(RuntimeError):
@@ -57,10 +61,18 @@ PLATE_SPACE = "ACEScg"
 # batch-wide value would be wrong for every clip it was not guessed for.
 # `ShotRow.source_encoding` carries what the clip itself names, and a row that names
 # nothing is QC-046 rather than a row converted through a guess.
-#
-# A working space constant lived here too, ACEScct, where the input transform landed and
-# the grade began. The CLF no longer starts there, so the space is gone from the chain
-# entirely and the leg that reached it collapsed into `input_transform`.
+
+WORKING_SPACE = "ACEScct"
+"""The colour session's timeline colour space, which is where the CDL is applied.
+
+A constant and not a setting, because it is the standard the colourist's session is
+set to (decided 2026-09-18) and a value here that disagreed with the session would
+replay the grade in the wrong space without an error: a CDL applied in ACEScc instead
+of ACEScct is wrong in the shadows and looks like a grade. ACEScct rather than ACEScc
+because it is Resolve's default for an ACES managed project and what a colourist
+grades in, its toe behaving like camera log under the wheels. Shown read only on the
+Settings page beside the config, and written into every delivered EXR's header.
+"""
 
 INPUT_TRANSFORMS: dict[str, str] = {
     "c-log3": "CanonLog3 CinemaGamut D55",
@@ -157,18 +169,43 @@ def _unresolved_reason(key: str) -> str:
 def input_transform(source_encoding: str) -> ocio.ColorSpaceTransform:
     """The source encoding to linear ACEScg, in one leg. COLOR_AND_FORMAT section 1.
 
-    **Only for a chain with no CLF in it**: an aux still, which is delivered ungraded by
-    design, and a row the colour session has no grade for. A graded chain gets the CLF
-    alone, because the CLF starts at the source encoding itself (OQ-37), and a
-    conversion ahead of one is a second conversion that raises nothing.
-
-    One leg rather than the two this used to be. The first landed in ACEScct because
-    that is where the grade began and the second carried the result to ACEScg; the grade
-    begins at the source now, so there is no intermediate space to arrive in and no way
-    to apply half a chain.
+    **Only for a chain with no grade in it**: an aux still, which is delivered ungraded by
+    design, and a row the colour session has no CDL and no cube for. A graded chain goes
+    through `to_working` and `from_working` instead, because the grade sits between them.
     """
     check_encoding(source_encoding)
     return ocio.ColorSpaceTransform(src=source_encoding, dst=PLATE_SPACE)
+
+
+def to_working(source_encoding: str) -> ocio.ColorSpaceTransform:
+    """The source encoding to ACEScct: the leg ahead of the grade, from the clip's metadata.
+
+    This is where the input transform table earns its keep on a plate: a clip that
+    names the wrong camera lands in ACEScct wrong and the CDL grades the wrong pixels,
+    so QC-046 and QC-047 block a graded plate as they block an aux still.
+    """
+    check_encoding(source_encoding)
+    return ocio.ColorSpaceTransform(src=source_encoding, dst=WORKING_SPACE)
+
+
+def from_working() -> ocio.ColorSpaceTransform:
+    """ACEScct to linear ACEScg: the leg after the grade, the same for every shot."""
+    return ocio.ColorSpaceTransform(src=WORKING_SPACE, dst=PLATE_SPACE)
+
+
+def cdl_transform(cdl: CDL) -> ocio.CDLTransform:
+    """The ASC CDL off the EDL's `*ASC_SOP` and `*ASC_SAT` lines, as one OCIO transform.
+
+    OpenColorIO's default style, which does not clamp between the SOP and the
+    saturation. The ASC specification clamps there to 0..1, but Resolve's node graph is
+    32 bit float and clamps nothing, and a clamp in ACEScct would discard the values
+    above 1.0 and the negative values that out of gamut colours legitimately take.
+    Whether this matches what the session showed is what the stringout comparison is for
+    (OQ-55).
+    """
+    return ocio.CDLTransform(
+        slope=list(cdl.slope), offset=list(cdl.offset), power=list(cdl.power), sat=cdl.saturation
+    )
 
 
 def processor(*transforms: ocio.Transform) -> ocio.CPUProcessor:

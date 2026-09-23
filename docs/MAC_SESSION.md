@@ -39,6 +39,23 @@ Do not rent for any of these. Listed because the instinct to rent is usually wro
   validation colouring, docks, metadata pane and theme are all built and iterated locally.
   Only the platform-specific surface below needs a Mac.
 
+## The 0.5.0 build, in order (2026-09-23)
+
+What the review of 2026-09-23 changed, checked on the editor's Mac with the real folder. The old
+chunk 7 of `docs/TO_A_WORKING_BUILD.md`, in the order that wastes least.
+
+- [ ] Download `ProIngest-0.5.0.dmg` from the CI run of the pushed branch (the `package-macos`
+      job's artifact) and install it as `docs/guide/install.md` says. Do not build it locally.
+- [ ] **The acceptance test.** Point the tool at `Turnover199`. Scan: five rows, each with a shot
+      code, a clip type, an encoding, an approved In/Out and a CDL, and **no must-fix** (Run is
+      not refused). Run: twelve deliverables land, named to the spec, verified, and both
+      spreadsheets are written. The tracker has one line, `TEST0002`.
+- [ ] Work the four 2026-09-23 lines at the end of Session 2 below: the reference against its
+      wav (chunk B), colour against Resolve (chunk G), locks and a moved folder (chunk E), and
+      failure and re-run (chunk D).
+- [ ] Neither shell script (`build/mac_build.sh`, `ProIngest.command`) has ever run on a Mac;
+      CI does the same steps from its own YAML. Run `./ProIngest.command` once from a clone.
+
 ## Session 1: a rented Mac, one day, at the end of M5
 
 ### Do not rent until all of these are true
@@ -232,17 +249,18 @@ Treat it as a working session with the editor rather than a delivery.
 - [ ] Install, strip quarantine, walk the first-run experience.
 - [ ] The editor picks a source root and a delivery root on their Drive mount and both stick
       across a restart. OQ-25 removed the detection, not the need to see this work once.
-- [ ] A turnover from a **Windows** shooter resolves its media. Their OTIO can carry `G:\...`
-      paths that mean nothing here, so this is what settles whether the FR-2 path map earns its
-      place or the filename search over the source root covers it on its own.
+- [ ] A turnover from a **Windows** shooter resolves its media. **Mostly dissolved 2026-09-21**:
+      with no OTIO there are no embedded media paths at all, so matching is by `File Name` from
+      the CSV against the folder. What is left to see is whether the filename search over a real
+      Drive mount is fast enough, which is M8.2's job rather than this one.
 - [ ] Scan a real turnover from each of the three shooters. OQ-1 folder structure, OQ-3 what
       the consolidated media actually is, OQ-4 how stills and BTS are named.
-- [ ] **Open one of those turnovers and look for `Input Color Space` in the clip metadata.**
-      The scan reads the source encoding from that one field (M4.6.4), because it is Resolve's
-      own Media Pool column for the input transform, and **nothing has confirmed Resolve exports
-      it into the `.otio`**. If it is absent, look at what the clip does carry and at the
-      container's tags, which is the second place the tool looks. The fix is one string in
-      `scan.SOURCE_ENCODING_KEY`; the point of looking is to find out which string. OQ-44.
+- [ ] **ANSWERED 2026-09-21, no Mac needed.** The encoding is not in `Input Color Space`, which
+      is a Resolve clip property rather than a metadata field and never appears in an export. It
+      is in **`Gamma Notes` + `Color Space Notes`**, typed by the shooter, reaching the tool
+      through the colourist's CSV, and verified to resolve on all five clips of the sample
+      turnover. What is still worth doing on a Mac: **open a real turnover and confirm
+      `Shot Type` is filled**, since the sample's was empty (OQ-70).
 - [ ] **Read what the shooters actually wrote in it.** "S-Log3" on its own resolves to nothing,
       deliberately, because it names four colour spaces. If that is what arrives, the outcome is
       an instruction to the shooters rather than a change to the tool: ask for the Resolve input
@@ -257,9 +275,10 @@ Treat it as a working session with the editor rather than a delivery.
       Linux, where the spin box arrows do not render at all and the form's label alignment
       against the multi-line path map block is a guess. Cmd+, has to open it, and it has to
       arrive in the application menu rather than a window menu (section 11's roles).
-- [ ] **Press Run on a batch with no colour session ingested and watch what the editor does.**
-      Since M5.7.1 QC-008 holds that turnover back and the run writes nothing, which is the
-      right refusal and may read as a dead button. The Issues dock carries the reason and the
+- [ ] **Press Run on a batch whose EDL carries no CDL and watch what the editor does.**
+      QC-008 holds that turnover back and the run writes nothing, which is the right refusal and
+      may read as a dead button. (A turnover with no EDL at all no longer reaches this: it is
+      refused at Add Turnover by QC-001, 2026-09-21.) The Issues dock carries the reason and the
       status bar names the turnover; whether that is enough, or whether Run should say it
       itself, is a judgement to make in front of the real window rather than from a test.
 - [ ] **Ingest one real session from the window and read the report.** How many rows matched,
@@ -313,4 +332,31 @@ Treat it as a working session with the editor rather than a delivery.
       `⌘R`, so every line is shorter there than the width test assumes. What a test cannot
       judge: whether two lines is right for a greyed button, whether the shortcut belongs on the
       first line or looks like part of the sentence, and whether the note on an enabled Run
-      ("no colour session ingested yet") reads as helpful or as nagging. UI_SPEC section 1.
+      ("no EDL with a CDL has been read yet") reads as helpful or as nagging. UI_SPEC section 1.
+- [ ] **Play one reference mp4 against its wav and its EXRs on the Mac** (2026-09-23, chunk B).
+  Every real file is 24000/1001 and is now delivered at 24 frame for frame, with the sound sped up
+  0.1% by `atempo` to follow it. Measured on Linux with ffmpeg 6.1: `r_frame_rate` 24/1, the same
+  frames bit for bit, the wav exactly the plate's length, the mp4 timecode the In frame's. Confirm
+  on the bundled 9.0.1 that QC-113 passes, the timecode tag reads the EXR's first `timeCode`, and
+  the sound stays in sync to the last frame of a long plate.
+- [ ] **Chunk G, colour and format (2026-09-23).** Every decode now states its matrix and range, and a
+  file with no matrix tag is decoded as BT.709 (D17, provisional). Measured on Linux with ffmpeg
+  6.1; the suite's `test_a_pure_red_reference_measures_bt709` and
+  `test_an_untagged_bt709_file_decodes_to_its_primary` pin it on CI. By eye on the Mac: open
+  `TEST0002_pl01_ref_HD_v01.mp4` beside the same frame in Resolve's viewer and say whether the
+  colours agree; saturated reds and greens are where a matrix error shows.
+- [ ] **Chunk E, locks and recovery (2026-09-23).** On the Mac, with the real turnover: (1) press Run
+  and try to edit a cell, press Ctrl+K, click the delivery root, open Settings: all refused until
+  the banner shows. (2) The window stays responsive while "Checking the batch" and "Writing the QC
+  log" are on the strip, with the delivery root on the Drive mount. (3) Save the batch, quit, move
+  the turnover folder in the Finder, reopen the batch: the header shows QC-069. Right-click the
+  header, New Folder Location..., pick the moved folder: the rows come back with their trims and
+  skips. (4) Right-click on the frozen left columns of a header works as well as on the rest.
+  (5) Close during a run: the window closes within a few seconds of the run stopping.
+- [ ] **Chunk D, failure and re-run (2026-09-23).** On the Mac: (1) Run the real turnover twice; the
+  second Run says nothing to render and each row carries QC-061. (2) Right-click a shot, Re-run,
+  Run: that shot alone comes back at v02. (3) Force a failure (for instance make the delivery
+  folder read-only part way through, or delete a source clip) and check nothing under a final
+  name is left for it, the row names the output, and Reset then Run writes it at the same
+  version. (4) Kill one `ProIngest` worker in Activity Monitor during a run: the run finishes,
+  the lost jobs are rendered again, and nothing that had landed is lost.

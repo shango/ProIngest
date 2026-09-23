@@ -19,8 +19,25 @@ DEFAULT_SHOW_PATTERN = r"[A-Z]{2,6}"
 
 ELEMENT_TYPES = ("pl", "cp", "el", "wit", "re")
 AUX_NAMES = ("colorChart", "mirrorBall", "greyBall", "sizeRef")
-CAMDATA_EXTENSIONS = ("txt", "rtf")
-BTS_EXTENSIONS = ("png", "jpg", "jpeg")
+
+CLIP_TYPES = ELEMENT_TYPES + AUX_NAMES
+"""Every value `Shot Type` may carry, plates and reference stills alike.
+
+NAMING_SPEC section 1: a reference still is a peer of a plate here, not something
+hanging off one. `Shot Type` is the whole of the tool's scope (user, 2026-09-22), so a
+value outside this tuple is a clip the tool does not deliver.
+"""
+
+SHOT_TYPE_ALIASES = {"cl": "cp"}
+"""Spellings the shooters use that are not the spelling the deliverable carries.
+
+`cl` for a clean plate is the user's own habit and `cp` is what their spec sheet says
+everywhere (OQ-72). Accepting both costs one row and writing `cp` keeps one spelling
+in the delivered names.
+"""
+
+_SHOT_TYPE_INDEX = {name.casefold(): name for name in CLIP_TYPES}
+_SHOT_TYPE_PATTERN = re.compile(r"^(?P<kind>[A-Za-z]+)(?P<index>\d{1,2})?$")
 
 FIRST_OUTPUT_FRAME = 1001
 """Output sequences always start here, whatever the source frame numbering is."""
@@ -33,65 +50,79 @@ _AUX = "|".join(AUX_NAMES)
 
 @dataclass(frozen=True)
 class ShotIdentity:
-    """A parsed timeline clip name.
+    """Who a clip is: the shot it belongs to and what kind of clip it is.
 
-    Numeric parts stay strings so leading zeros survive the round trip.
+    **Assembled from two CSV fields rather than parsed out of a filename** (NAMING_SPEC
+    section 1, settled 2026-09-21): `Shot` gives `shot_code` and `Shot Type` gives
+    `kind` and `index`.
+
+    `kind` is drawn from `CLIP_TYPES`, which holds plates and reference stills **in one
+    tuple**. That is the shape of the change rather than a detail of it: the old model
+    hung a still off an element, and in the CSV `colorChart` is a peer of `pl01`. A
+    still therefore has no element, which is why `stem` refuses to build one for it.
+
+    `index` stays a string so a leading zero survives the round trip.
     """
 
-    show: str
-    shot: str
-    elem_type: str
-    elem_index: str
-    aux: str | None = None
-    aux_index: str | None = None
+    shot_code: str
+    kind: str
+    index: str
 
     @property
-    def shot_code(self) -> str:
-        return f"{self.show}{self.shot}"
+    def show(self) -> str:
+        """`MELT` out of `MELT0001`, which is the delivery's top folder.
+
+        Taken off the shot code rather than carried, because a shot code is letters then
+        four digits by grammar (NAMING_SPEC section 1) and carrying it would be a second
+        place for the two to disagree.
+        """
+        return self.shot_code.rstrip("0123456789")
+
+    @property
+    def is_still(self) -> bool:
+        """A reference still: one 4k EXR, never graded, keyed to the shot code."""
+        return self.kind in AUX_NAMES
 
     @property
     def elem(self) -> str:
-        return f"{self.elem_type}{self.elem_index}"
+        """`pl01`, what a plate's deliverables are named for."""
+        return f"{self.kind}{self.index}"
 
     @property
     def stem(self) -> str:
-        """`MELT0001_pl01`, the prefix shared by every deliverable of this element."""
+        """`MELT0001_pl01`, the prefix shared by every deliverable of this element.
+
+        Refuses for a still rather than returning `MELT0001_colorChart01`, which is a
+        name nothing writes: a still's deliverable is `MELT0001_colorChart_01_4k_v01.exr`,
+        with an underscore before the index and no element segment. Raising here is the
+        difference between a still that cannot be named and one named plausibly wrong.
+        """
+        if self.is_still:
+            raise ValueError(f"{self.shot_code} {self.kind} is a reference still and has no element stem")
         return f"{self.shot_code}_{self.elem}"
 
 
-@dataclass(frozen=True)
-class LensGridIdentity:
-    """A lens grid clip. Turnover level, not tied to a shot."""
+def parse_shot_type(written: str) -> tuple[str, str] | None:
+    """A `Shot Type` value as (kind, index), or None when it names nothing we deliver.
 
-    camera: str
-    lens: str
-    mm: str
+    Case insensitive, because the shooters do not keep the camel case. Safe rather than
+    lenient: the nine codes are distinct casefolded, so nothing is ambiguous.
 
+    **A bare code means index `01`.** Three of the five rows in the real sample are bare
+    (`colorChart`, `mirrorBall`, `greyBall`), so this carries weight rather than being a
+    kindness. `cl` is accepted and comes back `cp` (OQ-72).
 
-def _clip_pattern(show_pattern: str) -> re.Pattern[str]:
-    return re.compile(
-        rf"^(?P<show>{show_pattern})(?P<shot>\d{{4}})"
-        rf"_(?P<type>{_TYPES})(?P<idx>\d{{2}})"
-        rf"(?:_(?P<aux>{_AUX}|BTS)_(?P<auxidx>\d{{2}}))?$"
-    )
-
-
-LENS_GRID_PATTERN = re.compile(r"^(?P<camera>[A-Za-z0-9]+)_(?P<lens>[A-Za-z0-9\-]+)_lensgrid_(?P<mm>\d+)mm$")
-
-
-def parse_clip_name(name: str, show_pattern: str = DEFAULT_SHOW_PATTERN) -> ShotIdentity | None:
-    """Parse a timeline clip name. Returns None when it does not match (caller raises QC-010)."""
-    match = _clip_pattern(show_pattern).match(name)
+    What comes back is always the spelling in NAMING_SPEC section 1, never the shooter's,
+    so two deliverables cannot differ by capitalisation alone.
+    """
+    match = _SHOT_TYPE_PATTERN.match(written.strip())
     if match is None:
         return None
-    return ShotIdentity(
-        show=match["show"],
-        shot=match["shot"],
-        elem_type=match["type"],
-        elem_index=match["idx"],
-        aux=match["aux"],
-        aux_index=match["auxidx"],
-    )
+    key = match["kind"].casefold()
+    kind = _SHOT_TYPE_INDEX.get(SHOT_TYPE_ALIASES.get(key, key))
+    if kind is None:
+        return None
+    return kind, (match["index"] or "1").zfill(2)
 
 
 def parse_shot_code(code: str, show_pattern: str = DEFAULT_SHOW_PATTERN) -> tuple[str, str] | None:
@@ -104,24 +135,6 @@ def parse_shot_code(code: str, show_pattern: str = DEFAULT_SHOW_PATTERN) -> tupl
     if match is None:
         return None
     return match["show"], match["shot"]
-
-
-def parse_lens_grid_name(name: str) -> LensGridIdentity | None:
-    """Parse a lens grid clip name, which uses a different pattern to shot clips."""
-    match = LENS_GRID_PATTERN.match(name)
-    if match is None:
-        return None
-    return LensGridIdentity(camera=match["camera"], lens=match["lens"], mm=match["mm"])
-
-
-def normalize_shooter(name: str) -> str:
-    """Reduce a shooter's name to what the stringout filename can carry.
-
-    The stringout pattern only accepts lowercase alphanumerics, so `Daniel Luckett`
-    and `daniel-luckett` both become `danielluckett`. The unnormalized value stays on
-    the turnover for the tracker and the QC log. See OQ-15.
-    """
-    return re.sub(r"[^a-z0-9]", "", name.lower())
 
 
 def _ver(version: int) -> str:
@@ -156,45 +169,15 @@ def audio_wav(identity: ShotIdentity, version: int) -> str:
     return f"{identity.stem}_audio_{_ver(version)}.wav"
 
 
-def hdri_exr(identity: ShotIdentity, version: int) -> str:
-    return f"{identity.stem}_HDRI_{_ver(version)}.exr"
-
-
-def camdata(identity: ShotIdentity, version: int, ext: str) -> str:
-    ext = ext.lstrip(".").lower()
-    if ext not in CAMDATA_EXTENSIONS:
-        raise ValueError(f"camData extension must be one of {CAMDATA_EXTENSIONS}, got {ext!r}")
-    return f"{identity.stem}_camData_{_ver(version)}.{ext}"
-
-
 def aux_still_exr(identity: ShotIdentity, version: int) -> str:
-    """Single-frame reference still (colorChart, mirrorBall, greyBall, sizeRef). Always 4k."""
-    if identity.aux is None or identity.aux_index is None:
-        raise ValueError(f"{identity.stem} carries no aux still")
-    if identity.aux not in AUX_NAMES:
-        raise ValueError(f"aux still must be one of {AUX_NAMES}, got {identity.aux!r}")
-    return f"{identity.stem}_{identity.aux}_{identity.aux_index}_4k_{_ver(version)}.exr"
+    """Single-frame reference still (colorChart, mirrorBall, greyBall, sizeRef). Always 4k.
 
-
-def bts(identity: ShotIdentity, version: int, ext: str) -> str:
-    ext = ext.lstrip(".").lower()
-    if ext not in BTS_EXTENSIONS:
-        raise ValueError(f"BTS extension must be one of {BTS_EXTENSIONS}, got {ext!r}")
-    if identity.aux_index is None:
-        raise ValueError(f"{identity.stem} carries no BTS index")
-    return f"{identity.stem}_BTS_{identity.aux_index}_{_ver(version)}.{ext}"
-
-
-def lens_grid_png(identity: LensGridIdentity, version: int) -> str:
-    return f"{identity.camera}_{identity.lens}_lensgrid_{identity.mm}mm_{_ver(version)}.png"
-
-
-def stringout_mp4(turnover_number: int, month: int, day: int, year: int, shooter: str, version: int) -> str:
-    """`turnover001_02_23_2026_danielluckett_v01.mp4`. Shooter is normalized here."""
-    normalized = normalize_shooter(shooter)
-    if not normalized:
-        raise ValueError(f"shooter name {shooter!r} normalizes to an empty string")
-    return f"turnover{turnover_number:03d}_{month:02d}_{day:02d}_{year:04d}_{normalized}_{_ver(version)}.mp4"
+    **Keyed to the shot code, with no element segment** (shooters' spec, 2026-09-21):
+    `MELT0001_colorChart_01_4k_v01.exr`, not `MELT0001_pl01_colorChart_01_...`.
+    """
+    if not identity.is_still:
+        raise ValueError(f"aux still must be one of {AUX_NAMES}, got {identity.kind!r}")
+    return f"{identity.shot_code}_{identity.kind}_{identity.index}_4k_{_ver(version)}.exr"
 
 
 # --- Delivery folder layout, NAMING_SPEC.md section 5. ---
@@ -202,10 +185,6 @@ def stringout_mp4(turnover_number: int, month: int, day: int, year: int, shooter
 
 def shot_dir(delivery_root: Path, identity: ShotIdentity) -> Path:
     return delivery_root / identity.show / identity.shot_code
-
-
-def turnovers_dir(delivery_root: Path, show: str) -> Path:
-    return delivery_root / show / "_turnovers"
 
 
 def reports_dir(delivery_root: Path, show: str) -> Path:
@@ -219,12 +198,7 @@ OutputKind = Literal[
     "raw_dir",
     "ref_mp4",
     "audio",
-    "hdri",
-    "camdata",
     "aux_still",
-    "bts",
-    "lensgrid",
-    "stringout",
 ]
 
 
@@ -245,34 +219,16 @@ class ParsedOutput:
 
 def _output_patterns(show_pattern: str) -> list[tuple[OutputKind, re.Pattern[str]]]:
     """One anchored pattern per kind. Mutually exclusive on the literal kind segment."""
-    sc = rf"(?P<show>{show_pattern})(?P<shot>\d{{4}})_(?P<type>{_TYPES})(?P<idx>\d{{2}})"
+    shot = rf"(?P<show>{show_pattern})(?P<shot>\d{{4}})"
+    sc = rf"{shot}_(?P<type>{_TYPES})(?P<idx>\d{{2}})"
     v = r"v(?P<ver>\d{2})"
     res = r"(?P<res>4k|HD)"
-    camdata_ext = "|".join(CAMDATA_EXTENSIONS)
-    bts_ext = "|".join(BTS_EXTENSIONS)
     return [
         ("raw_frame", re.compile(rf"^{sc}_raw_{res}_{v}\.(?P<frame>\d{{4}})\.exr$")),
         ("raw_dir", re.compile(rf"^{sc}_raw_{res}_{v}$")),
         ("ref_mp4", re.compile(rf"^{sc}_ref_{res}_{v}\.mp4$")),
         ("audio", re.compile(rf"^{sc}_audio_{v}\.wav$")),
-        ("hdri", re.compile(rf"^{sc}_HDRI_{v}\.exr$")),
-        ("camdata", re.compile(rf"^{sc}_camData_{v}\.(?P<ext>{camdata_ext})$")),
-        ("aux_still", re.compile(rf"^{sc}_(?P<aux>{_AUX})_(?P<auxidx>\d{{2}})_4k_{v}\.exr$")),
-        ("bts", re.compile(rf"^{sc}_BTS_(?P<auxidx>\d{{2}})_{v}\.(?P<ext>{bts_ext})$")),
-        (
-            "lensgrid",
-            re.compile(
-                rf"^(?P<camera>[A-Za-z0-9]+)_(?P<lens>[A-Za-z0-9\-]+)"
-                rf"_lensgrid_(?P<mm>\d+)mm_{v}\.png$"
-            ),
-        ),
-        (
-            "stringout",
-            re.compile(
-                rf"^turnover(?P<tno>\d{{3}})_(?P<mm>\d{{2}})_(?P<dd>\d{{2}})"
-                rf"_(?P<yyyy>\d{{4}})_(?P<shooter>[a-z0-9]+)_{v}\.mp4$"
-            ),
-        ),
+        ("aux_still", re.compile(rf"^{shot}_(?P<aux>{_AUX})_(?P<auxidx>\d{{2}})_4k_{v}\.exr$")),
     ]
 
 

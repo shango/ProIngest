@@ -14,7 +14,7 @@ from pathlib import Path
 import pytest
 from openpyxl import load_workbook
 
-from proingest.core import exports, naming, qc
+from proingest.core import exports, qc
 from proingest.core.models import (
     AudioInfo,
     Batch,
@@ -24,9 +24,9 @@ from proingest.core.models import (
     MediaInfo,
     QCResult,
     ShotRow,
-    SideFiles,
     Turnover,
 )
+from tests.fixtures.names import identity_of
 
 RATE_24 = FrameRate(24)
 RATE_2398 = FrameRate(24000, 1001)
@@ -49,7 +49,7 @@ def row(clip_name: str = "MELT0001_pl01", rate: FrameRate = RATE_24, **kwargs: o
     built = ShotRow(
         turnover_id="turnover001",
         clip_name=clip_name,
-        identity=naming.parse_clip_name(clip_name),
+        identity=identity_of(clip_name),
         media=MediaInfo(
             path=Path("/turnover/MELT0001_pl01.mov"),
             codec="prores",
@@ -70,10 +70,6 @@ def row(clip_name: str = "MELT0001_pl01", rate: FrameRate = RATE_24, **kwargs: o
             sample_rate=48000,
             channels=2,
             bit_depth=24,
-        ),
-        side_files=SideFiles(
-            hdri=Path("/turnover/MELT0001_pl01_hdri.exr"),
-            camdata=Path("/turnover/MELT0001_pl01_camdata.txt"),
         ),
     )
     built.deliverables = [
@@ -128,20 +124,27 @@ class TestTheWrite:
         exports.write_shot_tracker(batch_of(row()), tmp_path / "r" / "tracker.xlsx")
         assert sorted(p.name for p in (tmp_path / "r").iterdir()) == ["log.xlsx", "tracker.xlsx"]
 
+    def test_a_control_character_in_a_note_is_dropped_not_raised(self, tmp_path: Path) -> None:
+        """F15: openpyxl refuses one, and the raise used to leave Run greyed for good."""
+        noted = row(notes="sky \x07replace")
+        written = exports.write_qc_log(batch_of(noted), tmp_path / "log.xlsx")
+        assert written.is_file()
+
 
 class TestQcLogSheets:
     @pytest.fixture
     def log(self, tmp_path: Path) -> Path:
         return exports.write_qc_log(batch_of(row()), tmp_path / "log.xlsx", date(2026, 9, 11))
 
-    def test_the_five_sheets_the_spec_names(self, log: Path) -> None:
-        assert load_workbook(log).sheetnames == [
-            "Summary",
-            "Shots",
-            "Deliverables",
-            "Side Files",
-            "Camera Data",
-        ]
+    def test_the_summary_records_the_ffmpeg_version(self, log: Path) -> None:
+        """PACKAGING.md: every QC log names the ffmpeg that made the deliverables."""
+        summary = {line[0]: line[1] for line in sheet_rows(log, "Summary")}
+        assert "ffmpeg version" in str(summary["ffmpeg"]).lower()
+
+    def test_the_three_sheets_the_spec_names(self, log: Path) -> None:
+        """Three since 2026-09-22: Side Files and Camera Data went with the deliverables
+        they described, which the tool no longer produces."""
+        assert load_workbook(log).sheetnames == ["Summary", "Shots", "Deliverables"]
 
     def test_the_summary_counts_what_ran(self, log: Path) -> None:
         summary: dict[object, object] = {key: value for key, value in sheet_rows(log, "Summary")[1:]}
@@ -163,15 +166,6 @@ class TestQcLogSheets:
         assert row_of["Delivered In"] == 8
         assert row_of["Delivered In TC"] == "01:00:00:08"
 
-    def test_the_shots_sheet_names_the_clf_the_row_was_graded_with(self, tmp_path: Path) -> None:
-        """The filename, because that is what a delivered EXR header carries (M4.5.4)."""
-        graded = row()
-        graded.clf_path = Path("/session/clf/MELT0001_grade_v02.clf")
-        path = tmp_path / "log.xlsx"
-        exports.write_qc_log(Batch(name="b", rows=[graded]), path)
-        header, values = sheet_rows(path, "Shots")
-        assert dict(zip(header, values, strict=True))["Grade file"] == "MELT0001_grade_v02.clf"
-
     def test_the_shots_sheet_names_the_encoding_the_clip_asked_for(self, tmp_path: Path) -> None:
         """Verbatim, because what QC-047 needs corrected is the string somebody typed."""
         named = row()
@@ -185,20 +179,8 @@ class TestQcLogSheets:
         header, values = sheet_rows(log, "Shots")
         assert not dict(zip(header, values, strict=True))["Source encoding"]
 
-    def test_an_ungraded_row_leaves_the_clf_column_empty(self, log: Path) -> None:
-        """openpyxl reads an empty string back as None; either way the cell says nothing."""
-        header, values = sheet_rows(log, "Shots")
-        assert not dict(zip(header, values, strict=True))["Grade file"]
-
     def test_one_deliverables_row_each(self, log: Path) -> None:
         assert len(sheet_rows(log, "Deliverables")) == 8
-
-    def test_side_files_pair_the_source_with_what_shipped(self, log: Path) -> None:
-        header, *rows = sheet_rows(log, "Side Files")
-        assert header == ["Shot code", "Type", "Source", "Delivered", "Checksum"]
-        kinds = {values[1]: values for values in rows}
-        assert kinds["hdri"][2] == "/turnover/MELT0001_pl01_hdri.exr"
-        assert kinds["hdri"][4] == "dd"
 
 
 class TestDeliverableRuleColumns:
@@ -239,24 +221,6 @@ class TestDeliverableRuleColumns:
         assert first["QC-101"] == "NA"
 
 
-class TestCameraDataSheet:
-    def test_every_pair_becomes_a_row(self, tmp_path: Path) -> None:
-        camdata_path = tmp_path / "MELT0001_pl01_camdata.txt"
-        camdata_path.write_text("Camera: ARRI Alexa 35\nLens: 32mm\n")
-        target = row()
-        target.side_files.camdata = camdata_path
-        log = exports.write_qc_log(batch_of(target), tmp_path / "log.xlsx")
-        assert sheet_rows(log, "Camera Data")[1:] == [
-            ["MELT0001", "Camera", "ARRI Alexa 35"],
-            ["MELT0001", "Lens", "32mm"],
-        ]
-
-    def test_an_unreadable_file_leaves_the_sheet_empty_rather_than_failing(self, tmp_path: Path) -> None:
-        """QC-053 already reported it on the row; a pair sheet is no place for an error."""
-        log = exports.write_qc_log(batch_of(row()), tmp_path / "log.xlsx")
-        assert sheet_rows(log, "Camera Data") == [["Shot code", "Key", "Value"]]
-
-
 class TestShotTracker:
     @pytest.fixture
     def tracker(self, tmp_path: Path) -> Path:
@@ -273,8 +237,8 @@ class TestShotTracker:
         assert values[2] == "MELT0001"
         assert values[3] == "MELT0001"
         assert values[4] == "MELT0001_pl01_ref_HD_v01.mp4"
-        assert values[5] == "MELT0001_pl01_HDRI_v01.exr"
-        assert values[6] == "MELT0001_pl01_camData_v01.txt"
+        assert values[5] is None, "HDRI is the studio's column and no longer ours to fill"
+        assert values[6] is None, "CAM Data likewise"
         assert values[8] == "24"
         assert values[9] == "✓"
 
@@ -296,16 +260,48 @@ class TestShotTracker:
         target = row()
         target.deliverables = [d for d in target.deliverables if d.res != "HD"]
         written = exports.write_shot_tracker(batch_of(target), tmp_path / "t.xlsx")
-        assert sheet_rows(written, "Shots")[1][7] == "4K ✓\nHD —"
+        assert sheet_rows(written, "Shots")[1][7] == "4K ✓\nHD \u2014"
 
     def test_the_stringout_column_is_left_for_a_human(self, tracker: Path) -> None:
         """OQ-41: the grammar the tool would rebuild it from matches none of the real names."""
         assert sheet_rows(tracker, "Shots")[1][34] is None
 
-    def test_an_odd_rate_is_written_as_the_sheet_writes_it(self, tmp_path: Path) -> None:
-        """`23.976`, not the exact fraction `24000/1001` a log would want."""
+    def test_a_23976_source_is_recorded_at_the_24_it_was_delivered_at(self, tmp_path: Path) -> None:
+        """Every deliverable is written at 24 frame for frame (user, 2026-09-23)."""
         written = exports.write_shot_tracker(batch_of(row(rate=RATE_2398)), tmp_path / "t.xlsx")
-        assert sheet_rows(written, "Shots")[1][8] == "23.976"
+        assert sheet_rows(written, "Shots")[1][8] == "24"
+
+    def test_one_line_per_shot_code(self, tmp_path: Path) -> None:
+        """The studio sheet is one line per shot; a shot's plates and stills are one line."""
+        clean = row(clip_name="MELT0001_cp01")
+        clean.deliverables = [deliverable("raw_dir", "MELT0001_cp01_raw_4k_v01", "4k")]
+        other = row(clip_name="MELT0002_pl01")
+        written = exports.write_shot_tracker(batch_of(clean, row(), other), tmp_path / "t.xlsx")
+        lines = sheet_rows(written, "Shots")[1:]
+        assert [line[2] for line in lines] == ["MELT0001", "MELT0002"]
+        assert lines[0][4] == "MELT0001_pl01_ref_HD_v01.mp4", "described by its pl, not its cp"
+
+    def test_a_shot_with_no_plate_has_no_plate_video_and_no_marks(self, tmp_path: Path) -> None:
+        clean = row(clip_name="MELT0001_cp01")
+        written = exports.write_shot_tracker(batch_of(clean), tmp_path / "t.xlsx")
+        line = sheet_rows(written, "Shots")[1]
+        assert line[4] is None
+        assert line[7] == "4K \u2014\nHD \u2014"
+        assert line[9] is None
+
+    def test_a_blocked_row_is_not_offered_for_pasting(self, tmp_path: Path) -> None:
+        blocked = row()
+        blocked.qc.append(QCResult("QC-066", "error", "row", "no event"))
+        written = exports.write_shot_tracker(batch_of(blocked), tmp_path / "t.xlsx")
+        assert len(sheet_rows(written, "Shots")) == 1
+
+    def test_a_cancelled_or_failed_render_is_not_offered_for_pasting(self, tmp_path: Path) -> None:
+        cancelled = row()
+        cancelled.deliverables[0].status = "skipped"
+        failed = row(clip_name="MELT0002_pl01")
+        failed.deliverables[-1].status = "failed"
+        written = exports.write_shot_tracker(batch_of(cancelled, failed), tmp_path / "t.xlsx")
+        assert len(sheet_rows(written, "Shots")) == 1
 
     def test_a_skipped_row_is_not_offered_for_pasting(self, tmp_path: Path) -> None:
         """It delivered nothing, so it is not a shot in the delivery."""

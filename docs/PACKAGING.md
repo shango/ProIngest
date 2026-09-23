@@ -25,16 +25,9 @@ The residue that still needs a person is `docs/MAC_SESSION.md`.
   **OpenColorIO needs no data files**: the ACES config is compiled into the wheel and read with
   `Config.CreateFromBuiltinConfig`, so there is nothing to `collect_data_files` and nothing to
   place beside the app.
-- **OpenTimelineIO is the one that needs all three kinds of help**, and it is the failure a
-  naive build ships. otio finds its adapters through `importlib.metadata` entry points and JSON
-  plugin manifests, neither of which survives freezing: so the bundle carries otio's and the
-  CMX3600 adapter's `.dist-info` metadata, their manifests, **and their `.py` sources**. The
-  sources are not belt and braces. otio's loader tries
-  `importlib.import_module("opentimelineio.adapters.<name>")` first and falls back to reading
-  the path named in the manifest off disk, and the EDL adapter is called `cmx_3600` while
-  living in `otio_cmx3600_adapter`, so for that one **only the file path fallback ever works**.
-  Without the sources there is no EDL support, and without the rest there is no `.otio` reader
-  at all, which is to say no tool.
+- **OpenTimelineIO is no longer a dependency** (2026-09-23). It was the one package that needed
+  its adapters, manifests and sources collected by hand; `clf.read_final_edl` now reads the EDL
+  itself and nothing imports otio, so the bundle carries none of it.
 - `Info.plist` needs: `CFBundleIdentifier`, `CFBundleShortVersionString`
   from `pyproject.toml`, `LSMinimumSystemVersion` (macOS 12 is a safe floor for PySide6 6.7),
   and `NSHighResolutionCapable`. No document types and no URL schemes: the app opens

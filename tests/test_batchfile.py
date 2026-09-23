@@ -129,14 +129,13 @@ class TestReconciliation:
         saved = batchfile.save(batch, tmp_path / "b")
         assert batchfile.load(saved).rows[0].deliverables[0].status == "done"
 
-    def test_a_failed_marker_outranks_a_done_status(self, tmp_path: Path) -> None:
-        """Post-render QC wrote the marker, so it is the more recent truth."""
+    def test_rendering_becomes_done_when_the_file_landed(self, tmp_path: Path) -> None:
+        """A file takes its final name only after it passed its checks (D11)."""
         present = tmp_path / "MELT0001_pl01_ref_HD_v01.mp4"
         present.write_bytes(b"x")
-        present.with_name(present.name + ".failed").write_text("QC-111")
-        batch = batch_with_deliverable(present, "done")
+        batch = batch_with_deliverable(present, "rendering")
         saved = batchfile.save(batch, tmp_path / "b")
-        assert batchfile.load(saved).rows[0].deliverables[0].status == "failed"
+        assert batchfile.load(saved).rows[0].deliverables[0].status == "done"
 
     def test_rendering_becomes_planned_when_nothing_landed(self, tmp_path: Path) -> None:
         """Nothing is rendering in a batch being opened, so the status is stale."""
@@ -163,4 +162,3 @@ class TestTurnoverPersistence:
         saved = batchfile.save(batch, tmp_path / "b")
         restored = batchfile.load(saved).turnovers[0]
         assert restored.shooter == "Daniel Luckett", "the unnormalized name is kept (OQ-15)"
-        assert restored.has_stringout_fields

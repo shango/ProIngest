@@ -81,13 +81,6 @@ to whoever wrote it (COLOR_AND_FORMAT, EXR metadata). Written only beside an enc
 so the header never carries a source for a name it does not state.
 """
 
-CLF_ATTRIBUTE = "proingest/clf"
-CLF_HASH_ATTRIBUTE = "proingest/clf_hash"
-"""The CLF's filename and its sha256. **The hash is what identifies the grade**: a CLF
-re-exported and redelivered gets a new one, so frames rendered from the old version stay
-findable afterwards. Both are absent from a frame rendered with no CLF, rather than
-present and empty, so a reader cannot mistake ungraded for graded-with-nothing."""
-
 CDL_ATTRIBUTES = (
     "proingest/cdl_slope",
     "proingest/cdl_offset",
@@ -100,15 +93,18 @@ CDL_ATTRIBUTES = (
 """The CDL from the final EDL, as numbers and as the lines it was written on.
 
 Both forms, because the numbers are what a tool reads and the verbatim text is what a
-human compares against the session. Neither was applied to these pixels, and
-`proingest/cdl_note` says so in the file: the CLF is the transform and the CDL is its
-readable record (COLOR_AND_FORMAT section 1, EXR metadata).
+human compares against the session. `proingest/cdl_note` says where it was applied, which
+since 2026-09-22 is the only thing it can say: there are no per-shot grade files, so the
+CDL is always the grade rather than sometimes a record of one.
 """
 
-CDL_NOTE = "record only; the grade file named in proingest/clf is what was applied"
+CDL_NOTE_APPLIED = f"applied in {color.WORKING_SPACE}, between the source encoding and {color.PLATE_SPACE}"
 
 RGB_CHANNELS = "RGB"
 RGBA_CHANNELS = "RGBA"
+
+HALF_MAX = float(np.finfo(np.float16).max)
+"""65504, the largest finite half. Anything past it is clamped here rather than cast to inf."""
 
 
 class ExrError(RuntimeError):
@@ -253,24 +249,19 @@ def _colour_channel_names(channels: Any, path: Path) -> tuple[str, ...]:
 # --- Writing the raw deliverable. COLOR_AND_FORMAT section 3. ---
 
 
-def provenance(shot_color: clf.ShotColor, loaded_clf: clf.LoadedClf | None = None) -> dict[str, Any]:
+def provenance(shot_color: clf.ShotColor) -> dict[str, Any]:
     """The header's account of how these pixels got here. COLOR_AND_FORMAT section 1.
 
-    A graded plate is only auditable if the file says what was done to it, and the two
-    things that identify a grade are the CLF's hash and the source encoding it started
-    from. An attribute is written or absent, never written empty: a reader that finds
-    no `proingest/clf` knows the frame is ungraded, where an empty one would only mean
-    somebody lost the filename. The source encoding follows the same rule: a clip whose
-    metadata named none (QC-046) leaves the attribute out rather than claiming a guess.
+    A graded plate is only auditable if the file says what was done to it: the source
+    encoding it started from and the CDL it was given. An attribute is written or absent,
+    never written empty: a clip whose metadata named no encoding (QC-046) leaves the
+    attribute out rather than claiming a guess.
     """
     header: dict[str, Any] = {}
     if shot_color.source_encoding is not None:
         header[SOURCE_ENCODING_ATTRIBUTE] = shot_color.source_encoding
         if shot_color.source_encoding_origin is not None:
             header[SOURCE_ENCODING_ORIGIN_ATTRIBUTE] = shot_color.source_encoding_origin
-    if loaded_clf is not None:
-        header[CLF_ATTRIBUTE] = loaded_clf.path.name
-        header[CLF_HASH_ATTRIBUTE] = loaded_clf.digest
     cdl = shot_color.cdl
     if cdl is not None:
         slope, offset, power, saturation, sop, sat, note = CDL_ATTRIBUTES
@@ -280,7 +271,7 @@ def provenance(shot_color: clf.ShotColor, loaded_clf: clf.LoadedClf | None = Non
         header[saturation] = float(cdl.saturation)
         header[sop] = cdl.sop_text
         header[sat] = cdl.sat_text
-        header[note] = CDL_NOTE
+        header[note] = CDL_NOTE_APPLIED
     return header
 
 
@@ -291,7 +282,6 @@ def write_frame(
     fps: float = 24.0,
     compression_level: float | None = None,
     shot_color: clf.ShotColor = clf.DEFAULT_SHOT_COLOR,
-    loaded_clf: clf.LoadedClf | None = None,
 ) -> None:
     """Write one delivery frame: DWAA, half float, data window equal to display window.
 
@@ -303,10 +293,9 @@ def write_frame(
     process rather than to the constant, so a render honours the setting without every
     caller forwarding it.
 
-    `shot_color` and `loaded_clf` are **recorded, never applied**: the pixels arrive
-    already transformed and this states what was done to them. They are the pair
-    `render.py` holds anyway, so the header cannot describe a chain other than the one
-    the frame went through.
+    `shot_color` is **recorded, never applied**: the pixels arrive already transformed
+    and this states what was done to them. It is what `render.py` holds anyway, so the
+    header cannot describe a chain other than the one the frame went through.
 
     The file is not read back here. Every frame is opened again by QC-103 after the
     sequence lands, and doing it twice would double the IO for nothing.
@@ -320,13 +309,17 @@ def write_frame(
         "type": OpenEXR.scanlineimage,
         "chromaticities": CHROMATICITIES,
         COLORSPACE_ATTRIBUTE: color.PLATE_SPACE,
-        **provenance(shot_color, loaded_clf),
+        **provenance(shot_color),
     }
     if timecode_frames is not None:
         header["timeCode"] = _timecode_attribute(timecode_frames, fps)
 
     key = RGB_CHANNELS if pixels.shape[2] == 3 else RGBA_CHANNELS
-    half = np.ascontiguousarray(pixels, dtype=np.float16)
+    # Half float tops out at 65504 and a larger value casts to infinity without a word,
+    # which a comp then multiplies into every pixel near it (F28). Clamped to the largest
+    # finite half instead; a NaN is left as it is.
+    finite = np.clip(pixels, -HALF_MAX, HALF_MAX)
+    half = np.ascontiguousarray(finite, dtype=np.float16)
     try:
         with OpenEXR.File(header, {key: half}) as handle:
             handle.write(str(path))

@@ -33,16 +33,6 @@ class TestBasicMath:
         assert frames.max_available_out(0, 300) == 299
         assert frames.max_available_out(1001, 240) == 1240
 
-    def test_output_numbering_starts_at_1001(self) -> None:
-        assert frames.output_frame_for(in_frame=500, source_frame=500) == 1001
-        assert frames.output_frame_for(in_frame=500, source_frame=501) == 1002
-
-    def test_output_and_source_are_inverses(self) -> None:
-        in_frame = 733
-        for offset in range(240):
-            output = frames.output_frame_for(in_frame, in_frame + offset)
-            assert frames.source_frame_for(in_frame, output) == in_frame + offset
-
 
 class TestNominalRate:
     @pytest.mark.parametrize(("fps", "expected"), [(24, 24), (23.976, 24), (29.97, 30), (25, 25)])

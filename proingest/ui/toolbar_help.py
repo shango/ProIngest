@@ -29,7 +29,6 @@ OPEN = "open"
 SAVE = "save"
 ADD_TURNOVER = "add_turnover"
 SCAN = "scan"
-INGEST = "ingest"
 RUN = "run"
 STOP = "stop"
 EXPORT = "export"
@@ -49,8 +48,7 @@ WHAT_IT_DOES = {
     OPEN: "Opens a saved .pibatch file in place of what is on screen.",
     SAVE: "Writes the batch to its .pibatch file, asking where the first time.",
     ADD_TURNOVER: "Adds a turnover folder and scans it straight away.",
-    SCAN: "Re-tries only the turnovers that came back with no shots.",
-    INGEST: "Writes a colour session's cut, CDL and grades onto one turnover.",
+    SCAN: "Re-scans every turnover, keeping trims, skips and notes by File Name.",
     RUN: "Renders every shot that is not skipped, then writes both spreadsheets.",
     STOP: "Stops the run. What is in flight finishes; nothing further starts.",
     EXPORT: "Writes the QC log and the shot tracker without rendering.",
@@ -60,22 +58,21 @@ WHAT_IT_DOES = {
 
 Not a restatement of the label: section 1 says Scan saying "Scans" is a tooltip nobody
 reads twice. Each names what it changes, which is why several of them mention the thing
-the button is easiest to be wrong about - that Add Turnover scans, that Scan does not
-re-scan, that an ingest writes onto one turnover.
+the button is easiest to be wrong about - that Add Turnover scans, that Scan keeps what
+the editor did.
 """
 
 NO_BATCH = "No batch is open."
 SCANNING = "A scan is going."
 RENDERING = "A run is going."
 RUN_FIRST = "A run is going; stop it before swapping the batch under it."
-NOTHING_UNSCANNED = "Every turnover already has shots."
-NO_ROWS_TO_INGEST = "Nothing to write onto yet; scan a turnover first."
+NO_TURNOVERS = "Add a turnover first."
 NO_ROWS_TO_RUN = "Add a turnover first."
 NO_ROWS_TO_EXPORT = "Nothing to report on yet; add a turnover first."
 NOT_RUNNING = "No run is going."
 ALREADY_STOPPING = "Already stopping; the deliverables in flight are finishing."
 
-NO_SESSION = "No colour session ingested yet, so a run would write nothing (QC-008)."
+NO_SESSION = "No EDL with a CDL has been read yet, so Run will list QC-008 to fix."
 """The one note on a button that is **enabled**, and the reason section 1 wanted these.
 
 A batch with shots and no ingested session runs, refuses every turnover and writes
@@ -97,7 +94,7 @@ class ToolbarState:
 
     batch_open: bool = False
     has_rows: bool = False
-    has_unscanned: bool = False
+    has_turnovers: bool = False
     has_session: bool = False
     scanning: bool = False
     rendering: bool = False
@@ -114,7 +111,7 @@ def note(key: str, state: ToolbarState, enabled: bool) -> str:
         return NO_SESSION if key == RUN and not state.has_session else ""
 
     if key in (NEW, OPEN):
-        return RUN_FIRST
+        return SCANNING if state.scanning else RUN_FIRST
     if key == STOP:
         return ALREADY_STOPPING if state.rendering else NOT_RUNNING
     if not state.batch_open:
@@ -123,10 +120,8 @@ def note(key: str, state: ToolbarState, enabled: bool) -> str:
         return SCANNING
     if state.rendering:
         return RENDERING
-    if key == SCAN and not state.has_unscanned:
-        return NOTHING_UNSCANNED
-    if key == INGEST and not state.has_rows:
-        return NO_ROWS_TO_INGEST
+    if key == SCAN and not state.has_turnovers:
+        return NO_TURNOVERS
     if key == RUN and not state.has_rows:
         return NO_ROWS_TO_RUN
     if key == EXPORT and not state.has_rows:

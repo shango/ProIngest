@@ -9,7 +9,7 @@ theme, and the theme is the one part of this a person has to judge (docs/MAC_SES
 from __future__ import annotations
 
 import sys
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Callable, Iterator
 from pathlib import Path
 
 import pytest
@@ -25,15 +25,15 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from proingest.core import batchfile, clf, naming
+from proingest.core import batchfile, naming
 from proingest.core import settings as core_settings
-from proingest.core.models import Batch, Deliverable, FrameRate, InOut, QCResult, Turnover
+from proingest.core.models import Batch, Deliverable, QCResult, Turnover
 from proingest.core.planner import DeliverableJob
 from proingest.core.render import Progress
 from proingest.ui import app as ui_app
-from proingest.ui import color_session, deliverables, paths
+from proingest.ui import deliverables, paths
+from proingest.ui.background import Inline
 from proingest.ui.batch_bar import NO_DELIVERY_ROOT
-from proingest.ui.color_session import INGEST_MIXED_RATES, ingest_text, turnover_labels
 from proingest.ui.main_window import (
     BOTTOM_TABS,
     EMPTY_STATE_TEXT,
@@ -45,17 +45,16 @@ from proingest.ui.main_window import (
 from proingest.ui.metadata import MIXED, NO_SELECTION, as_text
 from proingest.ui.run_controller import (
     CHECKING_BATCH,
+    MUST_FIX_TITLE,
     NOTHING_TO_RENDER,
-    NOTHING_WOULD_RENDER,
     WRITING_REPORTS,
 )
 from proingest.ui.run_strip import LINK_COLOR, RunStrip
 from proingest.ui.runner import RENDERING
 from proingest.ui.settings_dialog import SettingsDialog
-from proingest.ui.shot_model import IN, NOTES, DisplayMode, RowState
-from tests.fixtures import color as color_fixtures
+from proingest.ui.shot_list import RELOCATE_TEXT, RERUN_TEXT, RESET_TEXT
+from proingest.ui.shot_model import IN, NOTES, SHOT, DisplayMode, RowState
 from tests.fixtures.batches import (
-    RATE_24,
     batch,
     delivered,
     fail,
@@ -65,6 +64,7 @@ from tests.fixtures.batches import (
     turnover,
     warn,
 )
+from tests.fixtures.names import identity_of
 from tests.test_runner import pump_until
 
 
@@ -93,12 +93,9 @@ class DrivenWindow(MainWindow):
         """What a person does on the Settings page before pressing Apply. The default
         changes nothing, so a test that only wanted the page open gets a Cancel."""
 
-        self.edl_answer: Path | None = None
-        self.found_answer = False
-        self.found_asked: list[tuple[str, Path]] = []
-        self.turnover_answer: Turnover | None = None
-        self.turnovers_asked: list[list[str]] = []
-        self.ingest_reports: list[str] = []
+        # The run's disk steps answer straight away, so a test reads the result on the
+        # next line; `tests/test_background.py` is where the thread itself is tested.
+        self.run.background = Inline(self.run)
 
     def settings_dialog(self) -> SettingsDialog:
         dialog = super().settings_dialog()
@@ -125,20 +122,6 @@ class DrivenWindow(MainWindow):
 
     def open_folder(self, folder: Path) -> None:
         self.opened_folders.append(folder)
-
-    def ask_edl_path(self) -> Path | None:
-        return self.edl_answer
-
-    def ask_ingest_found(self, turnover: Turnover, folder: Path) -> bool:
-        self.found_asked.append((turnover.folder.name, folder))
-        return self.found_answer
-
-    def ask_turnover(self, turnovers: Sequence[Turnover]) -> Turnover | None:
-        self.turnovers_asked.append([t.turnover_id for t in turnovers])
-        return self.turnover_answer
-
-    def report_ingest(self, text: str) -> None:
-        self.ingest_reports.append(text)
 
 
 @pytest.fixture
@@ -216,7 +199,7 @@ class TestTheToolbarAndMenus:
         """UI_SPEC section 1's three toolbar groups, in one place so none goes missing."""
         expected = {
             "New", "Open...", "Save",
-            "Add Turnover", "Scan", "Ingest Colour Session", "Run", "Stop",
+            "Add Turnover", "Scan", "Run", "Stop",
             "Export", "Settings",
         }  # fmt: skip
         assert expected <= set(actions(window))
@@ -225,7 +208,7 @@ class TestTheToolbarAndMenus:
         named = [action.text() for action in window.toolbar.actions() if action.text()]
         assert named == [
             "New", "Open...", "Save",
-            "Add Turnover", "Scan", "Ingest Colour Session", "Run", "Stop",
+            "Add Turnover", "Scan", "Run", "Stop",
             "Export", "Settings",
         ]  # fmt: skip
 
@@ -248,7 +231,7 @@ class TestTheToolbarAndMenus:
         assert actions(window)["Settings"].isEnabled()
 
     def test_what_needs_a_batch_waits_for_one(self, window: DrivenWindow) -> None:
-        for name in ("Save", "Add Turnover", "Scan", "Ingest Colour Session"):
+        for name in ("Save", "Add Turnover", "Scan"):
             assert not actions(window)[name].isEnabled(), name
 
     def test_quit_works_from_the_first_launch(self, window: DrivenWindow) -> None:
@@ -706,8 +689,8 @@ class TestAddingAndScanningTurnovers:
         window._take_scanned(Turnover("t1", Path("/s")), [row(turnover_id="t1")], {})
         assert window.autosave.pending
 
-    def test_scan_re_tries_only_the_turnovers_with_no_rows(self, window: DrivenWindow) -> None:
-        """A turnover with rows is never re-scanned: the rows carry the editor's edits."""
+    def test_scan_reads_every_turnover_again(self, window: DrivenWindow) -> None:
+        """D8: a correction is dropped into the folder and the editor presses Scan."""
         window.set_batch(
             batch(
                 row(turnover_id="t1"),
@@ -716,11 +699,94 @@ class TestAddingAndScanningTurnovers:
         )
         started = stub_scanner(window)
         window.action_scan.trigger()
-        assert started == [[(Path("/s/t2"), "t2")]]
+        assert started == [[(Path("/s/t1"), "t1"), (Path("/s/t2"), "t2")]]
 
-    def test_scan_is_dead_when_every_turnover_has_rows(self, window: DrivenWindow) -> None:
-        window.set_batch(batch(row(turnover_id="t1"), turnovers=[Turnover("t1", Path("/s/t1"))]))
+    def test_scan_is_dead_with_no_turnover(self, window: DrivenWindow) -> None:
+        window.set_batch(Batch())
         assert not window.action_scan.isEnabled()
+
+    def test_a_re_scan_replaces_the_rows_and_keeps_the_edits(self, window: DrivenWindow) -> None:
+        """Carried over by File Name (`scan.carry_over`): the skip and the notes survive."""
+        old = row(turnover_id="t1", skipped=True, skip_reason="not needed", notes="check sky")
+        window.set_batch(batch(old, turnovers=[Turnover("t1", Path("/s/t1"))]))
+        stub_scanner(window)
+        window.action_scan.trigger()
+        window._take_scanned(Turnover("t1", Path("/s/t1")), [row(turnover_id="t1")], {})
+
+        assert len(window.batch.rows) == 1
+        fresh = window.batch.rows[0]
+        assert fresh is not old
+        assert (fresh.skipped, fresh.skip_reason, fresh.notes) == (True, "not needed", "check sky")
+
+    def test_a_re_scan_that_finds_nothing_keeps_the_rows_it_had(self, window: DrivenWindow) -> None:
+        """A folder whose EDL went missing must not cost the editor their trims."""
+        old = row(turnover_id="t1")
+        window.set_batch(batch(old, turnovers=[Turnover("t1", Path("/s/t1"))]))
+        stub_scanner(window)
+        window.action_scan.trigger()
+        missing = Turnover("t1", Path("/s/t1"), qc=[QCResult("QC-001", "error", "turnover", "no EDL")])
+        window._take_scanned(missing, [], {})
+
+        assert window.batch.rows == [old]
+        assert window.batch.turnovers[0].qc[0].rule_id == "QC-001"
+
+    def test_a_moved_turnover_says_so_when_the_batch_is_opened(
+        self, window: DrivenWindow, tmp_path: Path
+    ) -> None:
+        """D16: QC-069 on its heading, as an error, so it cannot run from nowhere."""
+        saved = batch(
+            row(turnover_id="t1"), turnovers=[Turnover("t1", tmp_path / "gone")], delivery_root=None
+        )
+        path = batchfile.save(saved, tmp_path / "melt.pibatch")
+        window.open_answer = path
+        window.action_open.trigger()
+
+        assert [r.rule_id for r in window.batch.turnovers[0].qc] == ["QC-069"]
+
+    def test_new_folder_location_re_scans_it_from_there(self, window: DrivenWindow, tmp_path: Path) -> None:
+        moved = Turnover("t1", tmp_path / "gone")
+        window.set_batch(batch(row(turnover_id="t1"), turnovers=[moved]))
+        started = stub_scanner(window)
+        window.folder_answer = tmp_path / "here"
+        menu = window.shot_list.menu_for(window.shot_list.proxy.index(0, 0))
+        assert menu is not None
+        relocate = next(a for a in menu.actions() if a.text() == RELOCATE_TEXT)
+        relocate.trigger()
+
+        assert started == [[(tmp_path / "here", "t1")]]
+
+    def test_reset_puts_a_failed_output_back_for_the_next_run(self, window: DrivenWindow) -> None:
+        """D11: the editor fixed the cause; Reset is how the row runs again."""
+        failed = delivered(row(turnover_id="t1"), status="failed")
+        window.set_batch(batch(failed, turnovers=[Turnover("t1", Path("/s/t1"))]))
+        shot = window.shot_list.proxy.index(0, 0, window.shot_list.proxy.index(0, 0))
+        menu = window.shot_list.menu_for(shot)
+        assert menu is not None
+        reset = next(a for a in menu.actions() if a.text() == RESET_TEXT)
+        assert reset.isEnabled()
+        reset.trigger()
+        assert window.batch.rows[0].deliverables[0].status == "planned"
+        assert window.autosave.pending
+
+    def test_re_run_asks_for_the_next_version(self, window: DrivenWindow) -> None:
+        """D12: a complete shot is skipped by Run unless the editor asks for it."""
+        landed = delivered(row(turnover_id="t1"))
+        window.set_batch(batch(landed, turnovers=[Turnover("t1", Path("/s/t1"))]))
+        shot = window.shot_list.proxy.index(0, 0, window.shot_list.proxy.index(0, 0))
+        menu = window.shot_list.menu_for(shot)
+        assert menu is not None
+        actions_by_text = {a.text(): a for a in menu.actions()}
+        assert not actions_by_text[RESET_TEXT].isEnabled(), "nothing failed"
+        actions_by_text[RERUN_TEXT].trigger()
+        assert window.batch.rows[0].rerun
+
+    def test_the_heading_menu_is_greyed_while_the_batch_is_locked(self, window: DrivenWindow) -> None:
+        window.set_batch(batch(row(turnover_id="t1"), turnovers=[Turnover("t1", Path("/s/t1"))]))
+        stub_scanner(window, busy=True)
+        window.update_state()
+        menu = window.shot_list.menu_for(window.shot_list.proxy.index(0, 0))
+        assert menu is not None
+        assert not any(action.isEnabled() for action in menu.actions())
 
     def test_a_turnover_that_scanned_to_nothing_says_so_with_a_way_to_find_out_why(
         self, window: DrivenWindow
@@ -749,285 +815,15 @@ class TestAddingAndScanningTurnovers:
         assert not window.action_add_turnover.isEnabled()
         assert not window.action_scan.isEnabled()
 
-
-class TestIngestingAColourSession:
-    """M5.7.3: PRD section 6 step 4 driven from the window, and what it reports.
-
-    The session is a real package (`tests/fixtures/color.make_session`), because what is
-    being tested is the window handing `core/clf.py` a file the editor pointed at: a
-    stubbed ingest would assert the wiring and nothing about the answer.
-    """
-
-    def test_it_writes_the_approved_cut_the_cdl_and_the_clf_onto_the_rows(
-        self, window: DrivenWindow, tmp_path: Path
-    ) -> None:
-        """The three things the session says, on the model where a later run reads them."""
-        window.set_batch(batch(row()))
-        window.edl_answer = color_fixtures.make_session(tmp_path / "session")
-        window.action_ingest.trigger()
-
-        ingested_row = window.batch.rows[0]
-        assert ingested_row.approved == InOut(0, 3)
-        assert ingested_row.current == InOut(0, 3)
-        assert ingested_row.clf_path is not None
-        assert ingested_row.cdl is not None
-
-    def test_the_turnover_keeps_where_the_answers_came_from(
-        self, window: DrivenWindow, tmp_path: Path
-    ) -> None:
-        """Nothing reads the package again, so the EDL's location is the record of it."""
-        window.set_batch(batch(row()))
-        window.edl_answer = color_fixtures.make_session(tmp_path / "session")
-        window.action_ingest.trigger()
-
-        assert window.batch.turnovers[0].color_session_edl == window.edl_answer
-
-    def test_the_report_names_the_trim_the_approved_cut_replaced(
-        self, window: DrivenWindow, tmp_path: Path
-    ) -> None:
-        """The fixture row arrives trimmed to 8-231 and the session's cut is 0-3 (FR-5)."""
-        window.set_batch(batch(row()))
-        window.edl_answer = color_fixtures.make_session(tmp_path / "session")
-        window.action_ingest.trigger()
-
-        assert window.ingest_reports == [
-            ingest_text(
-                clf.IngestReport(
-                    edl_path=window.edl_answer,
-                    events=1,
-                    matched=["MELT0001_pl01"],
-                    graded=["MELT0001_pl01"],
-                    overwritten=["MELT0001_pl01"],
-                ),
-                "turnover001_02_23_2026_danielluckett",
-                [RATE_24],
-            )
-        ]
-
-    def test_a_row_the_session_says_nothing_about_is_named_rather_than_guessed(
-        self, window: DrivenWindow, tmp_path: Path
-    ) -> None:
-        window.set_batch(batch(row(), row("MELT0009_pl01")))
-        window.edl_answer = color_fixtures.make_session(tmp_path / "session")
-        window.action_ingest.trigger()
-
-        assert "no event: MELT0009_pl01" in window.ingest_reports[0]
-        assert window.batch.rows[1].current == InOut(8, 231)
-
-    def test_the_cut_that_is_now_in_force_is_what_the_rules_judge(
-        self, window: DrivenWindow, tmp_path: Path
-    ) -> None:
-        """Four frames is below any sane minimum, and the row says so before a run."""
-        window.set_batch(batch(row()))
-        window.edl_answer = color_fixtures.make_session(tmp_path / "session")
-        window.action_ingest.trigger()
-
-        assert "QC-033" in {result.rule_id for result in window.batch.rows[0].qc}
-
-    def test_an_ingest_schedules_a_save(self, window: DrivenWindow, tmp_path: Path) -> None:
-        window.set_batch(batch(row()))
-        window.edl_answer = color_fixtures.make_session(tmp_path / "session")
-        window.action_ingest.trigger()
-
-        assert window.autosave.pending
-
-    def test_cancelling_the_chooser_changes_nothing(self, window: DrivenWindow) -> None:
-        window.set_batch(batch(row()))
-        window.action_ingest.trigger()
-
-        assert window.batch.rows[0].current == InOut(8, 231)
-        assert window.ingest_reports == []
-
-    def test_a_turnover_with_no_media_is_refused_before_the_chooser_opens(
-        self, window: DrivenWindow, tmp_path: Path
-    ) -> None:
-        """There is no rate to read the EDL's timecode at, and picking one would guess."""
-        window.set_batch(batch(row(media=None)))
-        window.edl_answer = color_fixtures.make_session(tmp_path / "session")
-        window.action_ingest.trigger()
-
-        assert window.problems and window.ingest_reports == []
-        assert window.batch.turnovers[0].color_session_edl is None
-
-    def test_an_edl_that_cannot_be_read_is_reported_rather_than_raised(
-        self, window: DrivenWindow, tmp_path: Path
-    ) -> None:
-        window.set_batch(batch(row()))
-        window.edl_answer = tmp_path / "gone" / "final.edl"
-        window.action_ingest.trigger()
-
-        assert window.problems and window.ingest_reports == []
-
-    def test_where_the_chooser_ended_up_is_where_the_next_one_opens(
-        self, window: DrivenWindow, tmp_path: Path
-    ) -> None:
-        """FR-12's Colour setting: a session and a turnover are nowhere near each other."""
-        window.set_batch(batch(row()))
-        window.edl_answer = color_fixtures.make_session(tmp_path / "session")
-        window.action_ingest.trigger()
-
-        assert window._settings.color_session_folder == str(tmp_path / "session")
-
-    def test_a_batch_of_one_turnover_is_never_asked_about(self, window: DrivenWindow, tmp_path: Path) -> None:
-        window.set_batch(batch(row()))
-        window.edl_answer = color_fixtures.make_session(tmp_path / "session")
-        window.action_ingest.trigger()
-
-        assert window.turnovers_asked == []
-
-    def test_a_selected_row_says_which_turnover_without_asking(
-        self, window: DrivenWindow, tmp_path: Path
-    ) -> None:
-        second = row("MELT0002_pl01", turnover_id="t2")
-        window.set_batch(batch(row(turnover_id="t1"), second, turnovers=[turnover("t1"), turnover("t2")]))
-        window.shot_list.select_row(second)
-        window.edl_answer = color_fixtures.make_session(tmp_path / "session")
-        window.action_ingest.trigger()
-
-        assert window.turnovers_asked == []
-        assert window.batch.turnovers[1].color_session_edl == window.edl_answer
-        assert window.batch.turnovers[0].color_session_edl is None
-
-    def test_a_selection_that_says_nothing_asks_which_turnover(
-        self, window: DrivenWindow, tmp_path: Path
-    ) -> None:
-        window.set_batch(
-            batch(
-                row(turnover_id="t1"),
-                row("MELT0002_pl01", turnover_id="t2"),
-                turnovers=[turnover("t1"), turnover("t2")],
-            )
-        )
-        window.turnover_answer = window.batch.turnovers[0]
-        window.edl_answer = color_fixtures.make_session(tmp_path / "session")
-        window.action_ingest.trigger()
-
-        assert window.turnovers_asked == [["t1", "t2"]]
-        assert window.batch.turnovers[0].color_session_edl == window.edl_answer
-
-    def test_a_turnover_nobody_picked_ingests_nothing(self, window: DrivenWindow, tmp_path: Path) -> None:
-        window.set_batch(
-            batch(
-                row(turnover_id="t1"),
-                row("MELT0002_pl01", turnover_id="t2"),
-                turnovers=[turnover("t1"), turnover("t2")],
-            )
-        )
-        window.edl_answer = color_fixtures.make_session(tmp_path / "session")
-        window.action_ingest.trigger()
-
-        assert window.ingest_reports == []
-        assert all(t.color_session_edl is None for t in window.batch.turnovers)
-
-    def test_it_waits_for_a_scan_to_finish(self, window: DrivenWindow) -> None:
-        """A scan rebuilds rows, and an ingest writes onto the rows it can see now.
-
-        Both the greyed button and the guard behind it, because a disabled `QAction`
-        swallows a `trigger()` and would pass whether the guard is there or not.
-        """
-        window.set_batch(
-            batch(
-                row(turnover_id="t1"),
-                row("mx0002_pl01", turnover_id="t2"),
-                turnovers=[turnover("t1"), turnover("t2")],
-            )
-        )
+    def test_new_and_open_wait_for_the_scan(self, window: DrivenWindow) -> None:
+        """F13: a scan's result used to land in whichever batch was open when it came back."""
+        window.set_batch(Batch())
         stub_scanner(window, busy=True)
-        window.update_state()
+        window._scan([(Path("/s/t1"), "t1")])
 
-        assert not window.action_ingest.isEnabled()
-        color_session.ingest(window)
-        assert window.turnovers_asked == []
-
-
-class TestASessionFoundBesideTheTurnover:
-    """OQ-53: a scan that finds a session by convention offers it, and one click ingests it."""
-
-    def scanned(self, window: DrivenWindow, tmp_path: Path, *, session: bool = True) -> Turnover:
-        folder = tmp_path / "turnovers" / "turnover001_02_23_2026_danielluckett"
-        folder.mkdir(parents=True)
-        if session:
-            color_fixtures.make_session(tmp_path / "turnovers" / "_color" / folder.name)
-        found = Turnover("t1", folder)
-        window.set_batch(Batch())
-        window._take_scanned(found, [row(turnover_id="t1")], {})
-        return found
-
-    def test_the_scan_offers_it_and_yes_ingests_it(self, window: DrivenWindow, tmp_path: Path) -> None:
-        window.found_answer = True
-        found = self.scanned(window, tmp_path)
-
-        assert window.found_asked == [
-            (found.folder.name, tmp_path / "turnovers" / "_color" / found.folder.name)
-        ]
-        assert found.color_session_edl is not None
-        assert window.batch.rows[0].clf_path is not None
-        assert len(window.ingest_reports) == 1
-
-    def test_no_changes_nothing(self, window: DrivenWindow, tmp_path: Path) -> None:
-        found = self.scanned(window, tmp_path)
-        assert window.found_asked
-        assert found.color_session_edl is None
-        assert window.batch.rows[0].clf_path is None
-
-    def test_nothing_by_convention_asks_nothing(self, window: DrivenWindow, tmp_path: Path) -> None:
-        self.scanned(window, tmp_path, session=False)
-        assert window.found_asked == []
-
-    def test_a_turnover_already_ingested_is_not_asked_again(
-        self, window: DrivenWindow, tmp_path: Path
-    ) -> None:
-        folder = tmp_path / "turnovers" / "turnover001"
-        folder.mkdir(parents=True)
-        color_fixtures.make_session(tmp_path / "turnovers" / "_color" / folder.name)
-        window.set_batch(Batch())
-        window._take_scanned(
-            Turnover("t1", folder, color_session_edl=tmp_path / "elsewhere.edl"), [row(turnover_id="t1")], {}
-        )
-        assert window.found_asked == []
-
-    def test_the_settings_folder_is_looked_in_first(self, window: DrivenWindow, tmp_path: Path) -> None:
-        window.settings.color_session_folder = str(tmp_path / "sessions")
-        folder = tmp_path / "turnovers" / "turnover001"
-        folder.mkdir(parents=True)
-        color_fixtures.make_session(tmp_path / "sessions" / folder.name)
-        window.set_batch(Batch())
-        window._take_scanned(Turnover("t1", folder), [row(turnover_id="t1")], {})
-        assert window.found_asked == [(folder.name, tmp_path / "sessions" / folder.name)]
-
-    def test_the_toolbar_route_still_works_with_nothing_found(
-        self, window: DrivenWindow, tmp_path: Path
-    ) -> None:
-        """Ingest Colour Session is the same ingest, pointed at by hand."""
-        self.scanned(window, tmp_path, session=False)
-        window.edl_answer = color_fixtures.make_session(tmp_path / "session")
-        window.action_ingest.trigger()
-        assert window.batch.rows[0].clf_path is not None
-
-
-class TestWhatAnIngestSays:
-    """`ingest_text`, which says what `--color-session` prints (`ui/color_session.py`)."""
-
-    def report(self, tmp_path: Path, **lists: list[str]) -> clf.IngestReport:
-        return clf.IngestReport(edl_path=tmp_path / "MELT_FINAL_v01.edl", events=3, **lists)
-
-    def test_it_opens_with_the_turnover_and_what_the_ingest_did(self, tmp_path: Path) -> None:
-        text = ingest_text(self.report(tmp_path, matched=["a", "b"], graded=["a"]), "turnover001", [RATE_24])
-        assert text.splitlines()[0] == "turnover001: 2 rows matched, 1 with a grade file"
-        assert "MELT_FINAL_v01.edl, which holds 3 events" in text
-
-    def test_it_says_nothing_about_the_lists_that_are_empty(self, tmp_path: Path) -> None:
-        text = ingest_text(self.report(tmp_path), "turnover001", [RATE_24])
-        assert "no event" not in text
-
-    def test_a_turnover_of_two_rates_says_which_one_the_edl_was_read_at(self, tmp_path: Path) -> None:
-        """OQ-19: the first row with media decides, and the choice is said out loud."""
-        text = ingest_text(self.report(tmp_path), "turnover001", [RATE_24, FrameRate(25)])
-        assert INGEST_MIXED_RATES.format(rate=RATE_24) in text
-
-    def test_one_rate_says_nothing_about_rates(self, tmp_path: Path) -> None:
-        text = ingest_text(self.report(tmp_path), "turnover001", [RATE_24, RATE_24])
-        assert "rate" not in text
+        assert not window.action_new.isEnabled()
+        assert not window.action_open.isEnabled()
+        assert not window.action_settings.isEnabled()
 
 
 class TestTheIssuesDock:
@@ -1088,17 +884,6 @@ class TestTheIssuesDock:
         window.list_empty_text.linkActivated.emit("#issues")
 
         assert window.bottom_tabs.currentWidget() is window.issues
-
-
-class TestTurnoverLabels:
-    def test_folder_names_alone_when_they_differ(self) -> None:
-        held = [turnover(folder=Path("/a/t1")), turnover(folder=Path("/a/t2"))]
-        assert turnover_labels(held) == ["t1", "t2"]
-
-    def test_the_parent_tells_two_of_the_same_name_apart(self) -> None:
-        """`names.index(chosen)` would otherwise hand back the first of the two."""
-        held = [turnover(folder=Path("/day1/t1")), turnover(folder=Path("/day2/t1"))]
-        assert turnover_labels(held) == ["day1/t1", "day2/t1"]
 
 
 class TestTheUnsavedQuestion:
@@ -1253,8 +1038,19 @@ class TestRunningABatch:
         assert window.problems and "QC-0" in window.problems[0][1]
         assert window.bottom_tabs.currentIndex() == BOTTOM_TABS.index("Issues")
 
-    def test_a_row_scope_error_does_not(self, window: DrivenWindow, tmp_path: Path) -> None:
+    def test_a_row_scope_error_stops_it_too(self, window: DrivenWindow, tmp_path: Path) -> None:
+        """D8: every must-fix is fixed before running, whatever it is about."""
         window.set_batch(ingested(batch(fail(row()), row("MELT0002_pl01"), delivery_root=tmp_path), tmp_path))
+        started = stub_runner(window)
+        window.action_run.trigger()
+        assert started == []
+        assert window.problems[0][0] == MUST_FIX_TITLE
+        assert window.problems[0][1].startswith("MELT0001_pl01: ")
+
+    def test_a_skipped_row_s_error_does_not(self, window: DrivenWindow, tmp_path: Path) -> None:
+        """A skipped row renders nothing, so what is wrong with it cannot reach a delivery."""
+        broken = fail(row(skipped=True, skip_reason="not needed"))
+        window.set_batch(ingested(batch(broken, row("MELT0002_pl01"), delivery_root=tmp_path), tmp_path))
         started = stub_runner(window)
         window.action_run.trigger()
         assert started and window.problems == []
@@ -1273,21 +1069,23 @@ class TestRunningABatch:
     def test_a_run_that_would_render_nothing_says_why_in_a_dialog(
         self, window: DrivenWindow, tmp_path: Path
     ) -> None:
-        """Every turnover held back: a dialog naming each and its rule, not a status line."""
+        """A dialog naming where each must-fix is and its rule, not a status line."""
         window.set_batch(batch(row(), delivery_root=tmp_path))
         window.bottom_dock.setVisible(False)
         window.action_run.trigger()
 
         assert len(window.problems) == 1
         title, text = window.problems[0]
-        assert title == NOTHING_WOULD_RENDER
+        assert title == MUST_FIX_TITLE
         assert text.startswith(window.batch.turnovers[0].folder.name)
         assert "QC-008" in text
         assert window.run_strip.state == "empty"
         assert not window.bottom_dock.isHidden()
 
-    def test_the_turnovers_that_are_ready_still_render(self, window: DrivenWindow, tmp_path: Path) -> None:
-        """What turnover scope buys: one waits on colour while the other delivers."""
+    def test_one_turnover_s_must_fix_holds_the_whole_batch(
+        self, window: DrivenWindow, tmp_path: Path
+    ) -> None:
+        """D8: the held-back turnover of M5.7.1 is gone; the batch waits for the fix."""
         ready, waiting = turnover("turnover001"), turnover("turnover002")
         built = batch(
             row(),
@@ -1297,13 +1095,13 @@ class TestRunningABatch:
         )
         ingested(built, tmp_path)
         waiting.color_session_edl = None
-        built.rows[1].clf_path = None
+        built.rows[1].cdl = None
         window.set_batch(built)
         started = stub_runner(window)
         window.action_run.trigger()
 
-        assert started and {job.shot_code for job in started[0]} == {"MELT0001"}
-        assert "held back" in window.statusBar().currentMessage()
+        assert started == []
+        assert window.problems[0][0] == MUST_FIX_TITLE
 
     def test_a_batch_that_plans_nothing_says_so_rather_than_starting(
         self, window: DrivenWindow, tmp_path: Path
@@ -1331,7 +1129,20 @@ class TestRunningABatch:
         assert not window.action_new.isEnabled()
         assert not window.action_open.isEnabled()
         assert not window.action_add_turnover.isEnabled()
+        assert not window.action_toggle_skip.isEnabled()
+        assert not window.batch_bar.delivery_root.isEnabled()
         assert window.action_stop.isEnabled()
+
+    def test_no_cell_can_be_edited_while_it_runs(self, window: DrivenWindow, tmp_path: Path) -> None:
+        """F14: an edit during a run changed the reports without changing the render."""
+        window.set_batch(ingested(batch(row(), delivery_root=tmp_path), tmp_path))
+        stub_runner(window, busy=True)
+        window.action_run.trigger()
+        shot = window.shot_model.index(0, SHOT, window.shot_model.index(0, 0))
+
+        assert not window.shot_model.flags(shot) & Qt.ItemFlag.ItemIsEditable
+        assert not window.shot_model.setData(shot, "MELT0099")
+        assert window.batch.rows[0].shot_code == "MELT0001"
 
     def test_it_refuses_to_start_on_top_of_a_scan_or_another_run(
         self, window: DrivenWindow, tmp_path: Path
@@ -1634,6 +1445,7 @@ class TestTheMetadataPane:
             "Source media",
             "Frame rate",
             "Range",
+            "Colour",
             "Turnover",
             "QC",
         ]
@@ -1678,7 +1490,7 @@ class TestTheMetadataPane:
         """The plan named the deliverables with the settings pattern; the reparse after
         the run must use the same one, or every name fails QC-151 as unparseable."""
         window._settings.show_pattern = "[a-z]{2}"
-        lower = row("mx0001_pl01", identity=naming.parse_clip_name("mx0001_pl01", "[a-z]{2}"))
+        lower = row("mx0001_pl01", identity=identity_of("mx0001_pl01", "[a-z]{2}"))
         window.set_batch(ingested(batch(lower, delivery_root=tmp_path), tmp_path))
         started = stub_runner(window)
         window.action_run.trigger()
@@ -1735,34 +1547,6 @@ class TestTheMetadataPane:
 
         reopened = DrivenWindow(window._settings_path)
         assert reopened.metadata.collapsed == ["Range"]
-
-    def test_camdata_is_read_once_rather_than_per_selection(
-        self, window: DrivenWindow, tmp_path: Path
-    ) -> None:
-        """The pane redraws on every arrow key and this is the one field on disk."""
-        camdata_file = tmp_path / "MELT0001_pl01_camData.txt"
-        camdata_file.write_text("Lens: Zeiss Supreme Prime 35mm\n")
-        sided = row()
-        sided.side_files.camdata = camdata_file
-        window.set_batch(batch(sided, row("MELT0002_pl01", record_in=224)))
-
-        window.shot_list.select_row(window.batch.rows[0])
-        assert "Lens: Zeiss Supreme Prime 35mm" in pane_text(window)
-        camdata_file.write_text("Lens: something else\n")
-        window.shot_list.select_row(window.batch.rows[1])
-        window.shot_list.select_row(window.batch.rows[0])
-
-        assert "Lens: Zeiss Supreme Prime 35mm" in pane_text(window), "read again off disk"
-
-    def test_unreadable_camdata_is_not_the_pane_s_problem_to_report(
-        self, window: DrivenWindow, tmp_path: Path
-    ) -> None:
-        """QC-053 says so in the Issues dock; saying it twice is two places to correct."""
-        sided = row()
-        sided.side_files.camdata = tmp_path / "gone.txt"
-        window.set_batch(batch(sided))
-        window.shot_list.select_row(window.batch.rows[0])
-        assert "camData:" in pane_text(window)
 
 
 class TestTheRunStrip:

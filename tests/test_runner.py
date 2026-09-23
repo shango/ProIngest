@@ -18,6 +18,7 @@ starts leaves it sitting until the timeout. `pump_until` spins the loop and asks
 
 from __future__ import annotations
 
+import multiprocessing
 import time
 from collections.abc import Callable, Iterator
 from pathlib import Path
@@ -339,6 +340,38 @@ class TestStartingAndStopping:
         assert thread is not None
         runner.shutdown()
         assert thread.isFinished()
+
+
+class TestAHungRun:
+    def test_shutdown_ends_the_workers_rather_than_waiting_again(
+        self, runner: Runner, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """F18: the close has already waited; blocking two more minutes froze the window."""
+        from proingest.ui import runner as module
+
+        waits: list[int] = []
+
+        class Stuck:
+            def quit(self) -> None:
+                pass
+
+            def wait(self, ms: int) -> bool:
+                waits.append(ms)
+                return len(waits) > 1
+
+        class Child:
+            terminated = False
+
+            def terminate(self) -> None:
+                Child.terminated = True
+
+        monkeypatch.setattr(multiprocessing, "active_children", lambda: [Child()])
+        runner._thread = Stuck()  # type: ignore[assignment]
+        runner.shutdown()
+        runner._thread = None
+
+        assert Child.terminated
+        assert waits == [module.SHUTDOWN_GRACE_MS, module.SHUTDOWN_GRACE_MS]
 
 
 def test_a_real_pool_runs_through_the_worker_thread(runner: Runner, tmp_path: Path) -> None:

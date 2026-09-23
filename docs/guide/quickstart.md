@@ -12,14 +12,15 @@ part-by-part version of everything skimmed over here.
 
 Three things have to exist, and only the third one usually does not.
 
-- **The turnover folder**, as the shooters delivered it: one file per shot, the `.otio`
+- **The turnover folder**, as the colourist handed it over: the media, his `.edl` and his `.csv`
   timeline, and the per shot extras. It can be on a Drive mount, an external volume or the
   local disk, and ProIngest does not care which.
 - **Somewhere to deliver to.** Any folder you can write into. The show and shot folders are
   made under it.
-- **The colour session's exports**: the final `.edl` and one `.cube` per shot. **Nothing final
-  renders without them** and that is deliberate, not a limitation - see "When Run refuses"
-  below. Scanning and checking a turnover works fine before they arrive.
+- **The colourist's exports, in that same folder**: his `.edl`, whose events carry the approved
+  In/Out and the grade as a CDL, and his `.csv`, which carries the shot code, the clip type and
+  the camera encoding. **Both are required and the turnover cannot be scanned without them** -
+  there is nothing to scan until they arrive, which is by design.
 
 ## The seven steps
 
@@ -58,21 +59,14 @@ QC log.
 Every edit re-checks that row and saves itself a moment later, so there is nothing to remember
 to press. **⌘S** names the batch file the first time.
 
-**4. Ingest the colour session.** If the colourist exported it by the convention - a folder
-named exactly as the turnover folder, inside a `_color` folder beside the turnovers, holding
-the final `.edl` and the `.cube` files - the scan finds it and asks whether to ingest it. Say
-yes. Otherwise select the turnover (or any shot under it), press **Ingest Colour Session**,
-and point at the session's final `.edl`. One turnover at a time: another one can still be
-waiting on colour while this one delivers.
+**4. Nothing to do here in the normal case.** The cut and the grade are read at scan, from the
+`.edl` sitting in the turnover folder: the approved In and Out, and the CDL each shot is graded
+with.
 
-What it writes onto the rows: the approved In and Out from the trim the colourist and the AD sat through,
-the CDL as the readable record, and which `.cube` each shot is graded with. It then tells you how
-many shots matched, how many got a grade file, and the three lists worth looking at - shots the session
-says nothing about, trims the approved cut overwrote, and shots that more than one grade file claims.
-
-**The approved cut wins over a trim you already made**, and the report names the rows that lost
-one. Trimming again afterwards is allowed; it is what step 3 is for, and any row that moved is
-flagged in the QC log as delivered at something other than what was approved (QC-045).
+**When something needs fixing, fix the folder and press Scan.** A revised EDL, a corrected CSV or
+a missing clip goes into the turnover folder, and Scan reads it again. Your trims, skips and notes
+are kept, matched by File Name; a shot you never trimmed takes the new cut. Any row you did trim
+is flagged in the QC log as delivered at something other than what was approved (QC-045).
 
 **5. Say where it goes.** In the bar above the list, click **Set delivery root...** and pick the
 folder. The button is amber until there is one and shows the path after that. It is remembered
@@ -108,15 +102,16 @@ only the columns that are the tool's to fill - the thirty the vendor's team main
 touched. `qc_ingest_log_...xlsx` is the full report: every shot, every delivered file, and a
 column per check reading pass, fail or NA.
 
-Every deliverable is checked the moment it lands. One that fails is **kept**, marked, and
-listed in the Issues tab, because a file that failed a check is evidence. One that never
-finished is deleted, so a crash never leaves something that looks complete.
+Every deliverable is checked before it takes its final name. One that fails is deleted and its
+shot is marked failed, naming the file and the check, in the Issues tab; fix the cause,
+right-click the shot, **Reset**, and Run again. A shot that is complete is left alone by the next
+Run unless you right-click it and choose **Re-run**.
 
 ## When Run refuses
 
-The commonest one is not a fault. **A turnover with no colour session ingested renders
-nothing** (QC-008) - the plates would be missing the approved look, and delivering them
-ungraded is worse than delivering them late. Run says so in its tooltip before you press it,
+The commonest one is not a fault. **A turnover whose `.edl` carries no CDL renders nothing**
+(QC-008) - the plates would be missing the approved look, and delivering them ungraded is worse
+than delivering them late. Run says so in its tooltip before you press it,
 and if every turnover in the batch is in that state it opens a dialog naming each one and the
 rule holding it back, then brings up the Issues tab, rather than starting a run that does
 nothing. One turnover waiting on colour beside one that is ready is only a line in the status

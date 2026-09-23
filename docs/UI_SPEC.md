@@ -6,7 +6,7 @@ PySide6 6.7+. Dark theme in the spirit of DaVinci Resolve: near-black panels, th
 
 ```
 +------------------------------------------------------------------+
-| Toolbar: [New] [Open] [Save] | [Add Turnover] [Scan] [Ingest Colour Session] [Run] [Stop] | [Export] [Settings] |
+| Toolbar: [New] [Open] [Save] | [Add Turnover] [Scan] [Run] [Stop] | [Export] [Settings] |
 +------------------------------------------------------------------+
 | Batch bar: batch name, delivery root path (click to change), In/Out toggle [Frames|Source TC|Record TC], search box |
 +------------------------------------------------------------------+
@@ -34,7 +34,7 @@ editable metadata pane: In, Out, Shot Code, Notes and Skip are edited in their c
 nowhere else. That was true in the original spec, briefly untrue on 2026-09-11 when the
 viewers were given trim buttons, and is true again.
 
-Nothing opens a modal during review except Settings, file dialogs, and the report an ingest ends with (section 15), which is the answer to a file dialog rather than an interruption of the review.
+Nothing opens a modal during review except Settings and file dialogs.
 
 **Every toolbar button carries a hover tooltip** (asked for 2026-09-12, built in M5.11): one
 short sentence saying what the button does, in present tense, naming what changes, plus its
@@ -55,10 +55,10 @@ What M5.11 settled, beyond the wording:
   fundamental to the most specific, because "no batch is open" is a truer answer than "a scan is
   going" and only one is shown.
 - **One enabled button carries a note too, and it is the case the feature was asked for.** A
-  batch with shots and no ingested colour session runs, is refused by QC-008 and writes nothing,
+  batch whose EDL carries no CDL runs, is refused by QC-008 and writes nothing,
   which is correct and reads as a dead button. Run says so before it is pressed. It is the plain
-  question - has anything been ingested - rather than a second implementation of QC-008, which
-  needs pre-flight and the disk.
+  question - has any turnover's EDL been read at scan - rather than a second implementation of
+  QC-008, which needs pre-flight and the disk.
 - **A line may not exceed `toolbar_help.MAX_LINE` characters**, and a test holds every line of
   every tooltip in every state under it. Qt word-wraps a tooltip **only** when the text looks
   like rich text, so plain text is drawn on one line however long it is: the first draft had a
@@ -69,14 +69,14 @@ What M5.11 settled, beyond the wording:
 ## 2. Shot list columns
 
 Frozen left: status dot, Shot Code (editable), Elem.
-Scrolling: Source file, Res, FPS, In (editable), Out (editable), Duration, Max Avail, Audio (icon: none / one / many), Side files (icons: HDRI, camData, stills), Version, Progress, Notes (editable, free text, goes to tracker).
+Scrolling: Source file, Res, FPS, In (editable), Out (editable), Duration, Max Avail, Audio (icon: none / one / many), Version, Progress, Notes (editable, free text; kept in the batch and the QC log. The studio tracker has no Notes column, 2026-09-23).
 
 - **The In/Out display toggle in the batch bar has three states, not two: `Frames`, `Source TC`, `Record TC`.** It sets what the In and Out cells show as their primary value for the whole list, and it sets how a typed timecode is interpreted (source or record) when either TC state is selected.
 - **`Frames` is the default.** The frame number is what the model actually holds: frame math is integer throughout, In and Out *are* frame numbers, the QC rules quote them, the delivered EXR sequence is numbered by them, and the viewers step by them. Timecode is derived at the boundary and never stored. Opening on the derived value would show the editor a translation of the thing they are about to edit rather than the thing itself. The choice is remembered per batch, so an editor who works in source TC sets it once.
 - Secondary line: whichever representation is not primary sits under it in smaller text, so nothing is ever hidden, only demoted. In `Frames` the secondary is source TC; in either TC state it is the source frame number. Row height accommodates two lines.
 - The editor reads frames and timecode at different moments, which is why frames is a first-class state of this control rather than only the secondary line: a frame number is what gets typed into the In/Out cells and what a VFX vendor quotes back, and a timecode is what the AD and the edit talk in. Section 5 accepts both as input whatever this is set to.
 - Turnover group headers are rows in the same view (QTreeView with a flat two-level model), collapsible, showing counts and aggregate status.
-- Sorting is fixed to timeline order within a turnover. A search box filters rows by shot code substring.
+- Sorting is fixed to the metadata CSV's row order within a turnover. A search box filters rows by shot code substring.
 
 ## 3. Row colors and status dot
 
@@ -164,7 +164,7 @@ pane: a deliverable is written by a run and by nothing else.
 - Status bar shows overall percent, jobs running, throughput (frames/s), and ETA.
 - Stop finishes in-flight frames, discards `.part` outputs, and leaves rows in their previous state.
 - On completion a non-modal banner above the list reads "Batch complete: 27 done, 1 failed, 2 skipped. Exports written to ...". Click opens the folder.
-- **A run that would render nothing does not start** (2026-09-17). When every turnover with rows is held back by a turnover scope error, which is usually QC-008 on a batch nobody has ingested a session into, Run opens a dialog naming each turnover and the rule holding it, and brings up the Issues tab. It used to start, plan nothing and say so in the status bar, which is the correct refusal and reads as a dead button. One turnover held back beside one that is ready is still a status bar line, and the ready one delivers.
+- **A run with anything to fix does not start** (2026-09-23, D8). Run opens one dialog listing every must-fix with where it is - the batch, a turnover folder, or a clip - capped at twenty and pointing at the Issues dock for the rest, and says to correct the folder, press Scan and run. The held-back turnover of 2026-09-17 is gone: one turnover waiting on a fix holds the batch.
 
 **Two things about a stopped run that this list said too simply** (M5.5, 2026-09-12). The
 records of a stopped run **are** applied to the rows, because a job that finished before Stop
@@ -243,7 +243,7 @@ Built in M5.7.2. What that settled, beyond the layout:
 - **A section with nothing behind it yet is listed and disabled**, and its page says what it is waiting on. Same rule as the toolbar in section 1. **Every section is live as of M5.12**; the rule stays because it is how the page was built and how the next section will arrive.
 - **Advanced went live in M5.8.3**: the log level, the ffmpeg override, and a read-only line naming the log file. Both editable values are process wide rather than per batch, both take effect the moment they are applied, and both reach a render's worker processes when the next run starts them - a worker is told at its initialiser (`core/render.execute`), so a change made mid-run applies from the run after. The ffmpeg override takes the folder or the binary, and **a path that is not there is an error rather than a fallback**: an override quietly ignored is a render done with the wrong build of ffmpeg.
 - **Output went live in M5.12**, last, because both its values are applied inside a render's worker processes and had to be able to get there first. They travel on the channel Advanced built, at the worker's initialiser, so a change reaches the next run rather than one already going. Reference quality is the x264 rate factor, bounded 0 to 51 by what the encoder accepts; the preset stays at `slow` and is not editable. EXR compression level is the DWAA level. **Both are pinned by the spec** (`COLOR_AND_FORMAT.md` section 3: CRF 18, DWAA 45) and the page opens on those values, read from `core/ffmpeg.py` and `core/exr.py` rather than typed in a second time: moving either is a decision about a delivery rather than a preference, and each field's help says what the spec is so the person moving it knows what they are leaving.
-- **The Colour section carries no source encoding value and no mode** (2026-09-12): the encoding is a per clip fact. The ACES config, the output transform and the input transform table are shown **read only**, read from `core/color.py` rather than copied, because they are pinned by spec (OQ-29) and an override has nowhere to travel to yet. Where the colour session package lives is not here either: it is ingested per turnover and recorded on the batch (OQ-50).
+- **The Colour section carries no source encoding value and no mode** (2026-09-12): the encoding is a per clip fact. The ACES config, the output transform and the input transform table are shown **read only**, read from `core/color.py` rather than copied, because they are pinned by spec (OQ-29) and an override has nowhere to travel to yet. The EDL is not chosen here either: it is the one in the turnover folder, read at every scan (OQ-74), and the turnover records which file it read (`Turnover.color_session_edl`).
 
 ## 10. Empty and first-run states
 
@@ -291,10 +291,10 @@ A read-only pane on the right of the shot list showing everything known about th
 selection. Clicking a row fills it; arrowing down the list refills it as the selection moves.
 
 **Its job is to show what has no column.** Section 2 gives the list columns for the fields the
-editor works with (shot code, In, Out, duration, max available, audio and side file icons).
+editor works with (shot code, In, Out, duration, max available, audio).
 Repeating them here would waste the space and give the editor two places to read the same
-number. The pane exists for the rest: codec, pixel format, start timecode, file size, camera
-data, turnover details, and the paths themselves.
+number. The pane exists for the rest: codec, pixel format, start timecode, file size,
+turnover details, and the paths themselves.
 
 ### 12.1 Behaviour
 
@@ -330,15 +330,17 @@ it is hidden rather than shown empty.
 
 | section | fields |
 |---|---|
-| Identity | timeline clip name, shot code (and whether it is an editor override), show, shot number, element type and index, aux type and index, track, turnover id |
+| Identity | source file name, `Shot` and `Shot Type` as the metadata carried them, shot code (and whether it is an editor override), show, shot number, element type and index, reference-still type and index, turnover id |
 | Source media | path, codec, pixel format, resolution, single file or image sequence, sequence frame range and padding, frame count, first frame number, start timecode, file size, modified time |
-| Frame rate | timeline rate (authoritative), rate stated by the media, and an explicit disagreement note when they differ. COLOR_AND_FORMAT section 5 explains why the timeline wins; QC-026 is the rule |
+| Frame rate | the project rate, 24, asserted rather than read and labelled "Timeline rate"; the rate the file is conformed to when it differs; the rate stated by the media; and an explicit disagreement note when they differ. QC-026 is the rule |
 | Range | record In/Out, source In/Out in frames and timecode, turnover snapshot In/Out, current In/Out, duration, max available out, and whether the editor has moved it off the snapshot (QC-035) |
 | Audio | path, sample rate, channels, bit depth, duration in samples and in frames, and the sync difference against the video range (QC-043) |
-| Colour | source encoding as the shooter wrote it, which carrier named it, and the grade file the colour session delivered. **Added 2026-09-12 with M5.6**: M4.6 put all three on the row after this table was written, none has a column in the list, and the encoding is shown verbatim because the string is what has to be corrected when it is wrong |
-| Side files | HDRI path, camData path, and the parsed camData key/values once OQ-11 is settled. This is the single most useful thing in the pane for an AD sitting with the editor, because it is the only place lens, filter and camera body ever appear. **The pane never reads the file itself**: the parsed pairs arrive through a lookup the window caches per batch, because the pane redraws on every arrow key and a turnover sits on a Drive mount |
-| Turnover | number, date, shooter, folder, timeline file. Shown alone when a turnover group header is the selection |
+| Colour | source encoding as the shooter wrote it (`Gamma Notes` + `Color Space Notes`), which carrier named it, and the CDL from the row's EDL event. **Added 2026-09-12 with M5.6**, corrected 2026-09-21 when per-shot grade files were removed: the encoding is shown verbatim because the string is what has to be corrected when it is wrong |
+| Turnover | number, date, shooter, folder, EDL, metadata CSV, timeline start. Shown alone when a turnover group header is the selection |
 | QC | count by severity with the rule IDs, each clicking through to that row in the Issues dock. **Built across the whole selection rather than merged field by field**, unlike every other section: two rows with different problems agree on nothing, so a merge would reduce this to "mixed", which is the one answer that helps nobody |
+
+There is **no Side files section** since 2026-09-22: HDRI and camData carry no `Shot Type`, so
+the tool reads neither and the pane has nothing to show for them.
 
 ### 12.3 Empty and edge states
 
@@ -350,13 +352,13 @@ it is hidden rather than shown empty.
   fields inside it rather than a QC section beside it, so "alone" stays literally true; the
   rows' results are not rolled up here because the group header in the list already counts
   them and the Issues dock lists every one.
-- **Media unresolved** (QC-011, QC-012): the Identity and Range sections still populate from
-  the timeline, and Source media reads why it is missing rather than vanishing. An unresolved
-  row is exactly when someone wants to see what the timeline claimed the path was.
+- **Media unresolved** (QC-012, QC-013): the Identity and Range sections still populate from
+  the CSV and the EDL, and Source media reads why it is missing rather than vanishing. An
+  unresolved row is exactly when someone wants to see which file the CSV named.
   **Where that sentence comes from** (M5.6): the pane reads the QC result rather than
   re-deriving anything, because the scan is the only thing that knows what it looked for.
-  Nothing stores the claimed path once a row has no media, so **QC-012's message names it**,
-  which is the one record of what the timeline asked for.
+  Nothing stores the named file once a row has no media, so **QC-012's message names it**,
+  which is the one record of what the CSV asked for.
 - **Media on a Drive placeholder** that has not downloaded yet: show the download-wait state
   rather than blocking the pane, matching the scan behaviour in PRD section 8.
 
@@ -404,35 +406,35 @@ monitor. What is left in this tool is the occasional one-off trim of an already 
 (PRD FR-5), and that is done by typing a number, which the In/Out cells have always supported in
 four formats (section 5).
 
-## 15. Ingest Colour Session
+## 15. Scan, re-scan and a moved turnover (2026-09-23)
 
-The toolbar action that does PRD section 6 step 4, built in M5.7.3. The editor points at the
-colour session's final EDL; the tool writes what it says onto one turnover's rows - the approved
-In/Out, the CDL and the grade file per shot - and keeps the EDL's location on the turnover as the record
-of where the answers came from. Nothing reads the package again (`core/clf.py`).
+**Ingest Colour Session is gone** (review 2026-09-23, chunk E). The cut and the grade are read at
+scan from the EDL in the turnover folder, and a correction reaches the batch the way D8 says: the
+editor drops the fixed EDL, CSV or clip into the folder and re-scans.
 
-- **One turnover at a time**, because that is the scope the session is recorded at (OQ-50) and
-  the scope QC-008 holds a run back at: a turnover still waiting on colour is a different
-  turnover from this one. The selection says which - a group header, or rows that are all in the
-  same turnover - a batch of one turnover never asks, and a selection that spans two does.
-- **The chooser opens at the colour session folder in Settings** (PRD FR-12), not at the batch's
-  source root: a session and a turnover live nowhere near each other on the mount. Where it ended
-  up is remembered there for the next one.
-- **The EDL is read at the first row with media's rate**, and a turnover carrying more than one
-  says which was used rather than choosing silently (OQ-19). A turnover whose rows have no media
-  has no rate to read it at, and is told so before the chooser opens rather than after it.
-- **The approved cut overwrites a trim already made** and the report names the rows that lost one
-  (FR-5). The one-off trim made *after* an ingest is the supported one, and QC-045 reports it.
-- **The report says what `proingest run --color-session` prints**: the counts, and the three
-  lists a person acts on - rows with no event, trims the approved cut replaced, and shot codes
-  more than one grade file names. The labels live on `IngestReport` so the two surfaces cannot drift.
-- **The rules re-run afterwards**, because the ingest moves In and Out on the rows it matched and
-  the durations the thresholds judge have changed. QC-008 and QC-009 are pre-flight and clear at
-  the next Run.
-- **A session exported by convention is offered after the scan** (2026-09-17, OQ-53). When a
-  turnover's rows land, `clf.find_session` looks for a folder named as the turnover folder is,
-  first under the Settings folder the chooser opens at, then in `_color` beside the turnover; it
-  has to hold exactly one `.edl`, at any depth. Found, and the turnover has rows with media and
-  no session yet, a Yes/No dialog names the folder and Yes runs the same ingest the button does.
-  Two `.edl` files is no offer rather than a guess, since choosing between them is choosing a
-  cut. Asked rather than done because an ingest overwrites a trim on the rows.
+- **Scan re-scans every turnover in the batch.** Right-clicking a turnover's header offers
+  **Re-scan** for that one turnover and **New Folder Location...** for one that has moved (D16).
+- **What the editor did is carried over by File Name** (`scan.carry_over`), in CSV order, so a
+  clip used twice pairs first with first: a trim the editor made, the shot code correction, the
+  skip and its reason, the notes, and the delivered state. A trim never made follows the new EDL.
+  **QC-070** says so when the EDL or CSV changed since the last scan.
+- **A re-scan that finds no rows keeps the rows it had**, and the turnover's QC says why (QC-001,
+  QC-002): the editor's work waits for the scan that follows the fix.
+- **A moved turnover says so on its header when the batch is opened** (QC-069, an error that
+  holds it back), and New Folder Location re-scans it from where it went.
+
+## 15b. A shot's right-click (D11, D12)
+
+- **Reset**, on a shot with a failed output: the editor has fixed the cause, and what failed
+  runs again at the same version on the next Run. Greyed when nothing failed.
+- **Re-run**, on a shot that has been planned: the next Run renders it again, whole, at the
+  next version. A complete shot is otherwise left alone (QC-061).
+
+## 15a. Locks (D15)
+
+**While a scan or a run has the batch in hand, nothing may change it.** The list refuses every
+edit and its right-click entries are greyed; New, Open, Settings, Skip, Add Turnover, Scan and the
+delivery root wait. An edit made under a run changed the reports without changing the render (F14),
+and New or Open under a scan took its result into the other batch (F13). A run's own disk work -
+the pre-flight, the plan and the two spreadsheets - runs off the UI thread (`ui/background.py`)
+under the same lock, so a slow mount is a busy window rather than a frozen one (F17).

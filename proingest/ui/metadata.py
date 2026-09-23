@@ -18,7 +18,7 @@ caching belongs (CLAUDE.md: scan once, cache; a turnover sits on a Drive mount).
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -44,13 +44,6 @@ rows that have to be read one at a time.
 
 UNRESOLVED = "not resolved"
 NO_SELECTION = "Select a shot to see its metadata"
-
-CamDataLookup = Callable[[Path], dict[str, str]]
-"""Path to parsed key/values. `core/camdata.py` behind a cache, or a stub in a test."""
-
-
-def _no_camdata(_path: Path) -> dict[str, str]:
-    return {}
 
 
 @dataclass(frozen=True)
@@ -82,7 +75,6 @@ FRAME_RATE = "Frame rate"
 RANGE = "Range"
 COLOUR = "Colour"
 AUDIO = "Audio"
-SIDE_FILES = "Side files"
 TURNOVER = "Turnover"
 QC = "QC"
 
@@ -93,7 +85,6 @@ SECTION_ORDER = (
     RANGE,
     COLOUR,
     AUDIO,
-    SIDE_FILES,
     TURNOVER,
     QC,
 )
@@ -170,11 +161,8 @@ def _identity_fields(row: ShotRow) -> list[Field]:
     identity = row.identity
     if identity is not None:
         fields.append(Field("Show", identity.show))
-        fields.append(Field("Shot", identity.shot))
-        fields.append(Field("Element", f"{identity.elem_type} {identity.elem_index}"))
-        if identity.aux:
-            aux = identity.aux + (f" {identity.aux_index}" if identity.aux_index else "")
-            fields.append(Field("Aux", aux))
+        label = "Reference still" if identity.is_still else "Element"
+        fields.append(Field(label, f"{identity.kind} {identity.index}"))
     fields.append(Field("Track", row.track))
     fields.append(Field("Turnover id", row.turnover_id))
     if row.skipped:
@@ -308,8 +296,6 @@ def _colour_fields(row: ShotRow) -> list[Field]:
         fields.append(Field("Source encoding", row.source_encoding))
         if row.source_encoding_origin:
             fields.append(Field("Named by", row.source_encoding_origin))
-    if row.clf_path is not None:
-        fields.append(Field("Grade file", str(row.clf_path), is_path=True))
     return fields
 
 
@@ -356,24 +342,6 @@ def _sync_difference(row: ShotRow, info: AudioInfo, rate: FrameRate) -> str:
     return f"{_plural(abs(difference), 'frame')} {direction} than the picture"
 
 
-def _side_file_fields(row: ShotRow, camdata_for: CamDataLookup) -> list[Field]:
-    """The HDRI and camData paths, and camData's contents (OQ-11, QC-053).
-
-    The parsed pairs are the reason section 12 calls this the most useful thing in the
-    pane: lens, filter and camera body appear nowhere else in the window.
-    """
-    fields: list[Field] = []
-    side = row.side_files
-    if side.hdri is not None:
-        fields.append(Field("HDRI", str(side.hdri), is_path=True))
-    if side.camdata is None:
-        return fields
-    fields.append(Field("camData", str(side.camdata), is_path=True))
-    for key, value in camdata_for(side.camdata).items():
-        fields.append(Field(key, value))
-    return fields
-
-
 def turnover_fields(turnover: Turnover, rate: FrameRate) -> list[Field]:
     """Section 12.2's Turnover block. Shown alone when a group header is selected."""
     fields: list[Field] = []
@@ -385,8 +353,10 @@ def turnover_fields(turnover: Turnover, rate: FrameRate) -> list[Field]:
     if turnover.shooter:
         fields.append(Field("Shooter", turnover.shooter))
     fields.append(Field("Folder", str(turnover.folder), is_path=True))
-    if turnover.timeline_path is not None:
-        fields.append(Field("Timeline", str(turnover.timeline_path), is_path=True))
+    if turnover.edl_path is not None:
+        fields.append(Field("EDL", str(turnover.edl_path), is_path=True))
+    if turnover.csv_path is not None:
+        fields.append(Field("Metadata CSV", str(turnover.csv_path), is_path=True))
     if turnover.timeline_start:
         started = frames.frames_to_timecode(turnover.timeline_start, rate.as_float())
         fields.append(Field("Timeline start", f"{turnover.timeline_start} ({started})"))
@@ -425,7 +395,7 @@ def _row_results(row: ShotRow) -> list[QCResult]:
     return [*row.qc, *(result for item in row.deliverables for result in item.qc)]
 
 
-def describe_row(row: ShotRow, batch: Batch, camdata_for: CamDataLookup = _no_camdata) -> list[Section]:
+def describe_row(row: ShotRow, batch: Batch) -> list[Section]:
     """Every section for one row, empty ones included so a merge can line them up."""
     turnover = turnover_for(batch, row.turnover_id)
     return [
@@ -435,7 +405,6 @@ def describe_row(row: ShotRow, batch: Batch, camdata_for: CamDataLookup = _no_ca
         Section(RANGE, tuple(_range_fields(row, batch, turnover))),
         Section(COLOUR, tuple(_colour_fields(row))),
         Section(AUDIO, tuple(_audio_fields(row, batch))),
-        Section(SIDE_FILES, tuple(_side_file_fields(row, camdata_for))),
         Section(TURNOVER, tuple(turnover_fields(turnover, batch.project_rate)) if turnover else ()),
         Section(QC, tuple(_qc_fields([row]))),
     ]
@@ -481,9 +450,7 @@ def _value_for(section: Section, label: str) -> str | None:
     return found.value if found else None
 
 
-def describe(
-    rows: Sequence[ShotRow], batch: Batch, camdata_for: CamDataLookup = _no_camdata
-) -> list[Section]:
+def describe(rows: Sequence[ShotRow], batch: Batch) -> list[Section]:
     """What the pane shows for a selection. Empty sections are dropped (section 12.2).
 
     A path is never merged into `mixed` usefully, but it is merged the same way as
@@ -493,7 +460,7 @@ def describe(
     """
     if not rows:
         return []
-    described = [describe_row(row, batch, camdata_for) for row in rows]
+    described = [describe_row(row, batch) for row in rows]
     sections = described[0] if len(described) == 1 else _merge(described)
     if len(rows) > 1:
         sections = [
@@ -541,7 +508,6 @@ __all__ = [
     "MIXED",
     "NO_SELECTION",
     "SECTION_ORDER",
-    "CamDataLookup",
     "Field",
     "Section",
     "as_text",

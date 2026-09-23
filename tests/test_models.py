@@ -22,7 +22,6 @@ from proingest.core.models import (
     MediaInfo,
     QCResult,
     ShotRow,
-    SideFiles,
     Turnover,
 )
 from proingest.core.naming import ShotIdentity
@@ -50,7 +49,7 @@ def make_row(**overrides: object) -> ShotRow:
     defaults: dict[str, object] = {
         "turnover_id": "t1",
         "clip_name": "MELT0001_pl01",
-        "identity": ShotIdentity(show="MELT", shot="0001", elem_type="pl", elem_index="01"),
+        "identity": ShotIdentity(shot_code="MELT0001", kind="pl", index="01"),
         "media": make_media(),
         "record_in": 0,
         "record_out": 239,
@@ -146,6 +145,16 @@ class TestMediaInfo:
         del data["tags"]
         assert MediaInfo.from_dict(data).tags == {}
 
+    def test_round_trip_with_colour_tags(self) -> None:
+        media = make_media(color_space="bt709", color_range="pc", color_transfer="bt709")
+        assert MediaInfo.from_dict(media.to_dict()) == media
+
+    def test_media_saved_before_colour_tags_existed_reads_back_empty(self) -> None:
+        data = make_media().to_dict()
+        del data["color_space"], data["color_range"]
+        assert MediaInfo.from_dict(data).color_space == ""
+        assert MediaInfo.from_dict(data).color_range == ""
+
     def test_round_trip_without_timecode(self) -> None:
         """No embedded timecode is QC-028, and must survive serialization as None."""
         media = make_media(start_timecode=None)
@@ -191,7 +200,6 @@ class TestShotRow:
 
     def test_round_trip(self) -> None:
         row = make_row(
-            side_files=SideFiles(hdri=Path("/t/h.exr"), camdata=Path("/t/c.rtf")),
             audio_path=Path("/t/a.wav"),
             notes="watch the flare",
             skipped=True,
@@ -229,7 +237,6 @@ class TestShotRow:
                 sop_text="(1.02 0.99 1.01)(0.001 -0.002 0.0)(0.98 1.0 1.02)",
                 sat_text="1.05",
             ),
-            clf_path=Path("/session/MELT0001_grade.clf"),
         )
         assert ShotRow.from_dict(row.to_dict()) == row
 
@@ -249,28 +256,12 @@ class TestShotRow:
 
 
 class TestTurnover:
-    def test_stringout_fields_complete(self) -> None:
-        turnover = Turnover("t1", Path("/t"), number=1, month=2, day=23, year=2026, shooter="dan")
-        assert turnover.has_stringout_fields
-
-    @pytest.mark.parametrize("missing", ["number", "month", "day", "year", "shooter"])
-    def test_stringout_fields_incomplete(self, missing: str) -> None:
-        fields: dict[str, object] = {
-            "number": 1,
-            "month": 2,
-            "day": 23,
-            "year": 2026,
-            "shooter": "dan",
-        }
-        fields[missing] = None if missing != "shooter" else ""
-        turnover = Turnover("t1", Path("/t"), **fields)  # type: ignore[arg-type]
-        assert not turnover.has_stringout_fields
-
     def test_round_trip(self) -> None:
         turnover = Turnover(
             "t1",
             Path("/t"),
-            timeline_path=Path("/t/a.otio"),
+            edl_path=Path("/t/FINAL.edl"),
+            csv_path=Path("/t/meta.csv"),
             color_session_edl=Path("/session/MELT_FINAL.edl"),
             number=1,
             shooter="Daniel Luckett",

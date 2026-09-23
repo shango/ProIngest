@@ -19,9 +19,9 @@ from proingest.core.models import (
     MediaInfo,
     QCResult,
     ShotRow,
-    SideFiles,
     Turnover,
 )
+from tests.fixtures.names import identity_of
 
 ROOT = Path("/delivery")
 SHOT_DIR = ROOT / "MELT" / "MELT0001"
@@ -50,7 +50,6 @@ def media(
 def row(
     clip_name: str = "MELT0001_pl01",
     audio_path: Path | None = None,
-    side_files: SideFiles | None = None,
     source: str = "/turnover/MELT0001_pl01.1001.exr",
     has_audio: bool = False,
     **overrides: object,
@@ -58,12 +57,11 @@ def row(
     built = ShotRow(
         turnover_id="t1",
         clip_name=clip_name,
-        identity=naming.parse_clip_name(clip_name),
+        identity=identity_of(clip_name),
         media=media(source, has_audio=has_audio),
         snapshot=InOut(1001, 1240),
         current=InOut(1001, 1240),
         audio_path=audio_path,
-        side_files=side_files or SideFiles(),
     )
     for key, value in overrides.items():
         setattr(built, key, value)
@@ -149,13 +147,6 @@ class TestFrameRange:
         with pytest.raises(ValueError, match="not a sequence"):
             mp4.frame_path(1001)
 
-    def test_a_copy_has_no_frame_range(self) -> None:
-        plan = planner.plan_row(row(side_files=SideFiles(hdri=Path("/t/MELT0001_pl01_HDRI.exr"))), ROOT, 1)
-        copy = next(job for job in plan.jobs if job.kind == "hdri")
-        assert copy.frame_count == 0
-        with pytest.raises(ValueError, match="no frame range"):
-            copy.source_frame(1001)
-
 
 class TestAudio:
     def test_audio_comes_from_the_associated_clip(self) -> None:
@@ -186,35 +177,16 @@ class TestAudio:
             assert job.audio_source == (wav if job.kind == "ref_mp4" else None)
 
 
-class TestSideFiles:
-    def test_hdri_and_camdata_are_copied_under_delivery_names(self) -> None:
-        side = SideFiles(hdri=Path("/t/MELT0001_pl01_HDRI.exr"), camdata=Path("/t/MELT0001_pl01_camData.rtf"))
-        plan = planner.plan_row(row(side_files=side), ROOT, 1)
-        assert names(plan.jobs)[-2:] == [
-            "MELT0001_pl01_HDRI_v01.exr",
-            "MELT0001_pl01_camData_v01.rtf",
-        ]
-
-    def test_camdata_keeps_its_own_extension(self) -> None:
-        plan = planner.plan_row(row(side_files=SideFiles(camdata=Path("/t/x_camData.txt"))), ROOT, 1)
-        assert names(plan.jobs)[-1] == "MELT0001_pl01_camData_v01.txt"
-
-    def test_side_files_follow_the_shot_version(self) -> None:
-        side = SideFiles(hdri=Path("/t/MELT0001_pl01_HDRI.exr"))
-        plan = planner.plan_row(row(side_files=side), ROOT, 7)
-        assert all(job.version == 7 for job in plan.jobs)
-
-
 class TestAuxStills:
     def test_reference_still_delivers_one_4k_exr(self) -> None:
         plan = planner.plan_row(row("MELT0001_pl01_colorChart_01"), ROOT, 1)
-        assert names(plan.jobs) == ["MELT0001_pl01_colorChart_01_4k_v01.exr"]
+        assert names(plan.jobs) == ["MELT0001_colorChart_01_4k_v01.exr"]
         assert plan.jobs[0].res == "4k"
 
     @pytest.mark.parametrize("aux", naming.AUX_NAMES)
     def test_every_aux_name(self, aux: str) -> None:
         plan = planner.plan_row(row(f"MELT0001_pl01_{aux}_01"), ROOT, 1)
-        assert names(plan.jobs) == [f"MELT0001_pl01_{aux}_01_4k_v01.exr"]
+        assert names(plan.jobs) == [f"MELT0001_{aux}_01_4k_v01.exr"]
 
     def test_only_the_first_frame_of_the_clip_is_used(self) -> None:
         plan = planner.plan_row(row("MELT0001_pl01_greyBall_01", current=InOut(1005, 1030)), ROOT, 1)
@@ -223,25 +195,8 @@ class TestAuxStills:
         assert job.frame_count == 1
 
     def test_an_aux_clip_delivers_nothing_else(self) -> None:
-        side = SideFiles(hdri=Path("/t/MELT0001_pl01_HDRI.exr"))
-        plan = planner.plan_row(
-            row("MELT0001_pl01_sizeRef_01", side_files=side, audio_path=Path("/t/a.wav")), ROOT, 1
-        )
+        plan = planner.plan_row(row("MELT0001_pl01_sizeRef_01", audio_path=Path("/t/a.wav")), ROOT, 1)
         assert kinds(plan.jobs) == ["aux_still"]
-
-    def test_bts_is_copied_in_its_own_format(self) -> None:
-        plan = planner.plan_row(
-            row("MELT0001_pl01_BTS_01", source="/turnover/MELT0001_pl01_BTS_01.jpg"), ROOT, 1
-        )
-        assert names(plan.jobs) == ["MELT0001_pl01_BTS_01_v01.jpg"]
-        assert plan.jobs[0].kind == "bts"
-
-    def test_bts_in_an_undeliverable_format_is_reported_not_dropped(self) -> None:
-        plan = planner.plan_row(
-            row("MELT0001_pl01_BTS_01", source="/turnover/MELT0001_pl01_BTS_01.tif"), ROOT, 1
-        )
-        assert plan.jobs == []
-        assert [result.rule_id for result in plan.qc] == ["QC-056"]
 
 
 class TestVersioning:
@@ -370,8 +325,7 @@ class TestOutputNamesReadBack:
     """QC-151 in advance: what the planner writes must parse back to what it meant."""
 
     def test_every_planned_name_round_trips(self) -> None:
-        side = SideFiles(hdri=Path("/t/MELT0001_pl01_HDRI.exr"), camdata=Path("/t/x_camData.rtf"))
-        plan = planner.plan_row(row(audio_path=Path("/t/a.wav"), side_files=side), ROOT, 4)
+        plan = planner.plan_row(row(audio_path=Path("/t/a.wav")), ROOT, 4)
         for job in plan.jobs:
             parsed = naming.parse_output_name(job.name)
             assert parsed is not None, job.name
@@ -388,14 +342,10 @@ class TestOutputNamesReadBack:
         assert (parsed.kind, parsed.res, parsed.version, parsed.frame) == ("raw_frame", "4k", 2, 1001)
 
     def test_aux_names_round_trip(self) -> None:
-        for clip, source in (
-            ("MELT0001_pl01_mirrorBall_01", "/t/x.exr"),
-            ("MELT0001_pl01_BTS_01", "/t/x.png"),
-        ):
-            job = planner.plan_row(row(clip, source=source), ROOT, 1).jobs[0]
-            parsed = naming.parse_output_name(job.name)
-            assert parsed is not None
-            assert parsed.kind == job.kind
+        job = planner.plan_row(row("MELT0001_pl01_mirrorBall_01", source="/t/x.exr"), ROOT, 1).jobs[0]
+        parsed = naming.parse_output_name(job.name)
+        assert parsed is not None
+        assert parsed.kind == job.kind
 
 
 class TestShotColourOnJobs:
@@ -408,10 +358,13 @@ class TestShotColourOnJobs:
     """
 
     def ingest(self, batch: Batch, tmp_path: Path) -> None:
-        """Ingest a session onto the batch's rows, which is what a run does first."""
-        turnover = Turnover(turnover_id="turnover001", folder=tmp_path)
-        batch.turnovers.append(turnover)
-        clf.ingest(turnover, batch.rows, self.session(tmp_path))
+        """Put each row's event's CDL on it, which is what the scan does (`scan._conform`)."""
+        batch.turnovers.append(Turnover(turnover_id="turnover001", folder=tmp_path))
+        session = self.session(tmp_path)
+        for row_ in batch.rows:
+            event = session.event_for(row_)
+            if event is not None:
+                row_.cdl = event.cdl
 
     def session(self, tmp_path: Path) -> clf.ColorSession:
         edl = tmp_path / "MELT_FINAL.edl"
@@ -423,25 +376,16 @@ class TestShotColourOnJobs:
             "(0.001000 -0.002000 0.000000)(0.980000 1.000000 1.020000)\n"
             "*ASC_SAT 1.050000\n"
         )
-        (tmp_path / "MELT0001_grade.clf").touch()
         return clf.load_session(edl, RATE)
 
-    def test_a_picture_job_carries_the_session_s_clf_and_cdl(self, tmp_path: Path) -> None:
+    def test_a_picture_job_carries_the_session_s_cdl(self, tmp_path: Path) -> None:
         batch = Batch(name="b", rows=[row()], delivery_root=ROOT)
         self.ingest(batch, tmp_path)
         jobs = planner.plan_batch(batch)
         picture = [job for job in jobs if job.kind in ("raw_dir", "ref_mp4")]
         assert picture
         for job in picture:
-            assert job.shot_color.clf_path == tmp_path / "MELT0001_grade.clf"
             assert job.shot_color.cdl is not None
-
-    def test_the_row_records_the_clf_for_the_qc_log(self, tmp_path: Path) -> None:
-        """Ingest is what records it, and planning reads it back off the row."""
-        batch = Batch(name="b", rows=[row()], delivery_root=ROOT)
-        self.ingest(batch, tmp_path)
-        planner.plan_batch(batch)
-        assert batch.rows[0].clf_path == tmp_path / "MELT0001_grade.clf"
 
     def test_an_aux_still_is_never_given_the_shot_s_grade(self, tmp_path: Path) -> None:
         """It still gets the input transform, so it lands in ACEScg like every EXR."""
@@ -450,11 +394,11 @@ class TestShotColourOnJobs:
         self.ingest(batch, tmp_path)
         jobs = planner.plan_batch(batch)
         still = next(job for job in jobs if job.kind == "aux_still")
-        assert still.shot_color.clf_path is None
+        assert still.shot_color.cdl is None
         assert still.shot_color.source_encoding == "ACEScc"
 
     def test_without_an_ingest_every_job_plans_ungraded(self) -> None:
-        """The same files in the same places; the CLF is the only difference."""
+        """The same files in the same places; the CDL is the only difference."""
         batch = Batch(name="b", rows=[row()], delivery_root=ROOT)
         jobs = planner.plan_batch(batch)
         assert all(job.shot_color == clf.DEFAULT_SHOT_COLOR for job in jobs)
@@ -507,11 +451,85 @@ class TestShotColourOnJobs:
         by_shot = {job.shot_code: job.shot_color.source_encoding for job in jobs}
         assert by_shot == {"MELT0001": "ACEScc", "MELT0002": "S-Log3 S-Gamut3.Cine"}
 
-    def test_a_row_that_plans_nothing_keeps_the_clf_it_was_ingested_with(self, tmp_path: Path) -> None:
-        """Planning no longer owns `clf_path`: a skipped row is not un-ingested."""
+    def test_a_row_that_plans_nothing_keeps_the_grade_it_was_ingested_with(self, tmp_path: Path) -> None:
+        """Planning does not own the CDL: a skipped row is not un-ingested."""
         skipped = row(skipped=True)
         batch = Batch(name="b", rows=[skipped], delivery_root=ROOT)
         self.ingest(batch, tmp_path)
         planner.plan_batch(batch)
         assert skipped.deliverables == []
-        assert skipped.clf_path == tmp_path / "MELT0001_grade.clf"
+        assert skipped.cdl is not None
+
+
+class TestTheShowPatternTravels:
+    def test_every_job_carries_the_pattern_it_was_named_with(self) -> None:
+        """F23: a worker reads its names back (QC-102), and read them with the default."""
+        plan = planner.plan_row(row(), ROOT, 1, show_pattern="[A-Z]{2,6}")
+        assert plan.jobs
+        assert {job.show_pattern for job in plan.jobs} == {"[A-Z]{2,6}"}
+
+
+class TestTheNextRun:
+    """D11 and D12: what a Run does with a row the last run already touched."""
+
+    def planned(self, tmp_path: Path) -> Batch:
+        batch = Batch(rows=[row()])
+        planner.plan_batch(batch, tmp_path)
+        return batch
+
+    def land(self, batch: Batch, *statuses: str) -> None:
+        for item, status in zip(batch.rows[0].deliverables, statuses, strict=False):
+            item.status = status  # type: ignore[assignment]
+            if status == "done":
+                item.path.parent.mkdir(parents=True, exist_ok=True)
+                item.path.mkdir() if item.kind == "raw_dir" else item.path.touch()
+
+    def test_a_complete_row_is_skipped_and_says_so(self, tmp_path: Path) -> None:
+        batch = self.planned(tmp_path)
+        self.land(batch, "done", "done", "done", "done")
+        before = list(batch.rows[0].deliverables)
+        assert planner.plan_batch(batch, tmp_path) == []
+        assert batch.rows[0].deliverables == before
+        assert [(r.rule_id, r.severity) for r in batch.rows[0].qc] == [("QC-061", "info")]
+
+    def test_what_a_stopped_run_never_wrote_runs_at_the_same_version(self, tmp_path: Path) -> None:
+        batch = self.planned(tmp_path)
+        self.land(batch, "done", "done", "skipped", "planned")
+        jobs = planner.plan_batch(batch, tmp_path)
+        assert len(jobs) == 2
+        assert {job.version for job in jobs} == {1}
+        assert [d.status for d in batch.rows[0].deliverables] == ["done", "done", "planned", "planned"]
+
+    def test_a_landed_file_deleted_since_is_rendered_again(self, tmp_path: Path) -> None:
+        batch = self.planned(tmp_path)
+        self.land(batch, "done", "done", "done", "done")
+        first = batch.rows[0].deliverables[0].path
+        first.rmdir() if first.is_dir() else first.unlink()
+        jobs = planner.plan_batch(batch, tmp_path)
+        assert [job.destination for job in jobs] == [first]
+
+    def test_a_failed_row_waits_for_reset(self, tmp_path: Path) -> None:
+        """D11: the editor fixes the cause first; the next Run does not retry blindly."""
+        batch = self.planned(tmp_path)
+        self.land(batch, "done", "failed", "done", "done")
+        assert planner.plan_batch(batch, tmp_path) == []
+        assert batch.rows[0].deliverables[1].status == "failed"
+
+    def test_reset_runs_what_failed_at_the_same_version(self, tmp_path: Path) -> None:
+        from proingest.core import qc
+
+        batch = self.planned(tmp_path)
+        self.land(batch, "done", "failed", "done", "done")
+        assert qc.reset_row(batch.rows[0])
+        jobs = planner.plan_batch(batch, tmp_path)
+        assert [job.destination for job in jobs] == [batch.rows[0].deliverables[1].path]
+        assert jobs[0].version == 1
+
+    def test_re_run_writes_the_next_version_and_is_consumed(self, tmp_path: Path) -> None:
+        batch = self.planned(tmp_path)
+        self.land(batch, "done", "done", "done", "done")
+        batch.rows[0].rerun = True
+        jobs = planner.plan_batch(batch, tmp_path)
+        assert len(jobs) == 4
+        assert {job.version for job in jobs} == {2}
+        assert not batch.rows[0].rerun

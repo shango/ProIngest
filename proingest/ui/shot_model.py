@@ -181,14 +181,13 @@ COLUMNS = (
     Column("Dur", 70),
     Column("Max", 80),
     Column("Audio", 70),
-    Column("Side", 120),
     Column("Ver", 60),
     Column("Progress", 90),
     Column("Notes", 240),
 )
 
 STATUS, SHOT, ELEM, SOURCE, RES, FPS, IN, OUT, DURATION, MAX_AVAIL = range(10)
-AUDIO, SIDE_FILES, VERSION, PROGRESS, NOTES = range(10, 15)
+AUDIO, VERSION, PROGRESS, NOTES = range(10, 14)
 
 EDITABLE_COLUMNS = (SHOT, IN, OUT, NOTES)
 """The cells the list owns and nothing else does (FR-5), in Tab order.
@@ -303,11 +302,6 @@ def _progress_fraction(row: ShotRow, run: RunProgress | None = None) -> float:
     return sum(_item_fraction(item, run) for item in row.deliverables) / len(row.deliverables)
 
 
-def _side_files(row: ShotRow) -> str:
-    carried = (("HDRI", row.side_files.hdri), ("camData", row.side_files.camdata))
-    return ", ".join(name for name, path in carried if path)
-
-
 def _audio(row: ShotRow) -> str:
     """None, one or many. Section 2 asks for an icon; the tool ships no icon set yet,
     so the count is the honest stand-in and the tooltip carries the path."""
@@ -339,6 +333,7 @@ class ShotListModel(QAbstractItemModel):
         self._dots: dict[tuple[RowState, bool], QPixmap] = {}
         self._name_counts: dict[str, int] = {}
         self._run: RunProgress | None = None
+        self._locked = False
 
     # --- what it is showing ----------------------------------------------------------
 
@@ -372,6 +367,21 @@ class ShotListModel(QAbstractItemModel):
                     self.index(count - 1, OUT, parent),
                     [Qt.ItemDataRole.DisplayRole, SECONDARY_ROLE],
                 )
+
+    @property
+    def locked(self) -> bool:
+        return self._locked
+
+    def set_locked(self, locked: bool) -> None:
+        """Refuse every edit while a scan or a run is going (D15).
+
+        A trim, a skip or a shot code changed during a run changes what the reports say
+        without changing what was rendered (F14), so nothing can be changed until it ends.
+        """
+        if locked == self._locked:
+            return
+        self._locked = locked
+        self.refresh_rows()
 
     def set_run(self, progress: RunProgress | None) -> None:
         """Show what a run is doing, or go back to reading the rows' own statuses.
@@ -561,7 +571,6 @@ class ShotListModel(QAbstractItemModel):
             DURATION: lambda: str(row.duration) if row.duration is not None else "",
             MAX_AVAIL: lambda: str(row.max_available_out) if row.max_available_out is not None else "",
             AUDIO: lambda: _audio(row),
-            SIDE_FILES: lambda: _side_files(row),
             VERSION: lambda: _version(row),
             PROGRESS: lambda: _progress(row, self._run),
             NOTES: lambda: row.notes,
@@ -615,9 +624,6 @@ class ShotListModel(QAbstractItemModel):
             return str(row.media.path) if row.media else None
         if column == AUDIO:
             return str(row.audio_path) if row.audio_path else None
-        if column == SIDE_FILES:
-            paths = [p for p in (row.side_files.hdri, row.side_files.camdata) if p]
-            return "\n".join(str(path) for path in paths) or None
         if column == NOTES:
             return row.notes or None
         return None
@@ -654,7 +660,7 @@ class ShotListModel(QAbstractItemModel):
         """
         base = super().flags(index)
         row = self.row_at(index)
-        if row is None or index.column() not in EDITABLE_COLUMNS:
+        if row is None or self._locked or index.column() not in EDITABLE_COLUMNS:
             return base
         if index.column() in (IN, OUT) and row.current is None:
             return base
@@ -681,7 +687,7 @@ class ShotListModel(QAbstractItemModel):
         error the model reports anywhere: the editor has already shown it inline, and a
         QC result for a value that was never stored would outlive the typing that caused it.
         """
-        if role != Qt.ItemDataRole.EditRole:
+        if role != Qt.ItemDataRole.EditRole or self._locked:
             return False
         row = self.row_at(index)
         if row is None or index.column() not in EDITABLE_COLUMNS:
@@ -697,6 +703,23 @@ class ShotListModel(QAbstractItemModel):
             self._committed(row, index)
         return changed
 
+    def reset_row(self, index: ModelIndex) -> bool:
+        """Right-click Reset: the failed outputs run again at the same version (D11)."""
+        row = self.row_at(index)
+        if row is None or self._locked or not qc.reset_row(row):
+            return False
+        self._committed(row, index)
+        return True
+
+    def rerun_row(self, index: ModelIndex) -> bool:
+        """Right-click Re-run: the next Run renders this row again at the next version (D12)."""
+        row = self.row_at(index)
+        if row is None or self._locked or row.rerun or not row.deliverables:
+            return False
+        row.rerun = True
+        self._committed(row, index)
+        return True
+
     def set_skipped(self, index: ModelIndex, skipped: bool, reason: str | None = None) -> bool:
         """Ctrl+K (section 4). The reason is asked for by the view, which owns the prompt.
 
@@ -704,7 +727,7 @@ class ShotListModel(QAbstractItemModel):
         again is not a second interrogation about a decision already explained.
         """
         row = self.row_at(index)
-        if row is None or row.skipped == skipped:
+        if row is None or self._locked or row.skipped == skipped:
             return False
         row.skipped = skipped
         if skipped:
@@ -716,7 +739,7 @@ class ShotListModel(QAbstractItemModel):
         """An override, or none at all when the cell is emptied.
 
         Emptying it puts the parsed code back rather than leaving the row nameless: the
-        override is a correction of what `naming.parse_clip_name` read, and withdrawing a
+        override is a correction of what the CSV's `Shot` gave, and withdrawing a
         correction means the original stands.
         """
         override = text.strip() or None
@@ -762,7 +785,14 @@ class ShotListModel(QAbstractItemModel):
         """
         # Read from the batch each time rather than cached: Settings Apply writes new
         # thresholds onto the batch, and the next edit must be judged by those.
+        before = self._name_counts
+        self._name_counts = qc.clip_name_counts(self._batch)
         qc.apply_row_rules(row, self._batch.project_rate, qc.settings_for(self._batch), self._name_counts)
+        if self._name_counts != before:
+            # A shot code or a skip changed who collides with whom (QC-011, D6), and the
+            # row it collided with is somewhere else in the list.
+            qc.apply_duplicate_rule(self._batch, self._name_counts)
+            self.refresh_rows()
         parent = index.parent()
         self.dataChanged.emit(
             self.index(index.row(), 0, parent), self.index(index.row(), len(COLUMNS) - 1, parent)

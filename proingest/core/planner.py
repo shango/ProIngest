@@ -14,12 +14,11 @@ direct comparison between what was planned and what the written filename says.
 
 from __future__ import annotations
 
-from collections.abc import Collection
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Literal
 
-from proingest.core import clf, frames, naming
+from proingest.core import clf, frames, naming, resize
 from proingest.core.models import (
     Batch,
     Deliverable,
@@ -28,7 +27,6 @@ from proingest.core.models import (
     MediaInfo,
     QCResult,
     ShotRow,
-    SideFiles,
 )
 from proingest.core.naming import Resolution, ShotIdentity
 
@@ -38,7 +36,7 @@ TEMP_SUFFIX = ".part"
 RESOLUTIONS: dict[Resolution, tuple[int, int]] = {"4k": (3840, 2160), "HD": (1920, 1080)}
 """Exact target sizes, docs/COLOR_AND_FORMAT.md section 4. Never derived from the source."""
 
-JobKind = Literal["raw_dir", "ref_mp4", "audio", "hdri", "camdata", "aux_still", "bts"]
+JobKind = Literal["raw_dir", "ref_mp4", "audio", "aux_still"]
 
 PICTURE_DELIVERABLES: tuple[tuple[JobKind, Resolution], ...] = (
     ("raw_dir", "4k"),
@@ -57,7 +55,7 @@ and it also depends on there being audio at all, so it is added separately."""
 AUDIO_TYPES = ("pl",)
 """Only the main plate delivers audio."""
 
-OWNED_RULES = frozenset({"QC-056", "QC-060"})
+OWNED_RULES = frozenset({"QC-060", "QC-061"})
 """Rule IDs this module raises. Cleared before it raises them again, as qc.py does."""
 
 
@@ -86,7 +84,23 @@ class DeliverableJob:
     """The media's own resolution, which is what sizes the raw decode."""
 
     rate: FrameRate | None = None
-    """The effective rate, so a worker converts timecode without reopening the source."""
+    """The effective rate, so a worker converts timecode without reopening the source.
+
+    Always the project's 24 for a container: every deliverable is written at 24, frame for
+    frame, whatever the file states (user, 2026-09-23)."""
+
+    source_rate: FrameRate | None = None
+    """The rate the source's own frames and sound run at: 24000/1001 for the shooters'
+    conformed files. Only audio timing reads it, because sound is time and not frames: an
+    In frame is `in / source_rate` seconds into the clip, and the sound is retimed by
+    `rate / source_rate` so it follows the picture played at 24."""
+
+    show_pattern: str = naming.DEFAULT_SHOW_PATTERN
+    """The show code pattern the name was built with, so it is read back with the same."""
+
+    source_color_space: str = ""
+    source_color_range: str = ""
+    """The media's own matrix and range tags, which the decode states explicitly (D17)."""
 
     source_start_frame: int = 0
     """First frame index of the media: the first sequence number, or 0 for a container."""
@@ -113,9 +127,13 @@ class DeliverableJob:
     other EXR the tool writes, but never the shot's grade.
     """
 
+    display_name: str | None = None
+    """The name to report, when `destination` is not where the job will end up: phase B
+    checks a deliverable under its `.part` name and reports it under its own (F11)."""
+
     @property
     def name(self) -> str:
-        return self.destination.name
+        return self.display_name or self.destination.name
 
     @property
     def temp(self) -> Path:
@@ -125,6 +143,14 @@ class DeliverableJob:
     @property
     def target_size(self) -> tuple[int, int] | None:
         return RESOLUTIONS[self.res] if self.res else None
+
+    @property
+    def fitted_size(self) -> tuple[int, int] | None:
+        """The picture's size inside `target_size`: the target, unless the source has
+        another shape, which is letterboxed rather than stretched (F9)."""
+        if self.target_size is None or self.source_size is None:
+            return self.target_size
+        return resize.fit_inside(self.source_size, self.target_size)
 
     @property
     def frame_count(self) -> int:
@@ -156,7 +182,7 @@ class DeliverableJob:
         if self.kind != "raw_dir":
             raise ValueError(f"{self.name} is not a sequence")
         directory = self.temp if temp else self.destination
-        return directory / naming.frame_in_sequence(self.destination.name, output_frame)
+        return directory / naming.frame_in_sequence(self.name, output_frame)
 
     def to_deliverable(self) -> Deliverable:
         """The batch file's record of this job, before anything has been rendered."""
@@ -185,7 +211,6 @@ class _Shot:
     identity: ShotIdentity
     media: MediaInfo
     current: InOut
-    side_files: SideFiles
     directory: Path
     version: int
     audio: Path | None
@@ -195,20 +220,18 @@ class _Shot:
 def effective_identity(row: ShotRow, show_pattern: str = naming.DEFAULT_SHOW_PATTERN) -> ShotIdentity | None:
     """The identity every name for this row is built from.
 
-    A shot code the editor corrected replaces the show and number (NAMING_SPEC section
-    6); element, aux and index always come from the clip name, which the editor cannot
-    change. Returns None when the clip name never parsed, or when the correction does
-    not parse either, because then no name can be built at all.
+    A shot code the editor corrected replaces the one the CSV gave (NAMING_SPEC section
+    6); the clip type and its index always come from `Shot Type`, which the editor does
+    not correct here. Returns None when the row never had an identity, or when the
+    correction does not parse either, because then no name can be built at all.
     """
     if row.identity is None:
         return None
     if not row.shot_code_override:
         return row.identity
-    parsed = naming.parse_shot_code(row.shot_code_override, show_pattern)
-    if parsed is None:
+    if naming.parse_shot_code(row.shot_code_override, show_pattern) is None:
         return None
-    show, shot = parsed
-    return replace(row.identity, show=show, shot=shot)
+    return replace(row.identity, shot_code=row.shot_code_override)
 
 
 def plannable_identity(row: ShotRow, show_pattern: str = naming.DEFAULT_SHOW_PATTERN) -> ShotIdentity | None:
@@ -251,20 +274,21 @@ def plan_row(
         identity=identity,
         media=media,
         current=current,
-        side_files=row.side_files,
         directory=naming.shot_dir(delivery_root, identity),
         version=version,
         audio=_audio_source(row),
         color=shot_color,
     )
-    if identity.aux is not None:
-        return _aux_plan(shot)
-
-    plan = RowPlan(jobs=[_picture_job(shot, kind, res) for kind, res in TYPE_TABLE[identity.elem_type]])
-    audio = _audio_job(shot)
-    if audio is not None:
-        plan.jobs.append(audio)
-    plan.jobs.extend(_side_file_jobs(shot))
+    if identity.is_still:
+        plan = _aux_plan(shot)
+    else:
+        plan = RowPlan(jobs=[_picture_job(shot, kind, res) for kind, res in TYPE_TABLE[identity.kind]])
+        audio = _audio_job(shot)
+        if audio is not None:
+            plan.jobs.append(audio)
+    # The pattern goes with the job, because a worker verifying what it wrote reads the
+    # names back (QC-102) and was reading them with the default (F23).
+    plan.jobs = [replace(job, show_pattern=show_pattern) for job in plan.jobs]
     return plan
 
 
@@ -272,7 +296,6 @@ def plan_batch(
     batch: Batch,
     delivery_root: Path | None = None,
     show_pattern: str = naming.DEFAULT_SHOW_PATTERN,
-    skip_turnovers: Collection[str] = (),
 ) -> list[DeliverableJob]:
     """Plan every row of a batch and record the plan on the rows.
 
@@ -289,15 +312,9 @@ def plan_batch(
     CDL and the approved In/Out it was matched with and planning reads them off the model
     like every other field. A batch nothing has been ingested into plans ungraded: the
     deliverables are the same files in the same places, and the difference is whether the
-    CLF is in them. QC-008 is what refuses a **run** in that state, and it is a rule about
-    the turnover rather than something the planner decides.
-
-    `skip_turnovers` is what that refusal does here: a turnover whose pre-flight found an
-    error plans nothing, and the turnovers beside it still deliver (`qc.blocked_turnovers`).
-    It is passed in rather than read off the turnovers' QC lists, so planning does not
-    depend on a rule pass having run that it cannot see.
+    CLF is in them. QC-008 is what refuses a **run** in that state, and every must-fix
+    refuses the whole run before planning is asked (`qc.must_fix`, D8).
     """
-    skipped = frozenset(skip_turnovers)
     root = delivery_root or batch.delivery_root
     if root is None:
         raise ValueError("no delivery root: pass one, or set batch.delivery_root")
@@ -306,14 +323,33 @@ def plan_batch(
     jobs: list[DeliverableJob] = []
     for row in batch.rows:
         identity = plannable_identity(row, show_pattern)
-        if identity is None or row.turnover_id in skipped:
+        if identity is None:
             _record(row, RowPlan())
+            continue
+
+        state = _prior_state(row)
+        if state == "failed":
+            # Waiting for the editor to fix the cause and Reset the row (D11). What landed
+            # stays recorded and QC-150 already names the output that did not.
+            continue
+        if state == "complete":
+            _keep(row, _complete(row))
+            continue
+        if state == "pending":
+            # A stopped run, or a Reset: the rest of the row at the version it has (D11).
+            version = row.deliverables[0].version
+            plan = plan_row(row, root, version, show_pattern, clf.shot_color(row))
+            waiting = {item.path for item in row.deliverables if item.status not in LANDED}
+            plan.jobs = [job for job in plan.jobs if job.destination in waiting]
+            _resume(row, plan)
+            jobs.extend(plan.jobs)
             continue
 
         code = identity.shot_code
         if code not in versions:
             versions[code] = resolve_version(naming.shot_dir(root, identity), show_pattern)
         version = versions[code]
+        row.rerun = False
 
         plan = plan_row(row, root, version, show_pattern, clf.shot_color(row))
         if version > 1:
@@ -328,6 +364,64 @@ def plan_batch(
         _record(row, plan)
         jobs.extend(plan.jobs)
     return jobs
+
+
+LANDED = frozenset({"done", "exists"})
+"""A deliverable that is on disk, verified, under its final name."""
+
+PriorState = Literal["new", "complete", "pending", "failed"]
+
+
+def _prior_state(row: ShotRow) -> PriorState:
+    """What the last run left this row as, which decides what the next one does (D11, D12).
+
+    **new**: nothing planned yet, or the editor asked for a Re-run: plan it whole at the
+    next version. **complete**: everything landed and is still there: skip it. **failed**:
+    a check failed: wait for the editor's Reset. **pending**: some of it never ran, from a
+    stopped run or a Reset: finish it at the same version.
+
+    One stat per landed deliverable, so a file deleted since is rendered again rather
+    than reported as delivered.
+    """
+    if row.rerun or not row.deliverables:
+        return "new"
+    for item in row.deliverables:
+        if item.status in LANDED and not item.path.exists():
+            item.status = "planned"
+    statuses = {item.status for item in row.deliverables}
+    if "failed" in statuses:
+        return "failed"
+    if statuses <= LANDED:
+        return "complete"
+    return "pending"
+
+
+def _complete(row: ShotRow) -> RowPlan:
+    version = row.deliverables[0].version
+    return RowPlan(
+        qc=[
+            QCResult(
+                "QC-061",
+                "info",
+                "row",
+                f"complete at v{version:02d}, so this run leaves it alone; right-click Re-run "
+                f"to write v{version + 1:02d}",
+            )
+        ]
+    )
+
+
+def _keep(row: ShotRow, plan: RowPlan) -> None:
+    """Record a plan's QC on a row without touching what it already delivered."""
+    row.qc = [result for result in row.qc if result.rule_id not in OWNED_RULES]
+    row.qc.extend(plan.qc)
+
+
+def _resume(row: ShotRow, plan: RowPlan) -> None:
+    """Replace only the deliverables this plan re-renders, in their places in the list."""
+    fresh = {job.destination: job.to_deliverable() for job in plan.jobs}
+    row.deliverables = [fresh.get(item.path, item) for item in row.deliverables]
+    _keep(row, plan)
 
 
 def _record(row: ShotRow, plan: RowPlan) -> None:
@@ -358,6 +452,9 @@ def _picture_job(shot: _Shot, kind: JobKind, res: Resolution) -> DeliverableJob:
         audio_source=shot.audio if kind == "ref_mp4" else None,
         source_size=shot.media.resolution,
         rate=shot.media.rate,
+        source_rate=shot.media.stated_rate or shot.media.rate,
+        source_color_space=shot.media.color_space,
+        source_color_range=shot.media.color_range,
         source_start_frame=shot.media.start_frame,
         source_start_timecode=shot.media.start_timecode,
         shot_color=shot.color,
@@ -383,8 +480,10 @@ def _audio_job(shot: _Shot) -> DeliverableJob | None:
     A plate with none is QC-040, raised by the rule registry rather than here, because a
     missing deliverable is a fact about the row and not about the plan.
     """
-    if shot.identity.elem_type not in AUDIO_TYPES or shot.audio is None:
+    if shot.identity.kind not in AUDIO_TYPES or shot.audio is None:
         return None
+    # The same range as the picture: the wav is cut to the EDL event and follows the
+    # video's duration (user, 2026-09-23).
     return DeliverableJob(
         kind="audio",
         source=shot.audio,
@@ -392,82 +491,43 @@ def _audio_job(shot: _Shot) -> DeliverableJob | None:
         version=shot.version,
         shot_code=shot.identity.shot_code,
         elem=shot.identity.elem,
-    )
-
-
-def _side_file_jobs(shot: _Shot) -> list[DeliverableJob]:
-    """HDRI and camData copies, renamed to spec and versioned with the shot."""
-    jobs: list[DeliverableJob] = []
-    if shot.side_files.hdri is not None:
-        jobs.append(
-            _copy_job(shot, "hdri", shot.side_files.hdri, naming.hdri_exr(shot.identity, shot.version))
-        )
-    camdata = shot.side_files.camdata
-    if camdata is not None:
-        name = naming.camdata(shot.identity, shot.version, camdata.suffix)
-        jobs.append(_copy_job(shot, "camdata", camdata, name))
-    return jobs
-
-
-def _copy_job(shot: _Shot, kind: JobKind, source: Path, name: str) -> DeliverableJob:
-    """A byte copy under a delivery name. No frame range, nothing to scale."""
-    return DeliverableJob(
-        kind=kind,
-        source=source,
-        destination=shot.directory / name,
-        version=shot.version,
-        shot_code=shot.identity.shot_code,
-        elem=shot.identity.elem,
+        in_frame=shot.current.in_frame,
+        out_frame=shot.current.out_frame,
+        rate=shot.media.rate,
+        source_rate=shot.media.stated_rate or shot.media.rate,
+        source_start_frame=shot.media.start_frame,
     )
 
 
 def _aux_plan(shot: _Shot) -> RowPlan:
-    """An aux clip delivers one still and nothing else. NAMING_SPEC section 2.
+    """A reference still delivers one 4k EXR and nothing else. NAMING_SPEC section 2.
 
-    A reference still becomes a 4k EXR; a BTS still is copied as it is. Only the clip's
-    first frame is used, which is what QC-055 reports when the clip holds more than one.
+    Only the clip's In frame is used, which is what QC-055 reports when the clip holds
+    more than one. That is now the normal case rather than an oddity: in the real sample
+    a reference still is one timeline frame inside a 49-frame file.
     """
     first = shot.current.in_frame
-    if shot.identity.aux != "BTS":
-        return RowPlan(
-            jobs=[
-                DeliverableJob(
-                    kind="aux_still",
-                    source=shot.media.path,
-                    destination=shot.directory / naming.aux_still_exr(shot.identity, shot.version),
-                    version=shot.version,
-                    shot_code=shot.identity.shot_code,
-                    elem=shot.identity.elem,
-                    res="4k",
-                    in_frame=first,
-                    out_frame=first,
-                    source_is_sequence=shot.media.is_sequence,
-                    source_size=shot.media.resolution,
-                    rate=shot.media.rate,
-                    source_start_frame=shot.media.start_frame,
-                    source_start_timecode=shot.media.start_timecode,
-                    shot_color=clf.ShotColor(
-                        source_encoding=shot.color.source_encoding,
-                        source_encoding_origin=shot.color.source_encoding_origin,
-                    ),
-                )
-            ]
-        )
-
-    ext = shot.media.path.suffix.lstrip(".").lower()
-    if ext not in naming.BTS_EXTENSIONS:
-        return RowPlan(
-            qc=[
-                QCResult(
-                    "QC-056",
-                    "warning",
-                    "row",
-                    f"BTS still {shot.media.path.name} is not one of "
-                    f"{', '.join(naming.BTS_EXTENSIONS)}, so it has no delivery name and is "
-                    f"not planned",
-                )
-            ]
-        )
     return RowPlan(
-        jobs=[_copy_job(shot, "bts", shot.media.path, naming.bts(shot.identity, shot.version, ext))]
+        jobs=[
+            DeliverableJob(
+                kind="aux_still",
+                source=shot.media.path,
+                destination=shot.directory / naming.aux_still_exr(shot.identity, shot.version),
+                version=shot.version,
+                shot_code=shot.identity.shot_code,
+                elem=shot.identity.elem,
+                res="4k",
+                in_frame=first,
+                out_frame=first,
+                source_is_sequence=shot.media.is_sequence,
+                source_size=shot.media.resolution,
+                rate=shot.media.rate,
+                source_start_frame=shot.media.start_frame,
+                source_start_timecode=shot.media.start_timecode,
+                shot_color=clf.ShotColor(
+                    source_encoding=shot.color.source_encoding,
+                    source_encoding_origin=shot.color.source_encoding_origin,
+                ),
+            )
+        ]
     )

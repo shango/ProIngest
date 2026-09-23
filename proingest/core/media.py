@@ -15,7 +15,6 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
-from urllib.parse import unquote, urlparse
 
 from proingest.core import exr, ffmpeg
 from proingest.core.models import AudioInfo, FrameRate, MediaInfo
@@ -139,9 +138,14 @@ class DirectoryIndex:
     singles: list[FileEntry] = field(default_factory=list)
 
     def by_stem(self, stem: str) -> list[Sequence | FileEntry]:
-        """Everything whose base name equals `stem`, sequences and single files alike."""
-        matches: list[Sequence | FileEntry] = [s for s in self.sequences if s.base == stem]
-        matches.extend(entry for entry in self.singles if entry.stem == stem)
+        """Everything whose base name equals `stem` in any case, sequences and files alike.
+
+        In any case because the CSV's `File Name` is typed by a person and `c0145.mp4`
+        names `C0145.MP4` (F27). Two files differing only in case are then QC-013.
+        """
+        key = stem.casefold()
+        matches: list[Sequence | FileEntry] = [s for s in self.sequences if s.base.casefold() == key]
+        matches.extend(entry for entry in self.singles if entry.stem.casefold() == key)
         return matches
 
     def media_matching(self, stem: str) -> list[Sequence | FileEntry]:
@@ -154,12 +158,12 @@ class DirectoryIndex:
 
     def audio_matching(self, stem: str) -> list[FileEntry]:
         """Used by the EDL fallback, which cannot associate audio from the timeline."""
-        return [entry for entry in self.singles if entry.stem == stem and entry.suffix in AUDIO_EXTENSIONS]
-
-    def containing(self, fragment: str) -> list[FileEntry]:
-        """Single files whose name contains `fragment`. Used for HDRI and camData."""
-        lowered = fragment.lower()
-        return [entry for entry in self.singles if lowered in entry.name.lower()]
+        key = stem.casefold()
+        return [
+            entry
+            for entry in self.singles
+            if entry.stem.casefold() == key and entry.suffix in AUDIO_EXTENSIONS
+        ]
 
 
 def index_directory(root: Path) -> DirectoryIndex:
@@ -211,22 +215,6 @@ def index_directory(root: Path) -> DirectoryIndex:
 # --- Path mapping, FR-2. ---
 
 
-def url_to_path(url: str) -> Path:
-    """Turn an OTIO `target_url` into a local path.
-
-    Resolve writes either a plain path or a `file://` URL depending on platform and
-    version, so both are accepted.
-    """
-    if url.startswith("file://"):
-        parsed = urlparse(url)
-        raw = unquote(parsed.path)
-        # A Windows URL looks like file:///G:/media, leaving a leading slash to drop.
-        if re.match(r"^/[A-Za-z]:", raw):
-            raw = raw[1:]
-        return Path(raw)
-    return Path(url)
-
-
 def remap(path: Path, path_map: dict[str, str]) -> Path:
     """Rewrite a Resolve path onto the local mount.
 
@@ -273,6 +261,13 @@ def _timecode_from(probe: dict[str, Any], rate: FrameRate) -> int | None:
         except ValueError:
             continue
     return None
+
+
+def _is_drop_frame(probe: dict[str, Any]) -> bool:
+    """Whether the media states drop-frame timecode: a `;` before the frames (QC-027)."""
+    sources: list[dict[str, Any]] = [probe.get("format", {}).get("tags", {})]
+    sources.extend(stream.get("tags", {}) for stream in probe.get("streams", []))
+    return any(";" in str(tags.get("timecode") or tags.get("TIMECODE") or "") for tags in sources)
 
 
 def _video_stream(probe: dict[str, Any]) -> dict[str, Any]:
@@ -347,6 +342,11 @@ def probe(
         frame_count, start_frame = _container_frame_count(stream, stated), 0
 
     rate = fallback_rate or stated or FrameRate(24)
+    # `is None` and not `or`: 00:00:00:00 is frame 0, a timecode, not the absence of one (F8).
+    timecode = _timecode_from(raw, rate)
+    if timecode is None:
+        timecode = _exr_timecode(header, rate)
+    drop_frame = _is_drop_frame(raw)
 
     return MediaInfo(
         path=target,
@@ -357,7 +357,8 @@ def probe(
         rate=rate,
         frame_count=frame_count,
         start_frame=start_frame,
-        start_timecode=_timecode_from(raw, rate) or _exr_timecode(header, rate),
+        start_timecode=timecode,
+        drop_frame=drop_frame,
         is_sequence=isinstance(item, Sequence),
         has_audio=has_audio,
         audio_channels=channels,
@@ -367,7 +368,17 @@ def probe(
         mtime=mtime,
         stated_rate=stated,
         tags=tags,
+        color_space=_color_tag(stream, "color_space"),
+        color_range=_color_tag(stream, "color_range"),
+        color_transfer=_color_tag(stream, "color_transfer"),
+        color_primaries=_color_tag(stream, "color_primaries"),
     )
+
+
+def _color_tag(stream: dict[str, Any], key: str) -> str:
+    """A colour tag, or empty when the stream states none; ffprobe says "unknown"."""
+    value = str(stream.get(key, ""))
+    return "" if value in ("", "unknown", "unspecified") else value
 
 
 def _tags_from(probe: dict[str, Any], stream: dict[str, Any]) -> dict[str, str]:

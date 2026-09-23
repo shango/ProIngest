@@ -24,13 +24,15 @@ import re
 from collections import Counter
 from collections.abc import Sequence
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from PySide6.QtCore import QObject, QTimer
 
 from proingest.core import clf, exports, planner, qc, render
-from proingest.core.models import Batch, Deliverable
+from proingest.core.models import Batch, Deliverable, QCResult
+from proingest.core.planner import DeliverableJob
 from proingest.ui import settings_form
+from proingest.ui.background import Background, Failure
 from proingest.ui.run_strip import LINK_COLOR
 from proingest.ui.runner import SHUTDOWN_WAIT_MS, Runner, RunProgress
 
@@ -39,19 +41,18 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 
-NOTHING_TO_RENDER = "Nothing to render: no row produced a deliverable"
+NOTHING_TO_RENDER = "Nothing to render: every shot is complete, skipped or waiting for a Reset"
 CLOSING_AFTER_RUN = "Stopping the run, then closing..."
 
-HELD_BACK = "{count} turnovers are held back by an error; see the Issues dock"
-HELD_BACK_ONE = "{name} is held back by an error; see the Issues dock"
-NOTHING_WOULD_RENDER = "Nothing would render"
-"""The title of the dialog Run opens when every turnover is held back.
+MUST_FIX_TITLE = "Fix these before running"
+"""The dialog Run opens when anything must be fixed first (D8, D9).
 
-A run in that state used to start, plan nothing and say so in the status bar, which is
-the correct refusal and reads as a dead button (docs/MAC_SESSION.md). The commonest
-cause is a batch nobody has ingested a colour session into (QC-008), and the dialog
-says so, per turnover, in the rule's own words.
+Every must-fix in the batch, each with where it is, because the fix is in the folder:
+the editor corrects it there, presses Scan, and runs.
 """
+
+MUST_FIX_SHOWN = 20
+"""How many the dialog lists before it points at the Issues dock for the rest."""
 
 CHECKING_BATCH = "Checking the batch"
 PLANNING = "Planning {count} shots"
@@ -97,6 +98,16 @@ def _reports_link(reports: Path) -> str:
     return f'<a href="#reports" style="color:{LINK_COLOR}">{reports}</a>'
 
 
+def must_fix_text(found: Sequence[tuple[str, QCResult]]) -> str:
+    """The dialog's body: one line per must-fix, where it is first, capped."""
+    lines = [f"{where}: {result.rule_id} {result.message}" for where, result in found[:MUST_FIX_SHOWN]]
+    if len(found) > MUST_FIX_SHOWN:
+        lines.append(f"and {len(found) - MUST_FIX_SHOWN} more; see the Issues dock")
+    lines.append("")
+    lines.append("Correct them in the turnover folder, press Scan, then Run.")
+    return "\n".join(lines)
+
+
 class RunController(QObject):
     """The window's Run and Stop, and everything between them.
 
@@ -112,6 +123,10 @@ class RunController(QObject):
         self.runner.progressed.connect(self.progressed)
         self.runner.finished.connect(self._finished)
         self.runner.failed.connect(lambda text: window.report_problem("The run failed", text))
+        self.background: Background = Background(self)
+        """Where a run's disk work goes: the pre-flight, the plan and the reports (F17)."""
+        self._stop_requested = False
+        self._preparing = False
 
         self.progress: RunProgress | None = None
         """Everything this run has said so far, or None when nothing is running.
@@ -138,85 +153,108 @@ class RunController(QObject):
 
     @property
     def busy(self) -> bool:
-        return self.runner.busy
+        """A run in any of its steps, from the pre-flight to the last report written."""
+        return self.runner.busy or self.background.busy
+
+    @property
+    def preparing(self) -> bool:
+        """Checking or planning, before anything has reached a worker."""
+        return self._preparing
 
     @property
     def cancelled(self) -> bool:
         """Whether the run now finishing was stopped. Read by the toolbar and the banner."""
-        return self.runner.cancelled
+        return self.runner.cancelled or self._stop_requested
+
+    @property
+    def stoppable(self) -> bool:
+        """Whether Stop means anything now: a run rendering, or about to."""
+        if self.cancelled:
+            return False
+        return self.runner.busy or self._preparing
 
     # --- the run ----------------------------------------------------------------------
 
     def start(self) -> None:
         """Plan the batch and render it. UI_SPEC section 7, and PRD FR-6 and FR-7.
 
-        Three things happen before a job reaches a worker, and all three are on this
-        thread because all three write to the batch: pre-flight, which reads the disk
-        and records what it found on the rows; planning, which resolves one version per
-        shot from what is already in the delivery folder and replaces every row's
-        deliverables with the plan; and the check that anything came out of it. The
-        pool gets the jobs and nothing else (`ui/runner.py`).
+        Three things happen before a job reaches a worker, and all three write to the
+        batch: pre-flight, which reads the disk and records what it found on the rows;
+        planning, which resolves one version per shot from what is already in the
+        delivery folder and replaces every row's deliverables with the plan; and the
+        check that anything came out of it. The pool gets the jobs and nothing else
+        (`ui/runner.py`).
 
-        **A batch scope error stops the run and a row scope one does not** (FR-6): a
-        turnover with no lens grid is a warning the editor reads, and a delivery root
-        that cannot be written to is not.
+        **The first two run off the UI thread** (F17): both read a network mount. The
+        batch is locked while they do (D15), so nothing on this thread changes it under
+        them, and each answer comes back here before the next step starts.
 
-        **A turnover whose pre-flight found an error is held back rather than rendered**,
-        and the rest of the batch still delivers (`qc.blocked_turnovers`). That is what
-        QC-008 buys by being turnover scope: a turnover waiting on its colour session
-        would otherwise render every row ungraded, which is the wrong pixels under the
-        right filename, while the turnovers beside it are ready to go.
+        **Any must-fix anywhere stops the run** (D8): the whole batch waits for the
+        folder to be corrected and re-scanned (`qc.must_fix`).
         """
         window = self._window
-        if not window.batch_open or self.runner.busy or window.scanner.busy:
+        if not window.batch_open or self.busy or window.scanner.busy:
             return
         batch = window.batch
-        strip = window.run_strip
         if batch.delivery_root is None:
             # Section 7: prompted once, here, rather than by a dialog every run opens.
             window.choose_delivery_root()
             if batch.delivery_root is None:
                 return
 
-        strip.start()
-        strip.say(CHECKING_BATCH)
-        qc.preflight(batch)
-        blocking = qc.blocking_results(batch)
+        self._stop_requested = False
+        self._preparing = True
+        window.run_strip.start()
+        window.run_strip.say(CHECKING_BATCH)
+        self.background.run(lambda: qc.preflight(batch), self._checked)
+        window.update_state()
+
+    def _checked(self, result: object) -> None:
+        """The pre-flight is back: refuse, or plan."""
+        window = self._window
+        batch = window.batch
+        strip = window.run_strip
         window.show_results()
         window.shot_model.refresh_rows()
-        if blocking:
-            strip.clear()
-            window.report_problem(
-                "The batch cannot run",
-                "\n".join(f"{result.rule_id}: {result.message}" for result in blocking),
-            )
+        if isinstance(result, Failure):
+            self._refuse("The batch could not be checked", str(result.error))
+            return
+        if self._stop_requested:
+            self._refuse()
+            return
+        found = qc.must_fix(batch)
+        if found:
+            self._refuse(MUST_FIX_TITLE, must_fix_text(found))
             window.show_issues()
             return
-
-        held_back = qc.blocked_turnovers(batch)
-        if held_back and held_back >= {row.turnover_id for row in batch.rows}:
-            strip.clear()
-            window.report_problem(NOTHING_WOULD_RENDER, self._held_back_reasons(held_back))
-            window.show_issues()
-            return
-        if held_back:
-            window.statusBar().showMessage(self._held_back_text(held_back))
 
         strip.say(PLANNING.format(count=len(batch.rows)))
-        try:
-            jobs = planner.plan_batch(
-                batch,
-                batch.delivery_root,
-                settings_form.show_pattern_of(window.settings),
-                skip_turnovers=held_back,
-            )
-        except (ValueError, clf.ClfError) as exc:
-            strip.clear()
-            window.report_problem("The batch cannot be planned", str(exc))
-            return
+        root = batch.delivery_root
+        assert root is not None
+        pattern = settings_form.show_pattern_of(window.settings)
+        self.background.run(
+            lambda: planner.plan_batch(batch, root, pattern),
+            self._planned,
+        )
+        window.update_state()
+
+    def _planned(self, result: object) -> None:
+        """The plan is back: hand it to the pool, or say why there is nothing to hand."""
+        window = self._window
+        self._preparing = False
         window.shot_model.refresh_rows()
+        if isinstance(result, Failure):
+            if isinstance(result.error, (ValueError, clf.ClfError)):
+                self._refuse("The batch cannot be planned", str(result.error))
+            else:
+                self._refuse("The batch could not be planned", str(result.error))
+            return
+        jobs = cast("list[DeliverableJob]", result)
+        if self._stop_requested:
+            self._refuse()
+            return
         if not jobs:
-            strip.clear()
+            self._refuse()
             window.statusBar().showMessage(NOTHING_TO_RENDER)
             return
 
@@ -226,8 +264,18 @@ class RunController(QObject):
         window.progress.setValue(0)
         window.progress.setVisible(True)
         self._timer.start()
-        window.update_state()
         self.runner.start(jobs, window.settings.workers)
+        window.update_state()
+
+    def _refuse(self, title: str = "", text: str = "") -> None:
+        """A run that will not start: the strip goes away and the batch unlocks."""
+        window = self._window
+        self._preparing = False
+        window.run_strip.clear()
+        if title:
+            window.report_problem(title, text)
+        window.update_state()
+        self._idle()
 
     def export_reports(self) -> None:
         """Export: both spreadsheets from the batch as it stands, with no render (FR-10).
@@ -237,47 +285,45 @@ class RunController(QObject):
         it was when it was last scanned. Phase B is re-applied from what a run recorded,
         so a batch that has never run reports every deliverable as not there, which is
         the true answer. The banner is the run's, minus the counts a run would have.
+
+        Off the UI thread, like a run's own steps: phase B reads back every delivered
+        file and the reports are written to the delivery root (F17).
         """
         window = self._window
-        if not window.batch_open or self.runner.busy or window.scanner.busy:
+        if not window.batch_open or self.busy or window.scanner.busy:
             return
         batch = window.batch
         if batch.delivery_root is None:
             window.choose_delivery_root()
             if batch.delivery_root is None:
                 return
-        qc.apply_batch_rules(batch, qc.settings_for(batch))
-        qc.preflight(batch)
-        qc.apply_phase_b(batch)
+
+        def work() -> Path:
+            qc.apply_batch_rules(batch, qc.settings_for(batch))
+            qc.preflight(batch)
+            qc.apply_phase_b(batch)
+            return self._write_reports(batch)
+
+        window.run_strip.start()
+        window.run_strip.say(WRITING_REPORTS)
+        self.background.run(work, self._exported)
+        window.update_state()
+
+    def _exported(self, result: object) -> None:
+        window = self._window
         window.shot_model.refresh_rows()
         window.show_results()
         window.autosave.schedule()
-        reports = self._write_reports(batch)
+        reports = self._reports_or_problem(result)
         if reports is None:
-            return
-        self._reports_folder = reports
-        text = export_banner_text(reports)
-        window.run_strip.show_banner(text)
-        window.statusBar().showMessage(re.sub(r"<[^>]+>", "", text))
-
-    def _held_back_reasons(self, held_back: frozenset[str]) -> str:
-        """Every turnover this run would skip, each with the errors holding it back."""
-        lines = []
-        for turnover in self._window.batch.turnovers:
-            if turnover.turnover_id not in held_back:
-                continue
-            errors = [r for r in turnover.qc if r.severity == "error" and r.scope == "turnover"]
-            lines.append(turnover.folder.name)
-            lines.extend(f"  {result.rule_id}: {result.message}" for result in errors)
-        return "\n".join(lines)
-
-    def _held_back_text(self, held_back: frozenset[str]) -> str:
-        """What the status bar says about the turnovers this run will not touch."""
-        if len(held_back) > 1:
-            return HELD_BACK.format(count=len(held_back))
-        one = next(iter(held_back))
-        name = next((t.folder.name for t in self._window.batch.turnovers if t.turnover_id == one), one)
-        return HELD_BACK_ONE.format(name=name)
+            window.run_strip.clear()
+        else:
+            self._reports_folder = reports
+            text = export_banner_text(reports)
+            window.run_strip.show_banner(text)
+            window.statusBar().showMessage(re.sub(r"<[^>]+>", "", text))
+        window.update_state()
+        self._idle()
 
     def stop(self) -> None:
         """Stop: no new jobs, in-flight ones stop at their next frame boundary.
@@ -287,9 +333,14 @@ class RunController(QObject):
         only (UI_SPEC section 7). The results still come back and are still applied,
         because a job that finished before Stop was pressed is a real deliverable.
         """
-        if not self.runner.busy:
+        if self.runner.busy:
+            self.runner.cancel()
+        elif self.preparing:
+            # Checking or planning: nothing has reached a worker, so the run just does
+            # not start when the step in hand comes back.
+            self._stop_requested = True
+        else:
             return
-        self.runner.cancel()
         self._window.statusBar().showMessage("Stopping after the frames in flight...")
         self._window.update_state()
 
@@ -322,9 +373,9 @@ class RunController(QObject):
         """The records, back on the UI thread, written onto the rows they were planned from.
 
         `apply_results` is what re-runs QC-150 and QC-151, the two phase B rules a worker
-        cannot answer, so the Issues dock is only right after it. The exports come next
-        because they report what the QC just decided, and the banner last because it
-        says where they went.
+        cannot answer, so the Issues dock is only right after it. The exports come next,
+        off this thread, because they report what the QC just decided, and the banner
+        last because it says where they went.
         """
         self._timer.stop()
         self.progress = None
@@ -340,7 +391,15 @@ class RunController(QObject):
         window.autosave.schedule()
 
         window.run_strip.say(WRITING_REPORTS)
-        reports = self._write_reports(batch)
+        self.background.run(
+            lambda: self._write_reports(batch),
+            lambda result: self._reported(result, written, cancelled),
+        )
+        window.update_state()
+
+    def _reported(self, result: object, written: list[Deliverable], cancelled: bool) -> None:
+        window = self._window
+        reports = self._reports_or_problem(result)
         text = banner_text(written, reports, cancelled)
         window.run_strip.show_banner(text)
         self._reports_folder = reports
@@ -348,26 +407,35 @@ class RunController(QObject):
         # the status bar is where the eye already is when a long run ends.
         window.statusBar().showMessage(re.sub(r"<[^>]+>", "", text))
         window.update_state()
+        self._idle()
 
-    def _write_reports(self, batch: Batch) -> Path | None:
-        """The two spreadsheets, into the delivery root (FR-10). None when they could not go.
+    @staticmethod
+    def _write_reports(batch: Batch) -> Path:
+        """The two spreadsheets, into the delivery root (FR-10). Off the UI thread.
 
         Written by the run rather than by a button, because section 7's banner says
         where they are and PRD section 7 puts them at the end of a delivery. A batch
         whose rows have no shot code has no show to file them under, which is a
-        `ValueError` from `report_paths` rather than a crash, and the banner then says
-        nothing was written instead of naming a folder that does not exist.
+        `ValueError` from `report_paths`, and the banner then says nothing was written
+        instead of naming a folder that does not exist.
         """
         if batch.delivery_root is None:
-            return None
-        try:
-            log_path, tracker_path = exports.report_paths(batch, batch.delivery_root)
-            exports.write_qc_log(batch, log_path)
-            exports.write_shot_tracker(batch, tracker_path)
-        except (ValueError, OSError) as exc:
-            self._window.report_problem("The exports could not be written", str(exc))
-            return None
+            raise ValueError("the batch has no delivery root")
+        log_path, tracker_path = exports.report_paths(batch, batch.delivery_root)
+        exports.write_qc_log(batch, log_path)
+        exports.write_shot_tracker(batch, tracker_path)
         return log_path.parent
+
+    def _reports_or_problem(self, result: object) -> Path | None:
+        """Where the reports went, or None after saying why they did not.
+
+        **Anything the writer raised is reported**, not only the errors it expects: an
+        exception escaping here once left Run greyed and Stop lit for good (F15).
+        """
+        if isinstance(result, Failure):
+            self._window.report_problem("The exports could not be written", str(result.error))
+            return None
+        return cast("Path", result)
 
     def _open_reports(self) -> None:
         """The banner's link: the folder the two spreadsheets went into."""
@@ -377,18 +445,18 @@ class RunController(QObject):
     # --- closing the window during a run ----------------------------------------------
 
     def close_when_finished(self) -> None:
-        """Stop the run and close once `_finished` has applied what it wrote."""
+        """Stop the run and close once its results are applied and its reports written."""
         if self._closing_after_run:
             return
         self._closing_after_run = True
-        self.runner.finished.connect(self._close_now_that_the_run_is_over)
         self._close_wait.start(SHUTDOWN_WAIT_MS)
         self.stop()
         self._window.statusBar().showMessage(CLOSING_AFTER_RUN)
 
-    def _close_now_that_the_run_is_over(self, *_: object) -> None:
-        """Connected after `_finished`, so the results are on the rows by now."""
-        self.runner.finished.disconnect(self._close_now_that_the_run_is_over)
+    def _idle(self) -> None:
+        """Nothing is left in hand. A close that was waiting for that goes ahead now."""
+        if not self._closing_after_run or self.busy:
+            return
         self._close_wait.stop()
         self._closing_after_run = False
         self._window.close()
@@ -400,5 +468,6 @@ class RunController(QObject):
         self._window.close()
 
     def shutdown(self) -> None:
-        """Stop and wait for the pool. What closing the window calls."""
+        """Stop and wait for the pool and any step in hand. What closing the window calls."""
         self.runner.shutdown()
+        self.background.shutdown()

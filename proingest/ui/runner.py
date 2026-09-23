@@ -36,13 +36,20 @@ from proingest.core.planner import DeliverableJob
 log = logging.getLogger(__name__)
 
 SHUTDOWN_WAIT_MS = 120_000
-"""How long `shutdown` waits for the pool before giving up on it.
+"""How long a close waits for a stopped run's results before giving up on them.
 
 Longer than the scan's wait, because what it is waiting for is every in-flight job
 reaching its next frame boundary, and one of those may be a 4k reference encode that
-reports no progress and cannot be interrupted (PROGRESS section 9). Not infinite: a
-wedged worker must not be a window that cannot be closed.
+reports no progress and cannot be interrupted (PROGRESS section 9). The window stays
+live while it waits (`RunController.close_when_finished`); only `shutdown` blocks.
 """
+
+SHUTDOWN_GRACE_MS = 5_000
+"""How long `shutdown` blocks before it ends the workers, and again after.
+
+Short, because by the time it runs the close has already waited `SHUTDOWN_WAIT_MS` for
+the run to stop on its own. It used to wait that long a second time with the window
+frozen, which made closing on a hung run take four minutes (F18)."""
 
 FINISHED_STATES = frozenset({"done", "failed", "cancelled"})
 """A job the pool will say nothing more about."""
@@ -351,8 +358,16 @@ class Runner(QObject):
         # to block here. Asking the thread directly is what stops that being a deadlock
         # that lasts until the timeout.
         thread.quit()
-        if not thread.wait(SHUTDOWN_WAIT_MS):
-            log.warning("the render thread did not stop within %d ms", SHUTDOWN_WAIT_MS)
+        if thread.wait(SHUTDOWN_GRACE_MS):
+            return
+        # A worker that will not reach a frame boundary is ended rather than waited on.
+        # Its `.part` stays behind, which never looks finished; an ffmpeg it started may
+        # run on until its own timeout.
+        log.warning("the render pool did not stop; ending its workers")
+        for child in multiprocessing.active_children():
+            child.terminate()
+        if not thread.wait(SHUTDOWN_GRACE_MS):
+            log.warning("the render thread did not stop within %d ms", 2 * SHUTDOWN_GRACE_MS)
 
     def _collect(self, written: object) -> None:
         """The worker's answer, on the UI thread. The thread is asked to stop after it."""
