@@ -154,15 +154,6 @@ class TestQcLogSheets:
         assert row_of["Delivered In"] == 8
         assert row_of["Delivered In TC"] == "01:00:00:08"
 
-    def test_the_shots_sheet_names_the_clf_the_row_was_graded_with(self, tmp_path: Path) -> None:
-        """The filename, because that is what a delivered EXR header carries (M4.5.4)."""
-        graded = row()
-        graded.clf_path = Path("/session/clf/MELT0001_grade_v02.clf")
-        path = tmp_path / "log.xlsx"
-        exports.write_qc_log(Batch(name="b", rows=[graded]), path)
-        header, values = sheet_rows(path, "Shots")
-        assert dict(zip(header, values, strict=True))["Grade file"] == "MELT0001_grade_v02.clf"
-
     def test_the_shots_sheet_names_the_encoding_the_clip_asked_for(self, tmp_path: Path) -> None:
         """Verbatim, because what QC-047 needs corrected is the string somebody typed."""
         named = row()
@@ -175,11 +166,6 @@ class TestQcLogSheets:
     def test_a_clip_that_named_no_encoding_leaves_the_column_empty(self, log: Path) -> None:
         header, values = sheet_rows(log, "Shots")
         assert not dict(zip(header, values, strict=True))["Source encoding"]
-
-    def test_an_ungraded_row_leaves_the_clf_column_empty(self, log: Path) -> None:
-        """openpyxl reads an empty string back as None; either way the cell says nothing."""
-        header, values = sheet_rows(log, "Shots")
-        assert not dict(zip(header, values, strict=True))["Grade file"]
 
     def test_one_deliverables_row_each(self, log: Path) -> None:
         assert len(sheet_rows(log, "Deliverables")) == 8

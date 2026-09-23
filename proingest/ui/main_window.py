@@ -624,9 +624,6 @@ class MainWindow(QMainWindow):
         self.show_results()
         self.autosave.schedule()
         self.update_state()
-        # Last, with the rows on the model: a session exported by convention is offered
-        # now rather than left for a toolbar button the editor has to know to press.
-        color_session.offer_found(self, turnover)
 
     def _scan_finished(self) -> None:
         self.progress.setVisible(False)
@@ -791,8 +788,8 @@ class MainWindow(QMainWindow):
         """Which final EDL to ingest. The editor points at the EDL, not the folder.
 
         It opens at the colour session folder Settings remembers rather than at the
-        batch's source root: a session and a turnover live nowhere near each other on
-        the mount, which is why that setting exists (FR-12).
+        batch's source root: Ben's folder and the delivery live nowhere near each other
+        on the mount, which is why that setting exists (FR-12).
         """
         start = self._settings.color_session_folder or self._settings.last_folder
         chosen, _filter = QFileDialog.getOpenFileName(self, "Ingest Colour Session", start, EDL_FILTER)

@@ -14,6 +14,30 @@ complete, M4.5 all four chunks, M4.6 all five, **M5 all twelve**, **M7**, and **
 What is left is **M8 polish** (needs a real turnover and a real colour session) and the rest
 of **M9, the user guide**.
 
+**2026-09-22, chunk 5b: there is no per-shot grade file anywhere in the code.** The CDL on the
+EDL event is the whole grade (user, 2026-09-22, "no `.cube`, anywhere"), and what that removed is
+larger than a file type. Gone from `clf.py`: `GRADE_EXTENSIONS`, `LoadedClf`, `load_clf`,
+`clf_digest`, `index_clfs`, `ColorSession.clfs` and `clf_for`, `AmbiguousClfError`, and
+**`_probe_grade_only` with `TONE_MAP_STEP_FLOOR`, `LOG_WHITE` and `LOG_NEAR_WHITE`** - the probe
+that asked whether a cube had a display rendering baked into it, which was the sharpest check in the
+tool and has nothing left to check. **QC-019 and QC-039 are retired with it**, and QC-009's message
+no longer offers "no CDL and no cube". `ShotColor` lost `clf_path` and `load()`, so
+`plate_transforms()` and `view_transforms()` take no argument and a worker no longer reads a file
+per job. **The EXR header lost `proingest/clf` and `proingest/clf_hash`**, and `proingest/cdl_note`
+now has only one thing it can say, the CDL always being what was applied. `ShotRow.clf_path` is
+gone, with the QC log's **Grade file** column and the metadata pane's field.
+
+**The batch schema is version 2** and a version 1 file is **refused rather than migrated**
+(TO_A_WORKING_BUILD.md Q5). The refusal already existed and says what it is; the bump is one line.
+**This is the assumption to correct if it is wrong**: it is the right call only because no real
+`.pibatch` exists yet, so say so if one does.
+
+**`clf.find_session`, `session_folders` and `SESSION_FOLDER` went too**, with the post-scan offer in
+the window (M5.13): OQ-53's `_color` convention is dissolved rather than superseded, so its removal
+does not wait on chunk 3. The Settings field survives as what it always also was, where the Ingest
+chooser opens. **The two UI pieces that do wait for chunk 3 are the held-back turnover (M5.7.1) and
+normal-case ingest (M5.7.3).** **1652 tests**, `ruff`, `ruff format` and `mypy --strict` clean.
+
 **2026-09-22, chunk 5a: the deliverables that are no longer deliverables are out of the code.**
 `Shot Type` is the whole of the tool's scope, so anything that never carries one is not the tool's
 to deliver. Gone: **the HDRI and camData side files** (`models.SideFiles` and its whole plumbing,

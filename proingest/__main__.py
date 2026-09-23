@@ -260,7 +260,7 @@ def _ingest_color_session(batch: Batch, edl_path: Path | None) -> None:
         print(f"note: the batch carries more than one rate; reading the EDL at {rates[0]}")
     session = clf.load_session(edl_path, rates[0])
     with_cdl = sum(event.cdl is not None for event in session.events)
-    print(f"colour session: {len(session.events)} events, {with_cdl} with a CDL, {len(session.clfs)} cubes")
+    print(f"colour session: {len(session.events)} events, {with_cdl} with a CDL")
     for turnover in batch.turnovers:
         report = clf.ingest(turnover, batch.rows_for(turnover.turnover_id), session)
         print(f"  {turnover.turnover_id}: {report.counts}")

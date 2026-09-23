@@ -736,9 +736,7 @@ OWNED_PREFLIGHT_RULES = frozenset(
     {
         "QC-008",
         "QC-009",
-        "QC-019",
         "QC-022",
-        "QC-039",
         "QC-048",
         "QC-062",
         "QC-063",
@@ -788,7 +786,7 @@ def check_color_session(turnover: Turnover, rows: list[ShotRow]) -> list[QCResul
                 "QC-008",
                 "error",
                 "turnover",
-                f"{edl.name} was ingested but carried no CDL and no cube for any row in this turnover",
+                f"{edl.name} was ingested but carried no CDL for any row in this turnover",
             )
         ]
     return []
@@ -812,57 +810,7 @@ def check_clf(row: ShotRow, has_session: bool) -> list[QCResult]:
                 "QC-009",
                 "error",
                 "row",
-                "the colour session left no CDL and no cube for this shot; it would render ungraded",
-            )
-        ]
-    if row.clf_path is not None and not row.clf_path.is_file():
-        return [
-            QCResult(
-                "QC-009",
-                "error",
-                "row",
-                f"the grade file this row was ingested with, {row.clf_path}, is no longer there",
-            )
-        ]
-    return []
-
-
-def check_clf_loads(row: ShotRow, cache: dict[Path, list[QCResult]]) -> list[QCResult]:
-    """QC-019 and QC-039: the cube is there but will not load, or is not a grade alone.
-
-    Both are errors and they fail in opposite directions. A cube that will not load
-    stops a render, which is loud. A cube with a display rendering in it finishes one,
-    and the result is a display referred EXR claiming to be linear ACEScg, which nothing
-    downstream notices until a comp is wrong (COLOR_AND_FORMAT section 1).
-
-    `cache` is keyed by path because the elements of one shot share its cube, and loading
-    one builds an OCIO processor and probes it: doing that four times per shot is the
-    difference between a pre-flight that is free and one the editor waits on.
-    """
-    path = row.clf_path
-    if path is None or not path.is_file():
-        return []
-    if path not in cache:
-        cache[path] = _probe_clf(path)
-    return list(cache[path])
-
-
-def _probe_clf(path: Path) -> list[QCResult]:
-    """Load one cube and say what is wrong with it, or nothing."""
-    try:
-        loaded = clf.load_clf(path)
-    except clf.ClfError as exc:
-        return [QCResult("QC-019", "error", "row", str(exc))]
-    if not loaded.is_grade_only:
-        return [
-            QCResult(
-                "QC-039",
-                "error",
-                "row",
-                f"{path.name} appears to contain a display rendering: it flattens the top of "
-                f"the {color.WORKING_SPACE} range where a grade would leave it open. A plate "
-                f"rendered through it would be display referred and would claim to be linear "
-                f"{color.PLATE_SPACE}",
+                "the colour session left no CDL for this shot; it would render ungraded",
             )
         ]
     return []
@@ -891,9 +839,7 @@ def check_color_chain(row: ShotRow) -> list[QCResult]:
     if encoding is None:
         return [QCResult("QC-048", "info", "row", "no source encoding: nothing to render through")]
     legs = f"{encoding} to {color.WORKING_SPACE}, {{grade}}, {color.WORKING_SPACE} to {color.PLATE_SPACE}"
-    if row.clf_path is not None:
-        grade = f"{row.clf_path.name} in place of the CDL"
-    elif row.cdl is not None:
+    if row.cdl is not None:
         grade = "the CDL"
     else:
         return [
@@ -1055,12 +1001,10 @@ def preflight(batch: Batch, decoders: frozenset[str] | None = None) -> None:
         turnover.qc.extend(check_color_session(turnover, batch.rows_for(turnover.turnover_id)))
         if turnover.color_session_edl is not None:
             graded.add(turnover.turnover_id)
-    clf_cache: dict[Path, list[QCResult]] = {}
     for row in batch.rows:
         row.qc = [result for result in row.qc if result.rule_id not in OWNED_PREFLIGHT_RULES]
         row.qc.extend(check_source_codec(row, decoders))
         row.qc.extend(check_clf(row, row.turnover_id in graded))
-        row.qc.extend(check_clf_loads(row, clf_cache))
         row.qc.extend(check_color_chain(row))
 
 

@@ -281,7 +281,6 @@ class TestColorSession:
             "(0.001000 -0.002000 0.000000)(0.980000 1.000000 1.020000)\n"
             "*ASC_SAT 1.050000\n"
         )
-        color_fixtures.plate_clf(folder / "MELT0001_grade_v01.clf")
         return edl
 
     def test_the_grade_reaches_the_delivered_frames(
@@ -299,29 +298,13 @@ class TestColorSession:
                 str(self.session(tmp_path)),
             ]
         )
-        assert "colour session: 1 events, 1 with a CDL, 1 cubes" in capsys.readouterr().out
+        assert "colour session: 1 events, 1 with a CDL" in capsys.readouterr().out
 
         frame = next((delivery / "MELT" / "MELT0001" / "MELT0001_pl01_raw_4k_v01").iterdir())
         with OpenEXR.File(str(frame)) as handle:
             header = dict(handle.header())
-        assert header[exr.CLF_ATTRIBUTE] == "MELT0001_grade_v01.clf"
+        assert header[exr.CDL_ATTRIBUTES[-1]] == exr.CDL_NOTE_APPLIED
         assert header[exr.COLORSPACE_ATTRIBUTE] == color.PLATE_SPACE
-
-    def test_the_qc_log_names_the_clf_it_rendered_through(self, tmp_path: Path) -> None:
-        batch_path = self.scanned(tmp_path)
-        main(
-            [
-                "run",
-                str(batch_path),
-                "--delivery-root",
-                str(tmp_path / "delivery"),
-                "--color-session",
-                str(self.session(tmp_path)),
-            ]
-        )
-        reopened = batchfile.load(batch_path)
-        assert reopened.rows[0].clf_path is not None
-        assert reopened.rows[0].clf_path.name == "MELT0001_grade_v01.clf"
 
     def test_an_unreadable_edl_stops_the_run_before_anything_is_written(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]

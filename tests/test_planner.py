@@ -372,25 +372,16 @@ class TestShotColourOnJobs:
             "(0.001000 -0.002000 0.000000)(0.980000 1.000000 1.020000)\n"
             "*ASC_SAT 1.050000\n"
         )
-        (tmp_path / "MELT0001_grade.clf").touch()
         return clf.load_session(edl, RATE)
 
-    def test_a_picture_job_carries_the_session_s_clf_and_cdl(self, tmp_path: Path) -> None:
+    def test_a_picture_job_carries_the_session_s_cdl(self, tmp_path: Path) -> None:
         batch = Batch(name="b", rows=[row()], delivery_root=ROOT)
         self.ingest(batch, tmp_path)
         jobs = planner.plan_batch(batch)
         picture = [job for job in jobs if job.kind in ("raw_dir", "ref_mp4")]
         assert picture
         for job in picture:
-            assert job.shot_color.clf_path == tmp_path / "MELT0001_grade.clf"
             assert job.shot_color.cdl is not None
-
-    def test_the_row_records_the_clf_for_the_qc_log(self, tmp_path: Path) -> None:
-        """Ingest is what records it, and planning reads it back off the row."""
-        batch = Batch(name="b", rows=[row()], delivery_root=ROOT)
-        self.ingest(batch, tmp_path)
-        planner.plan_batch(batch)
-        assert batch.rows[0].clf_path == tmp_path / "MELT0001_grade.clf"
 
     def test_an_aux_still_is_never_given_the_shot_s_grade(self, tmp_path: Path) -> None:
         """It still gets the input transform, so it lands in ACEScg like every EXR."""
@@ -399,11 +390,11 @@ class TestShotColourOnJobs:
         self.ingest(batch, tmp_path)
         jobs = planner.plan_batch(batch)
         still = next(job for job in jobs if job.kind == "aux_still")
-        assert still.shot_color.clf_path is None
+        assert still.shot_color.cdl is None
         assert still.shot_color.source_encoding == "ACEScc"
 
     def test_without_an_ingest_every_job_plans_ungraded(self) -> None:
-        """The same files in the same places; the CLF is the only difference."""
+        """The same files in the same places; the CDL is the only difference."""
         batch = Batch(name="b", rows=[row()], delivery_root=ROOT)
         jobs = planner.plan_batch(batch)
         assert all(job.shot_color == clf.DEFAULT_SHOT_COLOR for job in jobs)
@@ -456,11 +447,11 @@ class TestShotColourOnJobs:
         by_shot = {job.shot_code: job.shot_color.source_encoding for job in jobs}
         assert by_shot == {"MELT0001": "ACEScc", "MELT0002": "S-Log3 S-Gamut3.Cine"}
 
-    def test_a_row_that_plans_nothing_keeps_the_clf_it_was_ingested_with(self, tmp_path: Path) -> None:
-        """Planning no longer owns `clf_path`: a skipped row is not un-ingested."""
+    def test_a_row_that_plans_nothing_keeps_the_grade_it_was_ingested_with(self, tmp_path: Path) -> None:
+        """Planning does not own the CDL: a skipped row is not un-ingested."""
         skipped = row(skipped=True)
         batch = Batch(name="b", rows=[skipped], delivery_root=ROOT)
         self.ingest(batch, tmp_path)
         planner.plan_batch(batch)
         assert skipped.deliverables == []
-        assert skipped.clf_path == tmp_path / "MELT0001_grade.clf"
+        assert skipped.cdl is not None

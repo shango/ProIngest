@@ -770,7 +770,6 @@ class TestIngestingAColourSession:
         assert ingested_row.approved == InOut(0, 3)
         assert ingested_row.current == InOut(0, 3)
         assert ingested_row.cdl is not None
-        assert ingested_row.clf_path is None
 
     def test_the_turnover_keeps_where_the_answers_came_from(
         self, window: DrivenWindow, tmp_path: Path
@@ -938,71 +937,6 @@ class TestIngestingAColourSession:
         assert not window.action_ingest.isEnabled()
         color_session.ingest(window)
         assert window.turnovers_asked == []
-
-
-class TestASessionFoundBesideTheTurnover:
-    """OQ-53: a scan that finds a session by convention offers it, and one click ingests it."""
-
-    def scanned(self, window: DrivenWindow, tmp_path: Path, *, session: bool = True) -> Turnover:
-        folder = tmp_path / "turnovers" / "turnover001_02_23_2026_danielluckett"
-        folder.mkdir(parents=True)
-        if session:
-            color_fixtures.make_session(tmp_path / "turnovers" / "_color" / folder.name)
-        found = Turnover("t1", folder)
-        window.set_batch(Batch())
-        window._take_scanned(found, [row(turnover_id="t1")], {})
-        return found
-
-    def test_the_scan_offers_it_and_yes_ingests_it(self, window: DrivenWindow, tmp_path: Path) -> None:
-        window.found_answer = True
-        found = self.scanned(window, tmp_path)
-
-        assert window.found_asked == [
-            (found.folder.name, tmp_path / "turnovers" / "_color" / found.folder.name)
-        ]
-        assert found.color_session_edl is not None
-        assert window.batch.rows[0].cdl is not None
-        assert len(window.ingest_reports) == 1
-
-    def test_no_changes_nothing(self, window: DrivenWindow, tmp_path: Path) -> None:
-        found = self.scanned(window, tmp_path)
-        assert window.found_asked
-        assert found.color_session_edl is None
-        assert window.batch.rows[0].cdl is None
-
-    def test_nothing_by_convention_asks_nothing(self, window: DrivenWindow, tmp_path: Path) -> None:
-        self.scanned(window, tmp_path, session=False)
-        assert window.found_asked == []
-
-    def test_a_turnover_already_ingested_is_not_asked_again(
-        self, window: DrivenWindow, tmp_path: Path
-    ) -> None:
-        folder = tmp_path / "turnovers" / "turnover001"
-        folder.mkdir(parents=True)
-        color_fixtures.make_session(tmp_path / "turnovers" / "_color" / folder.name)
-        window.set_batch(Batch())
-        window._take_scanned(
-            Turnover("t1", folder, color_session_edl=tmp_path / "elsewhere.edl"), [row(turnover_id="t1")], {}
-        )
-        assert window.found_asked == []
-
-    def test_the_settings_folder_is_looked_in_first(self, window: DrivenWindow, tmp_path: Path) -> None:
-        window.settings.color_session_folder = str(tmp_path / "sessions")
-        folder = tmp_path / "turnovers" / "turnover001"
-        folder.mkdir(parents=True)
-        color_fixtures.make_session(tmp_path / "sessions" / folder.name)
-        window.set_batch(Batch())
-        window._take_scanned(Turnover("t1", folder), [row(turnover_id="t1")], {})
-        assert window.found_asked == [(folder.name, tmp_path / "sessions" / folder.name)]
-
-    def test_the_toolbar_route_still_works_with_nothing_found(
-        self, window: DrivenWindow, tmp_path: Path
-    ) -> None:
-        """Ingest Colour Session is the same ingest, pointed at by hand."""
-        self.scanned(window, tmp_path, session=False)
-        window.edl_answer = color_fixtures.make_session(tmp_path / "session")
-        window.action_ingest.trigger()
-        assert window.batch.rows[0].cdl is not None
 
 
 class TestWhatAnIngestSays:
@@ -1297,7 +1231,7 @@ class TestRunningABatch:
         )
         ingested(built, tmp_path)
         waiting.color_session_edl = None
-        built.rows[1].clf_path = None
+        built.rows[1].cdl = None
         window.set_batch(built)
         started = stub_runner(window)
         window.action_run.trigger()

@@ -23,7 +23,7 @@ import OpenEXR
 import pytest
 
 from proingest.core import batchfile, clf, color, exr, ffmpeg, frames, media, naming, qc, render
-from proingest.core.models import Batch, Deliverable, FrameRate, QCResult, ShotRow
+from proingest.core.models import CDL, Batch, Deliverable, FrameRate, QCResult, ShotRow
 from proingest.core.planner import DeliverableJob
 from tests.fixtures import color as color_fixtures
 from tests.fixtures import media as fixtures
@@ -201,7 +201,7 @@ class TestPlateBranch:
     def expected(self, shot_color: clf.ShotColor) -> float:
         """The source pixel through the same chain, asked of OCIO rather than typed out."""
         pixels = np.array([[list(self.SOURCE_PIXEL)]], dtype=np.float32)
-        color.apply(pixels, color.processor(*shot_color.plate_transforms(shot_color.load())))
+        color.apply(pixels, color.processor(*shot_color.plate_transforms()))
         return float(pixels[0, 0, 0])
 
     def test_the_source_is_transformed_and_not_passed_through(self, tmp_path: Path) -> None:
@@ -209,29 +209,25 @@ class TestPlateBranch:
         assert red == pytest.approx(self.expected(color_fixtures.UNGRADED), abs=0.002)
         assert red != pytest.approx(self.SOURCE_PIXEL[0], abs=0.01)
 
-    def test_the_shot_s_clf_is_what_is_applied(self, tmp_path: Path) -> None:
+    def test_the_shot_s_cdl_is_what_is_applied(self, tmp_path: Path) -> None:
         """A different grade has to give a different plate, or nothing was applied."""
         graded = clf.ShotColor(
             source_encoding=color_fixtures.SOURCE_ENCODING,
-            clf_path=color_fixtures.plate_clf(tmp_path / "MELT0001.clf"),
+            cdl=CDL((1.4, 1.0, 0.7), (0.0,) * 3, (1.0,) * 3, 1.1, "", ""),
         )
-        with_clf = self.delivered(tmp_path / "graded", shot_color=graded)
+        with_cdl = self.delivered(tmp_path / "graded", shot_color=graded)
         without = self.delivered(tmp_path / "plain")
-        assert float(with_clf[0, 0, 0]) != pytest.approx(float(without[0, 0, 0]), abs=0.002)
-        assert float(with_clf[0, 0, 0]) == pytest.approx(self.expected(graded), abs=0.002)
+        assert float(with_cdl[0, 0, 0]) != pytest.approx(float(without[0, 0, 0]), abs=0.002)
+        assert float(with_cdl[0, 0, 0]) == pytest.approx(self.expected(graded), abs=0.002)
 
-    def test_the_header_names_the_clf_that_was_applied(self, tmp_path: Path) -> None:
-        """The header and the pixels come from the one `LoadedClf`, so they cannot differ."""
-        path = color_fixtures.plate_clf(tmp_path / "MELT0001_grade.clf")
-        shot_color = clf.ShotColor(source_encoding=color_fixtures.SOURCE_ENCODING, clf_path=path)
+    def test_the_header_names_the_encoding_that_was_applied(self, tmp_path: Path) -> None:
+        shot_color = clf.ShotColor(source_encoding=color_fixtures.SOURCE_ENCODING)
         job = raw_job(tmp_path, count=1, shot_color=shot_color)
         render.render_job(job)
         with OpenEXR.File(str(job.frame_path(1001))) as handle:
             # Copied rather than held: the mapping the bindings hand back empties when
             # the file closes, and an assertion on it outside the block passes on nothing.
             header = dict(handle.header())
-        assert header[exr.CLF_ATTRIBUTE] == "MELT0001_grade.clf"
-        assert header[exr.CLF_HASH_ATTRIBUTE] == clf.clf_digest(path)
         assert header[exr.SOURCE_ENCODING_ATTRIBUTE] == color_fixtures.SOURCE_ENCODING
 
     def test_alpha_does_not_go_through_the_chain(self) -> None:

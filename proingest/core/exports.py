@@ -103,18 +103,14 @@ SHOTS_HEADERS = (
     "Turnover", "Clip name", "Shot code", "Elem", "Source", "FPS", "Res",
     "Delivered In", "Delivered Out", "Delivered In TC", "Delivered Out TC",
     "Final In", "Final Out", "Duration", "Max available", "Audio", "Edited",
-    "Source encoding", "Grade file",
+    "Source encoding",
     "Skip reason", "Warnings", "Errors",
 )  # fmt: skip
 """The QC log's own columns, QC_RULES "QC log structure".
 
-The Grade file column names the grade the row was rendered through, and it is the filename
-rather than the path: the session's folder is the same for every row, and the name is
-what a reader compares against `proingest/clf` in a delivered EXR header. Empty means
-the row rendered ungraded, which is QC-009 once the rules are wired.
-
-Source encoding sits beside it because the two together are the whole of the colour
-chain a row was rendered through. It is **what the clip's metadata named, verbatim**,
+Source encoding is the whole of the colour chain a row was rendered through that a
+reader can check, the CDL itself being in the delivered EXR header. It is **what the
+clip's metadata named, verbatim**,
 rather than the colour space that resolved to: this column is read when QC-046 or
 QC-047 fires, and what has to be corrected is the string somebody typed. Empty means
 the clip named none. Where the name came from is in the delivered EXR header rather
@@ -194,7 +190,6 @@ def _write_shots(book: Workbook, batch: Batch) -> None:
                 str(row.audio_path) if row.audio_path else "",
                 "yes" if row.was_edited else "",
                 row.source_encoding or "",
-                row.clf_path.name if row.clf_path else "",
                 row.skip_reason or "",
                 _rule_ids(row.qc, "warning"),
                 _rule_ids(row.qc, "error"),

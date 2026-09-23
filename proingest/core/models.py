@@ -19,7 +19,15 @@ from typing import Any, Literal
 from proingest.core import frames
 from proingest.core.naming import ShotIdentity
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
+"""The batch file's schema.
+
+**2 since 2026-09-22**, when `clf_path` and `side_files` left the row with the
+deliverables they described. A version 1 batch is **refused rather than migrated**
+(TO_A_WORKING_BUILD.md Q5): it is less code than a migration nobody will run, and no
+real batch exists yet - say so if one turns up, because that is what makes this the
+wrong call.
+"""
 
 DEFAULT_WORKERS = 4
 """Capped rather than one per core on purpose.
@@ -457,16 +465,7 @@ class ShotRow:
     It reaches the EXR header as the readable version of the grade (COLOR_AND_FORMAT,
     EXR metadata). On the row rather than fetched from the EDL at render time so that a
     reopened batch writes the same header without the session package still being on the
-    disk. Where it and `clf_path` disagree the CLF is what is in the pixels.
-    """
-
-    clf_path: Path | None = None
-    """The CLF the colour session delivered for this shot, or None when it delivered none.
-
-    Recorded on the row because it is what the QC log's CLF column names and what a
-    reader compares a delivered EXR header against. The grade itself never lives here:
-    the transform is loaded in the worker that applies it. Additive, so the schema
-    version does not move and an older batch simply reports no CLF.
+    disk. It is the whole of the grade: there are no per-shot grade files (2026-09-22).
     """
 
     notes: str = ""
@@ -551,7 +550,6 @@ class ShotRow:
             "source_encoding_origin": self.source_encoding_origin,
             "approved": self.approved.to_dict() if self.approved else None,
             "cdl": self.cdl.to_dict() if self.cdl else None,
-            "clf_path": str(self.clf_path) if self.clf_path else None,
             "notes": self.notes,
             "skipped": self.skipped,
             "skip_reason": self.skip_reason,
@@ -582,7 +580,6 @@ class ShotRow:
             source_encoding_origin=data.get("source_encoding_origin"),
             approved=InOut.from_dict(data["approved"]) if data.get("approved") else None,
             cdl=CDL.from_dict(data["cdl"]) if data.get("cdl") else None,
-            clf_path=_as_path(data.get("clf_path")),
             notes=str(data.get("notes", "")),
             skipped=bool(data.get("skipped", False)),
             skip_reason=data.get("skip_reason"),
@@ -644,7 +641,7 @@ class Turnover:
     reopening a `.pibatch` restores it and a second batch does not disturb it.
 
     It is the location only. What the session said is on the rows, in `approved`, `cdl`
-    and `clf_path`, so a batch reopened after the package has been archived still
+    and the CDL, so a batch reopened after the session has been archived still
     renders the grade it was ingested with. Additive, so the schema version does not
     move and a batch saved before this has ingested nothing.
     """

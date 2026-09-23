@@ -11,6 +11,7 @@ from pathlib import Path
 
 from proingest.core import naming
 from proingest.core.models import (
+    CDL,
     Batch,
     Deliverable,
     FrameRate,
@@ -20,7 +21,6 @@ from proingest.core.models import (
     ShotRow,
     Turnover,
 )
-from tests.fixtures import color
 
 RATE_24 = FrameRate(24)
 ONE_HOUR = 86400
@@ -137,10 +137,10 @@ def batch(
 def ingested(built: Batch, tmp_path: Path) -> Batch:
     """Give a batch the colour session a run needs, in place. QC-008 refuses one without.
 
-    A real CLF per shot, because QC-009 checks the file is there and QC-019 and QC-039
-    load it; the EDL is a location and nothing reads it after an ingest, so it is a path
-    rather than a file. `clf.ingest` is what does this from a real package - this is the
-    same end state, built for the tests that are about the window rather than the
+    A CDL per row, because that is the whole of the grade since 2026-09-22 and QC-009
+    checks for it; the EDL is a location and nothing reads it after an ingest, so it is
+    a path rather than a file. `clf.ingest` is what does this from a real EDL - this is
+    the same end state, built for the tests that are about the window rather than the
     session.
     """
     session = tmp_path / "session"
@@ -150,7 +150,17 @@ def ingested(built: Batch, tmp_path: Path) -> Batch:
     for row_ in built.rows:
         if row_.shot_code is None:
             continue
-        row_.clf_path = color.plate_clf(session / f"{row_.shot_code}_grade_v01.clf")
+        row_.cdl = CDL(
+            slope=(1.02, 0.99, 1.01),
+            offset=(0.001, -0.002, 0.0),
+            power=(0.98, 1.0, 1.02),
+            saturation=1.05,
+            sop_text=(
+                "*ASC_SOP (1.020000 0.990000 1.010000)"
+                "(0.001000 -0.002000 0.000000)(0.980000 1.000000 1.020000)"
+            ),
+            sat_text="*ASC_SAT 1.050000",
+        )
         if row_.current is not None:
             row_.approved = row_.current
     return built

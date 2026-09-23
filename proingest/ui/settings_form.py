@@ -173,10 +173,8 @@ def sections() -> tuple[Section, ...]:
                     "app.color_session_folder",
                     "Ingest opens at",
                     "folder",
-                    "Where the colour session chooser starts, and the first place a "
-                    "scan looks for a turnover's session: a folder here named as the "
-                    "turnover folder is, then _color beside the turnover. Which session "
-                    "a turnover was ingested from is kept on the turnover, not here.",
+                    "Where the colour session chooser starts. Which session a "
+                    "turnover was ingested from is kept on the turnover, not here.",
                 ),
                 Field(
                     "readonly.config",

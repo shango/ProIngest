@@ -96,7 +96,7 @@ class AppSettings:
     color_session_folder: str = ""
     """Where the Ingest chooser opens (FR-12, Colour).
 
-    The folder, not the package: which session a turnover was ingested from lives on
+    The folder, not the session: which session a turnover was ingested from lives on
     the turnover (OQ-50). This is the same kind of thing as `last_folder` - a starting
     point for a dialog - kept separately because a colour session and a turnover live
     nowhere near each other on the mount.

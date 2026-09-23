@@ -130,17 +130,15 @@ class TestWhatOneRowSays:
         assert "Trimmed" not in labels
 
     def test_the_colour_section_carries_what_m4_6_put_on_the_row(self) -> None:
-        """Not in section 12.2's original table: the encoding, where it came from and
-        the CLF arrived with M4.6 and have no column in the list either."""
+        """Not in section 12.2's original table: the encoding and where it came from
+        arrived with M4.6 and have no column in the list either."""
         graded = row(
             source_encoding="Sony S-Log3/S-Gamut3.Cine",
             source_encoding_origin="clip metadata",
-            clf_path=Path("/session/MELT0001.clf"),
         )
         sections = describe([graded], batch(graded))
         assert value(sections, "Colour", "Source encoding") == "Sony S-Log3/S-Gamut3.Cine"
         assert value(sections, "Colour", "Named by") == "clip metadata"
-        assert value(sections, "Colour", "Grade file") == "/session/MELT0001.clf"
 
     def test_a_row_with_no_colour_facts_has_no_colour_section(self) -> None:
         bare = row(source_encoding=None)
@@ -260,8 +258,8 @@ class TestMoreThanOneRow:
         assert value(describe(rows, batch(*rows)), "Source media", "Resolution") == MIXED
 
     def test_a_field_only_one_row_has_is_a_disagreement(self) -> None:
-        rows = [row(clf_path=Path("/session/a.clf")), row("MELT0002_pl01")]
-        assert value(describe(rows, batch(*rows)), "Colour", "Grade file") == MIXED
+        rows = [row(source_encoding_origin="clip metadata"), row("MELT0002_pl01")]
+        assert value(describe(rows, batch(*rows)), "Colour", "Named by") == MIXED
 
     def test_qc_is_counted_across_the_selection_rather_than_merged(self) -> None:
         """Two rows with different problems agree on nothing, and `mixed` would be the

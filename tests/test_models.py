@@ -227,7 +227,6 @@ class TestShotRow:
                 sop_text="(1.02 0.99 1.01)(0.001 -0.002 0.0)(0.98 1.0 1.02)",
                 sat_text="1.05",
             ),
-            clf_path=Path("/session/MELT0001_grade.clf"),
         )
         assert ShotRow.from_dict(row.to_dict()) == row
 

@@ -26,7 +26,7 @@ CLF, and so does this module: the plate branch builds one OCIO processor per job
 applies it to every frame on its way to an EXR, and the view branch bakes the same chain
 plus the ACES output transform into a `.cube` that ffmpeg applies as it encodes. Neither
 branch decides anything about colour. What to apply arrives on the job as a
-`clf.ShotColor`, which is a path, a colour space name and the CDL, because that is what
+`clf.ShotColor`, which is a colour space name and the CDL, because that is what
 survives the pickle into a worker process.
 """
 
@@ -49,7 +49,7 @@ import numpy as np
 import numpy.typing as npt
 import PyOpenColorIO as ocio
 
-from proingest.core import batchfile, clf, color, exr, ffmpeg, logsetup, media, naming, qc, resize
+from proingest.core import batchfile, color, exr, ffmpeg, logsetup, media, naming, qc, resize
 from proingest.core.models import DEFAULT_WORKERS, Batch, Deliverable, QCResult
 from proingest.core.planner import DeliverableJob
 
@@ -183,12 +183,9 @@ class _PlateBranch:
     """The shot's plate chain, built once per job and applied to every frame.
 
     Building a processor is expensive and applying it is not, which is why this is
-    resolved at the top of a job rather than inside the frame loop. It carries the
-    `LoadedClf` as well as the processor because the EXR header states what was
-    applied, and the header and the pixels must not be able to disagree.
+    resolved at the top of a job rather than inside the frame loop.
     """
 
-    loaded_clf: clf.LoadedClf | None
     cpu: ocio.CPUProcessor
 
     def apply(self, pixels: npt.NDArray[np.float32]) -> npt.NDArray[np.float32]:
@@ -210,10 +207,8 @@ class _PlateBranch:
 
 
 def _plate_branch(job: DeliverableJob) -> _PlateBranch:
-    """Resolve the job's colour: load the CLF, compose the chain, build the processor."""
-    shot_color = job.shot_color
-    loaded = shot_color.load()
-    return _PlateBranch(loaded_clf=loaded, cpu=color.processor(*shot_color.plate_transforms(loaded)))
+    """Resolve the job's colour: compose the chain and build the processor."""
+    return _PlateBranch(cpu=color.processor(*job.shot_color.plate_transforms()))
 
 
 def _render_sequence(
@@ -238,7 +233,7 @@ def _render_sequence(
         # is closed part way through is killed and its exit code is never read.
         for pixels, output_frame in zip(stream, job.output_frames(), strict=False):
             path = job.frame_path(output_frame, temp=True)
-            _write_frame(job, path, graded.apply(pixels), output_frame, graded)
+            _write_frame(job, path, graded.apply(pixels), output_frame)
             deliverable.frame_checksums.append(file_digest(path))
             deliverable.size += path.stat().st_size
             written += 1
@@ -266,7 +261,7 @@ def _render_still(job: DeliverableJob, deliverable: Deliverable) -> None:
         stream.close()
     if pixels is None:
         raise RenderError(f"{job.name}: the source gave no frame at {job.in_frame}")
-    _write_frame(job, job.temp, graded.apply(pixels), next(iter(job.output_frames())), graded)
+    _write_frame(job, job.temp, graded.apply(pixels), next(iter(job.output_frames())))
     _record_file(deliverable, job.temp)
     deliverable.frame_count = 1
 
@@ -276,7 +271,6 @@ def _write_frame(
     path: Path,
     pixels: npt.NDArray[Any],
     output_frame: int,
-    graded: _PlateBranch,
 ) -> None:
     exr.write_frame(
         path,
@@ -284,7 +278,6 @@ def _write_frame(
         timecode_frames=job.timecode_for(output_frame),
         fps=job.rate.as_float() if job.rate else 24.0,
         shot_color=job.shot_color,
-        loaded_clf=graded.loaded_clf,
     )
 
 
@@ -401,7 +394,7 @@ def _view_lut(job: DeliverableJob, folder: Path) -> Path:
     ffmpeg command this module logs verbatim says which shot the cube belonged to.
     """
     shot_color = job.shot_color
-    transforms = shot_color.view_transforms(shot_color.load())
+    transforms = shot_color.view_transforms()
     return color.view_lut(folder / f"{job.destination.stem}{LUT_SUFFIX}", *transforms)
 
 

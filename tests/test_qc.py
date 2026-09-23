@@ -516,11 +516,6 @@ class TestColorChain:
         assert results[0].severity == "info"
         assert "CanonLog3 CinemaGamut D55 to ACEScct, the CDL, ACEScct to ACEScg" in results[0].message
 
-    def test_a_row_with_a_cube_says_it_took_the_cdl_s_place(self) -> None:
-        graded = row(source_encoding="ACEScct")
-        graded.clf_path = Path("/session/MELT0001_grade.clf")
-        assert "MELT0001_grade.clf in place of the CDL" in qc.check_color_chain(graded)[0].message
-
     def test_an_ungraded_row_names_the_input_transform(self) -> None:
         message = qc.check_color_chain(row(source_encoding="C-Log3"))[0].message
         assert "no grade" in message
@@ -528,7 +523,6 @@ class TestColorChain:
 
     def test_an_aux_still_says_it_is_never_graded(self) -> None:
         chart = row(clip_name="MELT0001_pl01_colorChart_01", source_encoding="BM Film")
-        chart.clf_path = Path("/session/MELT0001_grade.clf")
         message = qc.check_color_chain(chart)[0].message
         assert "aux still" in message
         assert "never graded" in message
@@ -752,7 +746,7 @@ class TestColorSessionRule:
     def test_an_archived_package_is_not_an_error(self, tmp_path: Path) -> None:
         """Ingest put what the session said on the rows, so nothing reads the EDL again."""
         graded = row()
-        graded.clf_path = color_fixtures.plate_clf(tmp_path / "MELT0001.clf")
+        graded.cdl = CDL((1.0,) * 3, (0.0,) * 3, (1.0,) * 3, 1.0, "", "")
         batch = ingested_batch(tmp_path, graded)
         edl = batch.turnovers[0].color_session_edl
         assert edl is not None
@@ -764,18 +758,18 @@ class TestColorSessionRule:
         batch = ingested_batch(tmp_path, row())
         results = qc.check_color_session(batch.turnovers[0], batch.rows)
         assert ids(results) == ["QC-008"]
-        assert "no CDL and no cube for any row" in results[0].message
+        assert "no CDL for any row" in results[0].message
 
     def test_one_graded_row_is_enough_to_satisfy_it(self, tmp_path: Path) -> None:
         graded, ungraded = row(), row(clip_name="MELT0002_pl01")
-        graded.clf_path = color_fixtures.plate_clf(tmp_path / "MELT0001.clf")
+        graded.cdl = CDL((1.0,) * 3, (0.0,) * 3, (1.0,) * 3, 1.0, "", "")
         batch = ingested_batch(tmp_path, graded, ungraded)
         assert qc.check_color_session(batch.turnovers[0], batch.rows) == []
 
     def test_it_is_scoped_per_turnover(self, tmp_path: Path) -> None:
         """One turnover can wait on colour while another renders, which is the point."""
         graded = row()
-        graded.clf_path = color_fixtures.plate_clf(tmp_path / "MELT0001.clf")
+        graded.cdl = CDL((1.0,) * 3, (0.0,) * 3, (1.0,) * 3, 1.0, "", "")
         batch = ingested_batch(tmp_path, graded)
         waiting = Turnover("t2", tmp_path)
         batch.turnovers.append(waiting)
@@ -794,13 +788,6 @@ class TestClfRule:
         assert ids(results) == ["QC-009"]
         assert results[0].severity == "error"
 
-    def test_a_clf_that_has_gone_missing_is_an_error(self, tmp_path: Path) -> None:
-        gone = row()
-        gone.clf_path = tmp_path / "MELT0001.clf"
-        results = qc.check_clf(gone, has_session=True)
-        assert ids(results) == ["QC-009"]
-        assert "no longer there" in results[0].message
-
     def test_it_is_silent_until_a_session_has_been_ingested(self, tmp_path: Path) -> None:
         """With none the whole turnover is QC-008, and repeating it per row buries it."""
         assert qc.check_clf(row(), has_session=False) == []
@@ -810,49 +797,10 @@ class TestClfRule:
         chart = row(clip_name="MELT0001_pl01_colorChart_01")
         assert qc.check_clf(chart, has_session=True) == []
 
-    def test_a_graded_row_passes(self, tmp_path: Path) -> None:
+    def test_a_graded_row_passes(self) -> None:
         graded = row()
-        graded.clf_path = color_fixtures.plate_clf(tmp_path / "MELT0001.clf")
+        graded.cdl = CDL((1.0,) * 3, (0.0,) * 3, (1.0,) * 3, 1.0, "", "")
         assert qc.check_clf(graded, has_session=True) == []
-
-
-class TestClfLoadsRule:
-    """QC-019 and QC-039: the CLF is there, and it is unusable or it is not linear."""
-
-    def test_a_clf_openciolor_will_not_load_is_an_error(self, tmp_path: Path) -> None:
-        broken = tmp_path / "MELT0001.clf"
-        broken.write_text("this is not a CLF\n")
-        unusable = row()
-        unusable.clf_path = broken
-        assert ids(qc.check_clf_loads(unusable, {})) == ["QC-019"]
-
-    def test_a_clf_with_a_display_rendering_in_it_is_an_error(self, tmp_path: Path) -> None:
-        """The expensive one: it renders fine and the plate claims to be linear."""
-        baked = row()
-        baked.clf_path = color_fixtures.display_clf(tmp_path / "MELT0001.clf")
-        results = qc.check_clf_loads(baked, {})
-        assert ids(results) == ["QC-039"]
-        assert results[0].severity == "error"
-
-    def test_a_session_clf_passes(self, tmp_path: Path) -> None:
-        graded = row()
-        graded.clf_path = color_fixtures.plate_clf(tmp_path / "MELT0001.clf")
-        assert qc.check_clf_loads(graded, {}) == []
-
-    def test_the_elements_of_one_shot_load_their_clf_once(self, tmp_path: Path) -> None:
-        """Loading builds an OCIO processor and probes it; four per shot is a wait."""
-        path = color_fixtures.plate_clf(tmp_path / "MELT0001.clf")
-        cache: dict[Path, list[QCResult]] = {}
-        for clip in ("MELT0001_pl01", "MELT0001_bg01"):
-            graded = row(clip_name=clip)
-            graded.clf_path = path
-            qc.check_clf_loads(graded, cache)
-        assert list(cache) == [path]
-
-    def test_a_missing_clf_is_left_to_qc_009(self, tmp_path: Path) -> None:
-        gone = row()
-        gone.clf_path = tmp_path / "gone.clf"
-        assert qc.check_clf_loads(gone, {}) == []
 
 
 class TestApprovedRule:

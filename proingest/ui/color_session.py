@@ -105,27 +105,8 @@ def ingest(window: MainWindow) -> None:
     ingest_edl(window, turnover, edl)
 
 
-def offer_found(window: MainWindow, turnover: Turnover) -> None:
-    """After a scan: a session exported by convention is offered, once, with one click.
-
-    OQ-53. `clf.find_session` looks under the folder Settings names and in the `_color`
-    folder beside the turnover, and only a turnover that has rows with media and no
-    session yet is asked about: one already ingested keeps what it has, and one with
-    nothing to read an EDL at would only be told so. Declining changes nothing, and
-    the toolbar's Ingest Colour Session is the same ingest pointed at by hand.
-    """
-    if turnover.color_session_edl is not None or not rates_of(window, turnover):
-        return
-    preferred = window.settings.color_session_folder
-    edl = clf.find_session(turnover.folder, Path(preferred) if preferred else None)
-    if edl is None:
-        return
-    if window.ask_ingest_found(turnover, edl.parent):
-        ingest_edl(window, turnover, edl)
-
-
 def ingest_edl(window: MainWindow, turnover: Turnover, edl: Path) -> None:
-    """Read this EDL and the CLFs around it onto one turnover, and say what happened.
+    """Read this EDL onto one turnover, and say what happened.
 
     The half the two routes share: the chooser and the offer both end here. The rules
     re-run afterwards because the ingest moves In and Out on the rows it matched, so
