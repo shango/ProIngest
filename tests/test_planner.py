@@ -170,6 +170,16 @@ class TestAudio:
         plan = planner.plan_row(row("MELT0001_cp01", audio_path=Path("/t/a.wav")), ROOT, 1)
         assert "audio" not in kinds(plan.jobs)
 
+    @pytest.mark.parametrize("clip", ["MELT0001_cp01", "MELT0001_el01"])
+    def test_a_non_plate_reference_is_silent(self, clip: str) -> None:
+        """Only a plate comes with audio; a cp or el that has some is ignored (user,
+        2026-09-23), whether it is a clip beside it or a track inside its own file."""
+        for plan in (
+            planner.plan_row(row(clip, audio_path=Path("/t/a.wav")), ROOT, 1),
+            planner.plan_row(row(clip, source=f"/turnover/{clip}.mov", has_audio=True), ROOT, 1),
+        ):
+            assert plan.jobs and all(job.audio_source is None for job in plan.jobs)
+
     def test_reference_mp4s_carry_the_audio_to_mux(self) -> None:
         wav = Path("/turnover/MELT0001_pl01.wav")
         plan = planner.plan_row(row(audio_path=wav), ROOT, 1)
