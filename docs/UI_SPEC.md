@@ -421,6 +421,13 @@ editor drops the fixed EDL, CSV or clip into the folder and re-scans.
 - **A moved turnover says so on its header when the batch is opened** (QC-069, an error that
   holds it back), and New Folder Location re-scans it from where it went.
 
+## 15b. A shot's right-click (D11, D12)
+
+- **Reset**, on a shot with a failed output: the editor has fixed the cause, and what failed
+  runs again at the same version on the next Run. Greyed when nothing failed.
+- **Re-run**, on a shot that has been planned: the next Run renders it again, whole, at the
+  next version. A complete shot is otherwise left alone (QC-061).
+
 ## 15a. Locks (D15)
 
 **While a scan or a run has the batch in hand, nothing may change it.** The list refuses every

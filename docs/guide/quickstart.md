@@ -102,9 +102,10 @@ only the columns that are the tool's to fill - the thirty the vendor's team main
 touched. `qc_ingest_log_...xlsx` is the full report: every shot, every delivered file, and a
 column per check reading pass, fail or NA.
 
-Every deliverable is checked the moment it lands. One that fails is **kept**, marked, and
-listed in the Issues tab, because a file that failed a check is evidence. One that never
-finished is deleted, so a crash never leaves something that looks complete.
+Every deliverable is checked before it takes its final name. One that fails is deleted and its
+shot is marked failed, naming the file and the check, in the Issues tab; fix the cause,
+right-click the shot, **Reset**, and Run again. A shot that is complete is left alone by the next
+Run unless you right-click it and choose **Re-run**.
 
 ## When Run refuses
 

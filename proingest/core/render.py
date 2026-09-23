@@ -4,10 +4,11 @@ Nothing here decides what to write or what to call it: the planner settled both.
 module is the execution half, and its one invariant is that a deliverable either
 exists complete and verified, or does not exist at all.
 
-**Every job writes to `job.temp` and renames onto `job.destination` on success.** That
-is the `.part` path the job already carries, a folder for a sequence and a file for
-everything else. A crash, a full disk or a killed worker therefore leaves a `.part`
-behind and never a file that looks finished. `resolve_version` in the planner ignores
+**Every job writes to `job.temp`, is verified there, and is renamed onto
+`job.destination` only when it passes** (D11, F11). That is the `.part` path the job
+already carries, a folder for a sequence and a file for everything else. A crash, a full
+disk, a killed worker or a failed check therefore leaves a `.part` or nothing, and never
+a file that looks finished. `resolve_version` in the planner ignores
 `.part` names for the same reason, so a leftover cannot inflate the next version
 either.
 
@@ -39,7 +40,7 @@ import tempfile
 import threading
 from collections.abc import Callable, Generator, Sequence
 from concurrent.futures import ProcessPoolExecutor, as_completed
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from multiprocessing.queues import Queue as MPQueue
 from multiprocessing.synchronize import Event as EventType
 from pathlib import Path
@@ -49,7 +50,7 @@ import numpy as np
 import numpy.typing as npt
 import PyOpenColorIO as ocio
 
-from proingest.core import batchfile, color, exr, ffmpeg, frames, logsetup, media, naming, qc, resize
+from proingest.core import color, exr, ffmpeg, frames, logsetup, media, naming, qc, resize
 from proingest.core.models import DEFAULT_WORKERS, Batch, Deliverable, QCResult
 from proingest.core.planner import DeliverableJob
 
@@ -121,15 +122,20 @@ def render_job(
         _discard(job.temp)
         raise
 
+    # Verified where it was written, under the name it will have: a deliverable that
+    # fails a check never takes its final name, even for the moment between the rename
+    # and the check (F11).
+    at_temp = replace(job, destination=job.temp, display_name=job.name)
+    deliverable.qc.extend(qc.run_phase_b(at_temp, deliverable))
+    if any(result.severity == "error" for result in deliverable.qc):
+        _discard(job.temp)
+        deliverable.status = "failed"
+        log.warning("%s failed post-render QC and was not delivered", job.name)
+        return deliverable
+
     job.temp.replace(job.destination)
     deliverable.status = "done"
     log.info("wrote %s", job.destination)
-
-    deliverable.qc.extend(qc.run_phase_b(job, deliverable))
-    if any(result.severity == "error" for result in deliverable.qc):
-        deliverable.status = "failed"
-        _mark_failed(job.destination, deliverable)
-        log.warning("%s failed post-render QC", job.destination)
     return deliverable
 
 
@@ -155,19 +161,6 @@ def _discard(temp: Path) -> None:
         shutil.rmtree(temp, ignore_errors=True)
     elif temp.exists():
         temp.unlink(missing_ok=True)
-
-
-def _mark_failed(destination: Path, deliverable: Deliverable) -> None:
-    """Leave a `.failed` sidecar naming what went wrong, per QC_RULES phase B.
-
-    The file itself stays: a deliverable that failed a check is evidence, and someone
-    has to be able to open it and see what the check saw. The marker is what
-    `batchfile.reconcile_with_filesystem` reads back, so a crash after this point
-    still reopens as failed rather than as done.
-    """
-    lines = [f"{result.rule_id} {result.severity}: {result.message}" for result in deliverable.qc]
-    marker = destination.with_name(destination.name + batchfile.FAILED_MARKER)
-    marker.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 def _record_file(deliverable: Deliverable, path: Path) -> None:
@@ -600,6 +593,44 @@ def _worker(job: DeliverableJob) -> Deliverable:
     return deliverable
 
 
+def _run_pool(
+    jobs: Sequence[DeliverableJob],
+    indices: list[int],
+    workers: int,
+    context: Any,
+    initargs: tuple[Any, ...],
+    results: dict[int, Deliverable],
+) -> list[int]:
+    """Render the jobs at `indices` in one pool, into `results`. Returns the ones lost to a
+    worker that died, each already recorded as failed in case there is no second round."""
+    lost: list[int] = []
+    with ProcessPoolExecutor(
+        max_workers=max(1, workers),
+        mp_context=context,
+        initializer=_worker_init,
+        initargs=initargs,
+    ) as pool:
+        futures = {pool.submit(_worker, jobs[index]): index for index in indices}
+        for future in as_completed(futures):
+            index = futures[future]
+            try:
+                results[index] = future.result()
+            except Exception as exc:
+                results[index] = _lost(jobs[index], exc)
+                lost.append(index)
+    return sorted(lost)
+
+
+def _lost(job: DeliverableJob, error: BaseException) -> Deliverable:
+    """The record of a job whose worker died before it could say how it went."""
+    failed = job.to_deliverable()
+    failed.status = "failed"
+    reason = str(error) or type(error).__name__
+    message = f"{job.name}: the worker stopped: {reason}"
+    failed.qc.append(QCResult(RENDER_FAILED, "error", "deliverable", message))
+    return failed
+
+
 def _drain(queue: MPQueue[Progress | None], on_progress: Callable[[Progress], None] | None) -> None:
     """Forward progress to the caller until the None sentinel arrives.
 
@@ -664,25 +695,28 @@ def execute(
     reference_crf = ffmpeg.current_reference_crf()
     exr_compression_level = exr.current_compression_level()
 
+    initargs = (
+        queue,
+        cancel,
+        log_queue,
+        log_level,
+        ffmpeg_override,
+        reference_crf,
+        exr_compression_level,
+    )
     results: dict[int, Deliverable] = {}
     try:
-        with ProcessPoolExecutor(
-            max_workers=max(1, workers),
-            mp_context=context,
-            initializer=_worker_init,
-            initargs=(
-                queue,
-                cancel,
-                log_queue,
-                log_level,
-                ffmpeg_override,
-                reference_crf,
-                exr_compression_level,
-            ),
-        ) as pool:
-            futures = {pool.submit(_worker, job): index for index, job in enumerate(jobs)}
-            for future in as_completed(futures):
-                results[futures[future]] = future.result()
+        waiting = list(range(len(jobs)))
+        # Two rounds at most. A worker that dies breaks the whole pool, and every job in
+        # flight on the others is lost with it, not only the one that died (measured on
+        # the real turnover). The lost ones get one more pool; what finished keeps what
+        # it wrote (F12). A job that kills its worker twice is failed.
+        for _round in range(2):
+            lost = _run_pool(jobs, waiting, workers, context, initargs, results)
+            if not lost or cancel.is_set():
+                break
+            log.warning("a render worker died; running the %d jobs it took with it again", len(lost))
+            waiting = lost
     finally:
         queue.put(None)
         drain.join(timeout=_DRAIN_TIMEOUT)

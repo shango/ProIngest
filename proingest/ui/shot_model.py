@@ -703,6 +703,23 @@ class ShotListModel(QAbstractItemModel):
             self._committed(row, index)
         return changed
 
+    def reset_row(self, index: ModelIndex) -> bool:
+        """Right-click Reset: the failed outputs run again at the same version (D11)."""
+        row = self.row_at(index)
+        if row is None or self._locked or not qc.reset_row(row):
+            return False
+        self._committed(row, index)
+        return True
+
+    def rerun_row(self, index: ModelIndex) -> bool:
+        """Right-click Re-run: the next Run renders this row again at the next version (D12)."""
+        row = self.row_at(index)
+        if row is None or self._locked or row.rerun or not row.deliverables:
+            return False
+        row.rerun = True
+        self._committed(row, index)
+        return True
+
     def set_skipped(self, index: ModelIndex, skipped: bool, reason: str | None = None) -> bool:
         """Ctrl+K (section 4). The reason is asked for by the view, which owns the prompt.
 

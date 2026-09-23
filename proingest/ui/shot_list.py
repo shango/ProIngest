@@ -116,6 +116,12 @@ def show_parse(editor: QLineEdit, parsed: ParsedInput) -> None:
     editor.setToolTip("" if parsed.ok else parsed.error or "")
 
 
+RESET_TEXT = "Reset"
+"""A shot's right-click entry once its cause is fixed: what failed runs again, same version."""
+
+RERUN_TEXT = "Re-run"
+"""A shot's right-click entry: render it again at the next version, complete or not."""
+
 RESCAN_TEXT = "Re-scan"
 """A turnover heading's right-click entry: read the folder again, keeping the edits (D8)."""
 
@@ -508,8 +514,11 @@ class ShotListView(QTreeView):
         locked (D15).
         """
         source = self.proxy.mapToSource(index)
-        if not source.isValid() or self.shot_model.row_at(source) is not None:
+        if not source.isValid():
             return None
+        row = self.shot_model.row_at(source)
+        if row is not None:
+            return self._row_menu(source, row)
         turnover = self.shot_model.turnover_at(source)
         if turnover is None:
             return None
@@ -518,6 +527,18 @@ class ShotListView(QTreeView):
             action = menu.addAction(text)
             action.setEnabled(not self.shot_model.locked)
             action.triggered.connect(lambda _checked=False, signal=signal: signal.emit(turnover))
+        return menu
+
+    def _row_menu(self, source: QModelIndex, row: ShotRow) -> QMenu:
+        """A shot's entries: Reset what failed, or Re-run what is complete (D11, D12)."""
+        menu = QMenu(self)
+        locked = self.shot_model.locked
+        reset = menu.addAction(RESET_TEXT)
+        reset.setEnabled(not locked and any(item.status == "failed" for item in row.deliverables))
+        reset.triggered.connect(lambda: self.shot_model.reset_row(source))
+        rerun = menu.addAction(RERUN_TEXT)
+        rerun.setEnabled(not locked and bool(row.deliverables) and not row.rerun)
+        rerun.triggered.connect(lambda: self.shot_model.rerun_row(source))
         return menu
 
     def _show_menu(self, view: QTreeView, pos: QPoint) -> None:

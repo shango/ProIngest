@@ -55,7 +55,7 @@ and it also depends on there being audio at all, so it is added separately."""
 AUDIO_TYPES = ("pl",)
 """Only the main plate delivers audio."""
 
-OWNED_RULES = frozenset({"QC-060"})
+OWNED_RULES = frozenset({"QC-060", "QC-061"})
 """Rule IDs this module raises. Cleared before it raises them again, as qc.py does."""
 
 
@@ -127,9 +127,13 @@ class DeliverableJob:
     other EXR the tool writes, but never the shot's grade.
     """
 
+    display_name: str | None = None
+    """The name to report, when `destination` is not where the job will end up: phase B
+    checks a deliverable under its `.part` name and reports it under its own (F11)."""
+
     @property
     def name(self) -> str:
-        return self.destination.name
+        return self.display_name or self.destination.name
 
     @property
     def temp(self) -> Path:
@@ -178,7 +182,7 @@ class DeliverableJob:
         if self.kind != "raw_dir":
             raise ValueError(f"{self.name} is not a sequence")
         directory = self.temp if temp else self.destination
-        return directory / naming.frame_in_sequence(self.destination.name, output_frame)
+        return directory / naming.frame_in_sequence(self.name, output_frame)
 
     def to_deliverable(self) -> Deliverable:
         """The batch file's record of this job, before anything has been rendered."""
@@ -323,10 +327,29 @@ def plan_batch(
             _record(row, RowPlan())
             continue
 
+        state = _prior_state(row)
+        if state == "failed":
+            # Waiting for the editor to fix the cause and Reset the row (D11). What landed
+            # stays recorded and QC-150 already names the output that did not.
+            continue
+        if state == "complete":
+            _keep(row, _complete(row))
+            continue
+        if state == "pending":
+            # A stopped run, or a Reset: the rest of the row at the version it has (D11).
+            version = row.deliverables[0].version
+            plan = plan_row(row, root, version, show_pattern, clf.shot_color(row))
+            waiting = {item.path for item in row.deliverables if item.status not in LANDED}
+            plan.jobs = [job for job in plan.jobs if job.destination in waiting]
+            _resume(row, plan)
+            jobs.extend(plan.jobs)
+            continue
+
         code = identity.shot_code
         if code not in versions:
             versions[code] = resolve_version(naming.shot_dir(root, identity), show_pattern)
         version = versions[code]
+        row.rerun = False
 
         plan = plan_row(row, root, version, show_pattern, clf.shot_color(row))
         if version > 1:
@@ -341,6 +364,64 @@ def plan_batch(
         _record(row, plan)
         jobs.extend(plan.jobs)
     return jobs
+
+
+LANDED = frozenset({"done", "exists"})
+"""A deliverable that is on disk, verified, under its final name."""
+
+PriorState = Literal["new", "complete", "pending", "failed"]
+
+
+def _prior_state(row: ShotRow) -> PriorState:
+    """What the last run left this row as, which decides what the next one does (D11, D12).
+
+    **new**: nothing planned yet, or the editor asked for a Re-run: plan it whole at the
+    next version. **complete**: everything landed and is still there: skip it. **failed**:
+    a check failed: wait for the editor's Reset. **pending**: some of it never ran, from a
+    stopped run or a Reset: finish it at the same version.
+
+    One stat per landed deliverable, so a file deleted since is rendered again rather
+    than reported as delivered.
+    """
+    if row.rerun or not row.deliverables:
+        return "new"
+    for item in row.deliverables:
+        if item.status in LANDED and not item.path.exists():
+            item.status = "planned"
+    statuses = {item.status for item in row.deliverables}
+    if "failed" in statuses:
+        return "failed"
+    if statuses <= LANDED:
+        return "complete"
+    return "pending"
+
+
+def _complete(row: ShotRow) -> RowPlan:
+    version = row.deliverables[0].version
+    return RowPlan(
+        qc=[
+            QCResult(
+                "QC-061",
+                "info",
+                "row",
+                f"complete at v{version:02d}, so this run leaves it alone; right-click Re-run "
+                f"to write v{version + 1:02d}",
+            )
+        ]
+    )
+
+
+def _keep(row: ShotRow, plan: RowPlan) -> None:
+    """Record a plan's QC on a row without touching what it already delivered."""
+    row.qc = [result for result in row.qc if result.rule_id not in OWNED_RULES]
+    row.qc.extend(plan.qc)
+
+
+def _resume(row: ShotRow, plan: RowPlan) -> None:
+    """Replace only the deliverables this plan re-renders, in their places in the list."""
+    fresh = {job.destination: job.to_deliverable() for job in plan.jobs}
+    row.deliverables = [fresh.get(item.path, item) for item in row.deliverables]
+    _keep(row, plan)
 
 
 def _record(row: ShotRow, plan: RowPlan) -> None:

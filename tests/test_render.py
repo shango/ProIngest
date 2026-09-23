@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import multiprocessing
 import subprocess
-from collections.abc import Generator
+from collections.abc import Callable, Generator
 from dataclasses import replace
 from pathlib import Path
 
@@ -23,7 +23,7 @@ import numpy.typing as npt
 import OpenEXR
 import pytest
 
-from proingest.core import batchfile, clf, color, exr, ffmpeg, frames, media, naming, qc, render
+from proingest.core import clf, color, exr, ffmpeg, frames, media, naming, qc, render
 from proingest.core.models import CDL, Batch, Deliverable, FrameRate, QCResult, ShotRow
 from proingest.core.planner import DeliverableJob
 from tests.fixtures import color as color_fixtures
@@ -922,6 +922,55 @@ class TestExecute:
         assert not any(job.temp.exists() for job in jobs)
 
 
+class TestAWorkerThatDies:
+    """F12. A dead worker breaks the whole pool, and every result of the run went with it."""
+
+    def pool(self, dies: Callable[[DeliverableJob, int], bool]) -> type:
+        """A stand-in pool: `dies(job, round)` says whether that job's worker dies."""
+        from concurrent.futures import Future
+        from concurrent.futures.process import BrokenProcessPool
+
+        rounds = [0]
+
+        class Pool:
+            def __init__(self, *args: object, **kwargs: object) -> None:
+                rounds[0] += 1
+
+            def __enter__(self) -> Pool:
+                return self
+
+            def __exit__(self, *args: object) -> None:
+                pass
+
+            def submit(self, _fn: object, job: DeliverableJob) -> Future[Deliverable]:
+                future: Future[Deliverable] = Future()
+                if dies(job, rounds[0]):
+                    future.set_exception(BrokenProcessPool("a worker died abruptly"))
+                else:
+                    landed = job.to_deliverable()
+                    landed.status = "done"
+                    future.set_result(landed)
+                return future
+
+        return Pool
+
+    def test_the_results_already_in_are_kept(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        jobs = [raw_job(tmp_path / f"j{index}", count=2) for index in range(3)]
+        monkeypatch.setattr(render, "ProcessPoolExecutor", self.pool(lambda job, _round: job is jobs[1]))
+        results = render.execute(jobs, workers=2)
+        assert [d.status for d in results] == ["done", "failed", "done"]
+        assert ids(results[1].qc) == [render.RENDER_FAILED]
+        assert "worker stopped" in results[1].qc[0].message
+
+    def test_a_job_lost_with_the_pool_gets_one_more(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Measured: a killed worker took every job in flight on the others with it."""
+        jobs = [raw_job(tmp_path / f"j{index}", count=2) for index in range(3)]
+        monkeypatch.setattr(render, "ProcessPoolExecutor", self.pool(lambda _job, round_: round_ == 1))
+        assert [d.status for d in render.execute(jobs, workers=2)] == ["done", "done", "done"]
+
+
 class TestTheCompressionLevelReachingAWorker:
     """M5.12, FR-12 Output. It travels on the channel M5.8.3 built for the override.
 
@@ -974,17 +1023,17 @@ class TestApplyResults:
 
 
 class TestPostRenderQC:
-    """Phase B runs inside `render_job`, immediately after the atomic rename."""
+    """Phase B runs inside `render_job`, on the temp, before the rename (D11, F11)."""
 
     def test_a_clean_render_carries_no_qc_results(self, tmp_path: Path) -> None:
         deliverable = render.render_job(raw_job(tmp_path, count=3))
         assert deliverable.status == "done"
         assert deliverable.qc == []
 
-    def test_a_failed_check_marks_the_deliverable_and_keeps_the_file(
+    def test_a_failed_check_leaves_nothing_that_looks_finished(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """QC_RULES phase B: a file that failed a check is evidence, so it stays."""
+        """D11: no final name, no temp, no sidecar; the record names the output and why."""
         job = raw_job(tmp_path, count=2)
         monkeypatch.setattr(
             qc,
@@ -994,26 +1043,25 @@ class TestPostRenderQC:
         deliverable = render.render_job(job)
 
         assert deliverable.status == "failed"
-        assert job.destination.is_dir(), "the file stays for inspection"
-        marker = job.destination.with_name(job.destination.name + batchfile.FAILED_MARKER)
-        assert marker.is_file()
-        assert "QC-105" in marker.read_text()
+        assert ids(deliverable.qc) == ["QC-105"]
+        assert not job.destination.exists()
+        assert not job.temp.exists()
+        assert sorted(p.name for p in job.destination.parent.iterdir()) == []
 
-    def test_the_marker_is_what_a_reopened_batch_reads(
+    def test_the_check_reads_the_temp_and_reports_the_final_name(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """A crash after the check still reopens as failed rather than as done."""
+        """F11: the rename used to come first, so a failing file sat under its final name."""
         job = raw_job(tmp_path, count=2)
-        monkeypatch.setattr(
-            qc,
-            "run_phase_b",
-            lambda _job, _deliverable: [QCResult("QC-106", "error", "deliverable", "changed")],
-        )
-        deliverable = render.render_job(job)
-        deliverable.status = "done"  # as a stale batch file would have it
-        batch = Batch(rows=[ShotRow(turnover_id="t1", clip_name="x", deliverables=[deliverable])])
-        batchfile.reconcile_with_filesystem(batch)
-        assert batch.rows[0].deliverables[0].status == "failed"
+        seen: list[tuple[Path, str, bool]] = []
+
+        def look(checked: DeliverableJob, _deliverable: object) -> list[QCResult]:
+            seen.append((checked.destination, checked.name, job.destination.exists()))
+            return []
+
+        monkeypatch.setattr(qc, "run_phase_b", look)
+        render.render_job(job)
+        assert seen == [(job.temp, job.name, False)]
 
     def test_a_warning_alone_does_not_fail_the_deliverable(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

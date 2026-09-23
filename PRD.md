@@ -117,7 +117,7 @@ FR-7 Render
 - Per row, generate a plan of deliverable jobs from the clip type table in `docs/NAMING_SPEC.md`.
 - Jobs execute in a process pool. Concurrency default = physical cores / 2, editable. EXR jobs are CPU and IO heavy; refs are ffmpeg heavy. The scheduler interleaves them.
 - Every job writes to `<final>.part` (files) or `<folder>.part/` (sequences) then renames on success.
-- Versioning: before writing, scan the destination for existing versions of the same deliverable and use max+1. All deliverables of one shot in one run share the same version number. If a shot already has a complete, QC-passing set at the highest version and "Force re-render" is off, skip with status "Exists".
+- Versioning: before writing, scan the destination for existing versions of the same deliverable and use max+1. All deliverables of one shot in one run share the same version number. **What the last run left decides the next one** (2026-09-23, D11 and D12): a row whose deliverables all landed is skipped (QC-061) unless the editor right-clicks **Re-run**, which writes the next version; what a stopped run never wrote is rendered at the same version; a row with a failed output waits until the editor fixes the cause and right-clicks **Reset**, which runs what failed again at the same version. A worker that dies loses only what was in flight, which gets one more pool.
 - Hardware encoding (`h264_videotoolbox`) is optional: detected at startup, used for H.264 when available and enabled in Settings. Output must be visually equivalent; quality mapping in `docs/COLOR_AND_FORMAT.md`. NVENC was the Windows equivalent and does not exist on macOS.
 
 FR-8 Post-render QC

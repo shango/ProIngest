@@ -6,10 +6,8 @@ missing, ambiguous, unreadable) are raised in `scan.py` instead, because they ca
 be recomputed from a saved batch, and the handful of pre-flight rules that must look
 at the disk are grouped at the bottom of this module under `preflight`.
 
-Severity comes from docs/QC_RULES.md and is not reinterpreted here. Two phase A
-rules are deliberately not implemented yet: QC-024 needs decoded pixels rather than a
-header, and QC-061 needs a Force re-render setting that does not exist (both in
-PROGRESS.md section 9).
+Severity comes from docs/QC_RULES.md and is not reinterpreted here. QC-060 and QC-061
+are the planner's, which is where a version is decided.
 
 Rules are scoped by what the row actually is. An aux still and a BTS frame are single
 frames with no timeline range, so the duration, handle and timecode rules skip them:
@@ -1657,6 +1655,21 @@ def _identity_fault(parsed: naming.ParsedOutput | None, identity: naming.ShotIde
     elif parsed.elem != identity.elem:
         return f"reads as {parsed.elem}, but the row is {identity.elem}"
     return None
+
+
+def reset_row(row: ShotRow) -> bool:
+    """The editor fixed what failed: its outputs run again at the same version (D11).
+
+    Every failed deliverable goes back to planned with its results cleared, and QC-150
+    goes with them until the next run says again whether the row landed. False when the
+    row had nothing failed, so there was nothing to reset.
+    """
+    failed = [item for item in row.deliverables if item.status == "failed"]
+    for item in failed:
+        item.status = "planned"
+        item.qc = []
+    row.qc = [result for result in row.qc if result.rule_id != "QC-150"]
+    return bool(failed)
 
 
 def apply_phase_b(batch: Batch, show_pattern: str = naming.DEFAULT_SHOW_PATTERN) -> None:

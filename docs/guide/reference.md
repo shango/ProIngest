@@ -236,9 +236,14 @@ are missing.
 **A version is resolved once per shot, per run.** A shot delivered at v01 comes back at v02, and
 the whole shot moves together rather than one deliverable at a time.
 
-**Every file is written to a temporary name and renamed when it is complete**, so a crash never
-leaves something that looks finished. A file that fails its checks is **kept** and marked,
-because a file that failed a check is evidence; one that never finished is deleted.
+**Every file is written to a temporary name, checked there, and renamed only when it passes**, so
+neither a crash nor a failed check leaves something that looks finished. A file that fails is
+deleted, and its shot is marked failed naming the file and the check.
+
+**The next Run picks up where the last left off.** A shot that is complete is left alone; right-click
+it and choose **Re-run** to write it again at the next version. What a stopped run never wrote is
+written at the same version. A shot with a failed file waits: fix the cause, right-click it,
+choose **Reset**, and Run writes what failed at the same version.
 
 ## Settings
 
@@ -251,7 +256,7 @@ button that opens with no batch loaded, because it is where a new batch's number
 |---|---|
 | General | how many shots render at once, and a media path rewrite for timelines exported on Windows |
 | Rules | every threshold the checks compare against: shortest and longest shot, expected handles, expected resolution, audio sync tolerance |
-| Colour | where the Ingest chooser opens, and a read-only view of the ACES config, the output transform and the input transform table |
+| Colour | a read-only view of the ACES config, the output transform and the input transform table |
 | Naming | the pattern every shot code is parsed with and every delivered name is built from |
 | Output | the reference mp4's quality and the EXR compression level |
 | Advanced | how much is logged, an ffmpeg to use instead of the bundled one, and where the log file is |

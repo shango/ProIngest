@@ -52,7 +52,7 @@ from proingest.ui.run_controller import (
 from proingest.ui.run_strip import LINK_COLOR, RunStrip
 from proingest.ui.runner import RENDERING
 from proingest.ui.settings_dialog import SettingsDialog
-from proingest.ui.shot_list import RELOCATE_TEXT
+from proingest.ui.shot_list import RELOCATE_TEXT, RERUN_TEXT, RESET_TEXT
 from proingest.ui.shot_model import IN, NOTES, SHOT, DisplayMode, RowState
 from tests.fixtures.batches import (
     batch,
@@ -753,6 +753,31 @@ class TestAddingAndScanningTurnovers:
         relocate.trigger()
 
         assert started == [[(tmp_path / "here", "t1")]]
+
+    def test_reset_puts_a_failed_output_back_for_the_next_run(self, window: DrivenWindow) -> None:
+        """D11: the editor fixed the cause; Reset is how the row runs again."""
+        failed = delivered(row(turnover_id="t1"), status="failed")
+        window.set_batch(batch(failed, turnovers=[Turnover("t1", Path("/s/t1"))]))
+        shot = window.shot_list.proxy.index(0, 0, window.shot_list.proxy.index(0, 0))
+        menu = window.shot_list.menu_for(shot)
+        assert menu is not None
+        reset = next(a for a in menu.actions() if a.text() == RESET_TEXT)
+        assert reset.isEnabled()
+        reset.trigger()
+        assert window.batch.rows[0].deliverables[0].status == "planned"
+        assert window.autosave.pending
+
+    def test_re_run_asks_for_the_next_version(self, window: DrivenWindow) -> None:
+        """D12: a complete shot is skipped by Run unless the editor asks for it."""
+        landed = delivered(row(turnover_id="t1"))
+        window.set_batch(batch(landed, turnovers=[Turnover("t1", Path("/s/t1"))]))
+        shot = window.shot_list.proxy.index(0, 0, window.shot_list.proxy.index(0, 0))
+        menu = window.shot_list.menu_for(shot)
+        assert menu is not None
+        actions_by_text = {a.text(): a for a in menu.actions()}
+        assert not actions_by_text[RESET_TEXT].isEnabled(), "nothing failed"
+        actions_by_text[RERUN_TEXT].trigger()
+        assert window.batch.rows[0].rerun
 
     def test_the_heading_menu_is_greyed_while_the_batch_is_locked(self, window: DrivenWindow) -> None:
         window.set_batch(batch(row(turnover_id="t1"), turnovers=[Turnover("t1", Path("/s/t1"))]))

@@ -336,3 +336,10 @@ Treat it as a working session with the editor rather than a delivery.
   header, New Folder Location..., pick the moved folder: the rows come back with their trims and
   skips. (4) Right-click on the frozen left columns of a header works as well as on the rest.
   (5) Close during a run: the window closes within a few seconds of the run stopping.
+- **Chunk D, failure and re-run (2026-09-23).** On the Mac: (1) Run the real turnover twice; the
+  second Run says nothing to render and each row carries QC-061. (2) Right-click a shot, Re-run,
+  Run: that shot alone comes back at v02. (3) Force a failure (for instance make the delivery
+  folder read-only part way through, or delete a source clip) and check nothing under a final
+  name is left for it, the row names the output, and Reset then Run writes it at the same
+  version. (4) Kill one `ProIngest` worker in Activity Monitor during a run: the run finishes,
+  the lost jobs are rendered again, and nothing that had landed is lost.

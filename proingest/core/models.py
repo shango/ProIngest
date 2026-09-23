@@ -497,6 +497,13 @@ class ShotRow:
     notes: str = ""
     skipped: bool = False
     skip_reason: str | None = None
+    rerun: bool = False
+    """The editor asked for this row to be rendered again at the next version (D12).
+
+    A row whose deliverables all landed is skipped by the next Run; this is the one way to
+    render it anyway. Consumed by the planner, which clears it once the row is planned.
+    Additive, so the schema version does not move."""
+
     deliverables: list[Deliverable] = field(default_factory=list)
     qc: list[QCResult] = field(default_factory=list)
 
@@ -579,6 +586,7 @@ class ShotRow:
             "notes": self.notes,
             "skipped": self.skipped,
             "skip_reason": self.skip_reason,
+            "rerun": self.rerun,
             "deliverables": [item.to_dict() for item in self.deliverables],
             "qc": [result.to_dict() for result in self.qc],
         }
@@ -609,6 +617,7 @@ class ShotRow:
             notes=str(data.get("notes", "")),
             skipped=bool(data.get("skipped", False)),
             skip_reason=data.get("skip_reason"),
+            rerun=bool(data.get("rerun", False)),
             deliverables=[Deliverable.from_dict(item) for item in data.get("deliverables", [])],
             qc=[QCResult.from_dict(item) for item in data.get("qc", [])],
         )

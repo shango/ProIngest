@@ -14,6 +14,20 @@ complete, M4.5 all four chunks, M4.6 all five, **M5 all twelve**, **M7**, and **
 What is left is **M8 polish** (needs a real turnover and a real colour session) and the rest
 of **M9, the user guide**.
 
+**2026-09-23, chunk D: failure and re-run.** **A deliverable is verified on its temp and renamed
+only when it passes** (D11, F11): `render_job` runs phase B on a copy of the job pointed at the
+`.part` (`DeliverableJob.display_name` keeps the messages on the final name), and a failure deletes
+the temp. **The `.failed` sidecar is gone**, with `batchfile.FAILED_MARKER`. **What the last run
+left decides the next** (`planner._prior_state`, D12): complete rows are skipped with QC-061,
+now built; what a stopped run never wrote, or a landed file deleted since, runs at the same
+version; a row with a failed output waits for right-click **Reset** (`qc.reset_row`), which runs
+what failed at the same version; right-click **Re-run** (`ShotRow.rerun`) writes the next version.
+**A worker that dies costs only what was in flight** (F12): `execute` keeps every result already
+in and gives the lost jobs one more pool. **Measured on `Turnover199`**: a SIGKILL of one worker
+25 s into a re-run of the plate lost all five in-flight jobs to the broken pool, which is why the
+second pool exists; with it all five landed at v02 and nothing was left under `.part`. A complete
+batch re-run plans nothing. **Next: H.**
+
 **2026-09-23, chunk C: the two QC tiers, and the correctness findings.** **Any must-fix anywhere
 stops the run** (D8, D9): `qc.must_fix` lists every error in the batch, its turnovers and every
 row that is not skipped, each with where it is, and Run and `proingest run` both refuse on it.

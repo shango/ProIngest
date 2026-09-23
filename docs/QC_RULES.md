@@ -84,13 +84,13 @@ a spreadsheet column from an older run still resolves to what it meant when it w
 | QC-069 | error | turnover | **New 2026-09-23 (D16).** The turnover's folder is not where the batch last found it. Checked when a batch is opened and in the pre-flight, and it holds the turnover back: its sources are in that folder. Fixed by right-clicking the turnover's header and choosing New Folder Location, which re-scans it there and keeps the editor's trims, skips, notes and delivered state by File Name |
 | QC-070 | warning | turnover | **New 2026-09-23 (D8, D16).** A re-scan found the EDL or the CSV changed since the batch last scanned the turnover. The trims, skips and notes carried over were made against the old one, so they deserve a look. A trim the editor never made follows the new EDL |
 | QC-060 | warning | row | Existing deliverables found at version N; new render will be version N+1 |
-| QC-061 | info | row | Complete QC-passing set exists; row skipped (Force re-render off) |
+| QC-061 | info | row | **Built 2026-09-23 (D12).** Every deliverable of the row landed and is still on disk, so the next Run leaves it alone. Right-click **Re-run** renders it again at the next version. What a stopped run never wrote, or a file deleted since, is rendered at the same version instead |
 | QC-062 | error | batch | Delivery destination not writable. Batch scope, not row: there is one delivery root and the run creates every folder under it, so checking per row would be N stat calls on a network mount for one answer. The root need not exist yet; the nearest existing ancestor is what gets the write probe |
 | QC-063 | error | batch | Free space at delivery root below estimated output size. **Must-fix since 2026-09-23**; a mount that will not report its free space stays a warning |
 
 ## Phase B: post-render verification (QC-1xx)
 
-Run per deliverable immediately after its atomic rename. Any error marks the deliverable failed and leaves the row not-done; the file stays for inspection with a `.failed` marker sidecar.
+Run per deliverable **on its temp, before the rename** (D11, F11 of `docs/REVIEW_2026-09-23.md`). A deliverable that passes takes its final name; one with any error is deleted, is recorded as failed with the rule that failed it, and leaves the row not done. **There is no `.failed` sidecar** (user, 2026-09-23). The row waits: the next Run leaves it alone until the editor fixes the cause and right-clicks **Reset**, and then only what failed runs again, at the same version.
 
 QC-100 is the exception to that: it reports a render that never produced a file at all, so there is nothing to keep and nothing to mark. A render failure leaves no `.part` and no destination, by design.
 

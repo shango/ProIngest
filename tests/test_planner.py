@@ -463,3 +463,69 @@ class TestTheShowPatternTravels:
         plan = planner.plan_row(row(), ROOT, 1, show_pattern="[A-Z]{2,6}")
         assert plan.jobs
         assert {job.show_pattern for job in plan.jobs} == {"[A-Z]{2,6}"}
+
+
+class TestTheNextRun:
+    """D11 and D12: what a Run does with a row the last run already touched."""
+
+    def planned(self, tmp_path: Path) -> Batch:
+        batch = Batch(rows=[row()])
+        planner.plan_batch(batch, tmp_path)
+        return batch
+
+    def land(self, batch: Batch, *statuses: str) -> None:
+        for item, status in zip(batch.rows[0].deliverables, statuses, strict=False):
+            item.status = status  # type: ignore[assignment]
+            if status == "done":
+                item.path.parent.mkdir(parents=True, exist_ok=True)
+                item.path.mkdir() if item.kind == "raw_dir" else item.path.touch()
+
+    def test_a_complete_row_is_skipped_and_says_so(self, tmp_path: Path) -> None:
+        batch = self.planned(tmp_path)
+        self.land(batch, "done", "done", "done", "done")
+        before = list(batch.rows[0].deliverables)
+        assert planner.plan_batch(batch, tmp_path) == []
+        assert batch.rows[0].deliverables == before
+        assert [(r.rule_id, r.severity) for r in batch.rows[0].qc] == [("QC-061", "info")]
+
+    def test_what_a_stopped_run_never_wrote_runs_at_the_same_version(self, tmp_path: Path) -> None:
+        batch = self.planned(tmp_path)
+        self.land(batch, "done", "done", "skipped", "planned")
+        jobs = planner.plan_batch(batch, tmp_path)
+        assert len(jobs) == 2
+        assert {job.version for job in jobs} == {1}
+        assert [d.status for d in batch.rows[0].deliverables] == ["done", "done", "planned", "planned"]
+
+    def test_a_landed_file_deleted_since_is_rendered_again(self, tmp_path: Path) -> None:
+        batch = self.planned(tmp_path)
+        self.land(batch, "done", "done", "done", "done")
+        first = batch.rows[0].deliverables[0].path
+        first.rmdir() if first.is_dir() else first.unlink()
+        jobs = planner.plan_batch(batch, tmp_path)
+        assert [job.destination for job in jobs] == [first]
+
+    def test_a_failed_row_waits_for_reset(self, tmp_path: Path) -> None:
+        """D11: the editor fixes the cause first; the next Run does not retry blindly."""
+        batch = self.planned(tmp_path)
+        self.land(batch, "done", "failed", "done", "done")
+        assert planner.plan_batch(batch, tmp_path) == []
+        assert batch.rows[0].deliverables[1].status == "failed"
+
+    def test_reset_runs_what_failed_at_the_same_version(self, tmp_path: Path) -> None:
+        from proingest.core import qc
+
+        batch = self.planned(tmp_path)
+        self.land(batch, "done", "failed", "done", "done")
+        assert qc.reset_row(batch.rows[0])
+        jobs = planner.plan_batch(batch, tmp_path)
+        assert [job.destination for job in jobs] == [batch.rows[0].deliverables[1].path]
+        assert jobs[0].version == 1
+
+    def test_re_run_writes_the_next_version_and_is_consumed(self, tmp_path: Path) -> None:
+        batch = self.planned(tmp_path)
+        self.land(batch, "done", "done", "done", "done")
+        batch.rows[0].rerun = True
+        jobs = planner.plan_batch(batch, tmp_path)
+        assert len(jobs) == 4
+        assert {job.version for job in jobs} == {2}
+        assert not batch.rows[0].rerun
