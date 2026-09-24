@@ -17,6 +17,18 @@ acceptance test on the editor's machine. The branch `color/cdl-in-acescct` is pu
 on a branch push). The entries below are newest first; anything
 older than 2026-09-22 describes the tool before the review and is history.
 
+**2026-09-23, Turnover121: two false positives.** A second official turnover (iPhone, Apple
+Log, H.264; untracked in the repo root) scanned with 23 errors. Two causes were the tool's:
+**QC-026 "480 fps"**: ffprobe's `r_frame_rate` is a timestamp grid on these files (480/1) while
+the average is 24.004 to 24.014, so `media._stated_rate` now takes the average rounded to the
+nearest standard rate within 0.1% when the two disagree. **QC-046**: the CSV has no notes columns
+and says `Apple Log` in Resolve's own `Input Color Space`, which the config resolves, so
+`MetaRow.written_encoding` falls back to it. Now 11 errors. **Still open, decided by the user and
+not built**: name each EDL event from the ALE, which is one row per event in timeline order (the
+EDL has no clip names and the iPhone timecodes overlap, so every row is QC-067); a freeze (M2 0)
+on a cp delivers a one-frame EXR and a five-second mp4 of that frame; a clip used at different
+frames delivers each. **Raised with the user**: every event's slope is 4.886.
+
 **2026-09-23, 0.5.2: cp and el are silent.** The user: cp and el will not come with audio, and
 any they have is ignored. `planner._audio_source` now gives a non-plate row no audio at all, so
 its reference mp4 is encoded `-an` even when its own file has a track (every `Turnover199` file

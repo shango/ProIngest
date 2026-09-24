@@ -246,6 +246,48 @@ def _rate_from_string(text: str) -> FrameRate:
     return FrameRate(int(text))
 
 
+STANDARD_RATES = tuple(
+    FrameRate(n, d)
+    for n, d in (
+        (24000, 1001),
+        (24, 1),
+        (25, 1),
+        (30000, 1001),
+        (30, 1),
+        (48, 1),
+        (50, 1),
+        (60000, 1001),
+        (60, 1),
+    )
+)
+"""The rates a camera records at, which an averaged rate is rounded to."""
+
+RATE_TOLERANCE = 0.001
+"""How far an averaged rate may sit from a standard one and still be it: 0.1%."""
+
+
+def _stated_rate(stream: dict[str, Any]) -> FrameRate:
+    """The rate a movie file runs at: `r_frame_rate`, unless the average says otherwise.
+
+    `r_frame_rate` is ffprobe's lowest rate that every timestamp fits on. A file whose
+    timestamps are uneven, as the iPhone writes them, reports a grid like 480/1 there
+    while it plays at 24 (Turnover121, 2026-09-23: 320 frames in 13.33 s). When the two
+    disagree the average is the truth, rounded to the nearest standard rate within 0.1%
+    because an average over uneven timestamps is never exact.
+    """
+    stated = _rate_from_string(stream.get("r_frame_rate", "24/1"))
+    numerator, _, denominator = str(stream.get("avg_frame_rate", "0/0")).partition("/")
+    if not numerator.isdigit() or not denominator.isdigit() or 0 in (int(numerator), int(denominator)):
+        return stated
+    measured = int(numerator) / int(denominator)
+    if measured == stated.as_float():
+        return stated
+    nearest = min(STANDARD_RATES, key=lambda rate: abs(rate.as_float() - measured))
+    if abs(nearest.as_float() - measured) <= measured * RATE_TOLERANCE:
+        return nearest
+    return stated
+
+
 def _timecode_from(probe: dict[str, Any], rate: FrameRate) -> int | None:
     """Start timecode in frames, or None when the media carries none (QC-028)."""
     from proingest.core import frames as frame_math
@@ -337,7 +379,7 @@ def probe(
         stated = _exr_stated_rate(header)
         frame_count, start_frame = item.count, item.first
     else:
-        stated = _rate_from_string(stream.get("r_frame_rate", "24/1"))
+        stated = _stated_rate(stream)
         # Frame count is a property of the file, so it counts at the file's own rate.
         frame_count, start_frame = _container_frame_count(stream, stated), 0
 

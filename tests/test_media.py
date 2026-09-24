@@ -272,6 +272,31 @@ class TestToolResolution:
         assert "ffmpeg version" in ffmpeg.tool_info("ffmpeg").version.lower()
 
 
+class TestStatedRate:
+    """What a movie file says it runs at. `r_frame_rate` is ffprobe's guess at a base
+    rate, and on a file with uneven timestamps it is a timestamp grid, not a rate."""
+
+    def test_an_iphone_file_reporting_480_is_24(self) -> None:
+        """Measured on Turnover121's `Laser Eyes Effect .mov`: 320 frames in 13.33 s."""
+        stream = {"r_frame_rate": "480/1", "avg_frame_rate": "51200/2133"}
+        assert media._stated_rate(stream) == FrameRate(24)
+
+    def test_a_jittery_23_976_file_is_23_976_not_24(self) -> None:
+        stream = {"r_frame_rate": "480/1", "avg_frame_rate": "23980/1000"}
+        assert media._stated_rate(stream) == FrameRate(24000, 1001)
+
+    def test_agreeing_rates_are_taken_as_stated(self) -> None:
+        stream = {"r_frame_rate": "24000/1001", "avg_frame_rate": "24000/1001"}
+        assert media._stated_rate(stream) == FrameRate(24000, 1001)
+
+    def test_a_real_30_stays_30(self) -> None:
+        """QC-026 must still see a file that was not conformed."""
+        assert media._stated_rate({"r_frame_rate": "30/1", "avg_frame_rate": "30/1"}) == FrameRate(30)
+
+    def test_no_average_leaves_the_stated_rate(self) -> None:
+        assert media._stated_rate({"r_frame_rate": "25/1", "avg_frame_rate": "0/0"}) == FrameRate(25)
+
+
 class TestConformedRate:
     """Shooters set every clip to the project rate in Resolve before exporting.
 

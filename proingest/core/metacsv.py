@@ -44,6 +44,7 @@ SHOT_COLUMN = "Shot"
 SHOT_TYPE_COLUMN = "Shot Type"
 GAMMA_COLUMN = "Gamma Notes"
 COLOR_SPACE_COLUMN = "Color Space Notes"
+INPUT_COLOR_SPACE_COLUMN = "Input Color Space"
 
 CSV_SUFFIX = ".csv"
 
@@ -68,6 +69,7 @@ class MetaRow:
     index: str | None
     gamma_notes: str
     color_space_notes: str
+    input_color_space: str = ""
     qc: tuple[QCResult, ...] = ()
 
     @property
@@ -79,7 +81,11 @@ class MetaRow:
         order matters and is not interchangeable - the curve names the gamut, not the
         other way round.
         """
-        return " ".join(part for part in (self.gamma_notes.strip(), self.color_space_notes.strip()) if part)
+        notes = " ".join(part for part in (self.gamma_notes.strip(), self.color_space_notes.strip()) if part)
+        # Resolve's own `Input Color Space` when the shooter wrote no notes: Turnover121
+        # (2026-09-23) has no notes columns and says `Apple Log` there, which the config
+        # knows. The notes win when both exist, because they are what was verified first.
+        return notes or self.input_color_space.strip()
 
 
 @dataclass
@@ -233,6 +239,7 @@ def read(path: Path, show_pattern: str = naming.DEFAULT_SHOW_PATTERN) -> MetaCsv
     type_positions = _columns(header, SHOT_TYPE_COLUMN)
     gamma_positions = _columns(header, GAMMA_COLUMN)
     space_positions = _columns(header, COLOR_SPACE_COLUMN)
+    input_positions = _columns(header, INPUT_COLOR_SPACE_COLUMN)
 
     result = MetaCsv(path=path)
     for record in records[1:]:
@@ -253,6 +260,7 @@ def read(path: Path, show_pattern: str = naming.DEFAULT_SHOW_PATTERN) -> MetaCsv
                 index=index,
                 gamma_notes=_value(record, gamma_positions),
                 color_space_notes=_value(record, space_positions),
+                input_color_space=_value(record, input_positions),
                 qc=tuple(type_qc + _row_qc(file_name, shot, shot_type, kind, show_pattern)),
             )
         )
