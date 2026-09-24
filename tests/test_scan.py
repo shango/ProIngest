@@ -372,3 +372,104 @@ class TestCaseOfTheHandover:
 
 def turnover_rules_of(turnover: Turnover) -> set[str]:
     return {result.rule_id for result in turnover.qc}
+
+
+def _event(number: int, source_in: int, source_out: int, record: int, freeze: bool = False) -> str:
+    tc = fixtures.timecode
+    lines = [
+        f"{number:03d}  AX       V     C        {tc(source_in)} {tc(source_out)} "
+        f"{tc(record)} {tc(record + source_out - source_in)}  "
+    ]
+    if freeze:
+        lines.append(f"M2   AX             000.0                {tc(source_in)}")
+    lines += ["*ASC_SOP (1.0 1.0 1.0)(0.0 0.0 0.0)(1.0 1.0 1.0)", "*ASC_SAT 1.0", ""]
+    return "\n".join(lines)
+
+
+def overlapping_turnover(folder: Path, ale_names: list[str] | None) -> Path:
+    """Turnover121's shape: three clips whose timecodes all start at 01:00:00:00, an EDL
+    that names nothing, a chart cut three times at two frames, and a clean plate held
+    twice on one frame for two different lengths."""
+    for base in ("A", "B", "C"):
+        fixtures.make_exr_sequence(folder / "media", base=base, count=10)
+    fixtures.make_meta_csv(
+        folder / "metadata.csv",
+        [
+            ("A", "MELT0001", "pl01"),
+            ("B", "MELT0001", "colorChart"),
+            ("B", "MELT0001", "colorChart"),
+            ("C", "MELT0001", "cp01"),
+            ("C", "MELT0001", "cp01"),
+        ],
+    )
+    start = 86400
+    events = [
+        _event(1, start + 2, start + 7, 90000),
+        _event(2, start + 1, start + 2, 90005),
+        _event(3, start + 3, start + 51, 90006, freeze=True),
+        _event(4, start + 4, start + 5, 90054),
+        _event(5, start + 3, start + 75, 90055, freeze=True),
+        _event(6, start + 1, start + 2, 90127),
+    ]
+    (folder / "FINAL.edl").write_text("TITLE: T\nFCM: NON-DROP FRAME\n\n" + "\n".join(events))
+    if ale_names is not None:
+        header = "Heading\nFPS\t24\n\nColumn\nName\tTracks\t\n\nData\n"
+        (folder / "T.ale").write_text(header + "".join(f"{name}\tV\t\n" for name in ale_names))
+    return folder
+
+
+ALE_ORDER = ["A", "B", "C", "B", "C", "B"]
+
+
+class TestTheAleNamesTheEvents:
+    """When the EDL names no clips and timecodes overlap, the ALE's row order names them."""
+
+    def scan(self, tmp_path: Path, ale_names: list[str] | None) -> tuple[Turnover, dict[str, ShotRow]]:
+        folder = overlapping_turnover(tmp_path / GOOD_FOLDER, ale_names)
+        turnover, rows = scan.scan_turnover(folder, "t1", scan.ScanSettings(rules=fixtures.SMALL_RULES))
+        return turnover, {row.clip_name: row for row in rows}
+
+    def test_every_row_conforms_with_no_error(self, tmp_path: Path) -> None:
+        turnover, rows = self.scan(tmp_path, ALE_ORDER)
+        assert turnover.ale_path is not None and turnover.ale_path.name == "T.ale"
+        assert sorted(rows) == ["A", "B", "C"], "one row per thing delivered"
+        assert not [r for row in rows.values() for r in row.qc if r.severity == "error"]
+        assert rows["A"].current == InOut(1003, 1007)
+
+    def test_a_still_is_delivered_once_per_shot_code_from_its_first_use(self, tmp_path: Path) -> None:
+        _, rows = self.scan(tmp_path, ALE_ORDER)
+        chart = rows["B"]
+        assert chart.current == InOut(1002, 1002), "event 002, the first use, not 004's frame"
+        assert "QC-072" in rules(chart)
+        assert "QC-055" not in rules(chart), "one frame cut out of a longer file is the normal case"
+
+    def test_a_freeze_is_one_frame_and_two_holds_of_it_are_one_row(self, tmp_path: Path) -> None:
+        _, rows = self.scan(tmp_path, ALE_ORDER)
+        plate = rows["C"]
+        assert plate.freeze
+        assert plate.current == InOut(1004, 1004)
+        assert "QC-072" in rules(plate)
+        assert not rules(plate) & {"QC-029", "QC-030", "QC-033"}, "a hold runs past the file by design"
+
+    def test_an_ale_that_does_not_count_the_events_is_qc_071(self, tmp_path: Path) -> None:
+        turnover, rows = self.scan(tmp_path, ALE_ORDER[:-1])
+        assert "QC-071" in turnover_rules(Batch(turnovers=[turnover]))
+        assert turnover.ale_path is None
+        assert "QC-067" in rules(rows["A"]), "falling back to timecode refuses what overlaps"
+
+    def test_with_no_ale_the_overlap_is_refused_as_before(self, tmp_path: Path) -> None:
+        _, rows = self.scan(tmp_path, None)
+        assert "QC-067" in rules(rows["A"])
+
+    def test_a_retimed_clip_is_refused(self, tmp_path: Path) -> None:
+        folder = overlapping_turnover(tmp_path / GOOD_FOLDER, ALE_ORDER)
+        edl = folder / "FINAL.edl"
+        first = edl.read_text().split("\n*ASC_SOP", 1)
+        edl.write_text(
+            first[0]
+            + f"\nM2   AX             048.0                {fixtures.timecode(86402)}\n*ASC_SOP"
+            + first[1]
+        )
+        _, rows = scan.scan_turnover(folder, "t1", scan.ScanSettings(rules=fixtures.SMALL_RULES))
+        plate = next(row for row in rows if row.clip_name == "A")
+        assert "QC-073" in rules(plate)

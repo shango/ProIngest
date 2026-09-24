@@ -619,21 +619,23 @@ def check_source_rate(row: ShotRow, project_rate: FrameRate) -> list[QCResult]:
 def check_aux_still(row: ShotRow) -> list[QCResult]:
     """QC-055: an aux still that is really a clip.
 
-    `planner._aux_plan` delivers the In frame and nothing else, so a colour chart that
-    arrived as a hundred frames loses ninety-nine of them silently without this. **That
-    is now the normal case rather than an oddity**: in the real sample a reference still
-    is one timeline frame inside a 49-frame file, so this fires on every one of them.
+    `planner._aux_plan` delivers the In frame and nothing else, so a colour chart cut as a
+    hundred frames loses ninety-nine of them silently without this. **Judged on the cut,
+    not the file** (2026-09-23): every real still is one timeline frame inside a longer
+    file, and the EDL choosing that one frame is the case working, not a finding. It
+    fires when the range still spans frames, which is a cut that chose none.
     """
     if row.identity is None or not row.identity.is_still:
         return []
-    if row.media is None or row.media.frame_count <= 1:
+    span = row.current.duration if row.current is not None else (row.media.frame_count if row.media else 0)
+    if span <= 1:
         return []
     return [
         QCResult(
             "QC-055",
             "warning",
             "row",
-            f"{row.identity.kind} still has {row.media.frame_count} frames; the In frame will be used",
+            f"{row.identity.kind} still is cut as {span} frames; the In frame will be used",
         )
     ]
 
@@ -725,14 +727,19 @@ def run_row_rules(
     results.extend(check_source_resolution(row, settings))
     results.extend(check_source_rate(row, project_rate))
     results.extend(check_timecode(row))
-    results.extend(check_handles(row, settings))
+    # A freeze is one frame by design and delivers no sound (user, 2026-09-23), so the
+    # handle, length and audio rules have nothing to say about it.
+    if not row.freeze:
+        results.extend(check_handles(row, settings))
     results.extend(check_range(row))
-    results.extend(check_duration(row, settings))
+    if not row.freeze:
+        results.extend(check_duration(row, settings))
     results.extend(check_edits(row))
     results.extend(check_approved(row))
-    results.extend(check_audio_presence(row))
-    results.extend(check_audio_sync(row, project_rate, settings))
-    results.extend(check_audio_format(row))
+    if not row.freeze:
+        results.extend(check_audio_presence(row))
+        results.extend(check_audio_sync(row, project_rate, settings))
+        results.extend(check_audio_format(row))
     results.extend(check_aux_still(row))
     return results
 
@@ -1344,9 +1351,9 @@ def _check_reference_frames(job: DeliverableJob) -> list[QCResult]:
         counted = ffmpeg.count_frames(job.destination)
     except (ffmpeg.FFprobeError, ffmpeg.FFmpegNotFound) as error:
         return [_failure("QC-111", f"{job.name} could not be counted: {error}")]
-    if counted == job.frame_count:
+    if counted == job.written_frames:
         return []
-    return [_failure("QC-111", f"{job.name} decodes {counted} frames, not {job.frame_count}")]
+    return [_failure("QC-111", f"{job.name} decodes {counted} frames, not {job.written_frames}")]
 
 
 def _check_reference_video(job: DeliverableJob, stream: dict[str, Any]) -> list[QCResult]:

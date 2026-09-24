@@ -281,6 +281,43 @@ class TestPrintfPattern:
             media.printf_pattern_for(tmp_path / "MELT0001_pl01.exr")
 
 
+class TestAHeldReference:
+    def test_the_command_repeats_the_last_frame(self) -> None:
+        command = ffmpeg.encode_command("a.mov", Path("o.mp4"), 42, 42, False, "24/1", hold=120)
+        vf = command[command.index("-vf") + 1]
+        assert "trim=end_frame=1,tpad=stop_mode=clone:stop=119" in vf
+        assert command[command.index("-frames:v") + 1] == "120"
+
+    def test_no_hold_changes_nothing(self) -> None:
+        plain = ffmpeg.encode_command("a.mov", Path("o.mp4"), 1, 4, False, "24/1")
+        assert "tpad" not in plain[plain.index("-vf") + 1]
+        assert plain[plain.index("-frames:v") + 1] == "4"
+
+    def test_one_frame_held_writes_the_hold(self, tmp_path: Path) -> None:
+        """Real ffmpeg: a sequence input runs on past the range, and the hold must not."""
+        source = tmp_path / "f.%04d.png"
+        subprocess.run(
+            [
+                "ffmpeg",
+                "-v",
+                "error",
+                "-f",
+                "lavfi",
+                "-i",
+                "testsrc=s=64x64:r=24",
+                "-frames:v",
+                "8",
+                "-start_number",
+                "1001",
+                str(source),
+            ],
+            check=True,
+        )
+        output = tmp_path / "held.mp4.part"
+        ffmpeg.encode_reference(str(source), output, 1003, 1003, is_sequence=True, rate="24/1", hold=24)
+        assert ffmpeg.container_frame_count(output) == 24
+
+
 class TestEncodeCommand:
     """The reference encode's argv. COLOR_AND_FORMAT section 3.
 

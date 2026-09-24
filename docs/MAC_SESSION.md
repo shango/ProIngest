@@ -362,6 +362,10 @@ Treat it as a working session with the editor rather than a delivery.
   the lost jobs are rendered again, and nothing that had landed is lost.
 - [ ] **Save Logs as CSV (2026-09-23).** On the Mac: Log tab, Save Logs as CSV..., save to the
   Desktop. The dialog is the macOS one, the file opens in Numbers or Excel with one record per row
-  (an ffmpeg command line whole in one cell), the ABOUT rows name 0.5.3 and the bundled ffmpeg, and
+  (an ffmpeg command line whole in one cell), the ABOUT rows name 0.5.4 and the bundled ffmpeg, and
   the records reach back to the oldest dated file in `~/Library/Logs/ProIngest`. The File menu item
   does the same with no batch open.
+- [ ] **Turnover121 in the app (2026-09-23, 0.5.4).** Scan the folder with its ALE: 7 rows, no
+  errors. The chart and the clean plate each show QC-072. Run it: the cp01 references play five
+  seconds of one held frame with no sound in QuickTime, and the SECA0002 colour chart is one EXR.
+  Worth a look at any pl reference too, to see the 4.886 slope Ben is being asked about.

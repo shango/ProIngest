@@ -8,7 +8,7 @@ commit.
 
 ## 1. Resume here
 
-**State at 2026-09-23, version 0.5.3. The review of 2026-09-23 is worked through: chunks A to
+**State at 2026-09-23, version 0.5.4. The review of 2026-09-23 is worked through: chunks A to
 H of `docs/REVIEW_2026-09-23.md` section 5 are all built**, each in its own commit with the entry
 below. The real turnover, `Turnover199`, scans with no must-fix and renders every deliverable.
 What is left is the Mac: `docs/MAC_SESSION.md`, "The 0.5.0 build, in order", starting with the
@@ -16,6 +16,23 @@ acceptance test on the editor's machine. The branch `color/cdl-in-acescct` is pu
 0.5.0 release; CI builds `ProIngest-0.5.0.dmg` on PR #12 (the workflow runs on pull requests, not
 on a branch push). The entries below are newest first; anything
 older than 2026-09-22 describes the tool before the review and is history.
+
+**2026-09-23, 0.5.4: Turnover121 scans clean.** Built from the user's answers on the second
+official turnover (`docs/SAMPLE_TURNOVER_121.md`). **The ALE names the EDL's events** when the
+EDL names none (`core/ale.py`): it is one row per event in timeline order, so its `Name` column
+pairs by position; a count that disagrees is QC-071 and the scan falls back to timecode.
+**One CSV row per use**: Resolve lists a clip once per distinct source range, and
+`scan._conform_by_use` pairs a clip's uses with its rows in order (QC-067 when the counts
+differ). **Collapsed per the user** (`scan._collapse`, QC-072): a reference still once per shot
+code from its first use, and a clip cut twice at the same frames once. **Freezes**: `M2` at 0
+is `ConformEvent.freeze`, the row is one frame (`ShotRow.freeze`), the EXR is one frame and the
+reference holds it `planner.FREEZE_HOLD_SECONDS` (5) via `tpad`, no audio, and the handle,
+length and audio rules skip it. **Any other `M2` speed is refused** (QC-073, OQ-63). **QC-055**
+is judged on the cut, not the file, since every real still is one EDL frame of a longer file.
+**Verified**: tests for each part including a real held encode; the suite; Turnover121 scans
+with 0 errors and a full render wrote 20 deliverables, 0 failed, the freeze's references 120
+frames and silent. **Still open**: every event's slope is 4.886, which renders white; taken to
+Ben. The ALE is not in the re-scan digest (QC-070), so a changed ALE is not flagged.
 
 **2026-09-23, 0.5.3: Save Logs as CSV.** The user asked for a button that dumps the logs to a
 CSV to send for diagnostics. `logsetup.export_csv` reads every kept file in the log folder, oldest

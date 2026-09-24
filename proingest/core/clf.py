@@ -32,7 +32,7 @@ from __future__ import annotations
 
 import logging
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 import PyOpenColorIO as ocio
@@ -76,10 +76,39 @@ class ConformEvent:
     record_in: int
     record_out: int
     cdl: CDL | None = None
+    speed: float | None = None
+    """The M2 speed in frames a second, or None for an event with no motion effect."""
+
+    freeze: bool = False
+    """An M2 at speed 0: the event holds `source_in` for its whole length, so it uses one
+    source frame and `source_out` is where the EDL would have run to, not a frame it shows."""
+
+    def retimed(self, rate: FrameRate) -> bool:
+        """A motion effect other than a freeze or normal speed: a retime or a reversal,
+        which the tool does not render (OQ-63, QC-073)."""
+        return self.speed is not None and self.speed != 0 and self.speed != rate.as_float()
+
+    @property
+    def used_out(self) -> int:
+        """The last source frame the event actually shows."""
+        return self.source_in if self.freeze else self.source_out
 
     @property
     def duration(self) -> int:
-        return frames.duration(self.source_in, self.source_out)
+        """Source frames the event uses: one for a freeze."""
+        return frames.duration(self.source_in, self.used_out)
+
+    @property
+    def use(self) -> tuple[int, int]:
+        """What makes two events of one clip the same use of it, as Resolve counts uses:
+        the source range the EDL states. The metadata CSV carries one row per clip per use
+        (verified on Turnover121, 2026-09-23), so this is what pairs events with rows. A
+        freeze keeps its stated out, because two holds of different length are two uses."""
+        return self.source_in, self.source_out
+
+    def named(self, clip_name: str) -> ConformEvent:
+        """This event with the clip it cuts, from the ALE when the EDL names none."""
+        return replace(self, clip_name=clip_name)
 
     @property
     def clip_stem(self) -> str:
@@ -217,7 +246,7 @@ class ColorSession:
             if event.clip_name:
                 if event.clip_stem.casefold() == stem:
                     found.append(event)
-            elif span is not None and span[0] <= event.source_in <= event.source_out <= span[1]:
+            elif span is not None and span[0] <= event.source_in <= event.used_out <= span[1]:
                 found.append(event)
         return found
 
@@ -305,6 +334,8 @@ _TIMECODE = re.compile(r"\d{1,2}:\d{2}:\d{2}[:;]\d{2}")
 _FROM_CLIP = re.compile(r"^\*\s*FROM CLIP NAME:\s*(?P<name>.+?)\s*$", re.IGNORECASE)
 _ASC_SOP = re.compile(r"^\*\s*ASC_SOP\b", re.IGNORECASE)
 _ASC_SAT = re.compile(r"^\*\s*ASC_SAT\s+(?P<value>\S+)", re.IGNORECASE)
+_MOTION = re.compile(r"^M2\s+\S+\s+(?P<speed>-?\d+(?:\.\d+)?)\s+")
+"""A motion effect: `M2   AX   000.0   00:00:40:10`, reel, speed in frames a second, entry."""
 _TRIPLE = re.compile(r"\(\s*(?P<a>\S+)\s+(?P<b>\S+)\s+(?P<c>\S+)\s*\)")
 
 
@@ -326,10 +357,14 @@ class _Event:
         self.clip_name = ""
         self.sop_text = ""
         self.sat_text = ""
+        self.speed: float | None = None
 
     def comment(self, line: str) -> None:
         from_clip = _FROM_CLIP.match(line)
-        if from_clip is not None:
+        motion = _MOTION.match(line)
+        if motion is not None:
+            self.speed = float(motion["speed"])
+        elif from_clip is not None:
             self.clip_name = from_clip["name"]
         elif _ASC_SOP.match(line):
             self.sop_text = line.strip()
@@ -360,6 +395,8 @@ class _Event:
                 record_in=record_in,
                 record_out=record_out - 1,
                 cdl=_parse_cdl(self.sop_text, self.sat_text),
+                speed=self.speed,
+                freeze=self.speed == 0,
             )
         ]
 

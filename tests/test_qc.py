@@ -483,14 +483,19 @@ class TestAudioFormat:
 
 class TestAuxStill:
     def test_a_single_frame_still_is_clean(self) -> None:
-        chart = row(clip_name="MELT0001_pl01_colorChart_01", frame_count=1)
+        chart = row(clip_name="MELT0001_pl01_colorChart_01", frame_count=1, current=InOut(0, 0))
         assert qc.check_aux_still(chart) == []
 
-    def test_a_still_that_is_really_a_clip_is_qc_055(self) -> None:
-        chart = row(clip_name="MELT0001_pl01_greyBall_01", frame_count=90)
+    def test_a_still_cut_as_a_clip_is_qc_055(self) -> None:
+        chart = row(clip_name="MELT0001_pl01_greyBall_01", frame_count=90, current=InOut(0, 89))
         results = qc.check_aux_still(chart)
         assert ids(results) == ["QC-055"]
         assert "90 frames" in results[0].message
+
+    def test_one_frame_cut_out_of_a_longer_file_is_clean(self) -> None:
+        """Every real still: the EDL picks one frame of a 49 or 88 frame file."""
+        chart = row(clip_name="MELT0001_pl01_greyBall_01", frame_count=88, current=InOut(38, 38))
+        assert qc.check_aux_still(chart) == []
 
     def test_bts_is_not_an_aux_still(self) -> None:
         assert qc.check_aux_still(row(clip_name="MELT0001_pl01_BTS_01", frame_count=90)) == []

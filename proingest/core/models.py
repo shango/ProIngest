@@ -497,6 +497,11 @@ class ShotRow:
     notes: str = ""
     skipped: bool = False
     skip_reason: str | None = None
+    freeze: bool = False
+    """The EDL holds this clip on one frame (M2 at speed 0). The row is that one frame: a
+    one-frame EXR, a reference that shows it for `planner.FREEZE_HOLD_SECONDS`, and no
+    audio (user, 2026-09-23). Additive, so the schema version does not move."""
+
     rerun: bool = False
     """The editor asked for this row to be rendered again at the next version (D12).
 
@@ -587,6 +592,7 @@ class ShotRow:
             "skipped": self.skipped,
             "skip_reason": self.skip_reason,
             "rerun": self.rerun,
+            "freeze": self.freeze,
             "deliverables": [item.to_dict() for item in self.deliverables],
             "qc": [result.to_dict() for result in self.qc],
         }
@@ -618,6 +624,7 @@ class ShotRow:
             skipped=bool(data.get("skipped", False)),
             skip_reason=data.get("skip_reason"),
             rerun=bool(data.get("rerun", False)),
+            freeze=bool(data.get("freeze", False)),
             deliverables=[Deliverable.from_dict(item) for item in data.get("deliverables", [])],
             qc=[QCResult.from_dict(item) for item in data.get("qc", [])],
         )
@@ -690,6 +697,10 @@ class Turnover:
     move and a batch saved before this has ingested nothing.
     """
 
+    ale_path: Path | None = None
+    """The ALE that named the EDL's events, when the EDL named none itself (`core/ale.py`).
+    None where no ALE was read. Additive, so the schema version does not move."""
+
     number: int | None = None
     month: int | None = None
     day: int | None = None
@@ -714,6 +725,7 @@ class Turnover:
             "csv_path": str(self.csv_path) if self.csv_path else None,
             "timeline_start": self.timeline_start,
             "color_session_edl": str(self.color_session_edl) if self.color_session_edl else None,
+            "ale_path": str(self.ale_path) if self.ale_path else None,
             "number": self.number,
             "month": self.month,
             "day": self.day,
@@ -733,6 +745,7 @@ class Turnover:
             csv_path=_as_path(data.get("csv_path")),
             timeline_start=int(data.get("timeline_start", 0)),
             color_session_edl=_as_path(data.get("color_session_edl")),
+            ale_path=_as_path(data.get("ale_path")),
             number=data.get("number"),
             month=data.get("month"),
             day=data.get("day"),
