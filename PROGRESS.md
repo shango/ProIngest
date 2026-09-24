@@ -8,7 +8,7 @@ commit.
 
 ## 1. Resume here
 
-**State at 2026-09-23, version 0.5.2. The review of 2026-09-23 is worked through: chunks A to
+**State at 2026-09-23, version 0.5.4. The review of 2026-09-23 is worked through: chunks A to
 H of `docs/REVIEW_2026-09-23.md` section 5 are all built**, each in its own commit with the entry
 below. The real turnover, `Turnover199`, scans with no must-fix and renders every deliverable.
 What is left is the Mac: `docs/MAC_SESSION.md`, "The 0.5.0 build, in order", starting with the
@@ -16,6 +16,45 @@ acceptance test on the editor's machine. The branch `color/cdl-in-acescct` is pu
 0.5.0 release; CI builds `ProIngest-0.5.0.dmg` on PR #12 (the workflow runs on pull requests, not
 on a branch push). The entries below are newest first; anything
 older than 2026-09-22 describes the tool before the review and is history.
+
+**2026-09-23, 0.5.4: Turnover121 scans clean.** Built from the user's answers on the second
+official turnover (`docs/SAMPLE_TURNOVER_121.md`). **The ALE names the EDL's events** when the
+EDL names none (`core/ale.py`): it is one row per event in timeline order, so its `Name` column
+pairs by position; a count that disagrees is QC-071 and the scan falls back to timecode.
+**One CSV row per use**: Resolve lists a clip once per distinct source range, and
+`scan._conform_by_use` pairs a clip's uses with its rows in order (QC-067 when the counts
+differ). **Collapsed per the user** (`scan._collapse`, QC-072): a reference still once per shot
+code from its first use, and a clip cut twice at the same frames once. **Freezes**: `M2` at 0
+is `ConformEvent.freeze`, the row is one frame (`ShotRow.freeze`), the EXR is one frame and the
+reference holds it `planner.FREEZE_HOLD_SECONDS` (5) via `tpad`, no audio, and the handle,
+length and audio rules skip it. **Any other `M2` speed is refused** (QC-073, OQ-63). **QC-055**
+is judged on the cut, not the file, since every real still is one EDL frame of a longer file.
+**Verified**: tests for each part including a real held encode; the suite; Turnover121 scans
+with 0 errors and a full render wrote 20 deliverables, 0 failed, the freeze's references 120
+frames and silent. **Still open**: every event's slope is 4.886, which renders white; taken to
+Ben. The ALE is not in the re-scan digest (QC-070), so a changed ALE is not flagged.
+
+**2026-09-23, 0.5.3: Save Logs as CSV.** The user asked for a button that dumps the logs to a
+CSV to send for diagnostics. `logsetup.export_csv` reads every kept file in the log folder, oldest
+first, parses `FILE_FORMAT` back into Time, Level, Source, Message, File (a traceback stays in its
+record), and heads it with ABOUT rows: version, platform, Python, ffmpeg, batch. A button at the
+right of the Log tab's filter bar and a File menu item, always enabled, ask where and call it.
+**Verified**: core tests including one written through the real handler, window tests for the
+button, the menu with no batch, cancel and an unwritable folder, an offscreen screenshot, and the
+suite (1642). UI_SPEC 6.1, PRD FR-13, a MAC_SESSION line. Version 0.5.3, which also ships the
+Turnover121 fixes below.
+
+**2026-09-23, Turnover121: two false positives.** A second official turnover (iPhone, Apple
+Log, H.264; untracked in the repo root) scanned with 23 errors. Two causes were the tool's:
+**QC-026 "480 fps"**: ffprobe's `r_frame_rate` is a timestamp grid on these files (480/1) while
+the average is 24.004 to 24.014, so `media._stated_rate` now takes the average rounded to the
+nearest standard rate within 0.1% when the two disagree. **QC-046**: the CSV has no notes columns
+and says `Apple Log` in Resolve's own `Input Color Space`, which the config resolves, so
+`MetaRow.written_encoding` falls back to it. Now 11 errors. **Still open, decided by the user and
+not built**: name each EDL event from the ALE, which is one row per event in timeline order (the
+EDL has no clip names and the iPhone timecodes overlap, so every row is QC-067); a freeze (M2 0)
+on a cp delivers a one-frame EXR and a five-second mp4 of that frame; a clip used at different
+frames delivers each. **Raised with the user**: every event's slope is 4.886.
 
 **2026-09-23, 0.5.2: cp and el are silent.** The user: cp and el will not come with audio, and
 any they have is ignored. `planner._audio_source` now gives a non-plate row no audio at all, so

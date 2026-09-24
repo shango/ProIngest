@@ -196,6 +196,9 @@ Time, level, shot and message, over a filter bar: a minimum level, a search box,
   complete record is the rotating file in `~/Library/Logs/ProIngest`, which Settings names.
 - It follows the newest line **only when it is already at the bottom**, because somebody who has
   scrolled up is reading something.
+- **Save Logs as CSV...**, at the right of the filter bar and in the File menu, writes every log
+  the tool has kept to one CSV file. **When something goes wrong, this is the file to send**: it
+  opens with the ProIngest version, the Mac and the ffmpeg build, and it works with no batch open.
 
 ## The Deliverables tab
 

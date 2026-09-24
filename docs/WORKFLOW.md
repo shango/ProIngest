@@ -42,7 +42,7 @@ behind it is `COLOR_AND_FORMAT.md` section 1 and `PRD.md`.
 | 12 | Cut the **final stringout timeline** and render the stringout from it. **Ben produces and exports it, and the tool does nothing with it at all** (user, 2026-09-22): it is not read, not transcoded, not renamed and not checked. | the delivered stringout, delivered by Ben |
 | 13 | Export the **EDL with the CDL in it** from that same stringout timeline (Timelines > Export > CDL). **This is the conform and the grade**, and because it comes off the stringout its events state the final clip durations. | `.edl`: shot identity, the approved In/Out, and `*ASC_SOP` / `*ASC_SAT` per event |
 | 14 | Export the **metadata CSV**. **This is identity and encoding.** | `.csv`: `File Name`, `Shot`, `Shot Type`, `Gamma Notes`, `Color Space Notes` |
-| 15 | Put the EDL and the CSV **in the same folder as the media** and hand that one folder over (OQ-74). | one folder holding the media, the EDL and the CSV. A folder missing either file does not scan at all (QC-001) |
+| 15 | Put the EDL, the CSV **and the ALE** in the same folder as the media and hand that one folder over (OQ-74; the ALE since 2026-09-23). | one folder holding the media, the EDL, the CSV and the ALE. A folder missing the EDL or the CSV does not scan at all (QC-001); the ALE is what names the EDL's events, which timecode alone cannot do for cameras without time of day |
 
 ## Tool
 

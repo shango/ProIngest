@@ -375,6 +375,7 @@ def _render_reference(job: DeliverableJob, deliverable: Deliverable) -> None:
             color_space=job.source_color_space,
             color_range=job.source_color_range,
             canvas=job.target_size if job.fitted_size != job.target_size else None,
+            hold=job.hold_frames,
         )
     if not job.temp.is_file():
         raise RenderError(f"{job.name}: the encode reported success and wrote nothing")
@@ -384,8 +385,8 @@ def _render_reference(job: DeliverableJob, deliverable: Deliverable) -> None:
     # same case by counting what it wrote, and a short reference recorded as done is
     # exactly the delivery this module exists to prevent.
     written = ffmpeg.container_frame_count(job.temp)
-    if written != job.frame_count:
-        raise RenderError(f"{job.name} wanted {job.frame_count} frames and the encode wrote {written}")
+    if written != job.written_frames:
+        raise RenderError(f"{job.name} wanted {job.written_frames} frames and the encode wrote {written}")
     _record_file(deliverable, job.temp)
     deliverable.frame_count = written
 

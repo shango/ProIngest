@@ -279,3 +279,56 @@ class TestTheFfmpegOverrideReachingAWorker:
         encodes = [r.getMessage() for r in captured.records if "libx264" in r.getMessage()]
         assert encodes, "the run logged no encode at all"
         assert all("-crf 30" in command for command in encodes), encodes
+
+
+class TestTheDiagnosticsExport:
+    """The Log tab's Save Logs as CSV: every kept file, oldest first, one row a record."""
+
+    def test_every_kept_file_is_read_oldest_first(self, tmp_path: Path) -> None:
+        (tmp_path / "proingest-20260921.log").write_text("2026-09-21 10:00:00,000 INFO    a: old\n")
+        (tmp_path / "proingest-20260922.log").write_text("2026-09-22 10:00:00,000 INFO    a: middle\n")
+        (tmp_path / "proingest.log").write_text("2026-09-23 10:00:00,000 WARNING b.c: now\n")
+        assert [p.name for p in logsetup.log_files(tmp_path)] == [
+            "proingest-20260921.log",
+            "proingest-20260922.log",
+            "proingest.log",
+        ]
+
+    def test_a_traceback_stays_with_its_record(self, tmp_path: Path) -> None:
+        log = tmp_path / "proingest.log"
+        log.write_text(
+            "2026-09-23 10:00:00,000 ERROR   proingest.ui: it broke\n"
+            "Traceback (most recent call last):\n"
+            "ValueError: nope\n"
+            "2026-09-23 10:00:01,000 INFO    proingest.core.ffmpeg: ffmpeg -i a.mov\n"
+        )
+        rows = logsetup.log_rows(log)
+        assert [row[1] for row in rows] == ["ERROR", "INFO"]
+        assert rows[0][3] == "it broke\nTraceback (most recent call last):\nValueError: nope"
+        assert rows[1][2:4] == ["proingest.core.ffmpeg", "ffmpeg -i a.mov"]
+
+    def test_the_csv_opens_with_what_build_it_came_from(self, tmp_path: Path) -> None:
+        import csv
+
+        (tmp_path / "proingest.log").write_text("2026-09-23 10:00:00,000 INFO    a: hello, world\n")
+        out = tmp_path / "logs.csv"
+        count = logsetup.export_csv(tmp_path, out, [("ProIngest", "0.5.2")])
+        with out.open(newline="", encoding="utf-8") as handle:
+            rows = list(csv.reader(handle))
+        assert count == 1
+        assert rows[0] == list(logsetup.EXPORT_COLUMNS)
+        assert rows[1] == ["", "ABOUT", "ProIngest", "0.5.2", ""]
+        assert rows[2][3] == "hello, world", "a comma in a message is quoted, not a new column"
+
+    def test_what_the_handler_writes_is_what_the_export_reads(self, tmp_path: Path) -> None:
+        """The pattern is pinned to `FILE_FORMAT` by writing through the real handler."""
+        handler = logsetup.file_handler(tmp_path)
+        logger = logging.getLogger("proingest.test.export")
+        logger.addHandler(handler)
+        try:
+            logger.warning("probe failed: %s", "C0145.MP4")
+        finally:
+            logger.removeHandler(handler)
+            handler.close()
+        rows = logsetup.log_rows(tmp_path / logsetup.LOG_FILENAME)
+        assert [row[1:4] for row in rows] == [["WARNING", "proingest.test.export", "probe failed: C0145.MP4"]]

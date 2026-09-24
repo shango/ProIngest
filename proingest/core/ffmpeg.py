@@ -641,8 +641,12 @@ def encode_command(
     color_space: str = "",
     color_range: str = "",
     canvas: tuple[int, int] | None = None,
+    hold: int = 0,
 ) -> list[str]:
     """The command that encodes `[in_frame, out_frame]` to one reference mp4.
+
+    With `hold` longer than the range, the last frame is repeated until the reference
+    is `hold` frames long: a freeze delivers one frame shown for five seconds.
 
     The seek is `decode_command`'s, for the same reasons: `-start_number` for a
     sequence, the frame-counting `trim` filter for a container, never `-ss`, which
@@ -684,6 +688,7 @@ def encode_command(
     """
     tool = ffmpeg or resolve_tool("ffmpeg")
     count = frames.duration(in_frame, out_frame)
+    written = max(count, hold)
     command = [str(tool), "-hide_banner", "-loglevel", "error", "-nostdin", "-y"]
 
     filters = []
@@ -696,6 +701,10 @@ def encode_command(
             f"trim=start_frame={in_frame}:end_frame={out_frame + 1}",
             "setpts=PTS-STARTPTS",
         ]
+    if written > count:
+        # Cut the range first: a sequence input runs on past it, and the hold repeats the
+        # range's last frame, not whatever follows it.
+        filters += [f"trim=end_frame={count}", f"tpad=stop_mode=clone:stop={written - count}"]
     command += ["-i", source]
 
     if audio is not None:
@@ -718,7 +727,7 @@ def encode_command(
     command += ["-map", "1:a:0"] if audio is not None else ["-an"]
     command += [
         "-frames:v",
-        str(count),
+        str(written),
         "-fps_mode",
         "passthrough",
         "-c:v",
@@ -755,7 +764,7 @@ def encode_command(
             "-b:a",
             REFERENCE_AUDIO_BITRATE,
             "-af",
-            _audio_fit(audio_tempo, _seconds(count, rate)),
+            _audio_fit(audio_tempo, _seconds(written, rate)),
         ]
     if timecode is not None:
         command += ["-timecode", timecode]
@@ -793,6 +802,7 @@ def encode_reference(
     color_space: str = "",
     color_range: str = "",
     canvas: tuple[int, int] | None = None,
+    hold: int = 0,
 ) -> None:
     """Run the reference encode, raising FFmpegError with ffmpeg's own complaint.
 
@@ -817,6 +827,7 @@ def encode_reference(
         color_space=color_space,
         color_range=color_range,
         canvas=canvas,
+        hold=hold,
     )
     result = run(command, timeout=ENCODE_TIMEOUT)
     if result.returncode != 0:

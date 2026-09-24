@@ -187,6 +187,26 @@ class TestAudio:
             assert job.audio_source == (wav if job.kind == "ref_mp4" else None)
 
 
+class TestAFreeze:
+    """An M2 at speed 0: a one-frame EXR and a reference holding it for five seconds."""
+
+    def test_the_exr_is_one_frame_and_the_reference_is_held(self) -> None:
+        held = row("MELT0001_cp01", current=InOut(1042, 1042), freeze=True)
+        plan = planner.plan_row(held, ROOT, 1)
+        for job in plan.jobs:
+            assert job.frame_count == 1
+            if job.kind == "ref_mp4":
+                assert job.hold_frames == 5 * 24 and job.written_frames == 120
+            else:
+                assert job.hold_frames == 0 and job.written_frames == 1
+
+    def test_a_frozen_plate_delivers_no_sound(self) -> None:
+        held = row(audio_path=Path("/t/a.wav"), current=InOut(1042, 1042), freeze=True)
+        plan = planner.plan_row(held, ROOT, 1)
+        assert "audio" not in kinds(plan.jobs)
+        assert all(job.audio_source is None for job in plan.jobs)
+
+
 class TestAuxStills:
     def test_reference_still_delivers_one_4k_exr(self) -> None:
         plan = planner.plan_row(row("MELT0001_pl01_colorChart_01"), ROOT, 1)

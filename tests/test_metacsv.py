@@ -159,6 +159,23 @@ class TestEncoding:
         )
         assert result.rows[0].written_encoding == "S-Log3"
 
+    def test_resolves_input_color_space_stands_in_for_absent_notes(self, tmp_path: Path) -> None:
+        """Turnover121: no notes columns, `Input Color Space` says `Apple Log`."""
+        result = read(
+            tmp_path,
+            ["File Name", "Shot", "Shot Type", "Input Color Space"],
+            [["C1.mov", "SECA0001", "pl01", "Apple Log"]],
+        )
+        assert result.rows[0].written_encoding == "Apple Log"
+
+    def test_the_notes_win_over_input_color_space(self, tmp_path: Path) -> None:
+        result = read(
+            tmp_path,
+            ["File Name", "Shot", "Shot Type", "Gamma Notes", "Color Space Notes", "Input Color Space"],
+            [["C1.MP4", "MELT0001", "pl01", "S-Log3", "S-Gamut3.Cine", "Something Else"]],
+        )
+        assert result.rows[0].written_encoding == "S-Log3 S-Gamut3.Cine"
+
     def test_absent_columns_are_empty_rather_than_malformed(self, tmp_path: Path) -> None:
         result = read(tmp_path, ["File Name", "Shot", "Shot Type"], [["C1.MP4", "MELT0001", "pl01"]])
         assert result.rows[0].written_encoding == ""

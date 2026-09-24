@@ -21,10 +21,10 @@ can re-run after every edit.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
-from proingest.core import clf, ffmpeg, metacsv, naming, qc
+from proingest.core import ale, clf, ffmpeg, metacsv, naming, qc
 from proingest.core import media as media_module
 from proingest.core.models import (
     Batch,
@@ -141,9 +141,12 @@ def scan_turnover(
             QCResult("QC-004", "error", "turnover", f"{edl_path.name} carries no video events")
         )
 
+    session = replace(session, events=_named_events(folder, session.events, turnover))
     index = media_module.index_directory(folder)
     rows = [_build_row(entry, index, turnover_id, settings, cache) for entry in meta.rows]
     turnover.qc.extend(_conform_all(rows, session))
+    _refuse_retimes(rows, session.events, settings.project_rate)
+    rows = _collapse(rows)
     for row in rows:
         # Only the plate has an associated audio clip (user, 2026-09-23).
         if qc.is_plate(row):
@@ -252,6 +255,46 @@ def _build_row(
     return row
 
 
+def _named_events(folder: Path, events: list[clf.ConformEvent], turnover: Turnover) -> list[clf.ConformEvent]:
+    """Name each EDL event from the ALE beside it, row for row (`core/ale.py`).
+
+    Only when the EDL names none of its events itself and the folder holds one ALE. An ALE
+    that cannot be paired with the EDL is QC-071 and names nothing, so the scan falls back
+    to timecode, which refuses what it cannot tell apart rather than guessing.
+    """
+    if all(event.clip_name for event in events):
+        return events
+    found = ale.find(folder)
+    if not found:
+        return events
+    if len(found) > 1:
+        listed = ", ".join(path.name for path in found)
+        turnover.qc.append(
+            QCResult("QC-071", "error", "turnover", f"{folder} holds {len(found)} ALEs ({listed})")
+        )
+        return events
+    try:
+        names = ale.read_names(found[0])
+    except ale.AleError as exc:
+        turnover.qc.append(QCResult("QC-071", "error", "turnover", str(exc)))
+        return events
+    if len(names) != len(events):
+        turnover.qc.append(
+            QCResult(
+                "QC-071",
+                "error",
+                "turnover",
+                f"{found[0].name} lists {len(names)} clips and the EDL cuts {len(events)} events, "
+                f"so its rows cannot name the events",
+            )
+        )
+        return events
+    turnover.ale_path = found[0]
+    return [
+        event if event.clip_name else event.named(name) for event, name in zip(events, names, strict=True)
+    ]
+
+
 def _conform_all(rows: list[ShotRow], session: clf.ColorSession) -> list[QCResult]:
     """Pair every row with its EDL event, and return what the turnover should hear.
 
@@ -261,6 +304,8 @@ def _conform_all(rows: list[ShotRow], session: clf.ColorSession) -> list[QCResul
     entirely plausible. Such a row still gets the whole media as its range, so the
     editor can see what arrived. An event no row claims is QC-068, for the record.
     """
+    if session.events and all(event.clip_name for event in session.events):
+        return _conform_by_use(rows, session.events)
     found = [session.candidates(row) for row in rows]
     claims: dict[int, list[str]] = {}
     for row, events in zip(rows, found, strict=True):
@@ -317,6 +362,137 @@ def _conform_all(rows: list[ShotRow], session: clf.ColorSession) -> list[QCResul
             f"EDL events {', '.join(unclaimed)} fall inside no file the CSV describes",
         )
     ]
+
+
+def _conform_by_use(rows: list[ShotRow], events: list[clf.ConformEvent]) -> list[QCResult]:
+    """Pair rows with events by name, one CSV row per use of a clip.
+
+    Resolve's CSV carries a row for each **distinct source range** a clip is cut at
+    (`ConformEvent.use`), not one per event: a chart cut at frame 212 twice and at 221 once
+    is two rows. Verified on all nine rows of Turnover121 (2026-09-23). So a clip's uses, in
+    timeline order, pair with its rows in file order, and a count that disagrees is QC-067:
+    the tool will not guess which row is which use.
+    """
+    by_clip: dict[str, list[clf.ConformEvent]] = {}
+    for event in events:
+        by_clip.setdefault(event.clip_stem.casefold(), []).append(event)
+    rows_by_clip: dict[str, list[ShotRow]] = {}
+    for row in rows:
+        rows_by_clip.setdefault(Path(row.clip_name).stem.casefold(), []).append(row)
+
+    claimed: set[int] = set()
+    for key, clip_rows in rows_by_clip.items():
+        uses: dict[tuple[int, int], list[clf.ConformEvent]] = {}
+        for event in by_clip.get(key, []):
+            uses.setdefault(event.use, []).append(event)
+            claimed.add(id(event))
+        if not uses:
+            for row in clip_rows:
+                row.qc.append(
+                    QCResult(
+                        "QC-066",
+                        "error",
+                        "row",
+                        f"no event in the EDL cuts {row.clip_name}, "
+                        f"so the row has no approved cut and no grade",
+                    )
+                )
+                _whole_media(row)
+        elif len(uses) != len(clip_rows):
+            ids = ", ".join(event.event_id for group in uses.values() for event in group)
+            for row in clip_rows:
+                row.qc.append(
+                    QCResult(
+                        "QC-067",
+                        "error",
+                        "row",
+                        f"the EDL cuts {row.clip_name} at {len(uses)} different ranges (events {ids}) and "
+                        f"the CSV lists it {len(clip_rows)} times; the tool will not pair them by guesswork",
+                    )
+                )
+                _whole_media(row)
+        else:
+            for row, group in zip(clip_rows, uses.values(), strict=True):
+                _conform(row, group[0])
+                row.freeze = group[0].freeze
+
+    unclaimed = [event.event_id for event in events if id(event) not in claimed]
+    if not unclaimed:
+        return []
+    return [
+        QCResult(
+            "QC-068",
+            "info",
+            "turnover",
+            f"EDL events {', '.join(unclaimed)} cut clips the CSV gives no Shot Type or does not list",
+        )
+    ]
+
+
+def _refuse_retimes(rows: list[ShotRow], events: list[clf.ConformEvent], rate: FrameRate) -> None:
+    """QC-073: a clip the EDL retimes or reverses. Only a freeze is rendered (OQ-63): any
+    other speed means the frames shown are not the frames in the range, silently."""
+    for event in events:
+        if not event.clip_name or not event.retimed(rate):
+            continue
+        for row in rows:
+            if Path(row.clip_name).stem.casefold() == event.clip_stem.casefold():
+                row.qc.append(
+                    QCResult(
+                        "QC-073",
+                        "error",
+                        "row",
+                        f"EDL event {event.event_id} plays {row.clip_name} at {event.speed:g} fps; "
+                        f"the tool renders a freeze but not a retime or a reversal",
+                    )
+                )
+
+
+def _collapse(rows: list[ShotRow]) -> list[ShotRow]:
+    """One row per thing delivered, in timeline order of first use (user, 2026-09-23).
+
+    A reference still (a colour chart, a grey ball) is delivered **once per shot code**,
+    from its first use: a chart cut at two frames is the same chart. Any other clip cut
+    twice to the same frames, as two holds of one frame are, is delivered once too. The row
+    kept says so (QC-072). A row that did not conform is never folded: its error has to show.
+    """
+    kept: dict[tuple[object, ...], ShotRow] = {}
+    result: list[ShotRow] = []
+    for row in sorted(rows, key=lambda row: (row.approved is None, row.record_in)):
+        key = _delivers(row)
+        if key is None or key not in kept:
+            if key is not None:
+                kept[key] = row
+            result.append(row)
+            continue
+        first = kept[key]
+        first.qc.append(
+            QCResult(
+                "QC-072",
+                "info",
+                "row",
+                f"{row.clip_name} is also cut at {_frames_text(row)}; delivered once, from its first use",
+            )
+        )
+    order = {id(row): index for index, row in enumerate(rows)}
+    return sorted(result, key=lambda row: order[id(row)])
+
+
+def _frames_text(row: ShotRow) -> str:
+    if row.current is None:
+        return "no range"
+    if row.current.in_frame == row.current.out_frame:
+        return f"frame {row.current.in_frame}"
+    return f"frames {row.current.in_frame}-{row.current.out_frame}"
+
+
+def _delivers(row: ShotRow) -> tuple[object, ...] | None:
+    """What two rows share when they would deliver the same thing, or None to keep it."""
+    if row.approved is None or row.identity is None or row.errors():
+        return None
+    if row.identity.is_still:
+        return ("still", row.identity.shot_code, row.identity.kind)
+    return ("same", Path(row.clip_name).stem.casefold(), row.identity.kind, row.identity.index, row.current)
 
 
 def _conform(row: ShotRow, event: clf.ConformEvent) -> None:

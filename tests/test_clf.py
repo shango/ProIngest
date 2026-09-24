@@ -467,3 +467,41 @@ class TestShotColorFromRow:
     def test_a_row_naming_no_encoding_gets_a_chain_that_names_none(self, tmp_path: Path) -> None:
         """Renderable where the CLF is the whole chain, and QC-046 where it is not."""
         assert clf.shot_color(row()).source_encoding is None
+
+
+class TestMotionEffects:
+    """An M2 at speed 0 is a freeze: one source frame held (Turnover121, 2026-09-23)."""
+
+    EDL = (
+        "TITLE: T\nFCM: NON-DROP FRAME\n\n"
+        "001  AX       V     C        00:00:40:10 00:00:50:10 01:00:10:00 01:00:20:00  \n"
+        "M2   AX             000.0                00:00:40:10\n"
+        "*ASC_SOP (1.0 1.0 1.0)(0.0 0.0 0.0)(1.0 1.0 1.0)\n*ASC_SAT 1.0\n\n"
+        "002  AX       V     C        00:00:06:04 00:00:16:04 01:00:20:00 01:00:30:00  \n"
+    )
+
+    def test_a_freeze_uses_one_frame(self, tmp_path: Path) -> None:
+        path = tmp_path / "t.edl"
+        path.write_text(self.EDL)
+        frozen, cut = clf.read_final_edl(path, FrameRate(24))
+        assert frozen.freeze and not cut.freeze
+        assert frozen.used_out == frozen.source_in == 970
+        assert frozen.duration == 1
+        assert frozen.use == (970, 1209), "the stated out tells two holds of one frame apart"
+        assert frozen.cdl is not None, "the M2 line does not swallow the grade"
+        assert cut.duration == 240
+
+    def test_a_retime_or_a_reversal_is_flagged_and_a_freeze_is_not(self, tmp_path: Path) -> None:
+        path = tmp_path / "t.edl"
+        path.write_text(
+            self.EDL.replace("000.0", "048.0") + "M2   AX             -024.0                00:00:06:04\n"
+        )
+        fast, reversed_ = clf.read_final_edl(path, FrameRate(24))
+        assert fast.retimed(FrameRate(24)) and reversed_.retimed(FrameRate(24))
+        assert not fast.freeze
+
+    def test_normal_speed_and_a_freeze_are_not_retimes(self, tmp_path: Path) -> None:
+        path = tmp_path / "t.edl"
+        path.write_text(self.EDL + "M2   AX             024.0                00:00:06:04\n")
+        frozen, normal = clf.read_final_edl(path, FrameRate(24))
+        assert not frozen.retimed(FrameRate(24)) and not normal.retimed(FrameRate(24))

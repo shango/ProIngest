@@ -136,6 +136,7 @@ The second tab of the same dock, built in M5.8.2 against PRD FR-13. Table: time,
 - **"Selected row only" is FR-13's filter by row.** Only a line a render worker stamped carries a shot, so it hides what the window itself logged too: it answers "what happened to this shot", not "what happened while this shot was selected". It is unavailable with no selection and with a selection spanning two shots, and a selection going away unticks it rather than leaving a tick that filters nothing.
 - **The panel is bounded and the file is not.** It keeps the last `MAX_LINES`; the complete record is the rotating file in `~/Library/Logs/ProIngest` (PACKAGING.md). A hidden line ages out with the rest, so a filter can never be the thing that makes the window grow.
 - **It follows the tail only when it is already at the tail.** Somebody who has scrolled up is reading something.
+- **Save Logs as CSV...**, at the right of the filter bar and in the File menu (2026-09-23), writes **every kept log file**, not the panel's tail, to one CSV the editor can send for diagnostics: columns Time, Level, Source, Message, File, a traceback kept inside its record's Message. It opens with ABOUT rows naming the ProIngest version, the platform, Python, the ffmpeg build and the batch, so the file says where it came from. Always enabled: it is the one action that has to work when nothing else does.
 
 ## 6.2 Deliverables tab
 

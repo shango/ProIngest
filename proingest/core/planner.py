@@ -55,6 +55,9 @@ and it also depends on there being audio at all, so it is added separately."""
 AUDIO_TYPES = ("pl",)
 """Only the main plate delivers audio."""
 
+FREEZE_HOLD_SECONDS = 5
+"""How long a reference shows a frozen frame (user, 2026-09-23). The EXR is the one frame."""
+
 OWNED_RULES = frozenset({"QC-060", "QC-061"})
 """Rule IDs this module raises. Cleared before it raises them again, as qc.py does."""
 
@@ -127,6 +130,10 @@ class DeliverableJob:
     other EXR the tool writes, but never the shot's grade.
     """
 
+    hold_frames: int = 0
+    """Frames a reference shows its range for when the row is a freeze: the one frame,
+    repeated. Zero for everything else. `written_frames` is what the encode must write."""
+
     display_name: str | None = None
     """The name to report, when `destination` is not where the job will end up: phase B
     checks a deliverable under its `.part` name and reports it under its own (F11)."""
@@ -158,6 +165,11 @@ class DeliverableJob:
         if self.in_frame is None or self.out_frame is None:
             return 0
         return frames.duration(self.in_frame, self.out_frame)
+
+    @property
+    def written_frames(self) -> int:
+        """Frames the deliverable holds: the range, or the hold for a frozen reference."""
+        return max(self.frame_count, self.hold_frames)
 
     def source_frame(self, output_frame: int) -> int:
         """The source frame an output frame comes from. COLOR_AND_FORMAT section 6."""
@@ -215,6 +227,7 @@ class _Shot:
     version: int
     audio: Path | None
     color: clf.ShotColor
+    freeze: bool = False
 
 
 def effective_identity(row: ShotRow, show_pattern: str = naming.DEFAULT_SHOW_PATTERN) -> ShotIdentity | None:
@@ -278,6 +291,7 @@ def plan_row(
         version=version,
         audio=_audio_source(row),
         color=shot_color,
+        freeze=row.freeze,
     )
     if identity.is_still:
         plan = _aux_plan(shot)
@@ -458,7 +472,15 @@ def _picture_job(shot: _Shot, kind: JobKind, res: Resolution) -> DeliverableJob:
         source_start_frame=shot.media.start_frame,
         source_start_timecode=shot.media.start_timecode,
         shot_color=shot.color,
+        hold_frames=_hold_frames(shot) if kind == "ref_mp4" else 0,
     )
+
+
+def _hold_frames(shot: _Shot) -> int:
+    """A frozen reference runs `FREEZE_HOLD_SECONDS` at the delivered rate; else nothing."""
+    if not shot.freeze:
+        return 0
+    return FREEZE_HOLD_SECONDS * shot.media.rate.numerator // shot.media.rate.denominator
 
 
 def _audio_source(row: ShotRow) -> Path | None:
@@ -470,7 +492,7 @@ def _audio_source(row: ShotRow) -> Path | None:
     **Only a plate has any** (user, 2026-09-23): a cp or el that carries sound anyway is
     delivered without it, so its reference mp4 is silent.
     """
-    if row.identity is None or row.identity.kind not in AUDIO_TYPES:
+    if row.identity is None or row.identity.kind not in AUDIO_TYPES or row.freeze:
         return None
     if row.audio_path is not None:
         return row.audio_path
