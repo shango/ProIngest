@@ -31,7 +31,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime
 
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtGui import QBrush, QColor, QGuiApplication, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -41,6 +41,7 @@ from PySide6.QtWidgets import (
     QHeaderView,
     QLabel,
     QLineEdit,
+    QPushButton,
     QTreeWidget,
     QTreeWidgetItem,
     QVBoxLayout,
@@ -50,6 +51,10 @@ from PySide6.QtWidgets import (
 from proingest.core import logsetup
 
 COLUMNS = ("Time", "Level", "Shot", "Message")
+
+SAVE_TEXT = "Save Logs as CSV..."
+"""Every kept log file as one CSV, for the editor to send when something went wrong.
+The window answers it, because it owns the dialogs and knows where the logs are."""
 
 WIDTHS = (90, 70, 130, 900)
 
@@ -169,6 +174,8 @@ class LogView(QWidget):
     keeps the one thing that has to be undone next to the thing that does it.
     """
 
+    save_requested = Signal()
+
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.buffer = LogBuffer()
@@ -196,6 +203,11 @@ class LogView(QWidget):
         self.count = QLabel(EMPTY, self)
         self.count.setObjectName("log_count")
 
+        self.save_button = QPushButton(SAVE_TEXT, self)
+        self.save_button.setObjectName("log_save")
+        self.save_button.setToolTip("Every log the tool has kept, as one file to send for diagnostics")
+        self.save_button.clicked.connect(self.save_requested)
+
         self.tree = QTreeWidget(self)
         self.tree.setObjectName("log_tree")
         self.tree.setColumnCount(len(COLUMNS))
@@ -219,6 +231,7 @@ class LogView(QWidget):
         bar.addWidget(self.search, 1)
         bar.addWidget(self.selected_only)
         bar.addWidget(self.count)
+        bar.addWidget(self.save_button)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(6, 6, 6, 6)

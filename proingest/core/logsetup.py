@@ -30,6 +30,7 @@ also the one that writes a file.
 
 from __future__ import annotations
 
+import csv
 import logging
 import logging.handlers
 import re
@@ -224,3 +225,52 @@ def start_listener(queue: MPQueue[logging.LogRecord | None]) -> logging.handlers
     listener = logging.handlers.QueueListener(queue, _Republish())
     listener.start()
     return listener
+
+
+# --- The diagnostics export: every kept log file as one CSV. ---
+
+EXPORT_COLUMNS = ("Time", "Level", "Source", "Message", "File")
+
+_LINE = re.compile(
+    r"^(?P<time>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}) "
+    r"(?P<level>[A-Z]+)\s+(?P<source>[^:\s]+): (?P<message>.*)$"
+)
+"""One line as `FILE_FORMAT` writes it. A line that does not match continues the one
+before it: a traceback, or a message with a newline in it."""
+
+
+def log_files(log_dir: Path) -> list[Path]:
+    """Every log file kept, oldest first: the dated ones, then the one being written."""
+    dated = sorted(log_dir.glob(f"{Path(LOG_FILENAME).stem}-*{Path(LOG_FILENAME).suffix}"))
+    current = log_dir / LOG_FILENAME
+    return [*dated, current] if current.is_file() else dated
+
+
+def log_rows(path: Path) -> list[list[str]]:
+    """One file's records as `EXPORT_COLUMNS` rows, a multi-line record kept whole."""
+    rows: list[list[str]] = []
+    for text in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        match = _LINE.match(text)
+        if match:
+            rows.append([match["time"], match["level"], match["source"], match["message"], path.name])
+        elif rows:
+            rows[-1][3] += "\n" + text
+        elif text.strip():
+            rows.append(["", "", "", text, path.name])
+    return rows
+
+
+def export_csv(log_dir: Path, destination: Path, about: list[tuple[str, str]]) -> int:
+    """Write every kept log file to one CSV for sending to whoever supports the tool.
+
+    `about` goes first, one row each, so the file says which build and which machine it
+    came from without a second message asking. Returns how many log records it holds.
+    """
+    records = [row for path in log_files(log_dir) for row in log_rows(path)]
+    with destination.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.writer(handle)
+        writer.writerow(EXPORT_COLUMNS)
+        for name, value in about:
+            writer.writerow(["", "ABOUT", name, value, ""])
+        writer.writerows(records)
+    return len(records)

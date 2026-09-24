@@ -34,6 +34,7 @@ from proingest.ui import app as ui_app
 from proingest.ui import deliverables, paths
 from proingest.ui.background import Inline
 from proingest.ui.batch_bar import NO_DELIVERY_ROOT
+from proingest.ui.log_view import SAVE_TEXT
 from proingest.ui.main_window import (
     BOTTOM_TABS,
     EMPTY_STATE_TEXT,
@@ -86,6 +87,7 @@ class DrivenWindow(MainWindow):
         self.open_answer: Path | None = None
         self.save_answer: Path | None = None
         self.save_asked: list[str] = []
+        self.log_answer: Path | None = None
         self.unsaved_answer = QMessageBox.StandardButton.Discard
         self.opened_folders: list[Path] = []
         self.settings_answer = QDialog.DialogCode.Rejected
@@ -116,6 +118,9 @@ class DrivenWindow(MainWindow):
     def ask_save_path(self, suggested_name: str) -> Path | None:
         self.save_asked.append(suggested_name)
         return self.save_answer
+
+    def ask_log_path(self, suggested: str) -> Path | None:
+        return self.log_answer
 
     def ask_unsaved(self) -> QMessageBox.StandardButton:
         return self.unsaved_answer
@@ -1611,6 +1616,47 @@ class TestTheRunStrip:
         strip.banner.linkActivated.emit("#reports")
 
         assert clicked == [True]
+
+
+class TestSavingTheLogs:
+    """A button on the Log tab and a File menu item: every kept log as one CSV to send."""
+
+    @pytest.fixture
+    def logs(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+        folder = tmp_path / "logs"
+        folder.mkdir()
+        (folder / "proingest.log").write_text("2026-09-23 10:00:00,000 ERROR   proingest.ui: it broke\n")
+        monkeypatch.setattr(paths, "log_dir", lambda: folder)
+        return folder
+
+    def test_the_button_writes_the_csv(self, window: DrivenWindow, logs: Path, tmp_path: Path) -> None:
+        window.log_answer = tmp_path / "out.csv"
+        window.log_view.save_button.click()
+        text = window.log_answer.read_text(encoding="utf-8")
+        assert "ABOUT,ProIngest," in text and "it broke" in text
+        assert "1 log lines" in window.statusBar().currentMessage()
+
+    def test_the_menu_item_is_live_with_no_batch(
+        self, window: DrivenWindow, logs: Path, tmp_path: Path
+    ) -> None:
+        """The one action that has to work when nothing else does."""
+        action = actions(window)[SAVE_TEXT]
+        assert action.isEnabled()
+        window.log_answer = tmp_path / "menu.csv"
+        action.trigger()
+        assert window.log_answer.is_file()
+
+    def test_cancelling_writes_nothing(self, window: DrivenWindow, logs: Path, tmp_path: Path) -> None:
+        window.log_answer = None
+        window.log_view.save_button.click()
+        assert not list(tmp_path.glob("*.csv"))
+
+    def test_a_folder_that_cannot_be_written_says_so(
+        self, window: DrivenWindow, logs: Path, tmp_path: Path
+    ) -> None:
+        window.log_answer = tmp_path / "missing" / "out.csv"
+        window.log_view.save_button.click()
+        assert [title for title, _ in window.problems] == ["Logs not saved"]
 
 
 def stub_scanner(window: DrivenWindow, busy: bool = False) -> list[list[tuple[Path, str]]]:

@@ -360,3 +360,8 @@ Treat it as a working session with the editor rather than a delivery.
   name is left for it, the row names the output, and Reset then Run writes it at the same
   version. (4) Kill one `ProIngest` worker in Activity Monitor during a run: the run finishes,
   the lost jobs are rendered again, and nothing that had landed is lost.
+- [ ] **Save Logs as CSV (2026-09-23).** On the Mac: Log tab, Save Logs as CSV..., save to the
+  Desktop. The dialog is the macOS one, the file opens in Numbers or Excel with one record per row
+  (an ffmpeg command line whole in one cell), the ABOUT rows name 0.5.3 and the bundled ffmpeg, and
+  the records reach back to the oldest dated file in `~/Library/Logs/ProIngest`. The File menu item
+  does the same with no batch open.

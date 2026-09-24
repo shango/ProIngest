@@ -22,7 +22,9 @@ collaborator is allowed to ask for. `batch`, `batch_open`, `settings`, `show_res
 from __future__ import annotations
 
 import logging
+import platform
 from base64 import b64decode, b64encode
+from datetime import datetime
 from pathlib import Path
 
 from PySide6.QtCore import QByteArray, Qt, QUrl
@@ -44,7 +46,7 @@ from PySide6.QtWidgets import (
 )
 
 from proingest import __version__
-from proingest.core import batchfile, qc, scan
+from proingest.core import batchfile, exports, logsetup, qc, scan
 from proingest.core import settings as core_settings
 from proingest.core.models import (
     DEFAULT_BATCH_NAME,
@@ -53,12 +55,12 @@ from proingest.core.models import (
     ShotRow,
     Turnover,
 )
-from proingest.ui import metadata, settings_form, toolbar_help
+from proingest.ui import metadata, paths, settings_form, toolbar_help
 from proingest.ui.autosave import AutoSaver
 from proingest.ui.batch_bar import BatchBar
 from proingest.ui.deliverables import DeliverablesDock
 from proingest.ui.issues import IssuesDock
-from proingest.ui.log_view import LogView
+from proingest.ui.log_view import SAVE_TEXT, LogView
 from proingest.ui.metadata_pane import MetadataPane
 from proingest.ui.run_controller import RunController
 from proingest.ui.run_strip import RunStrip
@@ -84,6 +86,8 @@ Issues dock beside it, because a timeline that produced no rows always said why 
 ISSUES_LINK = "See the Issues dock"
 
 BATCH_FILTER = "ProIngest batch (*.pibatch)"
+
+LOG_FILTER = "CSV file (*.csv)"
 
 BOTTOM_TABS = ("Issues", "Log", "Deliverables")
 
@@ -194,6 +198,10 @@ class MainWindow(QMainWindow):
         self.action_about.setMenuRole(QAction.MenuRole.AboutRole)
         self.action_about.setEnabled(False)
 
+        # Enabled from the start: the one action that has to work when nothing else does.
+        self.action_save_logs = QAction(SAVE_TEXT, self)
+        self.action_save_logs.triggered.connect(self.save_logs)
+
         self.action_quit = QAction("Quit", self)
         self.action_quit.setShortcut(QKeySequence.StandardKey.Quit)
         self.action_quit.setMenuRole(QAction.MenuRole.QuitRole)
@@ -231,6 +239,8 @@ class MainWindow(QMainWindow):
         file_menu.addAction(self.action_save)
         file_menu.addSeparator()
         file_menu.addAction(self.action_export)
+        file_menu.addSeparator()
+        file_menu.addAction(self.action_save_logs)
 
         batch_menu = menus.addMenu("Batch")
         batch_menu.addAction(self.action_add_turnover)
@@ -823,6 +833,12 @@ class MainWindow(QMainWindow):
         chosen = QFileDialog.getExistingDirectory(self, title, self._start_folder(start))
         return self._remember(Path(chosen)) if chosen else None
 
+    def ask_log_path(self, suggested: str) -> Path | None:
+        """Where the diagnostics CSV goes."""
+        start = Path(self._start_folder(None)) / suggested
+        chosen, _filter = QFileDialog.getSaveFileName(self, "Save Logs", str(start), LOG_FILTER)
+        return Path(chosen) if chosen else None
+
     def ask_unsaved(self) -> QMessageBox.StandardButton:
         """Save, Discard or Cancel, for edits that could not be written."""
         return QMessageBox.warning(
@@ -838,6 +854,26 @@ class MainWindow(QMainWindow):
     def open_folder(self, folder: Path) -> None:
         """Show a folder in the Finder. Its own method so a test can answer it."""
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(folder)))
+
+    def save_logs(self) -> None:
+        """Every kept log file as one CSV, headed by which build and machine wrote it."""
+        suggested = f"ProIngest-logs-{datetime.now():%Y%m%d-%H%M}.csv"
+        destination = self.ask_log_path(suggested)
+        if destination is None:
+            return
+        about = [
+            ("ProIngest", __version__),
+            ("Platform", platform.platform()),
+            ("Python", platform.python_version()),
+            ("ffmpeg", exports.ffmpeg_version()),
+            ("Batch", str(self.batch_path) if self.batch_path else "unsaved"),
+        ]
+        try:
+            count = logsetup.export_csv(paths.log_dir(), destination, about)
+        except OSError as exc:
+            self.report_problem("Logs not saved", f"{destination} could not be written: {exc}")
+            return
+        self.statusBar().showMessage(f"Saved {count} log lines to {destination.name}")
 
     def report_problem(self, title: str, text: str) -> None:
         """Something the editor has to know about and can do something about."""
@@ -950,6 +986,7 @@ class MainWindow(QMainWindow):
         self.issues = IssuesDock(tabs)
         self.issues.row_activated.connect(self.shot_list.select_row)
         self.log_view = LogView(tabs)
+        self.log_view.save_requested.connect(self.save_logs)
         self.deliverables = DeliverablesDock(tabs)
         self.deliverables.path_activated.connect(self.open_folder)
         built = {"Issues": self.issues, "Log": self.log_view, "Deliverables": self.deliverables}

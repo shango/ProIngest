@@ -8,7 +8,7 @@ commit.
 
 ## 1. Resume here
 
-**State at 2026-09-23, version 0.5.2. The review of 2026-09-23 is worked through: chunks A to
+**State at 2026-09-23, version 0.5.3. The review of 2026-09-23 is worked through: chunks A to
 H of `docs/REVIEW_2026-09-23.md` section 5 are all built**, each in its own commit with the entry
 below. The real turnover, `Turnover199`, scans with no must-fix and renders every deliverable.
 What is left is the Mac: `docs/MAC_SESSION.md`, "The 0.5.0 build, in order", starting with the
@@ -16,6 +16,16 @@ acceptance test on the editor's machine. The branch `color/cdl-in-acescct` is pu
 0.5.0 release; CI builds `ProIngest-0.5.0.dmg` on PR #12 (the workflow runs on pull requests, not
 on a branch push). The entries below are newest first; anything
 older than 2026-09-22 describes the tool before the review and is history.
+
+**2026-09-23, 0.5.3: Save Logs as CSV.** The user asked for a button that dumps the logs to a
+CSV to send for diagnostics. `logsetup.export_csv` reads every kept file in the log folder, oldest
+first, parses `FILE_FORMAT` back into Time, Level, Source, Message, File (a traceback stays in its
+record), and heads it with ABOUT rows: version, platform, Python, ffmpeg, batch. A button at the
+right of the Log tab's filter bar and a File menu item, always enabled, ask where and call it.
+**Verified**: core tests including one written through the real handler, window tests for the
+button, the menu with no batch, cancel and an unwritable folder, an offscreen screenshot, and the
+suite (1642). UI_SPEC 6.1, PRD FR-13, a MAC_SESSION line. Version 0.5.3, which also ships the
+Turnover121 fixes below.
 
 **2026-09-23, Turnover121: two false positives.** A second official turnover (iPhone, Apple
 Log, H.264; untracked in the repo root) scanned with 23 errors. Two causes were the tool's:

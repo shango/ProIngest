@@ -140,6 +140,7 @@ Sections: General (delivery root default, path map, concurrency, GPU), Rules (mi
 
 FR-13 Logging
 - Rotating log file in the app data folder. Every ffmpeg command line logged. In-app log panel with filter by row.
+- **Save Logs as CSV** (2026-09-23): every kept log file as one CSV, headed by the build and machine, for the editor to send for diagnostics (UI_SPEC section 6.1).
 
 FR-14 Metadata pane
 - A read-only pane to the right of the shot list. Selecting a row shows everything known about that clip: identity, source media, frame rate, ranges, colour, audio, turnover, and a QC summary. Full field list and behaviour in `docs/UI_SPEC.md` section 12.
