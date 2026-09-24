@@ -8,14 +8,13 @@ commit.
 
 ## 1. Resume here
 
-**State at 2026-09-23, version 0.5.4. The review of 2026-09-23 is worked through: chunks A to
-H of `docs/REVIEW_2026-09-23.md` section 5 are all built**, each in its own commit with the entry
-below. The real turnover, `Turnover199`, scans with no must-fix and renders every deliverable.
-What is left is the Mac: `docs/MAC_SESSION.md`, "The 0.5.0 build, in order", starting with the
-acceptance test on the editor's machine. The branch `color/cdl-in-acescct` is pushed for the
-0.5.0 release; CI builds `ProIngest-0.5.0.dmg` on PR #12 (the workflow runs on pull requests, not
-on a branch push). The entries below are newest first; anything
-older than 2026-09-22 describes the tool before the review and is history.
+**State at 2026-09-24, version 0.5.4, on `main`** (PR #16 merged as `262817e`; the dmg is the
+`ProIngest-macos-arm64` artifact of CI run 35944322464). The 2026-09-23 review is built (chunks A
+to H of `docs/REVIEW_2026-09-23.md`), and so are the fixes that a second official turnover,
+Turnover121, called for (`docs/SAMPLE_TURNOVER_121.md`). Both real turnovers scan with no
+must-fix and render. What is left is the Mac: `docs/MAC_SESSION.md`, from "The 0.5.0 build, in
+order" down, and Ben's 4.886 slope. Entries are newest first; anything older than 2026-09-22
+describes the tool before the review and is history.
 
 **2026-09-23, 0.5.4: Turnover121 scans clean.** Built from the user's answers on the second
 official turnover (`docs/SAMPLE_TURNOVER_121.md`). **The ALE names the EDL's events** when the
