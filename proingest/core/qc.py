@@ -226,6 +226,36 @@ def bit_depth(pixel_format: str) -> int:
     return value
 
 
+_CHROMA_BY_NAME: tuple[tuple[tuple[str, ...], str], ...] = (
+    (("444", "nv24", "nv42", "p41", "vuya", "vuyx", "ayuv", "xv30", "xv36"), "4:4:4"),
+    (("422", "nv16", "nv20", "p21", "y210", "y212"), "4:2:2"),
+    (("420", "nv12", "nv21", "p01"), "4:2:0"),
+    (("440",), "4:4:0"),
+    (("411",), "4:1:1"),
+    (("410",), "4:1:0"),
+)
+"""Planar YUV names spell the sampling out; the packed and semi-planar ones imply it."""
+
+
+def chroma(pixel_format: str) -> str:
+    """The chroma subsampling of an ffmpeg pixel format name, for the QC log.
+
+    RGB and float formats carry every channel at every pixel, which is 4:4:4, and a
+    grey format has no chroma at all. A name this does not recognise (a hardware
+    surface, raw Bayer) comes back empty rather than guessed at.
+    """
+    if _is_float_format(pixel_format) or pixel_format.startswith(
+        ("rgb", "bgr", "gbr", "argb", "abgr", "0rgb", "0bgr", "x2rgb", "x2bgr", "xyz")
+    ):
+        return "4:4:4"
+    if pixel_format.startswith(("gray", "ya", "mono")):
+        return "4:0:0"
+    for markers, sampling in _CHROMA_BY_NAME:
+        if any(marker in pixel_format for marker in markers):
+            return sampling
+    return ""
+
+
 def check_source_format(row: ShotRow) -> list[QCResult]:
     """QC-020 and QC-021: whether the source can carry a linear plate.
 

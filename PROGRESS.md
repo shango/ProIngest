@@ -8,13 +8,45 @@ commit.
 
 ## 1. Resume here
 
-**State at 2026-09-24, version 0.5.4, on `main`** (PR #16 merged as `262817e`; the dmg is the
-`ProIngest-macos-arm64` artifact of CI run 35944322464). The 2026-09-23 review is built (chunks A
+**State at 2026-09-24, version 0.5.5, on branch `qc/source-fidelity`** (0.5.4 is on `main`, PR
+#16 merged as `262817e`, dmg in CI run 35944322464). The 2026-09-23 review is built (chunks A
 to H of `docs/REVIEW_2026-09-23.md`), and so are the fixes that a second official turnover,
 Turnover121, called for (`docs/SAMPLE_TURNOVER_121.md`). Both real turnovers scan with no
 must-fix and render. What is left is the Mac: `docs/MAC_SESSION.md`, from "The 0.5.0 build, in
 order" down, and Ben's 4.886 slope. Entries are newest first; anything older than 2026-09-22
 describes the tool before the review and is history.
+
+**2026-09-24, 0.5.5: the QC log says what each source file is.** The user wants whoever checks a
+turnover, shooter to Ben, to see from the QC log whether the media is usable for VFX, and an 8 bit
+Rec.709 clip in particular; reported, never blocking. The Shots sheet has eight new columns after
+Source encoding: codec, pixel format, bit depth, chroma (`qc.chroma`, beside `qc.bit_depth`), and
+the file's primaries, transfer, matrix and range tags, `not stated` when the file states none.
+Nothing new is probed: `MediaInfo` already held all of it. **Verified**: tests for chroma and the
+columns; Turnover121's log reads `h264 yuv420p 8 4:2:0 bt709 bt709 bt709 tv` on all seven rows
+beside `Apple Log`, and Turnover199's Sony files read `h264 yuv422p10le 10 4:2:2`, three tags `not
+stated`, range `pc`. QC_RULES "QC log structure" and the quickstart. **Doc drift found, not
+fixed**: that QC_RULES line lists a **Grade** column the Shots sheet does not have.
+
+**2026-09-24, Turnover121 under investigation, nothing built.** A headless scan, run and QC of
+0.5.4 on Turnover121 wrote 22 deliverables (20 before the CSV correction, the two `sizeRef` stills
+being the difference), 0 failed; the freeze's references are 120 frames and silent. **The graded
+plates are white**: the EXRs' median is 142 to 298 linear, **some pixels are `inf`**, the HD
+references average luma 205 to 219 of 255, while the ungraded stills (median 0.013) look like
+plausible dark Apple Log. The user says Resolve shows no white frames and that the project is
+ACEScct with the timeline "using gamma 2.2". Slope 4.886 in ACEScct takes 0.18 linear to 5.4e7, so
+Resolve's picture is not this CDL alone; unexplained. **Found**: every Turnover121 `.mov` was
+written by `DaVinci Resolve Studio` (the `encoder` tag), 8 bit 4:2:0 H.264, labelled BT.709 in both
+the H.264 VUI and the `colr` box, while the CSV says Apple Log; nothing else in the turnover names
+709 or 2020. So the files were rendered, and whether that render converted the pixels or only
+labelled them is unknown. Turnover199 also carries Resolve's encoder tag (Copy with trim) but is 10
+bit 4:2:2 with no colour tags, so the encoder tag cannot tell a copy from a render. **Waiting on**:
+one camera original to compare, and the Deliver settings that made the files. **Deferred by the
+user**: a QC rule for a log encoding in a file labelled with a display curve. **Asked, not
+answered**: the user wants a log of the whole session with every file written and its full path;
+three questions put (one file per session and Save Logs exporting it; whether "output" includes
+ffmpeg's console; logging at Info). Currently only ffmpeg commands and `wrote <deliverable>` are
+logged, a plate being its folder; scans, batch saves, run start and summary and the two reports
+are not logged at all.
 
 **2026-09-23, 0.5.4: Turnover121 scans clean.** Built from the user's answers on the second
 official turnover (`docs/SAMPLE_TURNOVER_121.md`). **The ALE names the EDL's events** when the

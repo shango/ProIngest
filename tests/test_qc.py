@@ -268,6 +268,30 @@ class TestSourceFormat:
     def test_bit_depth_reads_ffmpeg_names(self, pixel_format: str, depth: int) -> None:
         assert qc.bit_depth(pixel_format) == depth
 
+    @pytest.mark.parametrize(
+        ("pixel_format", "sampling"),
+        [
+            ("yuv420p", "4:2:0"),
+            ("yuvj420p", "4:2:0"),
+            ("yuv422p10le", "4:2:2"),
+            ("yuv444p12le", "4:4:4"),
+            ("yuva444p10le", "4:4:4"),
+            ("gbrpf32le", "4:4:4"),
+            ("rgb48le", "4:4:4"),
+            ("gray16le", "4:0:0"),
+            # Packed and semi-planar names imply the sampling rather than spelling it.
+            ("nv12", "4:2:0"),
+            ("p010le", "4:2:0"),
+            ("uyvy422", "4:2:2"),
+            ("y210le", "4:2:2"),
+            # Nothing to read: empty, not a guess.
+            ("videotoolbox_vld", ""),
+            ("bayer_rggb16le", ""),
+        ],
+    )
+    def test_chroma_reads_ffmpeg_names(self, pixel_format: str, sampling: str) -> None:
+        assert qc.chroma(pixel_format) == sampling
+
 
 class TestColorTags:
     """QC-018, info: what matrix a container is decoded with, when it is not a plain BT.709."""

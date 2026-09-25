@@ -179,6 +179,58 @@ class TestQcLogSheets:
         header, values = sheet_rows(log, "Shots")
         assert not dict(zip(header, values, strict=True))["Source encoding"]
 
+    def source_columns(self, path: Path) -> dict[str, object]:
+        """The eight columns describing the file; Source encoding is the metadata's, not the file's."""
+        header, values = sheet_rows(path, "Shots")
+        described = zip(header, values, strict=True)
+        return {
+            str(key): value
+            for key, value in described
+            if str(key).startswith("Source ") and key != "Source encoding"
+        }
+
+    def test_the_shots_sheet_says_what_the_source_file_is(self, log: Path) -> None:
+        """User, 2026-09-24: whoever checks a turnover sees whether it is usable for VFX.
+        A tag the file does not state says so, rather than leaving a blank to wonder at."""
+        assert self.source_columns(log) == {
+            "Source codec": "prores",
+            "Source pixel format": "yuv444p12le",
+            "Source bit depth": 12,
+            "Source chroma": "4:4:4",
+            "Source primaries": "not stated",
+            "Source transfer": "not stated",
+            "Source matrix": "not stated",
+            "Source range": "not stated",
+        }
+
+    def test_an_eight_bit_rec709_clip_is_visible_in_the_sheet(self, tmp_path: Path) -> None:
+        """Turnover121's media: Resolve's 8 bit 4:2:0 H.264, labelled BT.709. Reported,
+        never blocked; QC-020 is the rule that warns."""
+        clip = row()
+        assert clip.media is not None
+        clip.media.codec, clip.media.pixel_format = "h264", "yuv420p"
+        clip.media.color_primaries = clip.media.color_transfer = clip.media.color_space = "bt709"
+        clip.media.color_range = "tv"
+        path = tmp_path / "log.xlsx"
+        exports.write_qc_log(Batch(name="b", rows=[clip]), path)
+        assert self.source_columns(path) == {
+            "Source codec": "h264",
+            "Source pixel format": "yuv420p",
+            "Source bit depth": 8,
+            "Source chroma": "4:2:0",
+            "Source primaries": "bt709",
+            "Source transfer": "bt709",
+            "Source matrix": "bt709",
+            "Source range": "tv",
+        }
+
+    def test_a_row_with_no_media_leaves_the_source_columns_empty(self, tmp_path: Path) -> None:
+        missing = row()
+        missing.media = None
+        path = tmp_path / "log.xlsx"
+        exports.write_qc_log(Batch(name="b", rows=[missing]), path)
+        assert not any(self.source_columns(path).values())
+
     def test_one_deliverables_row_each(self, log: Path) -> None:
         assert len(sheet_rows(log, "Deliverables")) == 8
 

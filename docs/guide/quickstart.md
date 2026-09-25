@@ -100,7 +100,10 @@ And under `<show>/_reports/`, two spreadsheets, each named for the batch and the
 written. `shot_tracker_...xlsx` is rows to paste into the production's own tracker, and it fills
 only the columns that are the tool's to fill - the thirty the vendor's team maintains are not
 touched. `qc_ingest_log_...xlsx` is the full report: every shot, every delivered file, and a
-column per check reading pass, fail or NA.
+column per check reading pass, fail or NA. Its Shots sheet also says what each source file is -
+codec, bit depth, chroma, and the colour labels the file carries - so an 8 bit 4:2:0 clip, or one
+labelled Rec.709 when its metadata says camera log, is visible before anyone opens it. **Export**
+writes it straight after a scan, before anything is rendered.
 
 Every deliverable is checked before it takes its final name. One that fails is deleted and its
 shot is marked failed, naming the file and the check, in the Issues tab; fix the cause,

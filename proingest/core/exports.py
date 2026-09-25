@@ -32,7 +32,7 @@ from openpyxl.worksheet.worksheet import Worksheet
 
 from proingest import __version__
 from proingest.core import ffmpeg, frames, naming, qc
-from proingest.core.models import Batch, Deliverable, QCResult, ShotRow
+from proingest.core.models import Batch, Deliverable, MediaInfo, QCResult, ShotRow
 
 DATE_STAMP = "%Y%m%d"
 """NAMING_SPEC section 5 writes `<date>` in the report names and does not say what it
@@ -116,6 +116,8 @@ SHOTS_HEADERS = (
     "Delivered In", "Delivered Out", "Delivered In TC", "Delivered Out TC",
     "Final In", "Final Out", "Duration", "Max available", "Audio", "Edited",
     "Source encoding",
+    "Source codec", "Source pixel format", "Source bit depth", "Source chroma",
+    "Source primaries", "Source transfer", "Source matrix", "Source range",
     "Skip reason", "Notes", "Warnings", "Errors",
 )  # fmt: skip
 """The QC log's own columns, QC_RULES "QC log structure".
@@ -126,7 +128,16 @@ clip's metadata named, verbatim**,
 rather than the colour space that resolved to: this column is read when QC-046 or
 QC-047 fires, and what has to be corrected is the string somebody typed. Empty means
 the clip named none. Where the name came from is in the delivered EXR header rather
-than here (`exr.SOURCE_ENCODING_ORIGIN_ATTRIBUTE`)."""
+than here (`exr.SOURCE_ENCODING_ORIGIN_ATTRIBUTE`).
+
+The eight **Source** columns after it are the file as ffprobe read it, so whoever
+checks a turnover can see whether the media is usable for VFX without opening it: an
+8 bit 4:2:0 clip labelled BT.709 beside a log encoding is visible here at a glance
+(user, 2026-09-24). They report and never block; QC-020 is the rule that warns. A
+colour tag the file does not state reads `not stated`, so an absent label is told apart
+from a row with no media, whose cells are empty."""
+
+NOT_STATED = "not stated"
 
 DELIVERABLE_HEADERS = (
     "Shot code", "Elem", "Kind", "Res", "Version", "Path", "Frames", "Size", "Checksum",
@@ -213,12 +224,27 @@ def _write_shots(book: Workbook, batch: Batch) -> None:
                 str(row.audio_path) if row.audio_path else "",
                 "yes" if row.was_edited else "",
                 row.source_encoding or "",
+                *_source_fidelity(media),
                 row.skip_reason or "",
                 row.notes,
                 _rule_ids(row.qc, "warning"),
                 _rule_ids(row.qc, "error"),
             ],
         )
+
+
+def _source_fidelity(media: MediaInfo | None) -> list[object]:
+    """The eight Source columns: codec, pixel format, bit depth, chroma, then the tags."""
+    if media is None:
+        return [""] * 8
+    tags = (media.color_primaries, media.color_transfer, media.color_space, media.color_range)
+    return [
+        media.codec,
+        media.pixel_format,
+        qc.bit_depth(media.pixel_format),
+        qc.chroma(media.pixel_format),
+        *(tag or NOT_STATED for tag in tags),
+    ]
 
 
 def _write_deliverables(book: Workbook, batch: Batch) -> None:
