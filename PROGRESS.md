@@ -16,6 +16,13 @@ must-fix and render. What is left is the Mac: `docs/MAC_SESSION.md`, from "The 0
 order" down, and Ben's 4.886 slope. Entries are newest first; anything older than 2026-09-22
 describes the tool before the review and is history.
 
+**2026-09-25, QC-020, QC-033 and QC-034 are must-fix (user).** An 8 bit or 4:2:0 source, and a cut
+shorter or longer than the Settings limits, now block the run like any error, until the row is
+fixed (trimmed, media replaced, limits moved) or skipped. QC-020 reverses the user's warning of
+2026-09-19; **every Turnover121 file is 8 bit 4:2:0, so that turnover no longer runs**, and its
+264 frame `pl02` is QC-034 too. Freezes and reference stills are still not asked about duration.
+**Verified**: the rule tests now assert error, and the suite. QC_RULES, COLOR_AND_FORMAT section 2.
+
 **2026-09-25, the delivery root defaults to one folder up from the turnover.** There was no
 default: Run's chooser opened on the last folder browsed to, the turnover just added, so accepting
 it delivered inside the turnover. Adding a turnover to a batch with no delivery root now sets it to

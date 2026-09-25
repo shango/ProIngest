@@ -260,9 +260,9 @@ def check_source_format(row: ShotRow) -> list[QCResult]:
     """QC-020 and QC-021: whether the source can carry a linear plate.
 
     COLOR_AND_FORMAT section 2 is the list. Float formats and EXR are what the
-    pipeline wants; an integer or chroma-subsampled container still decodes, so it is
-    a warning about precision rather than a refusal; 8 bit or 4:2:0 cannot be a
-    legitimate linear plate at all.
+    pipeline wants; an integer container still decodes, so it is a warning about
+    precision rather than a refusal; 8 bit or 4:2:0 cannot be a legitimate linear plate
+    at all, and is must-fix (user, 2026-09-25, reversing the warning of 2026-09-19).
     """
     if row.media is None:
         return []
@@ -274,7 +274,7 @@ def check_source_format(row: ShotRow) -> list[QCResult]:
         return [
             QCResult(
                 "QC-020",
-                "warning",
+                "error",
                 "row",
                 f"{row.media.path.name} is {pixel_format} ({depth} bit); 8 bit and 4:2:0 "
                 f"sources cannot carry a linear plate",
@@ -439,7 +439,10 @@ def check_handles(row: ShotRow, settings: RuleSettings) -> list[QCResult]:
 
 
 def check_duration(row: ShotRow, settings: RuleSettings) -> list[QCResult]:
-    """QC-033 and QC-034: a cut outside the expected shot length."""
+    """QC-033 and QC-034: a cut outside the expected shot length, must-fix (user, 2026-09-25).
+
+    Fixed by trimming the row inside the limits, or by moving the limits in Settings.
+    """
     if row.current is None or not is_picture_row(row):
         return []
     duration = row.current.duration
@@ -447,7 +450,7 @@ def check_duration(row: ShotRow, settings: RuleSettings) -> list[QCResult]:
         return [
             QCResult(
                 "QC-033",
-                "warning",
+                "error",
                 "row",
                 f"{duration} frames is below the {settings.min_duration_frames} frame minimum",
             )
@@ -456,7 +459,7 @@ def check_duration(row: ShotRow, settings: RuleSettings) -> list[QCResult]:
         return [
             QCResult(
                 "QC-034",
-                "warning",
+                "error",
                 "row",
                 f"{duration} frames is above the {settings.max_duration_frames} frame maximum",
             )

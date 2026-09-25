@@ -235,7 +235,7 @@ class TestSourceFormat:
         """8 bit throws away shadow detail and 4:2:0 throws away two thirds of the chroma."""
         results = qc.check_source_format(row(pixel_format=pixel_format))
         assert ids(results) == ["QC-020"]
-        assert results[0].severity == "warning", "allowed with a warning since 2026-09-19 (F21)"
+        assert results[0].severity == "error", "must-fix since 2026-09-25 (user)"
 
     @pytest.mark.parametrize("pixel_format", ["yuv422p10le", "yuv444p12le", "rgb48le", "gbrp10le"])
     def test_integer_containers_are_qc_021(self, pixel_format: str) -> None:
@@ -419,11 +419,12 @@ class TestDuration:
     def test_too_short_is_qc_033(self) -> None:
         results = qc.check_duration(row(current=InOut(1009, 1050)), qc.DEFAULT_SETTINGS)
         assert ids(results) == ["QC-033"]
-        assert results[0].severity == "warning"
+        assert results[0].severity == "error", "must-fix since 2026-09-25 (user)"
 
     def test_too_long_is_qc_034(self) -> None:
         results = qc.check_duration(row(current=InOut(1001, 1264)), qc.DEFAULT_SETTINGS)
         assert ids(results) == ["QC-034"]
+        assert results[0].severity == "error", "must-fix since 2026-09-25 (user)"
 
     def test_the_limits_are_settings(self) -> None:
         settings = qc.RuleSettings(min_duration_frames=1, max_duration_frames=10_000)

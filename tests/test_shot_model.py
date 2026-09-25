@@ -623,7 +623,8 @@ class TestCommittingAnEdit:
         """QC-031 says it about the row. Refusing the keystroke would stop an editor who
         is typing Out before In on the way to a range that is fine."""
         assert self.commit(model, OUT, "900")
-        assert [result.rule_id for result in model.batch.rows[0].errors()] == ["QC-031"]
+        # The same range is also too long, which is must-fix since 2026-09-25 (QC-034).
+        assert [result.rule_id for result in model.batch.rows[0].errors()] == ["QC-031", "QC-034"]
 
     def test_a_range_before_the_media_s_timecode_still_renders(self, model: ShotListModel) -> None:
         """The stored value can sit before the media's own timecode; the cell that shows

@@ -133,7 +133,7 @@ than here (`exr.SOURCE_ENCODING_ORIGIN_ATTRIBUTE`).
 The eight **Source** columns after it are the file as ffprobe read it, so whoever
 checks a turnover can see whether the media is usable for VFX without opening it: an
 8 bit 4:2:0 clip labelled BT.709 beside a log encoding is visible here at a glance
-(user, 2026-09-24). They report and never block; QC-020 is the rule that warns. A
+(user, 2026-09-24). They report and never block; QC-020 is the rule that refuses. A
 colour tag the file does not state reads `not stated`, so an absent label is told apart
 from a row with no media, whose cells are empty."""
 
