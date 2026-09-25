@@ -16,6 +16,13 @@ must-fix and render. What is left is the Mac: `docs/MAC_SESSION.md`, from "The 0
 order" down, and Ben's 4.886 slope. Entries are newest first; anything older than 2026-09-22
 describes the tool before the review and is history.
 
+**2026-09-25, a new shot code re-runs the shot (user).** The Shot column was already editable
+(`shot_code_override`, QC-036), but a delivered shot stayed complete under a new code and Run
+rendered nothing (QC-061). `ShotListModel._set_shot_code` now marks a row that has deliverables
+for the next Run, like Re-scan. **Verified headless**: a delivered `MELT0001_pl01` recoded to
+`MELT0042` plans `MELT0042_pl01` at v01, all five deliverables; model tests, the suite. UI_SPEC
+section 2. **Not changed, asked**: a trim on a delivered shot does not put it back either.
+
 **2026-09-25, the stringout comes back (OQ-38 reopened), not built yet.** The user: Ben renders
 one in Resolve and the tool renders one with ffmpeg. Decisions are in OQ-38: the final EDL's
 ranges, an ungraded slate for an event with no reference mp4, the Resolve overlay's layout with

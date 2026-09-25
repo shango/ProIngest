@@ -588,6 +588,18 @@ class TestCommittingAnEdit:
         assert model.batch.rows[0].shot_code_override == "MELT0009"
         assert text(model, 0, SHOT) == "MELT0009"
 
+    def test_a_new_shot_code_puts_a_delivered_shot_back_for_the_next_run(self, qt_app: QApplication) -> None:
+        """User, 2026-09-25: re-run under a different code without a separate Re-scan."""
+        built = ShotListModel()
+        built.set_batch(batch(delivered(row())))
+        assert self.commit(built, SHOT, "MELT0042")
+        assert built.batch.rows[0].rerun
+        assert text(built, 0, PROGRESS) == ""
+
+    def test_a_new_shot_code_on_a_shot_never_run_marks_nothing(self, model: ShotListModel) -> None:
+        assert self.commit(model, SHOT, "MELT0042")
+        assert not model.batch.rows[0].rerun
+
     def test_emptying_the_shot_code_puts_the_parsed_one_back(self, model: ShotListModel) -> None:
         """Withdrawing a correction means the original stands, not that the row is nameless."""
         self.commit(model, SHOT, "MELT0009")

@@ -68,7 +68,7 @@ What M5.11 settled, beyond the wording:
 
 ## 2. Shot list columns
 
-Frozen left: status dot, Shot Code (editable), Elem.
+Frozen left: status dot, Shot Code (editable), Elem. **A new shot code on a delivered shot puts it back for the next Run**, as Re-scan does (user, 2026-09-25): the files on disk carry the old code, so the Run writes the shot under the new one, at v01 in a shot folder that has none.
 Scrolling: Source file, Res, FPS, In (editable), Out (editable), Duration, Max Avail, Audio (icon: none / one / many), Version, Progress, Notes (editable, free text; kept in the batch and the QC log. The studio tracker has no Notes column, 2026-09-23).
 
 - **The In/Out display toggle in the batch bar has three states, not two: `Frames`, `Source TC`, `Record TC`.** It sets what the In and Out cells show as their primary value for the whole list, and it sets how a typed timecode is interpreted (source or record) when either TC state is selected.

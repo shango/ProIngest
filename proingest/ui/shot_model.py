@@ -743,11 +743,17 @@ class ShotListModel(QAbstractItemModel):
         Emptying it puts the parsed code back rather than leaving the row nameless: the
         override is a correction of what the CSV's `Shot` gave, and withdrawing a
         correction means the original stands.
+
+        A shot already delivered goes back for the next Run, as Re-scan puts it (user,
+        2026-09-25): the files on disk carry the old code, so the next Run writes the
+        shot under the new one, at whatever version that shot's folder allows.
         """
         override = text.strip() or None
         if override == row.shot_code_override:
             return False
         row.shot_code_override = override
+        if row.deliverables:
+            row.rerun = True
         return True
 
     def _set_notes(self, row: ShotRow, text: str) -> bool:
