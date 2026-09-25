@@ -8,13 +8,32 @@ commit.
 
 ## 1. Resume here
 
-**State at 2026-09-24, version 0.5.5, on branch `qc/source-fidelity`** (0.5.4 is on `main`, PR
+**State at 2026-09-25, version 0.5.5, on branch `qc/source-fidelity`** (0.5.4 is on `main`, PR
 #16 merged as `262817e`, dmg in CI run 35944322464). The 2026-09-23 review is built (chunks A
 to H of `docs/REVIEW_2026-09-23.md`), and so are the fixes that a second official turnover,
 Turnover121, called for (`docs/SAMPLE_TURNOVER_121.md`). Both real turnovers scan with no
 must-fix and render. What is left is the Mac: `docs/MAC_SESSION.md`, from "The 0.5.0 build, in
 order" down, and Ben's 4.886 slope. Entries are newest first; anything older than 2026-09-22
 describes the tool before the review and is history.
+
+**2026-09-25, three threads opened, nothing built.** **AMF (OQ-71, reopened by the user): Ben will
+export a per-clip AMF from his grading session.** Read by hand first, against what the tool assumes
+per clip (input transform, the CDL's working space, any other look), to explain the white Turnover121
+plates; whether it then replaces the CSV's colour fields or cross-checks them is decided after.
+**Tracker hyperlinks (asked, not answered)**: the user wants the tracker's Publish Folder and Plate
+Video cells linked to the items in Google Drive. Design agreed with the user: the run stops writing
+the tracker; an Export Tracker button, while the batch is open, first checks every linked item has
+synced (progress bar, then a green success and the save dialog, or an orange "not yet synced"). The
+link is built from the item's Drive ID. **Waiting on**: `xattr -l` on the Mac for a just-written mp4,
+a long-synced mp4 and its folder, beside their "Copy link to clipboard" links (the current Drive for
+desktop attribute name is unverified; `user.drive.id` is the 2019 File Stream one), and whether a
+hyperlink survives a paste into the studio's sheet. **Resolve reference EXR (asked, not answered)**:
+the user supplied `SECA0003_pl01_colorChart_01_raw_4k_v01.exr` (untracked, repo root) as what the
+tool's EXR should look like. It matches on size, half, DWAA, scanline, windows and `timeCode`;
+differs in a burned-in stringout overlay, pixels that are not scene linear (0 to 1.03, median 0.47,
+no `chromaticities`), Blackmagic Camera metadata in the header including GPS, and its name (the spec
+says `SECA0003_colorChart_01_4k_v01.exr`). Its clip, `A001_09231741_C007`, is not in any turnover
+here. `docs/QC_RULES_SUMMARY.csv` (untracked) was made for the user: severity and blocking per rule.
 
 **2026-09-24, 0.5.5: the QC log says what each source file is.** The user wants whoever checks a
 turnover, shooter to Ben, to see from the QC log whether the media is usable for VFX, and an 8 bit
