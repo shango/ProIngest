@@ -1613,8 +1613,12 @@ OWNED_PHASE_B_BATCH_RULES = frozenset({"QC-151"})
 
 
 def check_row_complete(row: ShotRow) -> list[QCResult]:
-    """QC-150: every deliverable this row planned exists and passed its own checks."""
-    if not row.deliverables:
+    """QC-150: every deliverable this row planned exists and passed its own checks.
+
+    Silent on a row Re-scan put back for the next Run: what it planned last time is
+    being replaced, so it is not a delivery that fell short.
+    """
+    if not row.deliverables or row.rerun:
         return []
     unfinished = [item.name for item in row.deliverables if item.status != "done"]
     failed = [item.name for item in row.deliverables if any(result.severity == "error" for result in item.qc)]
@@ -1677,21 +1681,6 @@ def _identity_fault(parsed: naming.ParsedOutput | None, identity: naming.ShotIde
     elif parsed.elem != identity.elem:
         return f"reads as {parsed.elem}, but the row is {identity.elem}"
     return None
-
-
-def reset_row(row: ShotRow) -> bool:
-    """The editor fixed what failed: its outputs run again at the same version (D11).
-
-    Every failed deliverable goes back to planned with its results cleared, and QC-150
-    goes with them until the next run says again whether the row landed. False when the
-    row had nothing failed, so there was nothing to reset.
-    """
-    failed = [item for item in row.deliverables if item.status == "failed"]
-    for item in failed:
-        item.status = "planned"
-        item.qc = []
-    row.qc = [result for result in row.qc if result.rule_id != "QC-150"]
-    return bool(failed)
 
 
 def apply_phase_b(batch: Batch, show_pattern: str = naming.DEFAULT_SHOW_PATTERN) -> None:

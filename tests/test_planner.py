@@ -539,21 +539,20 @@ class TestTheNextRun:
         assert [job.destination for job in jobs] == [first]
 
     def test_a_failed_row_waits_for_reset(self, tmp_path: Path) -> None:
-        """D11: the editor fixes the cause first; the next Run does not retry blindly."""
+        """D11: the editor fixes the cause and Re-scans first; the next Run does not retry blindly."""
         batch = self.planned(tmp_path)
         self.land(batch, "done", "failed", "done", "done")
         assert planner.plan_batch(batch, tmp_path) == []
         assert batch.rows[0].deliverables[1].status == "failed"
 
-    def test_reset_runs_what_failed_at_the_same_version(self, tmp_path: Path) -> None:
-        from proingest.core import qc
-
+    def test_a_failed_row_re_scanned_runs_whole_at_the_next_version(self, tmp_path: Path) -> None:
+        """User, 2026-09-25: Re-scan puts it back, and what landed at v01 makes this v02."""
         batch = self.planned(tmp_path)
         self.land(batch, "done", "failed", "done", "done")
-        assert qc.reset_row(batch.rows[0])
+        batch.rows[0].rerun = True
         jobs = planner.plan_batch(batch, tmp_path)
-        assert [job.destination for job in jobs] == [batch.rows[0].deliverables[1].path]
-        assert jobs[0].version == 1
+        assert len(jobs) == 4
+        assert {job.version for job in jobs} == {2}
 
     def test_re_run_writes_the_next_version_and_is_consumed(self, tmp_path: Path) -> None:
         batch = self.planned(tmp_path)

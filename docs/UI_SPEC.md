@@ -429,17 +429,22 @@ editor drops the fixed EDL, CSV or clip into the folder and re-scans.
 - **A moved turnover says so on its header when the batch is opened** (QC-069, an error that
   holds it back), and New Folder Location re-scans it from where it went.
 
-## 15b. A shot's right-click (D11, D12)
+## 15b. Re-scan, on a shot or a turnover (D11, D12)
 
-- **Reset**, on a shot with a failed output: the editor has fixed the cause, and what failed
-  runs again at the same version on the next Run. Greyed when nothing failed.
-- **Re-run**, on a shot that has been planned: the next Run renders it again, whole, at the
-  next version. A complete shot is otherwise left alone (QC-061). **It also re-scans the
-  shot's turnover** (user, 2026-09-25): a shot is re-run because its footage or another file
-  was replaced, so the media is probed again and every rule re-runs, and a must-fix found
-  there stops the next Run like any other. The shot's progress bar and count empty and its
-  status stops reading as done the moment Re-run is chosen; the version shown stays the one on
-  disk until the Run writes the next.
+**One right-click entry, Re-scan, on a shot and on a turnover heading** (user, 2026-09-25). It
+replaced Reset and Re-run. The editor swaps a file in the folder with the batch still open, then
+Re-scans: a shot for a replaced clip, the heading for a replaced EDL or CSV.
+
+- It reads the turnover again, keeping the editor's trims, skips and notes (D8), so every rule
+  checks what is in the folder now. A new warning or must-fix shows on the row, and a must-fix
+  stops the next Run as any other does.
+- It puts the shot, or on a heading every shot in the turnover, back for the next Run: its
+  progress bar and count empty and it stops reading as done or failed at once. A shot that was
+  delivered before comes out at the next version, v02 after v01; one never run is simply
+  rendered by the next Run. Other shots keep their delivered state.
+- The toolbar's Scan reads every turnover again without putting any shot back.
+- A complete shot is otherwise left alone by Run (QC-061), and a shot with a failed output
+  waits for a Re-scan rather than being retried blindly.
 
 ## 15a. Locks (D15)
 

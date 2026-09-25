@@ -1260,6 +1260,15 @@ class TestRowComplete:
     def test_a_row_that_planned_nothing_is_not_incomplete(self) -> None:
         assert qc.check_row_complete(row()) == []
 
+    def test_a_row_re_scan_put_back_is_not_incomplete(self) -> None:
+        """Its failed output is being replaced by the next Run (user, 2026-09-25)."""
+        target = row()
+        item = delivered("MELT0001_pl01_audio_v01.wav", "audio")
+        item.status = "failed"
+        target.deliverables = [item]
+        target.rerun = True
+        assert qc.check_row_complete(target) == []
+
 
 class TestNamesReparse:
     def batch_with(self, *items: Deliverable) -> Batch:

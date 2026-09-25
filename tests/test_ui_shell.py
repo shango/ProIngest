@@ -13,7 +13,7 @@ from collections.abc import Callable, Iterator
 from pathlib import Path
 
 import pytest
-from PySide6.QtCore import QMimeData, QPoint, QPointF, Qt, QThread, QUrl
+from PySide6.QtCore import QMimeData, QModelIndex, QPoint, QPointF, Qt, QThread, QUrl
 from PySide6.QtGui import QAction, QDragEnterEvent, QDropEvent, QKeySequence
 from PySide6.QtWidgets import (
     QApplication,
@@ -53,7 +53,7 @@ from proingest.ui.run_controller import (
 from proingest.ui.run_strip import LINK_COLOR, RunStrip
 from proingest.ui.runner import RENDERING
 from proingest.ui.settings_dialog import SettingsDialog
-from proingest.ui.shot_list import RELOCATE_TEXT, RERUN_TEXT, RESET_TEXT
+from proingest.ui.shot_list import RELOCATE_TEXT, RESCAN_TEXT
 from proingest.ui.shot_model import IN, NOTES, SHOT, DisplayMode, RowState
 from tests.fixtures.batches import (
     batch,
@@ -860,32 +860,66 @@ class TestAddingAndScanningTurnovers:
 
         assert started == [[(tmp_path / "here", "t1")]]
 
-    def test_reset_puts_a_failed_output_back_for_the_next_run(self, window: DrivenWindow) -> None:
-        """D11: the editor fixed the cause; Reset is how the row runs again."""
-        failed = delivered(row(turnover_id="t1"), status="failed")
-        window.set_batch(batch(failed, turnovers=[Turnover("t1", Path("/s/t1"))]))
-        shot = window.shot_list.proxy.index(0, 0, window.shot_list.proxy.index(0, 0))
-        menu = window.shot_list.menu_for(shot)
-        assert menu is not None
-        reset = next(a for a in menu.actions() if a.text() == RESET_TEXT)
-        assert reset.isEnabled()
-        reset.trigger()
-        assert window.batch.rows[0].deliverables[0].status == "planned"
-        assert window.autosave.pending
+    def first_shot(self, window: DrivenWindow) -> QModelIndex:
+        return window.shot_list.proxy.index(0, 0, window.shot_list.proxy.index(0, 0))
 
-    def test_re_run_asks_for_the_next_version_and_rescans(self, window: DrivenWindow) -> None:
-        """D12: a complete shot is skipped by Run unless the editor asks for it. And its
-        turnover is read again (user, 2026-09-25): the footage may have been replaced."""
-        landed = delivered(row(turnover_id="t1"))
-        window.set_batch(batch(landed, turnovers=[Turnover("t1", Path("/s/t1"))]))
-        started = stub_scanner(window)
+    def rescan_entry(self, window: DrivenWindow, index: QModelIndex) -> QAction:
+        menu = window.shot_list.menu_for(index)
+        assert menu is not None
+        assert [a.text() for a in menu.actions() if a.text() == RESCAN_TEXT] == [RESCAN_TEXT]
+        return next(a for a in menu.actions() if a.text() == RESCAN_TEXT)
+
+    def test_a_shot_s_menu_is_re_scan_alone(self, window: DrivenWindow) -> None:
+        """User, 2026-09-25: one entry replaced Reset and Re-run."""
+        window.set_batch(batch(delivered(row(turnover_id="t1")), turnovers=[Turnover("t1", Path("/s/t1"))]))
         shot = window.shot_list.proxy.index(0, 0, window.shot_list.proxy.index(0, 0))
         menu = window.shot_list.menu_for(shot)
         assert menu is not None
-        actions_by_text = {a.text(): a for a in menu.actions()}
-        assert not actions_by_text[RESET_TEXT].isEnabled(), "nothing failed"
-        actions_by_text[RERUN_TEXT].trigger()
+        assert [a.text() for a in menu.actions()] == [RESCAN_TEXT]
+
+    @pytest.mark.parametrize("status", ["done", "failed"])
+    def test_re_scanning_a_shot_puts_it_back_for_the_next_run(
+        self, window: DrivenWindow, status: str
+    ) -> None:
+        """Delivered or failed, the shot is read again and runs again; its turnover is scanned."""
+        shot_row = delivered(row(turnover_id="t1"), status=status)
+        window.set_batch(batch(shot_row, turnovers=[Turnover("t1", Path("/s/t1"))]))
+        started = stub_scanner(window)
+        self.rescan_entry(
+            window, window.shot_list.proxy.index(0, 0, window.shot_list.proxy.index(0, 0))
+        ).trigger()
+
         assert window.batch.rows[0].rerun
+        assert window.autosave.pending
+        assert started == [[(Path("/s/t1"), "t1")]]
+
+    def test_re_scanning_a_shot_never_run_only_scans(self, window: DrivenWindow) -> None:
+        window.set_batch(batch(row(turnover_id="t1"), turnovers=[Turnover("t1", Path("/s/t1"))]))
+        started = stub_scanner(window)
+        self.rescan_entry(
+            window, window.shot_list.proxy.index(0, 0, window.shot_list.proxy.index(0, 0))
+        ).trigger()
+        assert not window.batch.rows[0].rerun
+        assert started == [[(Path("/s/t1"), "t1")]]
+
+    def test_re_scanning_a_heading_puts_back_every_shot_in_it_and_no_other(
+        self, window: DrivenWindow
+    ) -> None:
+        first = delivered(row("MELT0001_pl01", turnover_id="t1"))
+        second = delivered(row("MELT0002_pl01", turnover_id="t1"))
+        elsewhere = delivered(row("MELT0003_pl01", turnover_id="t2"))
+        window.set_batch(
+            batch(
+                first,
+                second,
+                elsewhere,
+                turnovers=[Turnover("t1", Path("/s/t1")), Turnover("t2", Path("/s/t2"))],
+            )
+        )
+        started = stub_scanner(window)
+        self.rescan_entry(window, window.shot_list.proxy.index(0, 0)).trigger()
+
+        assert [r.rerun for r in window.batch.rows] == [True, True, False]
         assert started == [[(Path("/s/t1"), "t1")]]
 
     def test_the_heading_menu_is_greyed_while_the_batch_is_locked(self, window: DrivenWindow) -> None:

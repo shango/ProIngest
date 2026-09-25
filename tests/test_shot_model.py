@@ -378,9 +378,10 @@ class TestRowState:
     def test_everything_written_is_done(self) -> None:
         assert row_state(delivered(row())) is RowState.DONE
 
-    def test_a_row_marked_for_re_run_is_no_longer_done(self) -> None:
+    @pytest.mark.parametrize("status", ["done", "failed"])
+    def test_a_row_re_scan_put_back_is_neither_done_nor_failed(self, status: str) -> None:
         """User, 2026-09-25: it must stop reading as finished once it is asked for again."""
-        again = delivered(row())
+        again = delivered(row(), status=status)
         again.rerun = True
         assert row_state(again) is RowState.OK
 

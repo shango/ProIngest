@@ -207,7 +207,8 @@ def row_state(row: ShotRow) -> RowState:
     """Which of section 3's states this row is in, by the precedence above."""
     if row.skipped:
         return RowState.SKIPPED
-    statuses = {item.status for item in row.deliverables}
+    # A row put back by Re-scan is judged afresh, not by what the last run left it as.
+    statuses = set() if row.rerun else {item.status for item in row.deliverables}
     if "rendering" in statuses:
         return RowState.RENDERING
     if "failed" in statuses:
@@ -285,7 +286,7 @@ def _item_fraction(item: Deliverable, run: RunProgress | None) -> float:
 def _progress(row: ShotRow, run: RunProgress | None = None) -> str:
     """Done out of planned, the job count section 7 asks for beside the bar.
 
-    Empty for a row marked for Re-run, like one never rendered, so it stops reading as
+    Empty for a row Re-scan put back for the next Run, like one never rendered, so it stops reading as
     finished the moment it is asked for again (user, 2026-09-25).
     """
     if not row.deliverables or row.rerun:
@@ -707,22 +708,19 @@ class ShotListModel(QAbstractItemModel):
             self._committed(row, index)
         return changed
 
-    def reset_row(self, index: ModelIndex) -> bool:
-        """Right-click Reset: the failed outputs run again at the same version (D11)."""
-        row = self.row_at(index)
-        if row is None or self._locked or not qc.reset_row(row):
-            return False
-        self._committed(row, index)
-        return True
+    def mark_for_rerun(self, rows: list[ShotRow]) -> None:
+        """Re-scan's other half: the next Run renders these rows again (user, 2026-09-25).
 
-    def rerun_row(self, index: ModelIndex) -> bool:
-        """Right-click Re-run: the next Run renders this row again at the next version (D12)."""
-        row = self.row_at(index)
-        if row is None or self._locked or row.rerun or not row.deliverables:
-            return False
-        row.rerun = True
-        self._committed(row, index)
-        return True
+        Only a row something was planned for is marked; one never run is rendered by the
+        next Run anyway, at v01. The planner consumes the mark and picks the version from
+        the delivery folder, so a shot delivered before comes out at the next one.
+        """
+        if self._locked:
+            return
+        for row in rows:
+            if row.deliverables and not row.rerun:
+                row.rerun = True
+                self._committed(row, self.index_for_row(row))
 
     def set_skipped(self, index: ModelIndex, skipped: bool, reason: str | None = None) -> bool:
         """Ctrl+K (section 4). The reason is asked for by the view, which owns the prompt.

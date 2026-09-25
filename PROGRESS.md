@@ -16,6 +16,18 @@ must-fix and render. What is left is the Mac: `docs/MAC_SESSION.md`, from "The 0
 order" down, and Ben's 4.886 slope. Entries are newest first; anything older than 2026-09-22
 describes the tool before the review and is history.
 
+**2026-09-25, later: one entry, Re-scan, replaces Reset and Re-run (user).** On a shot and on a
+turnover heading. It marks the shot, or every shot in the turnover, for the next Run
+(`ShotListModel.mark_for_rerun`, only a row something was planned for), then re-scans the
+turnover (`MainWindow._rescan_for_run`; a shot's Re-scan reads the whole turnover too, since a
+row is built from the EDL, CSV and media together and the probe cache makes unchanged clips
+free). A new warning or must-fix shows; otherwise the Run renders it whole at the next version
+the folder allows, so a delivered shot comes out at v02. A marked row is neither done nor failed
+(`row_state`) and QC-150 skips it. The toolbar's Scan marks nothing. `qc.reset_row` and the
+same-version retry of a failed output are gone. **Verified**: window, model, planner and QC
+tests, the suite. UI_SPEC 15b, QC_RULES 061 and phase B, MAC_SESSION chunk D. The entry below is
+what it replaced.
+
 **2026-09-25, Re-run re-scans, and stops looking finished (user).** Choosing Re-run on a shot now
 also re-scans its turnover (`ShotListView._rerun` emits `rescan_requested`), because a shot is
 re-run after its footage or another file was replaced: the probe cache is keyed on path, size

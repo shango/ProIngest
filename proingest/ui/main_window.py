@@ -308,7 +308,8 @@ class MainWindow(QMainWindow):
         """
         self.shot_model = ShotListModel(self)
         self.shot_list = ShotListView(self.shot_model, self)
-        self.shot_list.rescan_requested.connect(lambda turnover: self.rescan([turnover]))
+        self.shot_list.rescan_requested.connect(self.rescan_turnover)
+        self.shot_list.row_rescan_requested.connect(self.rescan_row)
         self.shot_list.relocate_requested.connect(self.relocate_turnover)
         self.autosave = AutoSaver(self)
         self.shot_model.row_edited.connect(lambda _row: self.autosave.schedule())
@@ -659,6 +660,31 @@ class MainWindow(QMainWindow):
                 list(self.batch.rows_for(turnover.turnover_id)),
             )
         self._scan([(turnover.folder, turnover.turnover_id) for turnover in turnovers])
+
+    def rescan_turnover(self, turnover: Turnover) -> None:
+        """A heading's Re-scan: every shot in it goes back for the next Run (user, 2026-09-25).
+
+        For a swapped EDL or CSV, which can move any shot in the turnover.
+        """
+        self._rescan_for_run(turnover, list(self.batch.rows_for(turnover.turnover_id)))
+
+    def rescan_row(self, row: ShotRow) -> None:
+        """A shot's Re-scan: that shot goes back for the next Run, for a swapped clip."""
+        turnover = next((t for t in self.batch.turnovers if t.turnover_id == row.turnover_id), None)
+        if turnover is not None:
+            self._rescan_for_run(turnover, [row])
+
+    def _rescan_for_run(self, turnover: Turnover, rows: list[ShotRow]) -> None:
+        """Mark the rows for the next Run, then read the whole turnover again.
+
+        The whole turnover, even for one shot: a row is built from the EDL, the CSV and
+        its media together, and the probe cache makes the unchanged clips free. Only the
+        rows asked for are marked; the others keep their delivered state (`carry_over`).
+        """
+        if not self._batch_open or self._busy():
+            return
+        self.shot_model.mark_for_rerun(rows)
+        self.rescan([turnover])
 
     def relocate_turnover(self, turnover: Turnover) -> None:
         """A turnover heading's New Folder Location: re-scan it from where it went (D16)."""

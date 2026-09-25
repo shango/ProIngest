@@ -673,8 +673,8 @@ def carry_over(old: Turnover, old_rows: list[ShotRow], new: Turnover, new_rows: 
     first row with the first and its second with the second. What carries over is the
     editor's: a trim, but only one the editor made, so an EDL that moved the cut is not
     overridden by the cut it replaced; the shot code correction, the skip and its reason,
-    the notes, the delivered state and a Re-run asked for, since Re-run is itself a
-    rescan (user, 2026-09-25). Everything else is the new scan's.
+    the notes, the delivered state, and the mark Re-scan puts on a row for the next Run,
+    since that mark is set just before this rescan (user, 2026-09-25). Everything else is the new scan's.
 
     A changed EDL or CSV is a warning on the turnover, QC-070: the edits carried over
     were made against the old one.

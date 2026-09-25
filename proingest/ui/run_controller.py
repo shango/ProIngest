@@ -41,7 +41,7 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 
-NOTHING_TO_RENDER = "Nothing to render: every shot is complete, skipped or waiting for a Reset"
+NOTHING_TO_RENDER = "Nothing to render: every shot is complete, skipped or waiting for a Re-scan"
 CLOSING_AFTER_RUN = "Stopping the run, then closing..."
 
 MUST_FIX_TITLE = "Fix these before running"

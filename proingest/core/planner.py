@@ -343,14 +343,14 @@ def plan_batch(
 
         state = _prior_state(row)
         if state == "failed":
-            # Waiting for the editor to fix the cause and Reset the row (D11). What landed
+            # Waiting for the editor to fix the cause and Re-scan the row (D11). What landed
             # stays recorded and QC-150 already names the output that did not.
             continue
         if state == "complete":
             _keep(row, _complete(row))
             continue
         if state == "pending":
-            # A stopped run, or a Reset: the rest of the row at the version it has (D11).
+            # A stopped run: the rest of the row at the version it has (D11).
             version = row.deliverables[0].version
             plan = plan_row(row, root, version, show_pattern, clf.shot_color(row))
             waiting = {item.path for item in row.deliverables if item.status not in LANDED}
@@ -389,10 +389,11 @@ PriorState = Literal["new", "complete", "pending", "failed"]
 def _prior_state(row: ShotRow) -> PriorState:
     """What the last run left this row as, which decides what the next one does (D11, D12).
 
-    **new**: nothing planned yet, or the editor asked for a Re-run: plan it whole at the
-    next version. **complete**: everything landed and is still there: skip it. **failed**:
-    a check failed: wait for the editor's Reset. **pending**: some of it never ran, from a
-    stopped run or a Reset: finish it at the same version.
+    **new**: nothing planned yet, or the editor Re-scanned it (user, 2026-09-25): plan it
+    whole at the next version the delivery folder allows. **complete**: everything landed
+    and is still there: skip it. **failed**: a check failed: wait for the editor's
+    Re-scan. **pending**: some of it never ran, from a stopped run: finish it at the same
+    version.
 
     One stat per landed deliverable, so a file deleted since is rendered again rather
     than reported as delivered.
@@ -418,7 +419,7 @@ def _complete(row: ShotRow) -> RowPlan:
                 "QC-061",
                 "info",
                 "row",
-                f"complete at v{version:02d}, so this run leaves it alone; right-click Re-run "
+                f"complete at v{version:02d}, so this run leaves it alone; right-click Re-scan "
                 f"to write v{version + 1:02d}",
             )
         ]

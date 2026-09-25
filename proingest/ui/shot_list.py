@@ -116,17 +116,13 @@ def show_parse(editor: QLineEdit, parsed: ParsedInput) -> None:
     editor.setToolTip("" if parsed.ok else parsed.error or "")
 
 
-RESET_TEXT = "Reset"
-"""A shot's right-click entry once its cause is fixed: what failed runs again, same version."""
-
-RERUN_TEXT = "Re-run"
-"""A shot's right-click entry: render it again at the next version, complete or not.
-
-It re-scans the row's turnover too (user, 2026-09-25), because a shot is re-run after
-its footage or another file was replaced, and the next Run must see the new one."""
-
 RESCAN_TEXT = "Re-scan"
-"""A turnover heading's right-click entry: read the folder again, keeping the edits (D8)."""
+"""The one right-click entry on a shot and on a turnover heading (user, 2026-09-25).
+
+It reads the files again, so a replaced clip, EDL or CSV is what every rule now checks,
+and puts the shot, or every shot in the turnover, back for the next Run: a new warning
+or must-fix shows on the row, and otherwise the Run renders it again, at the next
+version if it was delivered before. It replaced Reset and Re-run."""
 
 RELOCATE_TEXT = "New Folder Location..."
 """A turnover heading's right-click entry: reload it from where it moved to (D16)."""
@@ -347,6 +343,9 @@ class ShotListView(QTreeView):
     rescan_requested = Signal(object)
     """A `Turnover` whose heading was right-clicked for Re-scan (D8)."""
 
+    row_rescan_requested = Signal(object)
+    """A `ShotRow` right-clicked for Re-scan."""
+
     relocate_requested = Signal(object)
     """A `Turnover` whose heading was right-clicked for New Folder Location (D16)."""
     """`select_row` emptied the filter to reach a hidden row; the search box should follow."""
@@ -521,7 +520,7 @@ class ShotListView(QTreeView):
             return None
         row = self.shot_model.row_at(source)
         if row is not None:
-            return self._row_menu(source, row)
+            return self._row_menu(row)
         turnover = self.shot_model.turnover_at(source)
         if turnover is None:
             return None
@@ -532,26 +531,13 @@ class ShotListView(QTreeView):
             action.triggered.connect(lambda _checked=False, signal=signal: signal.emit(turnover))
         return menu
 
-    def _row_menu(self, source: QModelIndex, row: ShotRow) -> QMenu:
-        """A shot's entries: Reset what failed, or Re-run what is complete (D11, D12)."""
+    def _row_menu(self, row: ShotRow) -> QMenu:
+        """A shot's one entry, Re-scan (user, 2026-09-25)."""
         menu = QMenu(self)
-        locked = self.shot_model.locked
-        reset = menu.addAction(RESET_TEXT)
-        reset.setEnabled(not locked and any(item.status == "failed" for item in row.deliverables))
-        reset.triggered.connect(lambda: self.shot_model.reset_row(source))
-        rerun = menu.addAction(RERUN_TEXT)
-        rerun.setEnabled(not locked and bool(row.deliverables) and not row.rerun)
-        rerun.triggered.connect(lambda: self._rerun(source, row))
+        rescan = menu.addAction(RESCAN_TEXT)
+        rescan.setEnabled(not self.shot_model.locked)
+        rescan.triggered.connect(lambda: self.row_rescan_requested.emit(row))
         return menu
-
-    def _rerun(self, source: QModelIndex, row: ShotRow) -> None:
-        """Mark the row, then read its turnover again so the next Run checks what is there now."""
-        if not self.shot_model.rerun_row(source):
-            return
-        turnovers = self.shot_model.batch.turnovers
-        turnover = next((t for t in turnovers if t.turnover_id == row.turnover_id), None)
-        if turnover is not None:
-            self.rescan_requested.emit(turnover)
 
     def _show_menu(self, view: QTreeView, pos: QPoint) -> None:
         menu = self.menu_for(view.indexAt(pos))
