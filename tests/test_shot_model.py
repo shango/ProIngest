@@ -596,6 +596,17 @@ class TestCommittingAnEdit:
         assert built.batch.rows[0].rerun
         assert text(built, 0, PROGRESS) == ""
 
+    def test_a_trim_puts_a_delivered_shot_back_for_the_next_run(self, qt_app: QApplication) -> None:
+        """User, 2026-09-25: as a new shot code does."""
+        built = ShotListModel()
+        built.set_batch(batch(delivered(row())))
+        assert self.commit(built, IN, "10")
+        assert built.batch.rows[0].rerun
+
+    def test_a_trim_on_a_shot_never_run_marks_nothing(self, model: ShotListModel) -> None:
+        assert self.commit(model, IN, "10")
+        assert not model.batch.rows[0].rerun
+
     def test_a_new_shot_code_on_a_shot_never_run_marks_nothing(self, model: ShotListModel) -> None:
         assert self.commit(model, SHOT, "MELT0042")
         assert not model.batch.rows[0].rerun

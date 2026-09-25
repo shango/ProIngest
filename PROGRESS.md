@@ -16,6 +16,14 @@ must-fix and render. What is left is the Mac: `docs/MAC_SESSION.md`, from "The 0
 order" down, and Ben's 4.886 slope. Entries are newest first; anything older than 2026-09-22
 describes the tool before the review and is history.
 
+**2026-09-25, a trim re-runs a delivered shot (user).** `ShotListModel._set_frame` marks a row with
+deliverables for the next Run, like a new shot code. So Cancel Re-run cannot leave a trimmed shot
+reading as delivered at a range its files were not, the planner records the range it planned at
+(`ShotRow.delivered_range`, additive in the batch file, carried over a rescan), and
+`qc.cancel_rerun_refusal` refuses when the current range differs. An older batch has no range
+and is not compared. **Verified**: model, planner, scan, QC and batch round-trip tests, the suite.
+**Waiting on**: the user's screenshot of an ideal stringout, which settles its burn-in layout.
+
 **2026-09-25, Cancel Re-run (user).** A right-click entry on a marked shot, and on a heading with
 any, withdraws the mark (`ShotListModel.withdraw_rerun`) so the shot reads as the last run left
 it. Refused, with the reason, where a delivered file's name no longer matches the shot's code or

@@ -794,6 +794,9 @@ class ShotListModel(QAbstractItemModel):
         if moved == current:
             return False
         row.current = moved
+        # A trim on a delivered shot re-renders it, as a new shot code does (user, 2026-09-25).
+        if row.deliverables:
+            row.rerun = True
         return True
 
     def _committed(self, row: ShotRow, index: ModelIndex) -> None:

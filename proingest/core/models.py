@@ -509,6 +509,11 @@ class ShotRow:
     render it anyway. Consumed by the planner, which clears it once the row is planned.
     Additive, so the schema version does not move."""
 
+    delivered_range: InOut | None = None
+    """The range the deliverables were planned at, so Cancel Re-run can tell a trim made
+    since from the range on disk (user, 2026-09-25). Set by the planner. Additive: an
+    older batch has none, and then nothing is compared."""
+
     deliverables: list[Deliverable] = field(default_factory=list)
     qc: list[QCResult] = field(default_factory=list)
 
@@ -592,6 +597,7 @@ class ShotRow:
             "skipped": self.skipped,
             "skip_reason": self.skip_reason,
             "rerun": self.rerun,
+            "delivered_range": self.delivered_range.to_dict() if self.delivered_range else None,
             "freeze": self.freeze,
             "deliverables": [item.to_dict() for item in self.deliverables],
             "qc": [result.to_dict() for result in self.qc],
@@ -624,6 +630,7 @@ class ShotRow:
             skipped=bool(data.get("skipped", False)),
             skip_reason=data.get("skip_reason"),
             rerun=bool(data.get("rerun", False)),
+            delivered_range=InOut.from_dict(data["delivered_range"]) if data.get("delivered_range") else None,
             freeze=bool(data.get("freeze", False)),
             deliverables=[Deliverable.from_dict(item) for item in data.get("deliverables", [])],
             qc=[QCResult.from_dict(item) for item in data.get("qc", [])],

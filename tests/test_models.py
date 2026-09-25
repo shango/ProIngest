@@ -184,6 +184,13 @@ class TestShotRow:
         assert not make_row().was_edited
         assert make_row(current=InOut(1001, 1300)).was_edited
 
+    def test_the_delivered_range_round_trips_and_an_old_batch_has_none(self) -> None:
+        row = make_row(delivered_range=InOut(1001, 1240))
+        assert ShotRow.from_dict(row.to_dict()).delivered_range == InOut(1001, 1240)
+        older = row.to_dict()
+        del older["delivered_range"]
+        assert ShotRow.from_dict(older).delivered_range is None
+
     def test_was_edited_is_false_without_a_snapshot(self) -> None:
         assert not make_row(snapshot=None).was_edited
 

@@ -693,6 +693,7 @@ def carry_over(old: Turnover, old_rows: list[ShotRow], new: Turnover, new_rows: 
         row.skipped, row.skip_reason = before.skipped, before.skip_reason
         row.notes = before.notes
         row.deliverables = before.deliverables
+        row.delivered_range = before.delivered_range
         row.rerun = before.rerun
     changed = [
         name

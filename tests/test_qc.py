@@ -1391,6 +1391,15 @@ class TestCancelRerunRefusal:
         refusal = qc.cancel_rerun_refusal(target)
         assert refusal is not None and "MELT0042" in refusal and "put it back" in refusal
 
+    def test_a_trim_since_the_delivery_refuses(self) -> None:
+        target = self.armed()
+        target.delivered_range = target.current
+        assert qc.cancel_rerun_refusal(target) is None
+        assert target.current is not None
+        target.current = InOut(target.current.in_frame + 2, target.current.out_frame)
+        refusal = qc.cancel_rerun_refusal(target)
+        assert refusal is not None and "put the range back" in refusal
+
     def test_a_new_shot_type_refuses(self) -> None:
         target = self.armed()
         target.identity = identity_of("MELT0001_pl02")

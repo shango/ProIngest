@@ -68,7 +68,7 @@ What M5.11 settled, beyond the wording:
 
 ## 2. Shot list columns
 
-Frozen left: status dot, Shot Code (editable), Elem. **A new shot code on a delivered shot puts it back for the next Run**, as Re-scan does (user, 2026-09-25): the files on disk carry the old code, so the Run writes the shot under the new one, at v01 in a shot folder that has none.
+Frozen left: status dot, Shot Code (editable), Elem. **A new shot code on a delivered shot puts it back for the next Run**, as Re-scan does (user, 2026-09-25): the files on disk carry the old code, so the Run writes the shot under the new one, at v01 in a shot folder that has none. **So does a trim** (In or Out) on a delivered shot, at the next version.
 Scrolling: Source file, Res, FPS, In (editable), Out (editable), Duration, Max Avail, Audio (icon: none / one / many), Version, Progress, Notes (editable, free text; kept in the batch and the QC log. The studio tracker has no Notes column, 2026-09-23).
 
 - **The In/Out display toggle in the batch bar has three states, not two: `Frames`, `Source TC`, `Record TC`.** It sets what the In and Out cells show as their primary value for the whole list, and it sets how a typed timecode is interpreted (source or record) when either TC state is selected.
@@ -447,8 +447,9 @@ Re-scans: a shot for a replaced clip, the heading for a replaced EDL or CSV.
   heading with any such shot. It withdraws the mark and the shot reads as the last run left it:
   done again, or waiting on a failed output. It touches no file, and the Re-scan's QC results
   stay. **Refused, with the reason, for a shot whose delivered files no longer carry its name**
-  (a new shot code, or a new `Shot Type` from the CSV): it would read as delivered under a name
-  it never was. Put the name back first.
+  (a new shot code, or a new `Shot Type` from the CSV), or **whose range was trimmed since it was
+  planned** (`ShotRow.delivered_range`): it would read as delivered under a name, or at a range,
+  it never was. Put it back first.
 - A complete shot is otherwise left alone by Run (QC-061), and a shot with a failed output
   waits for a Re-scan rather than being retried blindly.
 

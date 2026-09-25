@@ -1687,15 +1687,21 @@ def cancel_rerun_refusal(row: ShotRow, show_pattern: str = naming.DEFAULT_SHOW_P
     """Why a shot's mark for the next Run cannot be withdrawn, or None when it can.
 
     Withdrawing it shows the shot as whatever the last run left it (user, 2026-09-25).
-    That is only true while its files still name it: after a new shot code or `Shot
-    Type`, the shot would read as delivered under a name it never was, and the tracker
-    would list the old files beneath the new code.
+    That is only true while its files still match it: after a new shot code or `Shot
+    Type`, the shot would read as delivered under a name it never was, and after a trim
+    as delivered at a range it never was.
     """
     identity = effective_identity(row, show_pattern)
     for item in row.deliverables:
         fault = _identity_fault(naming.parse_output_name(item.name, show_pattern), identity)
         if fault is not None:
             return f"{item.name} {fault}; put it back before cancelling"
+    was, now = row.delivered_range, row.current
+    if was is not None and now is not None and was != now:
+        return (
+            f"delivered at {was.in_frame}-{was.out_frame}, now trimmed to {now.in_frame}-{now.out_frame}; "
+            f"put the range back before cancelling"
+        )
     return None
 
 

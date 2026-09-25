@@ -562,3 +562,4 @@ class TestTheNextRun:
         assert len(jobs) == 4
         assert {job.version for job in jobs} == {2}
         assert not batch.rows[0].rerun
+        assert batch.rows[0].delivered_range == batch.rows[0].current

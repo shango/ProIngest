@@ -442,6 +442,7 @@ def _resume(row: ShotRow, plan: RowPlan) -> None:
 def _record(row: ShotRow, plan: RowPlan) -> None:
     """Attach a plan to its row, replacing the results this module owns."""
     row.deliverables = [job.to_deliverable() for job in plan.jobs]
+    row.delivered_range = row.current if plan.jobs else None
     row.qc = [result for result in row.qc if result.rule_id not in OWNED_RULES]
     row.qc.extend(plan.qc)
 
