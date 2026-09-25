@@ -16,6 +16,14 @@ must-fix and render. What is left is the Mac: `docs/MAC_SESSION.md`, from "The 0
 order" down, and Ben's 4.886 slope. Entries are newest first; anything older than 2026-09-22
 describes the tool before the review and is history.
 
+**2026-09-25, the delivery root defaults to one folder up from the turnover.** There was no
+default: Run's chooser opened on the last folder browsed to, the turnover just added, so accepting
+it delivered inside the turnover. Adding a turnover to a batch with no delivery root now sets it to
+the turnover's parent (`MainWindow.add_turnover`); one already chosen is kept, and the CLI still
+takes `--delivery-root` or the batch's. **Verified**: two window tests and the UI suite. UI_SPEC 13.
+**Asked, not built**: dropping several turnover folders on the window; there is no drag and drop
+today, and Add Turnover takes one folder per pick.
+
 **2026-09-25, three threads opened, nothing built.** **AMF (OQ-71, reopened by the user): Ben will
 export a per-clip AMF from his grading session.** Read by hand first, against what the tool assumes
 per clip (input transform, the CDL's working space, any other look), to explain the white Turnover121

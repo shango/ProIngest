@@ -659,6 +659,26 @@ class TestAddingAndScanningTurnovers:
         window.action_add_turnover.trigger()
         assert opened.source_root == tmp_path / "elsewhere"
 
+    def test_a_batch_with_no_delivery_root_delivers_beside_the_turnover(
+        self, window: DrivenWindow, tmp_path: Path
+    ) -> None:
+        """One folder up from the turnover, not inside it (user, 2026-09-25)."""
+        opened = Batch()
+        window.set_batch(opened)
+        stub_scanner(window)
+        window.folder_answer = tmp_path / "source" / "turnover001"
+        window.action_add_turnover.trigger()
+        assert opened.delivery_root == tmp_path / "source"
+        assert window.batch_bar.delivery_root.text() == str(tmp_path / "source")
+
+    def test_a_delivery_root_already_chosen_is_kept(self, window: DrivenWindow, tmp_path: Path) -> None:
+        opened = Batch(delivery_root=tmp_path / "delivery")
+        window.set_batch(opened)
+        stub_scanner(window)
+        window.folder_answer = tmp_path / "source" / "turnover001"
+        window.action_add_turnover.trigger()
+        assert opened.delivery_root == tmp_path / "delivery"
+
     def test_the_same_folder_twice_is_refused_rather_than_doubled(self, window: DrivenWindow) -> None:
         window.set_batch(batch(row()))
         started = stub_scanner(window)

@@ -563,6 +563,10 @@ class MainWindow(QMainWindow):
 
         Adding from outside the source root is allowed and moves the root, because the
         root is a starting point and not a fence (UI_SPEC section 13).
+
+        A batch with no delivery root takes the turnover's parent as one (user,
+        2026-09-25), so deliverables and reports land beside the turnover rather than in
+        whatever folder Run's chooser happened to open on, which was the turnover itself.
         """
         if not self._batch_open or self._busy():
             return
@@ -573,6 +577,9 @@ class MainWindow(QMainWindow):
             self.report_problem("Already added", f"{folder.name} is already in this batch.")
             return
         self.batch.source_root = folder.parent
+        if self.batch.delivery_root is None:
+            self.batch.delivery_root = folder.parent
+            self.batch_bar.show_delivery_root(folder.parent)
         self._scan([(folder, scan.next_turnover_id(self.batch))])
 
     def rescan_all(self) -> None:
