@@ -16,6 +16,14 @@ must-fix and render. What is left is the Mac: `docs/MAC_SESSION.md`, from "The 0
 order" down, and Ben's 4.886 slope. Entries are newest first; anything older than 2026-09-22
 describes the tool before the review and is history.
 
+**2026-09-25, the stringout comes back (OQ-38 reopened), not built yet.** The user: Ben renders
+one in Resolve and the tool renders one with ffmpeg. Decisions are in OQ-38: the final EDL's
+ranges, an ungraded slate for an event with no reference mp4, the Resolve overlay's layout with
+source TC, a 1001 counter and the shot code, `turnover###_MM_DD_YYYY_<shooter>_SO_v##.mp4` in
+`_reports/`, plate audio only. **Also verified the same day, headless**: a `cp01` changed to `pl02`
+in Ben's CSV and Re-scanned as one shot delivers `pl02` at v02 with its wav, and the `cp01` v01
+files stay on disk.
+
 **2026-09-25, later: one entry, Re-scan, replaces Reset and Re-run (user).** On a shot and on a
 turnover heading. It marks the shot, or every shot in the turnover, for the next Run
 (`ShotListModel.mark_for_rerun`, only a row something was planned for), then re-scans the
