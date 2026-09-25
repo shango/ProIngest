@@ -873,10 +873,12 @@ class TestAddingAndScanningTurnovers:
         assert window.batch.rows[0].deliverables[0].status == "planned"
         assert window.autosave.pending
 
-    def test_re_run_asks_for_the_next_version(self, window: DrivenWindow) -> None:
-        """D12: a complete shot is skipped by Run unless the editor asks for it."""
+    def test_re_run_asks_for_the_next_version_and_rescans(self, window: DrivenWindow) -> None:
+        """D12: a complete shot is skipped by Run unless the editor asks for it. And its
+        turnover is read again (user, 2026-09-25): the footage may have been replaced."""
         landed = delivered(row(turnover_id="t1"))
         window.set_batch(batch(landed, turnovers=[Turnover("t1", Path("/s/t1"))]))
+        started = stub_scanner(window)
         shot = window.shot_list.proxy.index(0, 0, window.shot_list.proxy.index(0, 0))
         menu = window.shot_list.menu_for(shot)
         assert menu is not None
@@ -884,6 +886,7 @@ class TestAddingAndScanningTurnovers:
         assert not actions_by_text[RESET_TEXT].isEnabled(), "nothing failed"
         actions_by_text[RERUN_TEXT].trigger()
         assert window.batch.rows[0].rerun
+        assert started == [[(Path("/s/t1"), "t1")]]
 
     def test_the_heading_menu_is_greyed_while_the_batch_is_locked(self, window: DrivenWindow) -> None:
         window.set_batch(batch(row(turnover_id="t1"), turnovers=[Turnover("t1", Path("/s/t1"))]))

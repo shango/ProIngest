@@ -216,7 +216,7 @@ def row_state(row: ShotRow) -> RowState:
         return RowState.ERROR
     if row.warnings():
         return RowState.WARNING
-    if statuses and statuses <= DELIVERED:
+    if statuses and statuses <= DELIVERED and not row.rerun:
         return RowState.DONE
     return RowState.OK
 
@@ -283,8 +283,12 @@ def _item_fraction(item: Deliverable, run: RunProgress | None) -> float:
 
 
 def _progress(row: ShotRow, run: RunProgress | None = None) -> str:
-    """Done out of planned, the job count section 7 asks for beside the bar."""
-    if not row.deliverables:
+    """Done out of planned, the job count section 7 asks for beside the bar.
+
+    Empty for a row marked for Re-run, like one never rendered, so it stops reading as
+    finished the moment it is asked for again (user, 2026-09-25).
+    """
+    if not row.deliverables or row.rerun:
         return ""
     done = sum(1 for item in row.deliverables if _delivered(item, run))
     return f"{done}/{len(row.deliverables)}"
@@ -297,7 +301,7 @@ def _progress_fraction(row: ShotRow, run: RunProgress | None = None) -> float:
     it is read for is "is this row moving", not how many frames a reference has next to
     a plate.
     """
-    if not row.deliverables:
+    if not row.deliverables or row.rerun:
         return 0.0
     return sum(_item_fraction(item, run) for item in row.deliverables) / len(row.deliverables)
 

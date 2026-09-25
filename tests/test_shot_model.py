@@ -154,6 +154,15 @@ class TestWhatACellSays:
         assert text(built, 0, VERSION) == "v03"
         assert text(built, 0, PROGRESS) == "2/2"
 
+    def test_a_row_marked_for_re_run_shows_no_progress(self, qt_app: QApplication) -> None:
+        again = delivered(row(), version=3)
+        again.rerun = True
+        built = ShotListModel()
+        built.set_batch(batch(again))
+        assert text(built, 0, PROGRESS) == ""
+        assert cell(built, 0, PROGRESS, PROGRESS_ROLE) == 0.0
+        assert text(built, 0, VERSION) == "v03", "the version it has is still the one on disk"
+
     def test_a_row_nothing_has_been_planned_for_says_nothing(self, model: ShotListModel) -> None:
         assert text(model, 0, VERSION) == ""
         assert text(model, 0, PROGRESS) == ""
@@ -368,6 +377,12 @@ class TestRowState:
 
     def test_everything_written_is_done(self) -> None:
         assert row_state(delivered(row())) is RowState.DONE
+
+    def test_a_row_marked_for_re_run_is_no_longer_done(self) -> None:
+        """User, 2026-09-25: it must stop reading as finished once it is asked for again."""
+        again = delivered(row())
+        again.rerun = True
+        assert row_state(again) is RowState.OK
 
     def test_a_file_that_was_already_there_still_counts_as_done(self) -> None:
         assert row_state(delivered(row(), status="exists")) is RowState.DONE

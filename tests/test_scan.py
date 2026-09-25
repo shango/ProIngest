@@ -352,6 +352,12 @@ class TestCarryOver:
         assert (new[0].skipped, new[0].skip_reason, new[0].notes) == (True, "not needed", "sky")
         assert new[0].shot_code == "TEST0009"
 
+    def test_a_re_run_asked_for_survives_the_rescan_it_starts(self) -> None:
+        old, new = self.rows("C0145.MP4"), self.rows("C0145.MP4")
+        old[0].rerun = True
+        scan.carry_over(Turnover("t1", Path("/a")), old, Turnover("t1", Path("/b")), new)
+        assert new[0].rerun
+
     def test_a_trim_never_made_follows_the_new_edl(self) -> None:
         old, new = self.rows("C0145.MP4"), self.rows("C0145.MP4")
         new[0].snapshot = new[0].current = InOut(14, 24)

@@ -120,7 +120,10 @@ RESET_TEXT = "Reset"
 """A shot's right-click entry once its cause is fixed: what failed runs again, same version."""
 
 RERUN_TEXT = "Re-run"
-"""A shot's right-click entry: render it again at the next version, complete or not."""
+"""A shot's right-click entry: render it again at the next version, complete or not.
+
+It re-scans the row's turnover too (user, 2026-09-25), because a shot is re-run after
+its footage or another file was replaced, and the next Run must see the new one."""
 
 RESCAN_TEXT = "Re-scan"
 """A turnover heading's right-click entry: read the folder again, keeping the edits (D8)."""
@@ -538,8 +541,17 @@ class ShotListView(QTreeView):
         reset.triggered.connect(lambda: self.shot_model.reset_row(source))
         rerun = menu.addAction(RERUN_TEXT)
         rerun.setEnabled(not locked and bool(row.deliverables) and not row.rerun)
-        rerun.triggered.connect(lambda: self.shot_model.rerun_row(source))
+        rerun.triggered.connect(lambda: self._rerun(source, row))
         return menu
+
+    def _rerun(self, source: QModelIndex, row: ShotRow) -> None:
+        """Mark the row, then read its turnover again so the next Run checks what is there now."""
+        if not self.shot_model.rerun_row(source):
+            return
+        turnovers = self.shot_model.batch.turnovers
+        turnover = next((t for t in turnovers if t.turnover_id == row.turnover_id), None)
+        if turnover is not None:
+            self.rescan_requested.emit(turnover)
 
     def _show_menu(self, view: QTreeView, pos: QPoint) -> None:
         menu = self.menu_for(view.indexAt(pos))

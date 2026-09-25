@@ -16,6 +16,15 @@ must-fix and render. What is left is the Mac: `docs/MAC_SESSION.md`, from "The 0
 order" down, and Ben's 4.886 slope. Entries are newest first; anything older than 2026-09-22
 describes the tool before the review and is history.
 
+**2026-09-25, Re-run re-scans, and stops looking finished (user).** Choosing Re-run on a shot now
+also re-scans its turnover (`ShotListView._rerun` emits `rescan_requested`), because a shot is
+re-run after its footage or another file was replaced: the probe cache is keyed on path, size
+and mtime, so a replaced file is probed afresh, and every rule runs again. The Re-run mark
+survives that rescan (`scan.carry_over` now carries `rerun`), and a marked row shows no progress
+and is not green (`shot_model.row_state`, `_progress`). **Not changed, not asked**: Reset still
+does not re-scan, and Re-run still waits for Run rather than rendering at once. **Verified**:
+carry-over, model and window tests, the suite. UI_SPEC 15b.
+
 **2026-09-25, QC-020, QC-033 and QC-034 are must-fix (user).** An 8 bit or 4:2:0 source, and a cut
 shorter or longer than the Settings limits, now block the run like any error, until the row is
 fixed (trimmed, media replaced, limits moved) or skipped. QC-020 reverses the user's warning of

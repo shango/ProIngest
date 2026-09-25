@@ -434,7 +434,12 @@ editor drops the fixed EDL, CSV or clip into the folder and re-scans.
 - **Reset**, on a shot with a failed output: the editor has fixed the cause, and what failed
   runs again at the same version on the next Run. Greyed when nothing failed.
 - **Re-run**, on a shot that has been planned: the next Run renders it again, whole, at the
-  next version. A complete shot is otherwise left alone (QC-061).
+  next version. A complete shot is otherwise left alone (QC-061). **It also re-scans the
+  shot's turnover** (user, 2026-09-25): a shot is re-run because its footage or another file
+  was replaced, so the media is probed again and every rule re-runs, and a must-fix found
+  there stops the next Run like any other. The shot's progress bar and count empty and its
+  status stops reading as done the moment Re-run is chosen; the version shown stays the one on
+  disk until the Run writes the next.
 
 ## 15a. Locks (D15)
 
