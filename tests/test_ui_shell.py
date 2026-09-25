@@ -13,8 +13,8 @@ from collections.abc import Callable, Iterator
 from pathlib import Path
 
 import pytest
-from PySide6.QtCore import Qt, QThread
-from PySide6.QtGui import QAction, QKeySequence
+from PySide6.QtCore import QMimeData, QPoint, QPointF, Qt, QThread, QUrl
+from PySide6.QtGui import QAction, QDragEnterEvent, QDropEvent, QKeySequence
 from PySide6.QtWidgets import (
     QApplication,
     QDialog,
@@ -637,6 +637,33 @@ class TestTheTwoRoots:
         assert window.problems == []
 
 
+def turnover_folder(folder: Path) -> Path:
+    """A folder `scan.is_turnover_folder` accepts: an EDL and a CSV, empty."""
+    folder.mkdir(parents=True)
+    (folder / "cut.edl").write_text("")
+    (folder / "meta.csv").write_text("")
+    return folder
+
+
+_DROPPED: list[QMimeData] = []
+"""Every drop's mime data, held: the event keeps only a C++ pointer to it, and Python
+collecting it when `drop` returns leaves the window reading freed memory."""
+
+
+def drop(*paths: Path) -> QDropEvent:
+    """A drop of these paths from Finder onto the window."""
+    mime = QMimeData()
+    _DROPPED.append(mime)
+    mime.setUrls([QUrl.fromLocalFile(str(path)) for path in paths])
+    return QDropEvent(
+        QPointF(0, 0),
+        Qt.DropAction.CopyAction,
+        mime,
+        Qt.MouseButton.LeftButton,
+        Qt.KeyboardModifier.NoModifier,
+    )
+
+
 class TestAddingAndScanningTurnovers:
     """M5.4's other half: what reaches the scanner, and what comes back from it."""
 
@@ -678,6 +705,59 @@ class TestAddingAndScanningTurnovers:
         window.folder_answer = tmp_path / "source" / "turnover001"
         window.action_add_turnover.trigger()
         assert opened.delivery_root == tmp_path / "delivery"
+
+    def test_dropping_folders_adds_the_turnovers_and_skips_the_rest(
+        self, window: DrivenWindow, tmp_path: Path
+    ) -> None:
+        """User, 2026-09-25: several at once, and anything that is not a turnover is skipped."""
+        first, second = turnover_folder(tmp_path / "turnover121"), turnover_folder(tmp_path / "turnover122")
+        stray = tmp_path / "notes"
+        stray.mkdir()
+        clip = tmp_path / "clip.mov"
+        clip.write_text("")
+        window.set_batch(Batch())
+        started = stub_scanner(window)
+        window.dropEvent(drop(first, stray, second, clip))
+
+        assert started == [[(first, "t1"), (second, "t2")]]
+        assert window.batch.delivery_root == tmp_path
+        assert len(window.problems) == 1
+        title, text = window.problems[0]
+        assert title == "Skipped 2 of 4" and "notes" in text and "clip.mov" in text
+
+    def test_a_dropped_turnover_already_in_the_batch_is_skipped(
+        self, window: DrivenWindow, tmp_path: Path
+    ) -> None:
+        folder = turnover_folder(tmp_path / "turnover121")
+        window.set_batch(Batch(turnovers=[Turnover("t1", folder)]))
+        started = stub_scanner(window)
+        window.dropEvent(drop(folder))
+        assert started == []
+        assert "already in this batch" in window.problems[0][1]
+
+    def test_the_window_takes_a_drag_only_while_a_batch_is_open(
+        self, window: DrivenWindow, tmp_path: Path
+    ) -> None:
+        def enter() -> bool:
+            dragged = drop(tmp_path)
+            event = QDragEnterEvent(
+                QPoint(0, 0),
+                Qt.DropAction.CopyAction,
+                dragged.mimeData(),
+                Qt.MouseButton.LeftButton,
+                Qt.KeyboardModifier.NoModifier,
+            )
+            window.dragEnterEvent(event)
+            return event.isAccepted()
+
+        assert not enter()
+        window.set_batch(Batch())
+        assert enter()
+
+    def test_a_drop_with_no_batch_open_does_nothing(self, window: DrivenWindow, tmp_path: Path) -> None:
+        started = stub_scanner(window)
+        window.dropEvent(drop(turnover_folder(tmp_path / "turnover121")))
+        assert started == [] and window.problems == []
 
     def test_the_same_folder_twice_is_refused_rather_than_doubled(self, window: DrivenWindow) -> None:
         window.set_batch(batch(row()))

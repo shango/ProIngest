@@ -53,6 +53,9 @@ chunk 7 of `docs/TO_A_WORKING_BUILD.md`, in the order that wastes least.
 - [ ] Work the four 2026-09-23 lines at the end of Session 2 below: the reference against its
       wav (chunk B), colour against Resolve (chunk G), locks and a moved folder (chunk E), and
       failure and re-run (chunk D).
+- [ ] **Drag and drop from Finder** (2026-09-25): select two turnover folders and a stray file in
+      Finder and drop them on an open batch. Both turnovers scan, the file is listed as skipped.
+      The tests drive a synthetic drop; only Finder shows the window accepting one.
 - [ ] Neither shell script (`build/mac_build.sh`, `ProIngest.command`) has ever run on a Mac;
       CI does the same steps from its own YAML. Run `./ProIngest.command` once from a clone.
 

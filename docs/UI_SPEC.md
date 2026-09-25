@@ -254,6 +254,11 @@ Built in M5.7.2. What that settled, beyond the layout:
   toolbar read as the tool waiting for nothing. Cancelling the chooser lands on the next state.
 - Batch with no turnovers: "Add a turnover folder to begin", with an Add Turnover button under
   it that follows the toolbar action.
+- **Turnover folders can be dropped on the window, several at once** (user, 2026-09-25), while a
+  batch is open and nothing is scanning or running. Each folder holding an EDL and a metadata
+  CSV is added and all of them scan together; anything else dropped, and a folder already in the
+  batch, is skipped, and one message lists what was skipped and why. Add Turnover, by contrast,
+  adds whatever folder is picked and lets QC-001 say what is missing.
 - After Scan with zero rows: "No clips found in timeline" plus a link to the Issues dock. The
   same button stays under it.
 

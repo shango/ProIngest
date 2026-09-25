@@ -176,6 +176,21 @@ def _prefill(turnover: Turnover, folder: Path) -> None:
     turnover.shooter = prefill.shooter
 
 
+def is_turnover_folder(folder: Path) -> bool:
+    """Whether a folder holds an EDL and a metadata CSV directly in it.
+
+    What a drop onto the window asks of each thing dropped (user, 2026-09-25): anything
+    else is skipped rather than added and left to fail QC-001. Two of either still counts,
+    because that folder is a turnover with a problem to report, not something else.
+    """
+    try:
+        entries = [entry for entry in folder.iterdir() if entry.is_file()]
+    except OSError:
+        return False
+    suffixes = {entry.suffix.lower() for entry in entries}
+    return EDL_SUFFIX in suffixes and metacsv.CSV_SUFFIX in suffixes
+
+
 def _handover_files(folder: Path, turnover: Turnover) -> tuple[Path, Path] | None:
     """Ben's EDL and his metadata CSV, or QC-001 saying which is missing.
 
@@ -623,6 +638,12 @@ def next_turnover_id(batch: Batch) -> str:
     numbered = [TURNOVER_ID_PATTERN.fullmatch(t.turnover_id) for t in batch.turnovers]
     highest = max((int(match.group(1)) for match in numbered if match), default=0)
     return f"t{highest + 1}"
+
+
+def next_turnover_ids(batch: Batch, count: int) -> list[str]:
+    """The ids the next `count` turnovers take, for several added at once before any is scanned."""
+    first = int(next_turnover_id(batch)[1:])
+    return [f"t{first + offset}" for offset in range(count)]
 
 
 def scan_batch(

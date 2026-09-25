@@ -21,8 +21,13 @@ default: Run's chooser opened on the last folder browsed to, the turnover just a
 it delivered inside the turnover. Adding a turnover to a batch with no delivery root now sets it to
 the turnover's parent (`MainWindow.add_turnover`); one already chosen is kept, and the CLI still
 takes `--delivery-root` or the batch's. **Verified**: two window tests and the UI suite. UI_SPEC 13.
-**Asked, not built**: dropping several turnover folders on the window; there is no drag and drop
-today, and Add Turnover takes one folder per pick.
+**Then built, the same day: turnover folders dropped on the window** (user: skip what is not a
+turnover, add the rest). `MainWindow.add_turnovers` keeps each dropped folder that
+`scan.is_turnover_folder` accepts (an EDL and a CSV directly in it; two of either still counts and
+QC-001 says so) and is not already in the batch, numbers them with `scan.next_turnover_ids`, and
+scans them in one go; one "Skipped N of M" message lists the rest. **Verified**: core tests, window
+tests through a real `QDropEvent`, the suite. UI_SPEC section 10's states, a MAC_SESSION line for a
+Finder drag.
 
 **2026-09-25, three threads opened, nothing built.** **AMF (OQ-71, reopened by the user): Ben will
 export a per-clip AMF from his grading session.** Read by hand first, against what the tool assumes
