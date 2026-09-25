@@ -443,6 +443,12 @@ Re-scans: a shot for a replaced clip, the heading for a replaced EDL or CSV.
   delivered before comes out at the next version, v02 after v01; one never run is simply
   rendered by the next Run. Other shots keep their delivered state.
 - The toolbar's Scan reads every turnover again without putting any shot back.
+- **Cancel Re-run** (user, 2026-09-25) appears on a shot that is marked for the next Run, and on a
+  heading with any such shot. It withdraws the mark and the shot reads as the last run left it:
+  done again, or waiting on a failed output. It touches no file, and the Re-scan's QC results
+  stay. **Refused, with the reason, for a shot whose delivered files no longer carry its name**
+  (a new shot code, or a new `Shot Type` from the CSV): it would read as delivered under a name
+  it never was. Put the name back first.
 - A complete shot is otherwise left alone by Run (QC-061), and a shot with a failed output
   waits for a Re-scan rather than being retried blindly.
 

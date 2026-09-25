@@ -53,8 +53,8 @@ from proingest.ui.run_controller import (
 from proingest.ui.run_strip import LINK_COLOR, RunStrip
 from proingest.ui.runner import RENDERING
 from proingest.ui.settings_dialog import SettingsDialog
-from proingest.ui.shot_list import RELOCATE_TEXT, RESCAN_TEXT
-from proingest.ui.shot_model import IN, NOTES, SHOT, DisplayMode, RowState
+from proingest.ui.shot_list import CANCEL_RERUN_TEXT, RELOCATE_TEXT, RESCAN_TEXT
+from proingest.ui.shot_model import IN, NOTES, PROGRESS, SHOT, DisplayMode, RowState
 from tests.fixtures.batches import (
     batch,
     delivered,
@@ -921,6 +921,47 @@ class TestAddingAndScanningTurnovers:
 
         assert [r.rerun for r in window.batch.rows] == [True, True, False]
         assert started == [[(Path("/s/t1"), "t1")]]
+
+    def entries(self, window: DrivenWindow, index: QModelIndex) -> dict[str, QAction]:
+        menu = window.shot_list.menu_for(index)
+        assert menu is not None
+        return {a.text(): a for a in menu.actions()}
+
+    def test_cancel_re_run_is_offered_only_on_a_marked_shot(self, window: DrivenWindow) -> None:
+        window.set_batch(batch(delivered(row(turnover_id="t1")), turnovers=[Turnover("t1", Path("/s/t1"))]))
+        assert CANCEL_RERUN_TEXT not in self.entries(window, self.first_shot(window))
+        window.batch.rows[0].rerun = True
+        assert CANCEL_RERUN_TEXT in self.entries(window, self.first_shot(window))
+
+    def test_cancel_re_run_puts_the_shot_back_as_the_last_run_left_it(self, window: DrivenWindow) -> None:
+        """User, 2026-09-25: an armed shot can be told not to render after all."""
+        window.set_batch(batch(delivered(row(turnover_id="t1")), turnovers=[Turnover("t1", Path("/s/t1"))]))
+        window.batch.rows[0].rerun = True
+        self.entries(window, self.first_shot(window))[CANCEL_RERUN_TEXT].trigger()
+
+        assert not window.batch.rows[0].rerun
+        progress = self.first_shot(window).siblingAtColumn(PROGRESS)
+        assert progress.data() == "2/2", "the bar is back where the last run left it"
+        assert window.autosave.pending and window.problems == []
+
+    def test_a_shot_under_a_new_code_is_not_cancelled_and_says_why(self, window: DrivenWindow) -> None:
+        shot = delivered(row(turnover_id="t1"))
+        shot.deliverables[0].name = "MELT0001_pl01_ref_HD_v01.mp4"
+        shot.shot_code_override = "MELT0042"
+        shot.rerun = True
+        window.set_batch(batch(shot, turnovers=[Turnover("t1", Path("/s/t1"))]))
+        self.entries(window, self.first_shot(window))[CANCEL_RERUN_TEXT].trigger()
+
+        assert window.batch.rows[0].rerun
+        assert window.problems and "MELT0042" in window.problems[0][1]
+
+    def test_cancel_on_a_heading_withdraws_every_marked_shot_in_it(self, window: DrivenWindow) -> None:
+        first = delivered(row("MELT0001_pl01", turnover_id="t1"))
+        second = delivered(row("MELT0002_pl01", turnover_id="t1"))
+        first.rerun = second.rerun = True
+        window.set_batch(batch(first, second, turnovers=[Turnover("t1", Path("/s/t1"))]))
+        self.entries(window, window.shot_list.proxy.index(0, 0))[CANCEL_RERUN_TEXT].trigger()
+        assert [r.rerun for r in window.batch.rows] == [False, False]
 
     def test_the_heading_menu_is_greyed_while_the_batch_is_locked(self, window: DrivenWindow) -> None:
         window.set_batch(batch(row(turnover_id="t1"), turnovers=[Turnover("t1", Path("/s/t1"))]))

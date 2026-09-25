@@ -16,6 +16,13 @@ must-fix and render. What is left is the Mac: `docs/MAC_SESSION.md`, from "The 0
 order" down, and Ben's 4.886 slope. Entries are newest first; anything older than 2026-09-22
 describes the tool before the review and is history.
 
+**2026-09-25, Cancel Re-run (user).** A right-click entry on a marked shot, and on a heading with
+any, withdraws the mark (`ShotListModel.withdraw_rerun`) so the shot reads as the last run left
+it. Refused, with the reason, where a delivered file's name no longer matches the shot's code or
+element (`qc.cancel_rerun_refusal`, reusing QC-151's identity check), since it would then read
+as delivered under a name it never had. **Verified**: QC and window tests, the suite. UI_SPEC 15b.
+**Note**: the test fixtures' deliverable names do not parse, so the refusal tests use real names.
+
 **2026-09-25, a new shot code re-runs the shot (user).** The Shot column was already editable
 (`shot_code_override`, QC-036), but a delivered shot stayed complete under a new code and Run
 rendered nothing (QC-061). `ShotListModel._set_shot_code` now marks a row that has deliverables

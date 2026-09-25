@@ -722,6 +722,18 @@ class ShotListModel(QAbstractItemModel):
                 row.rerun = True
                 self._committed(row, self.index_for_row(row))
 
+    def withdraw_rerun(self, rows: list[ShotRow]) -> None:
+        """Cancel Re-run: these rows go back to what the last run left them as.
+
+        The caller has asked `qc.cancel_rerun_refusal` first; this only drops the mark.
+        """
+        if self._locked:
+            return
+        for row in rows:
+            if row.rerun:
+                row.rerun = False
+                self._committed(row, self.index_for_row(row))
+
     def set_skipped(self, index: ModelIndex, skipped: bool, reason: str | None = None) -> bool:
         """Ctrl+K (section 4). The reason is asked for by the view, which owns the prompt.
 

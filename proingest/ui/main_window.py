@@ -310,6 +310,7 @@ class MainWindow(QMainWindow):
         self.shot_list = ShotListView(self.shot_model, self)
         self.shot_list.rescan_requested.connect(self.rescan_turnover)
         self.shot_list.row_rescan_requested.connect(self.rescan_row)
+        self.shot_list.cancel_rerun_requested.connect(self.cancel_rerun)
         self.shot_list.relocate_requested.connect(self.relocate_turnover)
         self.autosave = AutoSaver(self)
         self.shot_model.row_edited.connect(lambda _row: self.autosave.schedule())
@@ -685,6 +686,17 @@ class MainWindow(QMainWindow):
             return
         self.shot_model.mark_for_rerun(rows)
         self.rescan([turnover])
+
+    def cancel_rerun(self, rows: list[ShotRow]) -> None:
+        """Cancel Re-run, refusing a shot whose files no longer carry its name (user, 2026-09-25)."""
+        if not self._batch_open or self._busy():
+            return
+        pattern = settings_form.show_pattern_of(self._settings)
+        refused = {id(row): qc.cancel_rerun_refusal(row, pattern) for row in rows}
+        self.shot_model.withdraw_rerun([row for row in rows if refused[id(row)] is None])
+        reasons = [f"{row.shot_code}: {why}" for row in rows if (why := refused[id(row)]) is not None]
+        if reasons:
+            self.report_problem("Re-run not cancelled", "\n".join(reasons))
 
     def relocate_turnover(self, turnover: Turnover) -> None:
         """A turnover heading's New Folder Location: re-scan it from where it went (D16)."""

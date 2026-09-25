@@ -116,6 +116,10 @@ def show_parse(editor: QLineEdit, parsed: ParsedInput) -> None:
     editor.setToolTip("" if parsed.ok else parsed.error or "")
 
 
+CANCEL_RERUN_TEXT = "Cancel Re-run"
+"""Shown on a shot, or a heading, that Re-scan or a new shot code put back for the next Run:
+the mark is withdrawn and the shot reads as the last run left it (user, 2026-09-25)."""
+
 RESCAN_TEXT = "Re-scan"
 """The one right-click entry on a shot and on a turnover heading (user, 2026-09-25).
 
@@ -346,6 +350,9 @@ class ShotListView(QTreeView):
     row_rescan_requested = Signal(object)
     """A `ShotRow` right-clicked for Re-scan."""
 
+    cancel_rerun_requested = Signal(object)
+    """The `ShotRow`s, one shot or a heading's, whose Re-run is to be cancelled."""
+
     relocate_requested = Signal(object)
     """A `Turnover` whose heading was right-clicked for New Folder Location (D16)."""
     """`select_row` emptied the filter to reach a hidden row; the search box should follow."""
@@ -529,14 +536,24 @@ class ShotListView(QTreeView):
             action = menu.addAction(text)
             action.setEnabled(not self.shot_model.locked)
             action.triggered.connect(lambda _checked=False, signal=signal: signal.emit(turnover))
+        armed = [row for row in self.shot_model.batch.rows_for(turnover.turnover_id) if row.rerun]
+        if armed:
+            self._add_cancel(menu, armed)
         return menu
 
+    def _add_cancel(self, menu: QMenu, rows: list[ShotRow]) -> None:
+        cancel = menu.addAction(CANCEL_RERUN_TEXT)
+        cancel.setEnabled(not self.shot_model.locked)
+        cancel.triggered.connect(lambda: self.cancel_rerun_requested.emit(rows))
+
     def _row_menu(self, row: ShotRow) -> QMenu:
-        """A shot's one entry, Re-scan (user, 2026-09-25)."""
+        """A shot's Re-scan, and Cancel Re-run while it is marked (user, 2026-09-25)."""
         menu = QMenu(self)
         rescan = menu.addAction(RESCAN_TEXT)
         rescan.setEnabled(not self.shot_model.locked)
         rescan.triggered.connect(lambda: self.row_rescan_requested.emit(row))
+        if row.rerun:
+            self._add_cancel(menu, [row])
         return menu
 
     def _show_menu(self, view: QTreeView, pos: QPoint) -> None:

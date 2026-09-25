@@ -1371,3 +1371,28 @@ class TestDropFrame:
         dropped.media.drop_frame = True
         results = qc.check_timecode(dropped)
         assert [(r.rule_id, r.severity) for r in results] == [("QC-027", "error")]
+
+
+class TestCancelRerunRefusal:
+    """User, 2026-09-25: a mark is withdrawn only while the files still carry the shot's name."""
+
+    def armed(self) -> ShotRow:
+        target = row()
+        target.deliverables = [delivered("MELT0001_pl01_ref_HD_v01.mp4", "ref_mp4", res="HD")]
+        target.rerun = True
+        return target
+
+    def test_a_shot_whose_files_carry_its_name_can_be_cancelled(self) -> None:
+        assert qc.cancel_rerun_refusal(self.armed()) is None
+
+    def test_a_new_shot_code_refuses(self) -> None:
+        target = self.armed()
+        target.shot_code_override = "MELT0042"
+        refusal = qc.cancel_rerun_refusal(target)
+        assert refusal is not None and "MELT0042" in refusal and "put it back" in refusal
+
+    def test_a_new_shot_type_refuses(self) -> None:
+        target = self.armed()
+        target.identity = identity_of("MELT0001_pl02")
+        refusal = qc.cancel_rerun_refusal(target)
+        assert refusal is not None and "pl02" in refusal

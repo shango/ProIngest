@@ -1683,6 +1683,22 @@ def _identity_fault(parsed: naming.ParsedOutput | None, identity: naming.ShotIde
     return None
 
 
+def cancel_rerun_refusal(row: ShotRow, show_pattern: str = naming.DEFAULT_SHOW_PATTERN) -> str | None:
+    """Why a shot's mark for the next Run cannot be withdrawn, or None when it can.
+
+    Withdrawing it shows the shot as whatever the last run left it (user, 2026-09-25).
+    That is only true while its files still name it: after a new shot code or `Shot
+    Type`, the shot would read as delivered under a name it never was, and the tracker
+    would list the old files beneath the new code.
+    """
+    identity = effective_identity(row, show_pattern)
+    for item in row.deliverables:
+        fault = _identity_fault(naming.parse_output_name(item.name, show_pattern), identity)
+        if fault is not None:
+            return f"{item.name} {fault}; put it back before cancelling"
+    return None
+
+
 def apply_phase_b(batch: Batch, show_pattern: str = naming.DEFAULT_SHOW_PATTERN) -> None:
     """Re-run QC-150 and QC-151 across a batch, after a run or on reopening one."""
     batch.qc = [result for result in batch.qc if result.rule_id not in OWNED_PHASE_B_BATCH_RULES]
