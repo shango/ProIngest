@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from proingest.core import scan
-from proingest.core.models import Batch, InOut, ShotRow, Turnover
+from proingest.core.models import Batch, Deliverable, InOut, ShotRow, Turnover
 from tests.fixtures import media as fixtures
 
 GOOD_FOLDER = "turnover001_02_23_2026_danielluckett"
@@ -282,6 +282,28 @@ class TestScanBatch:
         assert "QC-001" in turnover_rules(batch)
 
 
+class TestIsTurnoverFolder:
+    """What a drop onto the window keeps: a folder with an EDL and a CSV directly in it."""
+
+    def test_an_edl_and_a_csv_make_a_turnover(self, tmp_path: Path) -> None:
+        (tmp_path / "Turnover121.EDL").write_text("")
+        (tmp_path / "Turnover121.csv").write_text("")
+        assert scan.is_turnover_folder(tmp_path)
+
+    @pytest.mark.parametrize("names", [(), ("cut.edl",), ("meta.csv",), ("sub/cut.edl", "sub/meta.csv")])
+    def test_anything_less_is_not(self, tmp_path: Path, names: tuple[str, ...]) -> None:
+        for name in names:
+            (tmp_path / name).parent.mkdir(exist_ok=True)
+            (tmp_path / name).write_text("")
+        assert not scan.is_turnover_folder(tmp_path)
+
+    def test_a_file_or_a_missing_path_is_not(self, tmp_path: Path) -> None:
+        clip = tmp_path / "clip.mov"
+        clip.write_text("")
+        assert not scan.is_turnover_folder(clip)
+        assert not scan.is_turnover_folder(tmp_path / "gone")
+
+
 class TestNextTurnoverId:
     """One authority for the numbering, whether the CLI or the window is adding it."""
 
@@ -292,6 +314,10 @@ class TestNextTurnoverId:
         """A row points at its turnover by id, so a gap is not an id to hand out again."""
         batch = Batch(turnovers=[Turnover("t1", Path("/a")), Turnover("t5", Path("/b"))])
         assert scan.next_turnover_id(batch) == "t6"
+
+    def test_several_at_once_follow_on_from_the_highest(self) -> None:
+        batch = Batch(turnovers=[Turnover("t2", Path("/a"))])
+        assert scan.next_turnover_ids(batch, 3) == ["t3", "t4", "t5"]
 
     def test_an_id_that_is_not_t_and_a_number_is_left_out_of_the_count(self) -> None:
         batch = Batch(turnovers=[Turnover("hand_edited", Path("/a")), Turnover("t2", Path("/b"))])
@@ -325,6 +351,20 @@ class TestCarryOver:
         assert new[0].current == InOut(12, 18)
         assert (new[0].skipped, new[0].skip_reason, new[0].notes) == (True, "not needed", "sky")
         assert new[0].shot_code == "TEST0009"
+
+    def test_a_re_run_asked_for_survives_the_rescan_it_starts(self) -> None:
+        old, new = self.rows("C0145.MP4"), self.rows("C0145.MP4")
+        old[0].rerun = True
+        old[0].delivered_range = InOut(10, 20)
+        scan.carry_over(Turnover("t1", Path("/a")), old, Turnover("t1", Path("/b")), new)
+        assert new[0].rerun
+        assert new[0].delivered_range == InOut(10, 20)
+
+    def test_the_stringout_stays_with_the_turnover(self) -> None:
+        was, now = Turnover("t1", Path("/a")), Turnover("t1", Path("/a"))
+        was.stringout = Deliverable(kind="stringout", name="so.mp4", path=Path("/d/so.mp4"), version=1)
+        scan.carry_over(was, [], now, [])
+        assert now.stringout == was.stringout
 
     def test_a_trim_never_made_follows_the_new_edl(self) -> None:
         old, new = self.rows("C0145.MP4"), self.rows("C0145.MP4")

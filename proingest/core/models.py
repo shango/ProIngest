@@ -495,6 +495,9 @@ class ShotRow:
     """
 
     notes: str = ""
+    scene: str = ""
+    """The CSV's `Scene`, which the stringout burns in as the Primary Effect (2026-09-25).
+    Additive, so the schema version does not move."""
     skipped: bool = False
     skip_reason: str | None = None
     freeze: bool = False
@@ -508,6 +511,11 @@ class ShotRow:
     A row whose deliverables all landed is skipped by the next Run; this is the one way to
     render it anyway. Consumed by the planner, which clears it once the row is planned.
     Additive, so the schema version does not move."""
+
+    delivered_range: InOut | None = None
+    """The range the deliverables were planned at, so Cancel Re-run can tell a trim made
+    since from the range on disk (user, 2026-09-25). Set by the planner. Additive: an
+    older batch has none, and then nothing is compared."""
 
     deliverables: list[Deliverable] = field(default_factory=list)
     qc: list[QCResult] = field(default_factory=list)
@@ -589,9 +597,11 @@ class ShotRow:
             "approved": self.approved.to_dict() if self.approved else None,
             "cdl": self.cdl.to_dict() if self.cdl else None,
             "notes": self.notes,
+            "scene": self.scene,
             "skipped": self.skipped,
             "skip_reason": self.skip_reason,
             "rerun": self.rerun,
+            "delivered_range": self.delivered_range.to_dict() if self.delivered_range else None,
             "freeze": self.freeze,
             "deliverables": [item.to_dict() for item in self.deliverables],
             "qc": [result.to_dict() for result in self.qc],
@@ -621,9 +631,11 @@ class ShotRow:
             approved=InOut.from_dict(data["approved"]) if data.get("approved") else None,
             cdl=CDL.from_dict(data["cdl"]) if data.get("cdl") else None,
             notes=str(data.get("notes", "")),
+            scene=str(data.get("scene", "")),
             skipped=bool(data.get("skipped", False)),
             skip_reason=data.get("skip_reason"),
             rerun=bool(data.get("rerun", False)),
+            delivered_range=InOut.from_dict(data["delivered_range"]) if data.get("delivered_range") else None,
             freeze=bool(data.get("freeze", False)),
             deliverables=[Deliverable.from_dict(item) for item in data.get("deliverables", [])],
             qc=[QCResult.from_dict(item) for item in data.get("qc", [])],
@@ -708,6 +720,10 @@ class Turnover:
     shooter: str = ""
     qc: list[QCResult] = field(default_factory=list)
 
+    stringout: Deliverable | None = None
+    """The tool's stringout of this turnover's EDL, once written (OQ-38, 2026-09-25).
+    Additive, so the schema version does not move."""
+
     edl_digest: str = ""
     csv_digest: str = ""
     """xxhash64 of the EDL and the CSV as they were scanned, empty before 2026-09-23.
@@ -734,6 +750,7 @@ class Turnover:
             "qc": [result.to_dict() for result in self.qc],
             "edl_digest": self.edl_digest,
             "csv_digest": self.csv_digest,
+            "stringout": self.stringout.to_dict() if self.stringout else None,
         }
 
     @classmethod
@@ -754,6 +771,7 @@ class Turnover:
             qc=[QCResult.from_dict(item) for item in data.get("qc", [])],
             edl_digest=str(data.get("edl_digest", "")),
             csv_digest=str(data.get("csv_digest", "")),
+            stringout=Deliverable.from_dict(data["stringout"]) if data.get("stringout") else None,
         )
 
 

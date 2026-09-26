@@ -8,14 +8,193 @@ commit.
 
 ## 1. Resume here
 
-**State at 2026-09-23, version 0.5.4. The review of 2026-09-23 is worked through: chunks A to
-H of `docs/REVIEW_2026-09-23.md` section 5 are all built**, each in its own commit with the entry
-below. The real turnover, `Turnover199`, scans with no must-fix and renders every deliverable.
-What is left is the Mac: `docs/MAC_SESSION.md`, "The 0.5.0 build, in order", starting with the
-acceptance test on the editor's machine. The branch `color/cdl-in-acescct` is pushed for the
-0.5.0 release; CI builds `ProIngest-0.5.0.dmg` on PR #12 (the workflow runs on pull requests, not
-on a branch push). The entries below are newest first; anything
-older than 2026-09-22 describes the tool before the review and is history.
+**State at 2026-09-25, version 0.5.6, on branch `qc/source-fidelity`, PR #17** (`HANDOFF.md` is
+the short version) (0.5.4 is on `main`, PR
+#16 merged as `262817e`, dmg in CI run 35944322464). The 2026-09-23 review is built (chunks A
+to H of `docs/REVIEW_2026-09-23.md`), and so are the fixes that a second official turnover,
+Turnover121, called for (`docs/SAMPLE_TURNOVER_121.md`). Turnover199 scans with no must-fix and
+renders; **Turnover121 is now all must-fix**, every clip being 8 bit 4:2:0 and QC-020 blocking
+since 2026-09-24 (user). What is left is the Mac: `docs/MAC_SESSION.md`, from "The 0.5.0 build, in
+order" down, and Ben's 4.886 slope. Entries are newest first; anything older than 2026-09-22
+describes the tool before the review and is history.
+
+**2026-09-25, a reference still is decoded with its own matrix and range.** Found tracing Turnover121's
+colour: `planner._aux_plan` never passed `source_color_space`/`source_color_range`, so every still
+decoded as BT.709 limited. Harmless on Turnover121 (tagged bt709/tv); a full range (`pc`) source
+such as Turnover199's would have had its colour chart stretched. **Verified**: a planner test and
+the suite (1739).
+
+**2026-09-25, pinned to ACES 2.0 (OQ-29).** The user found Ben's project on ACES 2.0, timeline
+ACEScct, output believed sRGB. `color.BUILTIN_CONFIG` is `studio-config-v4.0.0_aces-v2.0_ocio-v2.5`
+(OCIO floor 2.5; the lock already had 2.5.2) and `color.VIEW` is `ACES 2.0 - SDR 100 nits
+(Rec.709)` on `sRGB - Display`. The plate branch does not change (measured bit for bit earlier,
+OQ-71); the references do. Every camera space the input table maps to exists in v4.
+`test_trilinear_is_the_worse_answer...` now compares the two interpolations on mid grey, 0.0005
+tetrahedral vs 0.0031 trilinear; the old fixed 0.005 threshold no longer held. **Not borne out
+under 2.0**: `color.INTERPOLATION`'s claim that trilinear is visibly worse on saturated colour;
+on four saturated samples the two were within 0.002 of each other, either way. **Open**: the
+display, off Ben's project settings; a MAC_SESSION line compares a reference with his viewer.
+
+**2026-09-25, the stringout is built (OQ-38); docs partly done. Read this first after a compact.**
+`core/stringout.py`: `plan` reads the turnover's final EDL (`scan.read_session`, events named by the
+ALE as at scan) and makes one `Segment` per event in record order, plus black gaps. An event is cut
+from its row's **delivered HD reference** when it landed and `delivered_range` holds the cut; else
+**the ungraded source** (`encode_command` with no LUT); else **black** (`ffmpeg.black_command`).
+`Frame:` = `1001 + (cut In - delivered In) + n` (drawtext `%{eif:n+N:d}`), static on a freeze.
+Burn-ins from `burn-ins.png`, measured: Open Sans 42px white, name top centre y 11, `Frame:` x 184,
+`Primary Effect: <Scene>` centred, label `w-150-text_w`, bottom y 892; within 1-3 px of Ben's frame
+at his scale. Segments are encoded like the references (`ffmpeg._x264`, 48k stereo AAC, silence
+where there is no plate sound), joined by stream copy (`ffmpeg.concat_command`, file timecode = the
+EDL's first record TC), checked (`qc.check_stringout`: decoded count, 1920x1080, 24/1, moov first)
+and renamed from `.part`. Name `naming.stringout_stem`, dated as the turnover folder, version past
+any in `<show>/_reports/`. `stringout.build` never raises: QC-142 (error, phase B, **does not
+block**: `qc.must_fix` now skips phase B at turnover scope) or QC-143 (info, events not from a
+reference). Recorded on `Turnover.stringout` (additive, carried over a rescan) and named in the
+tracker's column 34. **Built**: at the end of a Run for every turnover it delivered to
+(`run_controller.turnovers_written`, before the reports), and a heading's **Build Stringout**.
+New: `ShotRow.scene` from the CSV's `Scene`; the font and OFL in `proingest/resources/fonts`,
+bundled (`build/bundle.py`). **Verified**: 22 new tests including real renders, the suite (1738),
+a visual check of a built file. **Left to do**: UI_SPEC section 8 (still says dropped), PRD FR-9,
+NAMING_SPEC section 5's stringout name, QC_RULES_SUMMARY.csv rows for 142/143, the CLI does not
+build stringouts, an ungraded source segment of a plate is silent (only references carry sound),
+and white text with no box vanishes on a bright frame (matches Ben's template; raise with user).
+
+**2026-09-25, deliverables carry 1001-based timecode, not the camera's (user; OQ-35 closed).**
+"After the tool, we are leaving the cam timecode behind." `DeliverableJob.timecode_for` is now the
+output frame's own number, so every EXR frame's `timeCode` is its frame number (1001 is `00:00:41:17`
+at 24), aux stills included, and a reference mp4 starts at `00:00:41:17`. `source_start_timecode`
+came off the job. The camera TC is still read (EDL matching, QC-026 to QC-028) and in the QC log.
+**Not done, asked, unanswered**: keeping the camera TC as a hidden EXR attribute. Files delivered
+before keep camera TC; a re-run gets the new one. **Verified**: render tests read `timeCode` and
+the mp4 tag, the suite. COLOR_AND_FORMAT EXR metadata and section 5, QC-102, a MAC_SESSION line.
+**Stringout decisions, same day** (OQ-38): route A, cut from the delivered HD references after the
+run; the counter is `Frame: 1001 + (EDL source In - delivered In) + n`, tested on a real
+`drawtext` render; an event with no reference is **the ungraded source with burn-ins**; "Primary"
+spelled right; the name takes **the turnover folder's date**; the file's own timecode is the EDL's
+record start. Layout from `burn-ins.png`: name top centre, `Frame:` bottom left, `Primary Effect:
+<CSV Scene>` bottom centre, `SHOT_elem` bottom right, white, no box. **Next: build it.**
+
+**2026-09-25, a trim re-runs a delivered shot (user).** `ShotListModel._set_frame` marks a row with
+deliverables for the next Run, like a new shot code. So Cancel Re-run cannot leave a trimmed shot
+reading as delivered at a range its files were not, the planner records the range it planned at
+(`ShotRow.delivered_range`, additive in the batch file, carried over a rescan), and
+`qc.cancel_rerun_refusal` refuses when the current range differs. An older batch has no range
+and is not compared. **Verified**: model, planner, scan, QC and batch round-trip tests, the suite.
+**Waiting on**: the user's screenshot of an ideal stringout, which settles its burn-in layout.
+
+**2026-09-25, Cancel Re-run (user).** A right-click entry on a marked shot, and on a heading with
+any, withdraws the mark (`ShotListModel.withdraw_rerun`) so the shot reads as the last run left
+it. Refused, with the reason, where a delivered file's name no longer matches the shot's code or
+element (`qc.cancel_rerun_refusal`, reusing QC-151's identity check), since it would then read
+as delivered under a name it never had. **Verified**: QC and window tests, the suite. UI_SPEC 15b.
+**Note**: the test fixtures' deliverable names do not parse, so the refusal tests use real names.
+
+**2026-09-25, a new shot code re-runs the shot (user).** The Shot column was already editable
+(`shot_code_override`, QC-036), but a delivered shot stayed complete under a new code and Run
+rendered nothing (QC-061). `ShotListModel._set_shot_code` now marks a row that has deliverables
+for the next Run, like Re-scan. **Verified headless**: a delivered `MELT0001_pl01` recoded to
+`MELT0042` plans `MELT0042_pl01` at v01, all five deliverables; model tests, the suite. UI_SPEC
+section 2. **Not changed, asked**: a trim on a delivered shot does not put it back either.
+
+**2026-09-25, the stringout comes back (OQ-38 reopened), not built yet.** The user: Ben renders
+one in Resolve and the tool renders one with ffmpeg. Decisions are in OQ-38: the final EDL's
+ranges, an ungraded slate for an event with no reference mp4, the Resolve overlay's layout with
+source TC, a 1001 counter and the shot code, `turnover###_MM_DD_YYYY_<shooter>_SO_v##.mp4` in
+`_reports/`, plate audio only. **Also verified the same day, headless**: a `cp01` changed to `pl02`
+in Ben's CSV and Re-scanned as one shot delivers `pl02` at v02 with its wav, and the `cp01` v01
+files stay on disk.
+
+**2026-09-25, later: one entry, Re-scan, replaces Reset and Re-run (user).** On a shot and on a
+turnover heading. It marks the shot, or every shot in the turnover, for the next Run
+(`ShotListModel.mark_for_rerun`, only a row something was planned for), then re-scans the
+turnover (`MainWindow._rescan_for_run`; a shot's Re-scan reads the whole turnover too, since a
+row is built from the EDL, CSV and media together and the probe cache makes unchanged clips
+free). A new warning or must-fix shows; otherwise the Run renders it whole at the next version
+the folder allows, so a delivered shot comes out at v02. A marked row is neither done nor failed
+(`row_state`) and QC-150 skips it. The toolbar's Scan marks nothing. `qc.reset_row` and the
+same-version retry of a failed output are gone. **Verified**: window, model, planner and QC
+tests, the suite. UI_SPEC 15b, QC_RULES 061 and phase B, MAC_SESSION chunk D. The entry below is
+what it replaced.
+
+**2026-09-25, Re-run re-scans, and stops looking finished (user).** Choosing Re-run on a shot now
+also re-scans its turnover (`ShotListView._rerun` emits `rescan_requested`), because a shot is
+re-run after its footage or another file was replaced: the probe cache is keyed on path, size
+and mtime, so a replaced file is probed afresh, and every rule runs again. The Re-run mark
+survives that rescan (`scan.carry_over` now carries `rerun`), and a marked row shows no progress
+and is not green (`shot_model.row_state`, `_progress`). **Not changed, not asked**: Reset still
+does not re-scan, and Re-run still waits for Run rather than rendering at once. **Verified**:
+carry-over, model and window tests, the suite. UI_SPEC 15b.
+
+**2026-09-25, QC-020, QC-033 and QC-034 are must-fix (user).** An 8 bit or 4:2:0 source, and a cut
+shorter or longer than the Settings limits, now block the run like any error, until the row is
+fixed (trimmed, media replaced, limits moved) or skipped. QC-020 reverses the user's warning of
+2026-09-19; **every Turnover121 file is 8 bit 4:2:0, so that turnover no longer runs**, and its
+264 frame `pl02` is QC-034 too. Freezes and reference stills are still not asked about duration.
+**Verified**: the rule tests now assert error, and the suite. QC_RULES, COLOR_AND_FORMAT section 2.
+
+**2026-09-25, the delivery root defaults to one folder up from the turnover.** There was no
+default: Run's chooser opened on the last folder browsed to, the turnover just added, so accepting
+it delivered inside the turnover. Adding a turnover to a batch with no delivery root now sets it to
+the turnover's parent (`MainWindow.add_turnover`); one already chosen is kept, and the CLI still
+takes `--delivery-root` or the batch's. **Verified**: two window tests and the UI suite. UI_SPEC 13.
+**Then built, the same day: turnover folders dropped on the window** (user: skip what is not a
+turnover, add the rest). `MainWindow.add_turnovers` keeps each dropped folder that
+`scan.is_turnover_folder` accepts (an EDL and a CSV directly in it; two of either still counts and
+QC-001 says so) and is not already in the batch, numbers them with `scan.next_turnover_ids`, and
+scans them in one go; one "Skipped N of M" message lists the rest. **Verified**: core tests, window
+tests through a real `QDropEvent`, the suite. UI_SPEC section 10's states, a MAC_SESSION line for a
+Finder drag.
+
+**2026-09-25, three threads opened, nothing built.** **AMF (OQ-71, reopened by the user): Ben will
+export a per-clip AMF from his grading session.** Read by hand first, against what the tool assumes
+per clip (input transform, the CDL's working space, any other look), to explain the white Turnover121
+plates; whether it then replaces the CSV's colour fields or cross-checks them is decided after.
+**Tracker hyperlinks (asked, not answered)**: the user wants the tracker's Publish Folder and Plate
+Video cells linked to the items in Google Drive. Design agreed with the user: the run stops writing
+the tracker; an Export Tracker button, while the batch is open, first checks every linked item has
+synced (progress bar, then a green success and the save dialog, or an orange "not yet synced"). The
+link is built from the item's Drive ID. **Waiting on**: `xattr -l` on the Mac for a just-written mp4,
+a long-synced mp4 and its folder, beside their "Copy link to clipboard" links (the current Drive for
+desktop attribute name is unverified; `user.drive.id` is the 2019 File Stream one), and whether a
+hyperlink survives a paste into the studio's sheet. **Resolve reference EXR (asked, not answered)**:
+the user supplied `SECA0003_pl01_colorChart_01_raw_4k_v01.exr` (untracked, repo root) as what the
+tool's EXR should look like. It matches on size, half, DWAA, scanline, windows and `timeCode`;
+differs in a burned-in stringout overlay, pixels that are not scene linear (0 to 1.03, median 0.47,
+no `chromaticities`), Blackmagic Camera metadata in the header including GPS, and its name (the spec
+says `SECA0003_colorChart_01_4k_v01.exr`). Its clip, `A001_09231741_C007`, is not in any turnover
+here. `docs/QC_RULES_SUMMARY.csv` (untracked) was made for the user: severity and blocking per rule.
+
+**2026-09-24, 0.5.5: the QC log says what each source file is.** The user wants whoever checks a
+turnover, shooter to Ben, to see from the QC log whether the media is usable for VFX, and an 8 bit
+Rec.709 clip in particular; reported, never blocking. The Shots sheet has eight new columns after
+Source encoding: codec, pixel format, bit depth, chroma (`qc.chroma`, beside `qc.bit_depth`), and
+the file's primaries, transfer, matrix and range tags, `not stated` when the file states none.
+Nothing new is probed: `MediaInfo` already held all of it. **Verified**: tests for chroma and the
+columns; Turnover121's log reads `h264 yuv420p 8 4:2:0 bt709 bt709 bt709 tv` on all seven rows
+beside `Apple Log`, and Turnover199's Sony files read `h264 yuv422p10le 10 4:2:2`, three tags `not
+stated`, range `pc`. QC_RULES "QC log structure" and the quickstart. **Doc drift found, not
+fixed**: that QC_RULES line lists a **Grade** column the Shots sheet does not have.
+
+**2026-09-24, Turnover121 under investigation, nothing built.** A headless scan, run and QC of
+0.5.4 on Turnover121 wrote 22 deliverables (20 before the CSV correction, the two `sizeRef` stills
+being the difference), 0 failed; the freeze's references are 120 frames and silent. **The graded
+plates are white**: the EXRs' median is 142 to 298 linear, **some pixels are `inf`**, the HD
+references average luma 205 to 219 of 255, while the ungraded stills (median 0.013) look like
+plausible dark Apple Log. The user says Resolve shows no white frames and that the project is
+ACEScct with the timeline "using gamma 2.2". Slope 4.886 in ACEScct takes 0.18 linear to 5.4e7, so
+Resolve's picture is not this CDL alone; unexplained. **Found**: every Turnover121 `.mov` was
+written by `DaVinci Resolve Studio` (the `encoder` tag), 8 bit 4:2:0 H.264, labelled BT.709 in both
+the H.264 VUI and the `colr` box, while the CSV says Apple Log; nothing else in the turnover names
+709 or 2020. So the files were rendered, and whether that render converted the pixels or only
+labelled them is unknown. Turnover199 also carries Resolve's encoder tag (Copy with trim) but is 10
+bit 4:2:2 with no colour tags, so the encoder tag cannot tell a copy from a render. **Waiting on**:
+one camera original to compare, and the Deliver settings that made the files. **Deferred by the
+user**: a QC rule for a log encoding in a file labelled with a display curve. **Asked, not
+answered**: the user wants a log of the whole session with every file written and its full path;
+three questions put (one file per session and Save Logs exporting it; whether "output" includes
+ffmpeg's console; logging at Info). Currently only ffmpeg commands and `wrote <deliverable>` are
+logged, a plate being its folder; scans, batch saves, run start and summary and the two reports
+are not logged at all.
 
 **2026-09-23, 0.5.4: Turnover121 scans clean.** Built from the user's answers on the second
 official turnover (`docs/SAMPLE_TURNOVER_121.md`). **The ALE names the EDL's events** when the

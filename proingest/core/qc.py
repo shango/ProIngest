@@ -226,13 +226,43 @@ def bit_depth(pixel_format: str) -> int:
     return value
 
 
+_CHROMA_BY_NAME: tuple[tuple[tuple[str, ...], str], ...] = (
+    (("444", "nv24", "nv42", "p41", "vuya", "vuyx", "ayuv", "xv30", "xv36"), "4:4:4"),
+    (("422", "nv16", "nv20", "p21", "y210", "y212"), "4:2:2"),
+    (("420", "nv12", "nv21", "p01"), "4:2:0"),
+    (("440",), "4:4:0"),
+    (("411",), "4:1:1"),
+    (("410",), "4:1:0"),
+)
+"""Planar YUV names spell the sampling out; the packed and semi-planar ones imply it."""
+
+
+def chroma(pixel_format: str) -> str:
+    """The chroma subsampling of an ffmpeg pixel format name, for the QC log.
+
+    RGB and float formats carry every channel at every pixel, which is 4:4:4, and a
+    grey format has no chroma at all. A name this does not recognise (a hardware
+    surface, raw Bayer) comes back empty rather than guessed at.
+    """
+    if _is_float_format(pixel_format) or pixel_format.startswith(
+        ("rgb", "bgr", "gbr", "argb", "abgr", "0rgb", "0bgr", "x2rgb", "x2bgr", "xyz")
+    ):
+        return "4:4:4"
+    if pixel_format.startswith(("gray", "ya", "mono")):
+        return "4:0:0"
+    for markers, sampling in _CHROMA_BY_NAME:
+        if any(marker in pixel_format for marker in markers):
+            return sampling
+    return ""
+
+
 def check_source_format(row: ShotRow) -> list[QCResult]:
     """QC-020 and QC-021: whether the source can carry a linear plate.
 
     COLOR_AND_FORMAT section 2 is the list. Float formats and EXR are what the
-    pipeline wants; an integer or chroma-subsampled container still decodes, so it is
-    a warning about precision rather than a refusal; 8 bit or 4:2:0 cannot be a
-    legitimate linear plate at all.
+    pipeline wants; an integer container still decodes, so it is a warning about
+    precision rather than a refusal; 8 bit or 4:2:0 cannot be a legitimate linear plate
+    at all, and is must-fix (user, 2026-09-25, reversing the warning of 2026-09-19).
     """
     if row.media is None:
         return []
@@ -244,7 +274,7 @@ def check_source_format(row: ShotRow) -> list[QCResult]:
         return [
             QCResult(
                 "QC-020",
-                "warning",
+                "error",
                 "row",
                 f"{row.media.path.name} is {pixel_format} ({depth} bit); 8 bit and 4:2:0 "
                 f"sources cannot carry a linear plate",
@@ -409,7 +439,10 @@ def check_handles(row: ShotRow, settings: RuleSettings) -> list[QCResult]:
 
 
 def check_duration(row: ShotRow, settings: RuleSettings) -> list[QCResult]:
-    """QC-033 and QC-034: a cut outside the expected shot length."""
+    """QC-033 and QC-034: a cut outside the expected shot length, must-fix (user, 2026-09-25).
+
+    Fixed by trimming the row inside the limits, or by moving the limits in Settings.
+    """
     if row.current is None or not is_picture_row(row):
         return []
     duration = row.current.duration
@@ -417,7 +450,7 @@ def check_duration(row: ShotRow, settings: RuleSettings) -> list[QCResult]:
         return [
             QCResult(
                 "QC-033",
-                "warning",
+                "error",
                 "row",
                 f"{duration} frames is below the {settings.min_duration_frames} frame minimum",
             )
@@ -426,7 +459,7 @@ def check_duration(row: ShotRow, settings: RuleSettings) -> list[QCResult]:
         return [
             QCResult(
                 "QC-034",
-                "warning",
+                "error",
                 "row",
                 f"{duration} frames is above the {settings.max_duration_frames} frame maximum",
             )
@@ -1003,7 +1036,9 @@ def must_fix(batch: Batch) -> list[tuple[str, QCResult]]:
     """
     found: list[tuple[str, QCResult]] = [("batch", r) for r in batch.qc if r.severity == "error"]
     for turnover in batch.turnovers:
-        found.extend((turnover.folder.name, r) for r in turnover.qc if r.severity == "error")
+        found.extend(
+            (turnover.folder.name, r) for r in turnover.qc if r.severity == "error" and not _phase_b(r)
+        )
     for row in batch.rows:
         if row.skipped:
             continue
@@ -1383,6 +1418,31 @@ def _check_reference_audio(job: DeliverableJob, audio: list[dict[str, Any]]) -> 
     return [_failure("QC-114", f"{job.name} {complaint}", severity="warning")]
 
 
+def check_stringout(path: Path, frames_expected: int, size: tuple[int, int], rate: str) -> list[str]:
+    """What is wrong with a written stringout, for QC-142; empty when it is right.
+
+    The count is decoded, as QC-111 does, because a container can claim frames it does
+    not hold; the size and rate are the stream's; the moov atom is read as QC-115 reads it.
+    """
+    problems: list[str] = []
+    try:
+        counted = ffmpeg.count_frames(path)
+        stream = next(s for s in ffmpeg.probe_raw(path).get("streams", []) if s.get("codec_type") == "video")
+    except (ffmpeg.FFmpegError, ffmpeg.FFprobeError, StopIteration, OSError) as error:
+        return [f"{path.name} could not be read: {error}"]
+    if counted != frames_expected:
+        problems.append(f"{path.name} decodes {counted} frames, not the EDL's {frames_expected}")
+    found = (stream.get("width"), stream.get("height"))
+    if found != size:
+        problems.append(f"{path.name} is {found[0]}x{found[1]}, not {size[0]}x{size[1]}")
+    if stream.get("r_frame_rate") != rate:
+        problems.append(f"{path.name} plays at {stream.get('r_frame_rate')}, not {rate}")
+    order = _top_level_boxes(path)
+    if "moov" not in order or ("mdat" in order and order.index("mdat") < order.index("moov")):
+        problems.append(f"{path.name} does not have its moov atom at the head")
+    return problems
+
+
 def _check_faststart(job: DeliverableJob) -> list[QCResult]:
     """QC-115: the moov atom ahead of the media data, so the file streams.
 
@@ -1580,8 +1640,12 @@ OWNED_PHASE_B_BATCH_RULES = frozenset({"QC-151"})
 
 
 def check_row_complete(row: ShotRow) -> list[QCResult]:
-    """QC-150: every deliverable this row planned exists and passed its own checks."""
-    if not row.deliverables:
+    """QC-150: every deliverable this row planned exists and passed its own checks.
+
+    Silent on a row Re-scan put back for the next Run: what it planned last time is
+    being replaced, so it is not a delivery that fell short.
+    """
+    if not row.deliverables or row.rerun:
         return []
     unfinished = [item.name for item in row.deliverables if item.status != "done"]
     failed = [item.name for item in row.deliverables if any(result.severity == "error" for result in item.qc)]
@@ -1646,19 +1710,26 @@ def _identity_fault(parsed: naming.ParsedOutput | None, identity: naming.ShotIde
     return None
 
 
-def reset_row(row: ShotRow) -> bool:
-    """The editor fixed what failed: its outputs run again at the same version (D11).
+def cancel_rerun_refusal(row: ShotRow, show_pattern: str = naming.DEFAULT_SHOW_PATTERN) -> str | None:
+    """Why a shot's mark for the next Run cannot be withdrawn, or None when it can.
 
-    Every failed deliverable goes back to planned with its results cleared, and QC-150
-    goes with them until the next run says again whether the row landed. False when the
-    row had nothing failed, so there was nothing to reset.
+    Withdrawing it shows the shot as whatever the last run left it (user, 2026-09-25).
+    That is only true while its files still match it: after a new shot code or `Shot
+    Type`, the shot would read as delivered under a name it never was, and after a trim
+    as delivered at a range it never was.
     """
-    failed = [item for item in row.deliverables if item.status == "failed"]
-    for item in failed:
-        item.status = "planned"
-        item.qc = []
-    row.qc = [result for result in row.qc if result.rule_id != "QC-150"]
-    return bool(failed)
+    identity = effective_identity(row, show_pattern)
+    for item in row.deliverables:
+        fault = _identity_fault(naming.parse_output_name(item.name, show_pattern), identity)
+        if fault is not None:
+            return f"{item.name} {fault}; put it back before cancelling"
+    was, now = row.delivered_range, row.current
+    if was is not None and now is not None and was != now:
+        return (
+            f"delivered at {was.in_frame}-{was.out_frame}, now trimmed to {now.in_frame}-{now.out_frame}; "
+            f"put the range back before cancelling"
+        )
+    return None
 
 
 def apply_phase_b(batch: Batch, show_pattern: str = naming.DEFAULT_SHOW_PATTERN) -> None:

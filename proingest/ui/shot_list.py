@@ -116,14 +116,21 @@ def show_parse(editor: QLineEdit, parsed: ParsedInput) -> None:
     editor.setToolTip("" if parsed.ok else parsed.error or "")
 
 
-RESET_TEXT = "Reset"
-"""A shot's right-click entry once its cause is fixed: what failed runs again, same version."""
+STRINGOUT_TEXT = "Build Stringout"
+"""A turnover heading's entry: its stringout, now, at the next version (OQ-38, 2026-09-25).
+A Run builds one on its own for every turnover it delivered to."""
 
-RERUN_TEXT = "Re-run"
-"""A shot's right-click entry: render it again at the next version, complete or not."""
+CANCEL_RERUN_TEXT = "Cancel Re-run"
+"""Shown on a shot, or a heading, that Re-scan or a new shot code put back for the next Run:
+the mark is withdrawn and the shot reads as the last run left it (user, 2026-09-25)."""
 
 RESCAN_TEXT = "Re-scan"
-"""A turnover heading's right-click entry: read the folder again, keeping the edits (D8)."""
+"""The one right-click entry on a shot and on a turnover heading (user, 2026-09-25).
+
+It reads the files again, so a replaced clip, EDL or CSV is what every rule now checks,
+and puts the shot, or every shot in the turnover, back for the next Run: a new warning
+or must-fix shows on the row, and otherwise the Run renders it again, at the next
+version if it was delivered before. It replaced Reset and Re-run."""
 
 RELOCATE_TEXT = "New Folder Location..."
 """A turnover heading's right-click entry: reload it from where it moved to (D16)."""
@@ -344,6 +351,15 @@ class ShotListView(QTreeView):
     rescan_requested = Signal(object)
     """A `Turnover` whose heading was right-clicked for Re-scan (D8)."""
 
+    row_rescan_requested = Signal(object)
+    """A `ShotRow` right-clicked for Re-scan."""
+
+    stringout_requested = Signal(object)
+    """A `Turnover` whose heading was right-clicked for Build Stringout."""
+
+    cancel_rerun_requested = Signal(object)
+    """The `ShotRow`s, one shot or a heading's, whose Re-run is to be cancelled."""
+
     relocate_requested = Signal(object)
     """A `Turnover` whose heading was right-clicked for New Folder Location (D16)."""
     """`select_row` emptied the filter to reach a hidden row; the search box should follow."""
@@ -518,27 +534,38 @@ class ShotListView(QTreeView):
             return None
         row = self.shot_model.row_at(source)
         if row is not None:
-            return self._row_menu(source, row)
+            return self._row_menu(row)
         turnover = self.shot_model.turnover_at(source)
         if turnover is None:
             return None
         menu = QMenu(self)
-        for text, signal in ((RESCAN_TEXT, self.rescan_requested), (RELOCATE_TEXT, self.relocate_requested)):
+        entries = (
+            (RESCAN_TEXT, self.rescan_requested),
+            (RELOCATE_TEXT, self.relocate_requested),
+            (STRINGOUT_TEXT, self.stringout_requested),
+        )
+        for text, signal in entries:
             action = menu.addAction(text)
             action.setEnabled(not self.shot_model.locked)
             action.triggered.connect(lambda _checked=False, signal=signal: signal.emit(turnover))
+        armed = [row for row in self.shot_model.batch.rows_for(turnover.turnover_id) if row.rerun]
+        if armed:
+            self._add_cancel(menu, armed)
         return menu
 
-    def _row_menu(self, source: QModelIndex, row: ShotRow) -> QMenu:
-        """A shot's entries: Reset what failed, or Re-run what is complete (D11, D12)."""
+    def _add_cancel(self, menu: QMenu, rows: list[ShotRow]) -> None:
+        cancel = menu.addAction(CANCEL_RERUN_TEXT)
+        cancel.setEnabled(not self.shot_model.locked)
+        cancel.triggered.connect(lambda: self.cancel_rerun_requested.emit(rows))
+
+    def _row_menu(self, row: ShotRow) -> QMenu:
+        """A shot's Re-scan, and Cancel Re-run while it is marked (user, 2026-09-25)."""
         menu = QMenu(self)
-        locked = self.shot_model.locked
-        reset = menu.addAction(RESET_TEXT)
-        reset.setEnabled(not locked and any(item.status == "failed" for item in row.deliverables))
-        reset.triggered.connect(lambda: self.shot_model.reset_row(source))
-        rerun = menu.addAction(RERUN_TEXT)
-        rerun.setEnabled(not locked and bool(row.deliverables) and not row.rerun)
-        rerun.triggered.connect(lambda: self.shot_model.rerun_row(source))
+        rescan = menu.addAction(RESCAN_TEXT)
+        rescan.setEnabled(not self.shot_model.locked)
+        rescan.triggered.connect(lambda: self.row_rescan_requested.emit(row))
+        if row.rerun:
+            self._add_cancel(menu, [row])
         return menu
 
     def _show_menu(self, view: QTreeView, pos: QPoint) -> None:

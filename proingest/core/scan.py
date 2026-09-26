@@ -176,6 +176,21 @@ def _prefill(turnover: Turnover, folder: Path) -> None:
     turnover.shooter = prefill.shooter
 
 
+def is_turnover_folder(folder: Path) -> bool:
+    """Whether a folder holds an EDL and a metadata CSV directly in it.
+
+    What a drop onto the window asks of each thing dropped (user, 2026-09-25): anything
+    else is skipped rather than added and left to fail QC-001. Two of either still counts,
+    because that folder is a turnover with a problem to report, not something else.
+    """
+    try:
+        entries = [entry for entry in folder.iterdir() if entry.is_file()]
+    except OSError:
+        return False
+    suffixes = {entry.suffix.lower() for entry in entries}
+    return EDL_SUFFIX in suffixes and metacsv.CSV_SUFFIX in suffixes
+
+
 def _handover_files(folder: Path, turnover: Turnover) -> tuple[Path, Path] | None:
     """Ben's EDL and his metadata CSV, or QC-001 saying which is missing.
 
@@ -252,7 +267,23 @@ def _build_row(
     # typed. The CSV is the only carrier: the delivered container declares nothing.
     row.source_encoding = entry.written_encoding or None
     row.source_encoding_origin = "clip metadata" if row.source_encoding else None
+    row.scene = entry.scene
     return row
+
+
+def read_session(
+    turnover: Turnover, rate: FrameRate, show_pattern: str = naming.DEFAULT_SHOW_PATTERN
+) -> clf.ColorSession:
+    """The turnover's final EDL with its events named as the scan named them.
+
+    For the stringout, which needs every event rather than every row. What the ALE said
+    was already reported at scan, so its findings go nowhere here.
+    """
+    if turnover.edl_path is None:
+        raise clf.ColorSessionError(f"{turnover.folder.name} has no EDL")
+    session = clf.load_session(turnover.edl_path, rate, show_pattern)
+    scratch = Turnover(turnover_id=turnover.turnover_id, folder=turnover.folder)
+    return replace(session, events=_named_events(turnover.folder, session.events, scratch))
 
 
 def _named_events(folder: Path, events: list[clf.ConformEvent], turnover: Turnover) -> list[clf.ConformEvent]:
@@ -625,6 +656,12 @@ def next_turnover_id(batch: Batch) -> str:
     return f"t{highest + 1}"
 
 
+def next_turnover_ids(batch: Batch, count: int) -> list[str]:
+    """The ids the next `count` turnovers take, for several added at once before any is scanned."""
+    first = int(next_turnover_id(batch)[1:])
+    return [f"t{first + offset}" for offset in range(count)]
+
+
 def scan_batch(
     folders: list[Path],
     name: str = "untitled",
@@ -652,7 +689,8 @@ def carry_over(old: Turnover, old_rows: list[ShotRow], new: Turnover, new_rows: 
     first row with the first and its second with the second. What carries over is the
     editor's: a trim, but only one the editor made, so an EDL that moved the cut is not
     overridden by the cut it replaced; the shot code correction, the skip and its reason,
-    the notes, and the delivered state. Everything else is the new scan's.
+    the notes, the delivered state, and the mark Re-scan puts on a row for the next Run,
+    since that mark is set just before this rescan (user, 2026-09-25). Everything else is the new scan's.
 
     A changed EDL or CSV is a warning on the turnover, QC-070: the edits carried over
     were made against the old one.
@@ -671,6 +709,9 @@ def carry_over(old: Turnover, old_rows: list[ShotRow], new: Turnover, new_rows: 
         row.skipped, row.skip_reason = before.skipped, before.skip_reason
         row.notes = before.notes
         row.deliverables = before.deliverables
+        row.delivered_range = before.delivered_range
+        row.rerun = before.rerun
+    new.stringout = old.stringout
     changed = [
         name
         for name, was, now in (

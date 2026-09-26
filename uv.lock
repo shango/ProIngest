@@ -581,7 +581,7 @@ wheels = [
 
 [[package]]
 name = "proingest"
-version = "0.5.4"
+version = "0.5.6"
 source = { editable = "." }
 dependencies = [
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
@@ -605,7 +605,7 @@ dev = [
 requires-dist = [
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.11" },
     { name = "numpy", specifier = ">=1.26" },
-    { name = "opencolorio", specifier = ">=2.4" },
+    { name = "opencolorio", specifier = ">=2.5" },
     { name = "openexr", specifier = ">=3.2" },
     { name = "openpyxl", specifier = ">=3.1" },
     { name = "pyinstaller", marker = "extra == 'dev'", specifier = ">=6.11" },

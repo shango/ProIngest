@@ -443,11 +443,14 @@ def _audio_tempo(job: DeliverableJob) -> float:
 
 
 def _start_timecode(job: DeliverableJob) -> str | None:
-    """The reference's own timecode: the In frame's, which is what the EXRs carry too."""
-    if job.rate is None or job.in_frame is None or job.source_start_timecode is None:
+    """The reference's own timecode: its first frame's number, 1001, as the EXRs carry.
+
+    So a reference starts at `00:00:41:17` at 24, and Resolve reads its first frame as
+    frame 1001, whatever the camera said (user, 2026-09-25).
+    """
+    if job.rate is None:
         return None
-    first = frames.timecode_frames_for(job.in_frame, job.source_start_frame, job.source_start_timecode)
-    return frames.frames_to_timecode(first, job.rate.as_float())
+    return frames.frames_to_timecode(job.timecode_for(naming.FIRST_OUTPUT_FRAME), job.rate.as_float())
 
 
 # --- Audio and byte copies. ---

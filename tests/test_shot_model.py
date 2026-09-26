@@ -154,6 +154,15 @@ class TestWhatACellSays:
         assert text(built, 0, VERSION) == "v03"
         assert text(built, 0, PROGRESS) == "2/2"
 
+    def test_a_row_marked_for_re_run_shows_no_progress(self, qt_app: QApplication) -> None:
+        again = delivered(row(), version=3)
+        again.rerun = True
+        built = ShotListModel()
+        built.set_batch(batch(again))
+        assert text(built, 0, PROGRESS) == ""
+        assert cell(built, 0, PROGRESS, PROGRESS_ROLE) == 0.0
+        assert text(built, 0, VERSION) == "v03", "the version it has is still the one on disk"
+
     def test_a_row_nothing_has_been_planned_for_says_nothing(self, model: ShotListModel) -> None:
         assert text(model, 0, VERSION) == ""
         assert text(model, 0, PROGRESS) == ""
@@ -369,6 +378,13 @@ class TestRowState:
     def test_everything_written_is_done(self) -> None:
         assert row_state(delivered(row())) is RowState.DONE
 
+    @pytest.mark.parametrize("status", ["done", "failed"])
+    def test_a_row_re_scan_put_back_is_neither_done_nor_failed(self, status: str) -> None:
+        """User, 2026-09-25: it must stop reading as finished once it is asked for again."""
+        again = delivered(row(), status=status)
+        again.rerun = True
+        assert row_state(again) is RowState.OK
+
     def test_a_file_that_was_already_there_still_counts_as_done(self) -> None:
         assert row_state(delivered(row(), status="exists")) is RowState.DONE
 
@@ -572,6 +588,29 @@ class TestCommittingAnEdit:
         assert model.batch.rows[0].shot_code_override == "MELT0009"
         assert text(model, 0, SHOT) == "MELT0009"
 
+    def test_a_new_shot_code_puts_a_delivered_shot_back_for_the_next_run(self, qt_app: QApplication) -> None:
+        """User, 2026-09-25: re-run under a different code without a separate Re-scan."""
+        built = ShotListModel()
+        built.set_batch(batch(delivered(row())))
+        assert self.commit(built, SHOT, "MELT0042")
+        assert built.batch.rows[0].rerun
+        assert text(built, 0, PROGRESS) == ""
+
+    def test_a_trim_puts_a_delivered_shot_back_for_the_next_run(self, qt_app: QApplication) -> None:
+        """User, 2026-09-25: as a new shot code does."""
+        built = ShotListModel()
+        built.set_batch(batch(delivered(row())))
+        assert self.commit(built, IN, "10")
+        assert built.batch.rows[0].rerun
+
+    def test_a_trim_on_a_shot_never_run_marks_nothing(self, model: ShotListModel) -> None:
+        assert self.commit(model, IN, "10")
+        assert not model.batch.rows[0].rerun
+
+    def test_a_new_shot_code_on_a_shot_never_run_marks_nothing(self, model: ShotListModel) -> None:
+        assert self.commit(model, SHOT, "MELT0042")
+        assert not model.batch.rows[0].rerun
+
     def test_emptying_the_shot_code_puts_the_parsed_one_back(self, model: ShotListModel) -> None:
         """Withdrawing a correction means the original stands, not that the row is nameless."""
         self.commit(model, SHOT, "MELT0009")
@@ -623,7 +662,8 @@ class TestCommittingAnEdit:
         """QC-031 says it about the row. Refusing the keystroke would stop an editor who
         is typing Out before In on the way to a range that is fine."""
         assert self.commit(model, OUT, "900")
-        assert [result.rule_id for result in model.batch.rows[0].errors()] == ["QC-031"]
+        # The same range is also too long, which is must-fix since 2026-09-25 (QC-034).
+        assert [result.rule_id for result in model.batch.rows[0].errors()] == ["QC-031", "QC-034"]
 
     def test_a_range_before_the_media_s_timecode_still_renders(self, model: ShotListModel) -> None:
         """The stored value can sit before the media's own timecode; the cell that shows

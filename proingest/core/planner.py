@@ -106,14 +106,12 @@ class DeliverableJob:
     """The media's own matrix and range tags, which the decode states explicitly (D17)."""
 
     source_start_frame: int = 0
-    """First frame index of the media: the first sequence number, or 0 for a container."""
+    """First frame index of the media: the first sequence number, or 0 for a container.
 
-    source_start_timecode: int | None = None
-    """Start timecode of `source_start_frame`, or None when the media states none (QC-028).
-
-    These three are the last things a worker would otherwise have to reprobe. A job is
-    self contained on purpose, and reprobing in the worker would also mean the render
-    could disagree with the scan about the source.
+    These are the last things a worker would otherwise have to reprobe. A job is self
+    contained on purpose, and reprobing in the worker would also mean the render could
+    disagree with the scan about the source. The start timecode used to be one of them;
+    since deliverables carry their own frame numbers as timecode (2026-09-25) it is not.
     """
 
     shot_color: clf.ShotColor = clf.DEFAULT_SHOT_COLOR
@@ -177,13 +175,11 @@ class DeliverableJob:
             raise ValueError(f"{self.name} has no frame range")
         return frames.source_frame_for(self.in_frame, output_frame)
 
-    def timecode_for(self, output_frame: int) -> int | None:
-        """The source timecode an output frame carries, or None when there is none."""
-        if self.source_start_timecode is None:
-            return None
-        return frames.timecode_frames_for(
-            self.source_frame(output_frame), self.source_start_frame, self.source_start_timecode
-        )
+    def timecode_for(self, output_frame: int) -> int:
+        """The timecode an output frame carries, in frames: its own number, so frame 1001 is
+        `00:00:41:17` at 24. The camera's timecode stays behind (user, 2026-09-25); the
+        tool still reads it to match the EDL, and the QC log still reports it."""
+        return output_frame
 
     def output_frames(self) -> range:
         """The output frame numbers this job writes, 1001 first."""
@@ -343,14 +339,14 @@ def plan_batch(
 
         state = _prior_state(row)
         if state == "failed":
-            # Waiting for the editor to fix the cause and Reset the row (D11). What landed
+            # Waiting for the editor to fix the cause and Re-scan the row (D11). What landed
             # stays recorded and QC-150 already names the output that did not.
             continue
         if state == "complete":
             _keep(row, _complete(row))
             continue
         if state == "pending":
-            # A stopped run, or a Reset: the rest of the row at the version it has (D11).
+            # A stopped run: the rest of the row at the version it has (D11).
             version = row.deliverables[0].version
             plan = plan_row(row, root, version, show_pattern, clf.shot_color(row))
             waiting = {item.path for item in row.deliverables if item.status not in LANDED}
@@ -389,10 +385,11 @@ PriorState = Literal["new", "complete", "pending", "failed"]
 def _prior_state(row: ShotRow) -> PriorState:
     """What the last run left this row as, which decides what the next one does (D11, D12).
 
-    **new**: nothing planned yet, or the editor asked for a Re-run: plan it whole at the
-    next version. **complete**: everything landed and is still there: skip it. **failed**:
-    a check failed: wait for the editor's Reset. **pending**: some of it never ran, from a
-    stopped run or a Reset: finish it at the same version.
+    **new**: nothing planned yet, or the editor Re-scanned it (user, 2026-09-25): plan it
+    whole at the next version the delivery folder allows. **complete**: everything landed
+    and is still there: skip it. **failed**: a check failed: wait for the editor's
+    Re-scan. **pending**: some of it never ran, from a stopped run: finish it at the same
+    version.
 
     One stat per landed deliverable, so a file deleted since is rendered again rather
     than reported as delivered.
@@ -418,7 +415,7 @@ def _complete(row: ShotRow) -> RowPlan:
                 "QC-061",
                 "info",
                 "row",
-                f"complete at v{version:02d}, so this run leaves it alone; right-click Re-run "
+                f"complete at v{version:02d}, so this run leaves it alone; right-click Re-scan "
                 f"to write v{version + 1:02d}",
             )
         ]
@@ -441,6 +438,7 @@ def _resume(row: ShotRow, plan: RowPlan) -> None:
 def _record(row: ShotRow, plan: RowPlan) -> None:
     """Attach a plan to its row, replacing the results this module owns."""
     row.deliverables = [job.to_deliverable() for job in plan.jobs]
+    row.delivered_range = row.current if plan.jobs else None
     row.qc = [result for result in row.qc if result.rule_id not in OWNED_RULES]
     row.qc.extend(plan.qc)
 
@@ -470,7 +468,6 @@ def _picture_job(shot: _Shot, kind: JobKind, res: Resolution) -> DeliverableJob:
         source_color_space=shot.media.color_space,
         source_color_range=shot.media.color_range,
         source_start_frame=shot.media.start_frame,
-        source_start_timecode=shot.media.start_timecode,
         shot_color=shot.color,
         hold_frames=_hold_frames(shot) if kind == "ref_mp4" else 0,
     )
@@ -549,8 +546,9 @@ def _aux_plan(shot: _Shot) -> RowPlan:
                 source_is_sequence=shot.media.is_sequence,
                 source_size=shot.media.resolution,
                 rate=shot.media.rate,
+                source_color_space=shot.media.color_space,
+                source_color_range=shot.media.color_range,
                 source_start_frame=shot.media.start_frame,
-                source_start_timecode=shot.media.start_timecode,
                 shot_color=clf.ShotColor(
                     source_encoding=shot.color.source_encoding,
                     source_encoding_origin=shot.color.source_encoding_origin,

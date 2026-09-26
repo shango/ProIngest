@@ -29,7 +29,7 @@ offered on scan; that is retired with the two-phase flow it belonged to.
 
 | | |
 |---|---|
-| Colour management | **DaVinci YRGB Color Managed, ACES 1.3** |
+| Colour management | **DaVinci YRGB Color Managed, ACES 2.0**, output transform sRGB |
 | Timeline colour space | **ACEScct.** This is the standard, not a preference. The tool replays each shot's CDL in ACEScct; a session set to ACEScc grades the shadows differently and nothing anywhere errors |
 | Input colour space, per clip | **the clip's camera encoding**, the same value the shooter wrote into `Gamma Notes` and `Color Space Notes`, which you set as the clip's `Input Color Space` in this session. Resolve converts into ACEScct from it outside the node graph, and the tool does the same from the same name |
 | Output colour space, viewing | whatever the monitor wants. It is outside the node graph and never reaches the tool |

@@ -179,6 +179,58 @@ class TestQcLogSheets:
         header, values = sheet_rows(log, "Shots")
         assert not dict(zip(header, values, strict=True))["Source encoding"]
 
+    def source_columns(self, path: Path) -> dict[str, object]:
+        """The eight columns describing the file; Source encoding is the metadata's, not the file's."""
+        header, values = sheet_rows(path, "Shots")
+        described = zip(header, values, strict=True)
+        return {
+            str(key): value
+            for key, value in described
+            if str(key).startswith("Source ") and key != "Source encoding"
+        }
+
+    def test_the_shots_sheet_says_what_the_source_file_is(self, log: Path) -> None:
+        """User, 2026-09-24: whoever checks a turnover sees whether it is usable for VFX.
+        A tag the file does not state says so, rather than leaving a blank to wonder at."""
+        assert self.source_columns(log) == {
+            "Source codec": "prores",
+            "Source pixel format": "yuv444p12le",
+            "Source bit depth": 12,
+            "Source chroma": "4:4:4",
+            "Source primaries": "not stated",
+            "Source transfer": "not stated",
+            "Source matrix": "not stated",
+            "Source range": "not stated",
+        }
+
+    def test_an_eight_bit_rec709_clip_is_visible_in_the_sheet(self, tmp_path: Path) -> None:
+        """Turnover121's media: Resolve's 8 bit 4:2:0 H.264, labelled BT.709. Reported,
+        never blocked; QC-020 is the rule that warns."""
+        clip = row()
+        assert clip.media is not None
+        clip.media.codec, clip.media.pixel_format = "h264", "yuv420p"
+        clip.media.color_primaries = clip.media.color_transfer = clip.media.color_space = "bt709"
+        clip.media.color_range = "tv"
+        path = tmp_path / "log.xlsx"
+        exports.write_qc_log(Batch(name="b", rows=[clip]), path)
+        assert self.source_columns(path) == {
+            "Source codec": "h264",
+            "Source pixel format": "yuv420p",
+            "Source bit depth": 8,
+            "Source chroma": "4:2:0",
+            "Source primaries": "bt709",
+            "Source transfer": "bt709",
+            "Source matrix": "bt709",
+            "Source range": "tv",
+        }
+
+    def test_a_row_with_no_media_leaves_the_source_columns_empty(self, tmp_path: Path) -> None:
+        missing = row()
+        missing.media = None
+        path = tmp_path / "log.xlsx"
+        exports.write_qc_log(Batch(name="b", rows=[missing]), path)
+        assert not any(self.source_columns(path).values())
+
     def test_one_deliverables_row_each(self, log: Path) -> None:
         assert len(sheet_rows(log, "Deliverables")) == 8
 
@@ -262,9 +314,17 @@ class TestShotTracker:
         written = exports.write_shot_tracker(batch_of(target), tmp_path / "t.xlsx")
         assert sheet_rows(written, "Shots")[1][7] == "4K ✓\nHD \u2014"
 
-    def test_the_stringout_column_is_left_for_a_human(self, tracker: Path) -> None:
-        """OQ-41: the grammar the tool would rebuild it from matches none of the real names."""
+    def test_the_stringout_column_is_empty_until_one_is_written(self, tracker: Path) -> None:
         assert sheet_rows(tracker, "Shots")[1][34] is None
+
+    def test_the_stringout_column_names_the_turnover_s_stringout(self, tmp_path: Path) -> None:
+        """OQ-38, reopened 2026-09-25: the tool's own stringout of the shot's turnover."""
+        batch = batch_of(row())
+        name = "turnover001_09_23_2026_x_SO_v01.mp4"
+        for turnover in batch.turnovers:
+            turnover.stringout = Deliverable(kind="stringout", name=name, path=tmp_path / name, version=1)
+        written = exports.write_shot_tracker(batch, tmp_path / "t.xlsx")
+        assert sheet_rows(written, "Shots")[1][34] == name
 
     def test_a_23976_source_is_recorded_at_the_24_it_was_delivered_at(self, tmp_path: Path) -> None:
         """Every deliverable is written at 24 frame for frame (user, 2026-09-23)."""

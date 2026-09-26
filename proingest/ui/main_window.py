@@ -27,8 +27,15 @@ from base64 import b64decode, b64encode
 from datetime import datetime
 from pathlib import Path
 
-from PySide6.QtCore import QByteArray, Qt, QUrl
-from PySide6.QtGui import QAction, QCloseEvent, QDesktopServices, QKeySequence
+from PySide6.QtCore import QByteArray, QMimeData, Qt, QUrl
+from PySide6.QtGui import (
+    QAction,
+    QCloseEvent,
+    QDesktopServices,
+    QDragEnterEvent,
+    QDropEvent,
+    QKeySequence,
+)
 from PySide6.QtWidgets import (
     QDialog,
     QDockWidget,
@@ -113,6 +120,11 @@ def unsaved_question(path: Path | None) -> str:
     return f"The last save to {path.name} failed and the edits are still unsaved. Save it before closing?"
 
 
+def dropped_paths(mime: QMimeData) -> list[Path]:
+    """The local files and folders in a drop, in the order they came."""
+    return [Path(url.toLocalFile()) for url in mime.urls() if url.isLocalFile()]
+
+
 class MainWindow(QMainWindow):
     """The application window.
 
@@ -131,6 +143,8 @@ class MainWindow(QMainWindow):
 
         self.setWindowTitle(WINDOW_TITLE)
         self.resize(*DEFAULT_SIZE)
+        # Turnover folders dragged in from Finder, several at once (add_turnovers).
+        self.setAcceptDrops(True)
 
         self._build_actions()
         self._build_central()
@@ -294,7 +308,10 @@ class MainWindow(QMainWindow):
         """
         self.shot_model = ShotListModel(self)
         self.shot_list = ShotListView(self.shot_model, self)
-        self.shot_list.rescan_requested.connect(lambda turnover: self.rescan([turnover]))
+        self.shot_list.rescan_requested.connect(self.rescan_turnover)
+        self.shot_list.row_rescan_requested.connect(self.rescan_row)
+        self.shot_list.cancel_rerun_requested.connect(self.cancel_rerun)
+        self.shot_list.stringout_requested.connect(self.build_stringout)
         self.shot_list.relocate_requested.connect(self.relocate_turnover)
         self.autosave = AutoSaver(self)
         self.shot_model.row_edited.connect(lambda _row: self.autosave.schedule())
@@ -563,6 +580,10 @@ class MainWindow(QMainWindow):
 
         Adding from outside the source root is allowed and moves the root, because the
         root is a starting point and not a fence (UI_SPEC section 13).
+
+        A batch with no delivery root takes the turnover's parent as one (user,
+        2026-09-25), so deliverables and reports land beside the turnover rather than in
+        whatever folder Run's chooser happened to open on, which was the turnover itself.
         """
         if not self._batch_open or self._busy():
             return
@@ -572,8 +593,54 @@ class MainWindow(QMainWindow):
         if any(turnover.folder == folder for turnover in self.batch.turnovers):
             self.report_problem("Already added", f"{folder.name} is already in this batch.")
             return
-        self.batch.source_root = folder.parent
+        self._take_roots_from(folder)
         self._scan([(folder, scan.next_turnover_id(self.batch))])
+
+    def add_turnovers(self, paths: list[Path]) -> None:
+        """Several dropped on the window: add every turnover folder and skip the rest.
+
+        Skipped rather than added and left to fail QC-001 (user, 2026-09-25), because a
+        drop is a handful of things picked in Finder and a stray file among them is not a
+        turnover anyone meant to add. What was skipped is said once, after the rest start.
+        """
+        if not self._batch_open or self._busy():
+            return
+        present = {turnover.folder for turnover in self.batch.turnovers}
+        added: list[Path] = []
+        skipped: list[str] = []
+        for path in paths:
+            if path in present or path in added:
+                skipped.append(f"{path.name}: already in this batch")
+            elif not scan.is_turnover_folder(path):
+                skipped.append(f"{path.name}: not a folder holding an EDL and a metadata CSV")
+            else:
+                added.append(path)
+        if added:
+            self._take_roots_from(added[0])
+            self._scan(list(zip(added, scan.next_turnover_ids(self.batch, len(added)), strict=True)))
+        if skipped:
+            self.report_problem(f"Skipped {len(skipped)} of {len(paths)}", "\n".join(skipped))
+
+    def _take_roots_from(self, folder: Path) -> None:
+        """The source root follows the turnover; the delivery root defaults to beside it."""
+        self.batch.source_root = folder.parent
+        if self.batch.delivery_root is None:
+            self.batch.delivery_root = folder.parent
+            self.batch_bar.show_delivery_root(folder.parent)
+
+    def dragEnterEvent(self, event: QDragEnterEvent) -> None:
+        if self._batch_open and not self._busy() and dropped_paths(event.mimeData()):
+            event.acceptProposedAction()
+        else:
+            event.ignore()
+
+    def dropEvent(self, event: QDropEvent) -> None:
+        paths = dropped_paths(event.mimeData())
+        if not paths:
+            event.ignore()
+            return
+        event.acceptProposedAction()
+        self.add_turnovers(paths)
 
     def rescan_all(self) -> None:
         """Scan: read every turnover again, keeping what the editor did (D8)."""
@@ -595,6 +662,46 @@ class MainWindow(QMainWindow):
                 list(self.batch.rows_for(turnover.turnover_id)),
             )
         self._scan([(turnover.folder, turnover.turnover_id) for turnover in turnovers])
+
+    def rescan_turnover(self, turnover: Turnover) -> None:
+        """A heading's Re-scan: every shot in it goes back for the next Run (user, 2026-09-25).
+
+        For a swapped EDL or CSV, which can move any shot in the turnover.
+        """
+        self._rescan_for_run(turnover, list(self.batch.rows_for(turnover.turnover_id)))
+
+    def rescan_row(self, row: ShotRow) -> None:
+        """A shot's Re-scan: that shot goes back for the next Run, for a swapped clip."""
+        turnover = next((t for t in self.batch.turnovers if t.turnover_id == row.turnover_id), None)
+        if turnover is not None:
+            self._rescan_for_run(turnover, [row])
+
+    def _rescan_for_run(self, turnover: Turnover, rows: list[ShotRow]) -> None:
+        """Mark the rows for the next Run, then read the whole turnover again.
+
+        The whole turnover, even for one shot: a row is built from the EDL, the CSV and
+        its media together, and the probe cache makes the unchanged clips free. Only the
+        rows asked for are marked; the others keep their delivered state (`carry_over`).
+        """
+        if not self._batch_open or self._busy():
+            return
+        self.shot_model.mark_for_rerun(rows)
+        self.rescan([turnover])
+
+    def build_stringout(self, turnover: Turnover) -> None:
+        """A heading's Build Stringout, which the run controller does off this thread."""
+        self.run.build_stringout(turnover)
+
+    def cancel_rerun(self, rows: list[ShotRow]) -> None:
+        """Cancel Re-run, refusing a shot whose files no longer carry its name (user, 2026-09-25)."""
+        if not self._batch_open or self._busy():
+            return
+        pattern = settings_form.show_pattern_of(self._settings)
+        refused = {id(row): qc.cancel_rerun_refusal(row, pattern) for row in rows}
+        self.shot_model.withdraw_rerun([row for row in rows if refused[id(row)] is None])
+        reasons = [f"{row.shot_code}: {why}" for row in rows if (why := refused[id(row)]) is not None]
+        if reasons:
+            self.report_problem("Re-run not cancelled", "\n".join(reasons))
 
     def relocate_turnover(self, turnover: Turnover) -> None:
         """A turnover heading's New Folder Location: re-scan it from where it went (D16)."""

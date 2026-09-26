@@ -132,7 +132,7 @@ correct if they hold.
 
 | | |
 |---|---|
-| colour science | DaVinci YRGB Color Managed, **ACES 1.3** |
+| colour science | DaVinci YRGB Color Managed, **ACES 2.0** (user, 2026-09-25; 1.3 until then) |
 | timeline colour space | **ACEScct**, by standard (2026-09-18). The CDL is applied there, by Resolve and by the tool alike |
 | input colour space, per clip | **the clip's camera encoding**. Ben sets each clip's `Input Color Space` in his session to it, and Resolve converts from there outside the node graph. The tool reads the same encoding from the metadata (`Gamma Notes` + `Color Space Notes`, joined in that order) and resolves it through `color.INPUT_TRANSFORMS` |
 | grade | **the wheels of node one**, Luma Mix at 0, which is what Resolve's CDL export carries. **That is the whole grade**: there are no per-shot grade files (2026-09-21), so a look the wheels cannot reach is not deliverable through this pipeline |
@@ -518,7 +518,7 @@ was done to it.
   ACEScg`. Where a cube took its place the note reads `record only; the grade file named in
   proingest/clf is what was applied`. Writing the numbers and the verbatim lines is what makes
   a delivered plate legible to someone who has neither the session nor an OCIO install.
-- The source timecode, as the standard `timeCode` attribute. **Not yet written:**
+- **The frame's own number as timecode**, in the standard `timeCode` attribute: frame 1001 is `00:00:41:17` at 24 (user, 2026-09-25). **The camera's timecode stays behind**: it is read to match Ben's EDL and reported in the QC log, and no deliverable carries it. The reference mp4 starts at the same `00:00:41:17`. **Not yet written:**
   `proingest/tool_version`, the shot ID and the frame range, from the proposal's header list.
   They are spec rather than code until something asks for them.
 
@@ -532,18 +532,21 @@ the two legs around the grade and the aux still's one, `CDLTransform` is the CDL
 OpenColorIO's default no-clamp style (OQ-55), `FileTransform` loads a cube, and
 `DisplayViewTransform` is the output transform.
 
-The session is ACES 1.3, so the config is pinned to an ACES 1.3 built-in config rather than
+The session is ACES 2.0, so the config is pinned to an ACES 2.0 built-in config rather than
 tracking `studio-config-latest`. Matching the colour session matters more than being current,
 and a dependency bump must not change what the references look like. OQ-29.
 
-The pin is **`studio-config-v2.2.0_aces-v1.3_ocio-v2.4`**, and it lives in
+The pin is **`studio-config-v4.0.0_aces-v2.0_ocio-v2.5`** (from 2026-09-25, when the user found the
+session on ACES 2.0; it was `studio-config-v2.2.0_aces-v1.3_ocio-v2.4`), and it lives in
 `core/color.BUILTIN_CONFIG` where nothing else restates it. The studio config rather than the
 cg one for two reasons: it carries the camera vendor log encodings, which is what OQ-39 may
-yet name, and it carries the full set of view transforms the viewing LUT is baked from. What
-What was still open inside OQ-29 is which sRGB output transform within 1.3, and M4.5.3 built
-it to a default: **`ACES 1.0 - SDR Video` on the `sRGB - Display` display**, in `color.VIEW`.
-The pinned config offers four views on that display and the other three are not candidates: two
-are a D60 simulation and an un-tone-mapped debug view, and `Raw` is no transform at all.
+yet name, and it carries the full set of view transforms the viewing LUT is baked from. The move
+from 1.3 left the plate branch bit for bit the same (measured on frame 30 of `C0148.MP4`); only
+the view changed. The output transform is **`ACES 2.0 - SDR 100 nits (Rec.709)` on the `sRGB -
+Display` display**, in `color.VIEW`. The display is sRGB on the user's belief, not yet read off
+Ben's project (OQ-29). The config offers four views on that display and the other three are not
+candidates: `Un-tone-mapped` and `Video (colorimetric)` are not the ACES rendering, and `Raw` is
+no transform at all.
 
 ### The EXR writer stays as it is
 
@@ -569,8 +572,10 @@ mix of camera logs and a house wide gamut, and nothing has to be told which in a
   system records RAW, a debayered basic file type with no colours baked in.
 - **RAW never arrives.** ffmpeg decodes no RAW format - BRAW, REDCODE, ARRIRAW, X-OCN, Cinema RAW
   Light, ProRes RAW - so a RAW file in a turnover is refused rather than mis-rendered.
-- **4:2:0 is allowed with a warning** (user, 2026-09-19), so QC-020 is a warning and QC-021 is
-  rebased on what really arrives rather than on a ProRes 4444 intermediate that is never made.
+- **8 bit and 4:2:0 are must-fix** (user, 2026-09-25). They were allowed with a warning from
+  2026-09-19; QC-020 is an error again and blocks the run until the row is skipped or its media
+  replaced. QC-021 stays rebased on what really arrives rather than on a ProRes 4444 intermediate
+  that is never made.
 
 4:4:4 matters more on a log source than it would on a display referred one. Subsampled chroma
 in a log signal is stretched when the signal is linearised, and it shows on saturated edges.
@@ -585,8 +590,8 @@ in a log signal is stretched when the signal is linearised, and it shows on satu
 
 **Refused:**
 
-- 8 bit anything, and any 4:2:0 source. QC-020. Neither can carry a log signal without banding
-  the moment it is linearised.
+- 8 bit anything, and any 4:2:0 source. QC-020, must-fix. Neither can carry a log signal
+  without banding the moment it is linearised.
 
 **The tool does not read the colour space off the container, it overrides it.** No standard
 transfer tag names any camera log or wide gamut log encoding, and a container that does carry tags is as
@@ -653,7 +658,7 @@ NVENC was the Windows hardware encoder and **does not exist on macOS**. The macO
 - A frame count is a property of the file, so it is always counted at the file's own rate, never at the timeline's. A 30 fps container conformed to 24 still holds the frames it holds.
 - QC-026 therefore fires when the media states a rate and that rate differs from the project rate. Media that states no rate, such as a DPX sequence, cannot disagree. No retiming is ever performed. See OQ-19 on severity.
 - Timecode is non-drop only. An EDL declaring drop frame (`FCM: DROP FRAME`) is QC-027 error.
-- Source TC = media start timecode from the container or EXR header plus frame offset. If the media has no timecode, source TC is displayed as frames only and QC-028 warning is raised.
+- Source TC = media start timecode from the container or EXR header plus frame offset. If the media has no timecode, source TC is displayed as frames only and QC-028 warning is raised. **Source TC is an input only** (2026-09-25): it matches EDL events to clips and is reported in the QC log. Every deliverable's timecode is its own frame number, from 1001.
 
 ## 6. Frame math
 

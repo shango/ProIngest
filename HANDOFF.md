@@ -1,55 +1,72 @@
-# Handoff, 23 September 2026
+# Handoff, 25 September 2026
 
 **This is a short pointer, not the record.** `PROGRESS.md` section 1 holds the record: one entry
-per chunk, newest first, each saying what was built and how it was verified. If this file
-disagrees with `PROGRESS.md` or the docs, they are right and this file is wrong. Delete it once
-it has been read.
+per change, newest first, each saying what was built and how it was verified. If this file
+disagrees with `PROGRESS.md` or the docs, they are right and this file is wrong.
 
 ## Where things stand
 
-- **All eight chunks of the 2026-09-23 review are built** (`docs/REVIEW_2026-09-23.md` section 5),
-  one commit each, in the order A, B, F, G, E, C, D, H. The version is **0.5.0**.
-- Branch `color/cdl-in-acescct` is **pushed** for the 0.5.0 release. CI builds
-  `ProIngest-0.5.0.dmg` on PR #12, as the `ProIngest-macos-arm64` artifact of the run.
-- **The final check was green:** 1621 tests pass (the count fell because tests for removed code
-  went with it), and `ruff`, `ruff format` and `mypy --strict` are clean.
-- **The real turnover, `Turnover199`, works end to end:**
-  - its five rows scan with no must-fix;
-  - all 12 deliverables render;
-  - the tracker has one line;
-  - a second Run plans nothing.
+- **Version 0.5.6 on branch `qc/source-fidelity`**, PR #17 open, not merged. 0.5.4 is on `main`.
+  CI run 36220478640 is green on all four jobs and built `ProIngest-0.5.6.dmg`:
+  `gh run download 36220478640 -R shango/ProIngest -n ProIngest-macos-arm64 -D ~/Downloads/ProIngest-0.5.6`
+- **1739 tests pass**; `ruff`, `ruff format` and `mypy --strict` are clean.
+- **Turnover121 no longer renders anything**, by the user's decision: QC-020 (8 bit or 4:2:0) is
+  must-fix now, and every clip in it is 8 bit 4:2:0 H.264. Turnover199 (10 bit 4:2:2) is not
+  affected.
 
-## Next
+## What changed since 0.5.5 (all user decisions, 2026-09-24 and 25)
 
-1. Download the dmg from the CI run on PR #12.
-2. On the Mac, work through `docs/MAC_SESSION.md`, "The 0.5.0 build, in order". It opens with the
-   acceptance test on Turnover199, then the per-chunk checks for B, G, E and D.
+- **The delivery root defaults to one folder up from the turnover.**
+- **Turnover folders can be dropped on the window**, several at once; anything that is not a
+  turnover folder is skipped.
+- **QC-020, QC-033 and QC-034 are must-fix.**
+- **One right-click entry, Re-scan**, on a shot and on a turnover heading, replaces Reset and
+  Re-run. It re-reads the files, shows new warnings or errors, and otherwise marks the shot to
+  render again at the next version. **Cancel Re-run** withdraws the mark, and refuses (with the
+  reason) when the delivered files no longer match the shot's name or range.
+- **A new shot code or a trimmed In/Out puts a delivered shot back for the next Run.**
+- **Every deliverable's timecode is its own frame number from 1001** (`00:00:41:17` at 24). The
+  camera timecode is left behind.
+- **The stringout is built** (`core/stringout.py`, OQ-38): Ben's final EDL as one HD mp4, cut from
+  the delivered HD references, with the ungraded source or black standing in, burn-ins copied from
+  `burn-ins.png`. Built after a Run and from **Build Stringout** on a turnover heading.
+- **A reference still is decoded with its own matrix and range** (it was always BT.709 limited).
+- **The config is ACES 2.0** (`studio-config-v4.0.0_aces-v2.0_ocio-v2.5`), view `ACES 2.0 - SDR
+  100 nits (Rec.709)` on `sRGB - Display`. The EXRs do not change; the references do.
 
-## Calls I made for the user to confirm
+## Open
 
-These were reported to the user; they are recorded in `PROGRESS.md` too.
-
-- **Scan re-scans every turnover and keeps the editor's edits**, matched by File Name
-  (`scan.carry_over`). For that reason the Ingest Colour Session button was removed.
-- **A skipped row's must-fix does not block the run** (`qc.must_fix`).
-- **A failed row waits for the editor's right-click Reset.** Outputs a stopped run never wrote
-  resume on their own, at the same version.
-- **Jobs lost when a worker dies get one more pool** (`render._run_pool`). This matters because a
-  dead worker takes every job then in flight with it; that was measured on the real turnover.
-- **QC-018, an info, fires on every real row**: the files state no colour matrix, so each one is
-  decoded as BT.709 (D17, provisional).
-
-## Left open
-
-- FR-1's "refuse an M2 motion effect" (OQ-63) is not built.
-- Non-square pixels are not handled when letterboxing (COLOR_AND_FORMAT section 4).
+- **The display** is sRGB on the user's belief; read it off Ben's project (OQ-29). The config also
+  offers `Gamma 2.2 Rec.709` and `Rec.1886 Rec.709`.
+- **Ben saw a "very slight shift"** between his Resolve output and the tool's. Plausibly the ACES
+  1.3 vs 2.0 view (measured earlier: 3.3% mean, 11% peak in display code), but only for an mp4;
+  the EXR path is bit for bit the same under both configs. Ask which file, which clip, and where it
+  was viewed, then render that frame under both views.
+- **Every Turnover121 event's slope is 4.886**, which renders near white. Still with Ben.
+- **Resolve's reference EXR** (`SECA0003_pl01_colorChart_01_raw_4k_v01.exr`, repo root) is not
+  linear ACEScg: no `chromaticities`, median about 0.5, max 1.03, camera timecode. Five questions
+  asked about it (burn-in, colour encoding, camera metadata and GPS, file name), none answered.
+- **Per-clip AMF** from Ben's session, to be read by hand first (OQ-71). Nothing built.
+- **Drive links in the tracker export**: waiting on `xattr -l` from the Mac and a paste test.
+- **Stringout leftovers**: UI_SPEC section 8, PRD FR-9, NAMING_SPEC section 5 and the QC summary
+  rows for QC-142 and QC-143 still to write; the CLI does not build one; a source segment of a
+  plate is silent; a text shadow or box for bright frames is asked, not answered; whether to keep
+  the camera timecode as hidden metadata is asked, not answered.
+- **Untracked, the user to decide**: `docs/QC_RULES_SUMMARY.csv` and
+  `docs/COLOR_INPUTS_TURNOVER121.md`.
+- From before: a changed ALE is not flagged on re-scan; compound clips are unread (OQ-63);
+  non-square pixels are not letterboxed correctly.
 
 ## Working notes
 
-- **Do not update `build-track.html`.** It is retired (user, 2026-09-23).
-- **Scratch renders of Turnover199** are in the session scratchpad under `g/`: the batch files
-  `b.pibatch` and `d.pibatch`, plus `delivery/`. They are disposable.
-- **Per-chunk rules:**
-  - one commit per chunk, with the `PROGRESS.md` entry in the same commit;
-  - a `docs/MAC_SESSION.md` line for anything that only a Mac can confirm;
-  - no em dashes in any file.
+- **Do not update `build-track.html`.** It is retired.
+- **Every build gets its own patch version** in `pyproject.toml`, `proingest/__init__.py`,
+  `build/build.py`, `docs/guide/install.md` and `uv.lock`, and the reply is a `gh run download`
+  command, not a link. CI runs on pull requests and on pushes to `main`, not on a bare branch
+  push. **Merge only when the user asks.**
+- **`gh pr edit` fails** on a Projects (classic) GraphQL error; use
+  `gh api -X PATCH repos/shango/ProIngest/pulls/<n> -f title=... -f body=...`.
+- The turnover folders, the reference EXR and `burn-ins.png` in the repo root are untracked;
+  never `git add -A`.
+- **Per-change rules:** `PROGRESS.md` entry in the same commit; a `docs/MAC_SESSION.md` line for
+  anything only a Mac can confirm; no em dashes in any file.

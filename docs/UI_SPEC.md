@@ -68,7 +68,7 @@ What M5.11 settled, beyond the wording:
 
 ## 2. Shot list columns
 
-Frozen left: status dot, Shot Code (editable), Elem.
+Frozen left: status dot, Shot Code (editable), Elem. **A new shot code on a delivered shot puts it back for the next Run**, as Re-scan does (user, 2026-09-25): the files on disk carry the old code, so the Run writes the shot under the new one, at v01 in a shot folder that has none. **So does a trim** (In or Out) on a delivered shot, at the next version.
 Scrolling: Source file, Res, FPS, In (editable), Out (editable), Duration, Max Avail, Audio (icon: none / one / many), Version, Progress, Notes (editable, free text; kept in the batch and the QC log. The studio tracker has no Notes column, 2026-09-23).
 
 - **The In/Out display toggle in the batch bar has three states, not two: `Frames`, `Source TC`, `Record TC`.** It sets what the In and Out cells show as their primary value for the whole list, and it sets how a typed timecode is interpreted (source or record) when either TC state is selected.
@@ -254,6 +254,11 @@ Built in M5.7.2. What that settled, beyond the layout:
   toolbar read as the tool waiting for nothing. Cancelling the chooser lands on the next state.
 - Batch with no turnovers: "Add a turnover folder to begin", with an Add Turnover button under
   it that follows the toolbar action.
+- **Turnover folders can be dropped on the window, several at once** (user, 2026-09-25), while a
+  batch is open and nothing is scanning or running. Each folder holding an EDL and a metadata
+  CSV is added and all of them scan together; anything else dropped, and a folder already in the
+  batch, is skipped, and one message lists what was skipped and why. Add Turnover, by contrast,
+  adds whatever folder is picked and lets QC-001 say what is missing.
 - After Scan with zero rows: "No clips found in timeline" plus a link to the Issues dock. The
   same button stays under it.
 
@@ -380,7 +385,7 @@ OQ-25.
 | root | chosen where | what it means |
 |---|---|---|
 | Source root | toolbar, `Add Turnover` | The folder turnovers are added from. The chooser opens here, and the turnover folder the editor picks beneath it is what gets scanned and indexed |
-| Delivery root | batch bar, click the path | Where `<show>/<shot>/` is written, and where the tracker and QC spreadsheets land. **Drawn amber while there is none** (2026-09-17): it is the one thing Run stops to ask about, so it reads as unfinished before then |
+| Delivery root | batch bar, click the path | Where `<show>/<shot>/` is written, and where the tracker and QC spreadsheets land. **Drawn amber while there is none** (2026-09-17): it is the one thing Run stops to ask about, so it reads as unfinished before then. **Defaults to the first turnover's parent** (user, 2026-09-25): adding a turnover to a batch with no delivery root sets it one folder up from the turnover, beside it rather than inside it, and the editor can still change it here |
 
 - Both are remembered **per batch**, so reopening a `.pibatch` restores them and a second batch
   on another drive does not disturb the first.
@@ -424,12 +429,29 @@ editor drops the fixed EDL, CSV or clip into the folder and re-scans.
 - **A moved turnover says so on its header when the batch is opened** (QC-069, an error that
   holds it back), and New Folder Location re-scans it from where it went.
 
-## 15b. A shot's right-click (D11, D12)
+## 15b. Re-scan, on a shot or a turnover (D11, D12)
 
-- **Reset**, on a shot with a failed output: the editor has fixed the cause, and what failed
-  runs again at the same version on the next Run. Greyed when nothing failed.
-- **Re-run**, on a shot that has been planned: the next Run renders it again, whole, at the
-  next version. A complete shot is otherwise left alone (QC-061).
+**One right-click entry, Re-scan, on a shot and on a turnover heading** (user, 2026-09-25). It
+replaced Reset and Re-run. The editor swaps a file in the folder with the batch still open, then
+Re-scans: a shot for a replaced clip, the heading for a replaced EDL or CSV.
+
+- It reads the turnover again, keeping the editor's trims, skips and notes (D8), so every rule
+  checks what is in the folder now. A new warning or must-fix shows on the row, and a must-fix
+  stops the next Run as any other does.
+- It puts the shot, or on a heading every shot in the turnover, back for the next Run: its
+  progress bar and count empty and it stops reading as done or failed at once. A shot that was
+  delivered before comes out at the next version, v02 after v01; one never run is simply
+  rendered by the next Run. Other shots keep their delivered state.
+- The toolbar's Scan reads every turnover again without putting any shot back.
+- **Cancel Re-run** (user, 2026-09-25) appears on a shot that is marked for the next Run, and on a
+  heading with any such shot. It withdraws the mark and the shot reads as the last run left it:
+  done again, or waiting on a failed output. It touches no file, and the Re-scan's QC results
+  stay. **Refused, with the reason, for a shot whose delivered files no longer carry its name**
+  (a new shot code, or a new `Shot Type` from the CSV), or **whose range was trimmed since it was
+  planned** (`ShotRow.delivered_range`): it would read as delivered under a name, or at a range,
+  it never was. Put it back first.
+- A complete shot is otherwise left alone by Run (QC-061), and a shot with a failed output
+  waits for a Re-scan rather than being retried blindly.
 
 ## 15a. Locks (D15)
 

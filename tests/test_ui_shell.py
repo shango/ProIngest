@@ -10,11 +10,12 @@ from __future__ import annotations
 
 import sys
 from collections.abc import Callable, Iterator
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
-from PySide6.QtCore import Qt, QThread
-from PySide6.QtGui import QAction, QKeySequence
+from PySide6.QtCore import QMimeData, QModelIndex, QPoint, QPointF, Qt, QThread, QUrl
+from PySide6.QtGui import QAction, QDragEnterEvent, QDropEvent, QKeySequence
 from PySide6.QtWidgets import (
     QApplication,
     QDialog,
@@ -45,16 +46,18 @@ from proingest.ui.main_window import (
 )
 from proingest.ui.metadata import MIXED, NO_SELECTION, as_text
 from proingest.ui.run_controller import (
+    BUILDING_STRINGOUT,
     CHECKING_BATCH,
     MUST_FIX_TITLE,
     NOTHING_TO_RENDER,
     WRITING_REPORTS,
+    turnovers_written,
 )
 from proingest.ui.run_strip import LINK_COLOR, RunStrip
 from proingest.ui.runner import RENDERING
 from proingest.ui.settings_dialog import SettingsDialog
-from proingest.ui.shot_list import RELOCATE_TEXT, RERUN_TEXT, RESET_TEXT
-from proingest.ui.shot_model import IN, NOTES, SHOT, DisplayMode, RowState
+from proingest.ui.shot_list import CANCEL_RERUN_TEXT, RELOCATE_TEXT, RESCAN_TEXT, STRINGOUT_TEXT
+from proingest.ui.shot_model import IN, NOTES, PROGRESS, SHOT, DisplayMode, RowState
 from tests.fixtures.batches import (
     batch,
     delivered,
@@ -637,6 +640,33 @@ class TestTheTwoRoots:
         assert window.problems == []
 
 
+def turnover_folder(folder: Path) -> Path:
+    """A folder `scan.is_turnover_folder` accepts: an EDL and a CSV, empty."""
+    folder.mkdir(parents=True)
+    (folder / "cut.edl").write_text("")
+    (folder / "meta.csv").write_text("")
+    return folder
+
+
+_DROPPED: list[QMimeData] = []
+"""Every drop's mime data, held: the event keeps only a C++ pointer to it, and Python
+collecting it when `drop` returns leaves the window reading freed memory."""
+
+
+def drop(*paths: Path) -> QDropEvent:
+    """A drop of these paths from Finder onto the window."""
+    mime = QMimeData()
+    _DROPPED.append(mime)
+    mime.setUrls([QUrl.fromLocalFile(str(path)) for path in paths])
+    return QDropEvent(
+        QPointF(0, 0),
+        Qt.DropAction.CopyAction,
+        mime,
+        Qt.MouseButton.LeftButton,
+        Qt.KeyboardModifier.NoModifier,
+    )
+
+
 class TestAddingAndScanningTurnovers:
     """M5.4's other half: what reaches the scanner, and what comes back from it."""
 
@@ -658,6 +688,79 @@ class TestAddingAndScanningTurnovers:
         window.folder_answer = tmp_path / "elsewhere" / "turnover002"
         window.action_add_turnover.trigger()
         assert opened.source_root == tmp_path / "elsewhere"
+
+    def test_a_batch_with_no_delivery_root_delivers_beside_the_turnover(
+        self, window: DrivenWindow, tmp_path: Path
+    ) -> None:
+        """One folder up from the turnover, not inside it (user, 2026-09-25)."""
+        opened = Batch()
+        window.set_batch(opened)
+        stub_scanner(window)
+        window.folder_answer = tmp_path / "source" / "turnover001"
+        window.action_add_turnover.trigger()
+        assert opened.delivery_root == tmp_path / "source"
+        assert window.batch_bar.delivery_root.text() == str(tmp_path / "source")
+
+    def test_a_delivery_root_already_chosen_is_kept(self, window: DrivenWindow, tmp_path: Path) -> None:
+        opened = Batch(delivery_root=tmp_path / "delivery")
+        window.set_batch(opened)
+        stub_scanner(window)
+        window.folder_answer = tmp_path / "source" / "turnover001"
+        window.action_add_turnover.trigger()
+        assert opened.delivery_root == tmp_path / "delivery"
+
+    def test_dropping_folders_adds_the_turnovers_and_skips_the_rest(
+        self, window: DrivenWindow, tmp_path: Path
+    ) -> None:
+        """User, 2026-09-25: several at once, and anything that is not a turnover is skipped."""
+        first, second = turnover_folder(tmp_path / "turnover121"), turnover_folder(tmp_path / "turnover122")
+        stray = tmp_path / "notes"
+        stray.mkdir()
+        clip = tmp_path / "clip.mov"
+        clip.write_text("")
+        window.set_batch(Batch())
+        started = stub_scanner(window)
+        window.dropEvent(drop(first, stray, second, clip))
+
+        assert started == [[(first, "t1"), (second, "t2")]]
+        assert window.batch.delivery_root == tmp_path
+        assert len(window.problems) == 1
+        title, text = window.problems[0]
+        assert title == "Skipped 2 of 4" and "notes" in text and "clip.mov" in text
+
+    def test_a_dropped_turnover_already_in_the_batch_is_skipped(
+        self, window: DrivenWindow, tmp_path: Path
+    ) -> None:
+        folder = turnover_folder(tmp_path / "turnover121")
+        window.set_batch(Batch(turnovers=[Turnover("t1", folder)]))
+        started = stub_scanner(window)
+        window.dropEvent(drop(folder))
+        assert started == []
+        assert "already in this batch" in window.problems[0][1]
+
+    def test_the_window_takes_a_drag_only_while_a_batch_is_open(
+        self, window: DrivenWindow, tmp_path: Path
+    ) -> None:
+        def enter() -> bool:
+            dragged = drop(tmp_path)
+            event = QDragEnterEvent(
+                QPoint(0, 0),
+                Qt.DropAction.CopyAction,
+                dragged.mimeData(),
+                Qt.MouseButton.LeftButton,
+                Qt.KeyboardModifier.NoModifier,
+            )
+            window.dragEnterEvent(event)
+            return event.isAccepted()
+
+        assert not enter()
+        window.set_batch(Batch())
+        assert enter()
+
+    def test_a_drop_with_no_batch_open_does_nothing(self, window: DrivenWindow, tmp_path: Path) -> None:
+        started = stub_scanner(window)
+        window.dropEvent(drop(turnover_folder(tmp_path / "turnover121")))
+        assert started == [] and window.problems == []
 
     def test_the_same_folder_twice_is_refused_rather_than_doubled(self, window: DrivenWindow) -> None:
         window.set_batch(batch(row()))
@@ -760,30 +863,128 @@ class TestAddingAndScanningTurnovers:
 
         assert started == [[(tmp_path / "here", "t1")]]
 
-    def test_reset_puts_a_failed_output_back_for_the_next_run(self, window: DrivenWindow) -> None:
-        """D11: the editor fixed the cause; Reset is how the row runs again."""
-        failed = delivered(row(turnover_id="t1"), status="failed")
-        window.set_batch(batch(failed, turnovers=[Turnover("t1", Path("/s/t1"))]))
-        shot = window.shot_list.proxy.index(0, 0, window.shot_list.proxy.index(0, 0))
-        menu = window.shot_list.menu_for(shot)
-        assert menu is not None
-        reset = next(a for a in menu.actions() if a.text() == RESET_TEXT)
-        assert reset.isEnabled()
-        reset.trigger()
-        assert window.batch.rows[0].deliverables[0].status == "planned"
-        assert window.autosave.pending
+    def first_shot(self, window: DrivenWindow) -> QModelIndex:
+        return window.shot_list.proxy.index(0, 0, window.shot_list.proxy.index(0, 0))
 
-    def test_re_run_asks_for_the_next_version(self, window: DrivenWindow) -> None:
-        """D12: a complete shot is skipped by Run unless the editor asks for it."""
-        landed = delivered(row(turnover_id="t1"))
-        window.set_batch(batch(landed, turnovers=[Turnover("t1", Path("/s/t1"))]))
+    def rescan_entry(self, window: DrivenWindow, index: QModelIndex) -> QAction:
+        menu = window.shot_list.menu_for(index)
+        assert menu is not None
+        assert [a.text() for a in menu.actions() if a.text() == RESCAN_TEXT] == [RESCAN_TEXT]
+        return next(a for a in menu.actions() if a.text() == RESCAN_TEXT)
+
+    def test_a_shot_s_menu_is_re_scan_alone(self, window: DrivenWindow) -> None:
+        """User, 2026-09-25: one entry replaced Reset and Re-run."""
+        window.set_batch(batch(delivered(row(turnover_id="t1")), turnovers=[Turnover("t1", Path("/s/t1"))]))
         shot = window.shot_list.proxy.index(0, 0, window.shot_list.proxy.index(0, 0))
         menu = window.shot_list.menu_for(shot)
         assert menu is not None
-        actions_by_text = {a.text(): a for a in menu.actions()}
-        assert not actions_by_text[RESET_TEXT].isEnabled(), "nothing failed"
-        actions_by_text[RERUN_TEXT].trigger()
+        assert [a.text() for a in menu.actions()] == [RESCAN_TEXT]
+
+    @pytest.mark.parametrize("status", ["done", "failed"])
+    def test_re_scanning_a_shot_puts_it_back_for_the_next_run(
+        self, window: DrivenWindow, status: str
+    ) -> None:
+        """Delivered or failed, the shot is read again and runs again; its turnover is scanned."""
+        shot_row = delivered(row(turnover_id="t1"), status=status)
+        window.set_batch(batch(shot_row, turnovers=[Turnover("t1", Path("/s/t1"))]))
+        started = stub_scanner(window)
+        self.rescan_entry(
+            window, window.shot_list.proxy.index(0, 0, window.shot_list.proxy.index(0, 0))
+        ).trigger()
+
         assert window.batch.rows[0].rerun
+        assert window.autosave.pending
+        assert started == [[(Path("/s/t1"), "t1")]]
+
+    def test_re_scanning_a_shot_never_run_only_scans(self, window: DrivenWindow) -> None:
+        window.set_batch(batch(row(turnover_id="t1"), turnovers=[Turnover("t1", Path("/s/t1"))]))
+        started = stub_scanner(window)
+        self.rescan_entry(
+            window, window.shot_list.proxy.index(0, 0, window.shot_list.proxy.index(0, 0))
+        ).trigger()
+        assert not window.batch.rows[0].rerun
+        assert started == [[(Path("/s/t1"), "t1")]]
+
+    def test_re_scanning_a_heading_puts_back_every_shot_in_it_and_no_other(
+        self, window: DrivenWindow
+    ) -> None:
+        first = delivered(row("MELT0001_pl01", turnover_id="t1"))
+        second = delivered(row("MELT0002_pl01", turnover_id="t1"))
+        elsewhere = delivered(row("MELT0003_pl01", turnover_id="t2"))
+        window.set_batch(
+            batch(
+                first,
+                second,
+                elsewhere,
+                turnovers=[Turnover("t1", Path("/s/t1")), Turnover("t2", Path("/s/t2"))],
+            )
+        )
+        started = stub_scanner(window)
+        self.rescan_entry(window, window.shot_list.proxy.index(0, 0)).trigger()
+
+        assert [r.rerun for r in window.batch.rows] == [True, True, False]
+        assert started == [[(Path("/s/t1"), "t1")]]
+
+    def entries(self, window: DrivenWindow, index: QModelIndex) -> dict[str, QAction]:
+        menu = window.shot_list.menu_for(index)
+        assert menu is not None
+        return {a.text(): a for a in menu.actions()}
+
+    def test_cancel_re_run_is_offered_only_on_a_marked_shot(self, window: DrivenWindow) -> None:
+        window.set_batch(batch(delivered(row(turnover_id="t1")), turnovers=[Turnover("t1", Path("/s/t1"))]))
+        assert CANCEL_RERUN_TEXT not in self.entries(window, self.first_shot(window))
+        window.batch.rows[0].rerun = True
+        assert CANCEL_RERUN_TEXT in self.entries(window, self.first_shot(window))
+
+    def test_cancel_re_run_puts_the_shot_back_as_the_last_run_left_it(self, window: DrivenWindow) -> None:
+        """User, 2026-09-25: an armed shot can be told not to render after all."""
+        window.set_batch(batch(delivered(row(turnover_id="t1")), turnovers=[Turnover("t1", Path("/s/t1"))]))
+        window.batch.rows[0].rerun = True
+        self.entries(window, self.first_shot(window))[CANCEL_RERUN_TEXT].trigger()
+
+        assert not window.batch.rows[0].rerun
+        progress = self.first_shot(window).siblingAtColumn(PROGRESS)
+        assert progress.data() == "2/2", "the bar is back where the last run left it"
+        assert window.autosave.pending and window.problems == []
+
+    def test_a_shot_under_a_new_code_is_not_cancelled_and_says_why(self, window: DrivenWindow) -> None:
+        shot = delivered(row(turnover_id="t1"))
+        shot.deliverables[0].name = "MELT0001_pl01_ref_HD_v01.mp4"
+        shot.shot_code_override = "MELT0042"
+        shot.rerun = True
+        window.set_batch(batch(shot, turnovers=[Turnover("t1", Path("/s/t1"))]))
+        self.entries(window, self.first_shot(window))[CANCEL_RERUN_TEXT].trigger()
+
+        assert window.batch.rows[0].rerun
+        assert window.problems and "MELT0042" in window.problems[0][1]
+
+    def test_cancel_on_a_heading_withdraws_every_marked_shot_in_it(self, window: DrivenWindow) -> None:
+        first = delivered(row("MELT0001_pl01", turnover_id="t1"))
+        second = delivered(row("MELT0002_pl01", turnover_id="t1"))
+        first.rerun = second.rerun = True
+        window.set_batch(batch(first, second, turnovers=[Turnover("t1", Path("/s/t1"))]))
+        self.entries(window, window.shot_list.proxy.index(0, 0))[CANCEL_RERUN_TEXT].trigger()
+        assert [r.rerun for r in window.batch.rows] == [False, False]
+
+    def test_a_heading_offers_build_stringout(
+        self, window: DrivenWindow, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """OQ-38, 2026-09-25: a turnover's stringout on demand, off the UI thread."""
+        heading = Turnover("t1", Path("/s/t1"))
+        window.set_batch(batch(row(turnover_id="t1"), turnovers=[heading]))
+        asked: list[Turnover] = []
+        monkeypatch.setattr(window.run, "build_stringout", asked.append)
+        self.entries(window, window.shot_list.proxy.index(0, 0))[STRINGOUT_TEXT].trigger()
+        assert asked == [heading]
+
+    def test_a_run_rebuilds_the_stringout_only_where_it_delivered(self) -> None:
+        first = delivered(row("MELT0001_pl01", turnover_id="t1"))
+        second = delivered(row("MELT0002_pl01", turnover_id="t2"))
+        both = batch(first, second, turnovers=[Turnover("t1", Path("/a")), Turnover("t2", Path("/b"))])
+        landed = replace(second.deliverables[0], status="done")
+        assert [t.turnover_id for t in turnovers_written(both, [landed])] == ["t2"]
+        failed = replace(landed, status="failed")
+        assert turnovers_written(both, [failed]) == []
 
     def test_the_heading_menu_is_greyed_while_the_batch_is_locked(self, window: DrivenWindow) -> None:
         window.set_batch(batch(row(turnover_id="t1"), turnovers=[Turnover("t1", Path("/s/t1"))]))
@@ -1211,8 +1412,9 @@ class TestRunningABatch:
 
         assert said[0] == CHECKING_BATCH
         assert "Planning 1 shots" in said
-        assert WRITING_REPORTS in said
-        assert said.index(WRITING_REPORTS) == len(said) - 1
+        # A run that delivered builds its turnover's stringout in the same step as the
+        # spreadsheets, and says so (OQ-38, 2026-09-25).
+        assert said[-1] in (WRITING_REPORTS, BUILDING_STRINGOUT)
 
     def test_a_run_that_never_starts_takes_the_strip_away_again(
         self, window: DrivenWindow, tmp_path: Path

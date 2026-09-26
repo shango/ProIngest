@@ -235,7 +235,7 @@ class TestSourceFormat:
         """8 bit throws away shadow detail and 4:2:0 throws away two thirds of the chroma."""
         results = qc.check_source_format(row(pixel_format=pixel_format))
         assert ids(results) == ["QC-020"]
-        assert results[0].severity == "warning", "allowed with a warning since 2026-09-19 (F21)"
+        assert results[0].severity == "error", "must-fix since 2026-09-25 (user)"
 
     @pytest.mark.parametrize("pixel_format", ["yuv422p10le", "yuv444p12le", "rgb48le", "gbrp10le"])
     def test_integer_containers_are_qc_021(self, pixel_format: str) -> None:
@@ -267,6 +267,30 @@ class TestSourceFormat:
     )
     def test_bit_depth_reads_ffmpeg_names(self, pixel_format: str, depth: int) -> None:
         assert qc.bit_depth(pixel_format) == depth
+
+    @pytest.mark.parametrize(
+        ("pixel_format", "sampling"),
+        [
+            ("yuv420p", "4:2:0"),
+            ("yuvj420p", "4:2:0"),
+            ("yuv422p10le", "4:2:2"),
+            ("yuv444p12le", "4:4:4"),
+            ("yuva444p10le", "4:4:4"),
+            ("gbrpf32le", "4:4:4"),
+            ("rgb48le", "4:4:4"),
+            ("gray16le", "4:0:0"),
+            # Packed and semi-planar names imply the sampling rather than spelling it.
+            ("nv12", "4:2:0"),
+            ("p010le", "4:2:0"),
+            ("uyvy422", "4:2:2"),
+            ("y210le", "4:2:2"),
+            # Nothing to read: empty, not a guess.
+            ("videotoolbox_vld", ""),
+            ("bayer_rggb16le", ""),
+        ],
+    )
+    def test_chroma_reads_ffmpeg_names(self, pixel_format: str, sampling: str) -> None:
+        assert qc.chroma(pixel_format) == sampling
 
 
 class TestColorTags:
@@ -395,11 +419,12 @@ class TestDuration:
     def test_too_short_is_qc_033(self) -> None:
         results = qc.check_duration(row(current=InOut(1009, 1050)), qc.DEFAULT_SETTINGS)
         assert ids(results) == ["QC-033"]
-        assert results[0].severity == "warning"
+        assert results[0].severity == "error", "must-fix since 2026-09-25 (user)"
 
     def test_too_long_is_qc_034(self) -> None:
         results = qc.check_duration(row(current=InOut(1001, 1264)), qc.DEFAULT_SETTINGS)
         assert ids(results) == ["QC-034"]
+        assert results[0].severity == "error", "must-fix since 2026-09-25 (user)"
 
     def test_the_limits_are_settings(self) -> None:
         settings = qc.RuleSettings(min_duration_frames=1, max_duration_frames=10_000)
@@ -914,8 +939,6 @@ def test_a_digest_is_stable_and_content_dependent(tmp_path: Path) -> None:
 
 # --- phase B ----------------------------------------------------------------------
 
-ONE_HOUR = 86400
-
 
 def picture_job(
     source: Path,
@@ -939,7 +962,6 @@ def picture_job(
         source_size=fixtures.SMALL,
         rate=RATE_24,
         source_start_frame=in_frame,
-        source_start_timecode=ONE_HOUR,
         shot_color=color_fixtures.UNGRADED,
         **extra,  # type: ignore[arg-type]
     )
@@ -1235,6 +1257,15 @@ class TestRowComplete:
     def test_a_row_that_planned_nothing_is_not_incomplete(self) -> None:
         assert qc.check_row_complete(row()) == []
 
+    def test_a_row_re_scan_put_back_is_not_incomplete(self) -> None:
+        """Its failed output is being replaced by the next Run (user, 2026-09-25)."""
+        target = row()
+        item = delivered("MELT0001_pl01_audio_v01.wav", "audio")
+        item.status = "failed"
+        target.deliverables = [item]
+        target.rerun = True
+        assert qc.check_row_complete(target) == []
+
 
 class TestNamesReparse:
     def batch_with(self, *items: Deliverable) -> Batch:
@@ -1337,3 +1368,37 @@ class TestDropFrame:
         dropped.media.drop_frame = True
         results = qc.check_timecode(dropped)
         assert [(r.rule_id, r.severity) for r in results] == [("QC-027", "error")]
+
+
+class TestCancelRerunRefusal:
+    """User, 2026-09-25: a mark is withdrawn only while the files still carry the shot's name."""
+
+    def armed(self) -> ShotRow:
+        target = row()
+        target.deliverables = [delivered("MELT0001_pl01_ref_HD_v01.mp4", "ref_mp4", res="HD")]
+        target.rerun = True
+        return target
+
+    def test_a_shot_whose_files_carry_its_name_can_be_cancelled(self) -> None:
+        assert qc.cancel_rerun_refusal(self.armed()) is None
+
+    def test_a_new_shot_code_refuses(self) -> None:
+        target = self.armed()
+        target.shot_code_override = "MELT0042"
+        refusal = qc.cancel_rerun_refusal(target)
+        assert refusal is not None and "MELT0042" in refusal and "put it back" in refusal
+
+    def test_a_trim_since_the_delivery_refuses(self) -> None:
+        target = self.armed()
+        target.delivered_range = target.current
+        assert qc.cancel_rerun_refusal(target) is None
+        assert target.current is not None
+        target.current = InOut(target.current.in_frame + 2, target.current.out_frame)
+        refusal = qc.cancel_rerun_refusal(target)
+        assert refusal is not None and "put the range back" in refusal
+
+    def test_a_new_shot_type_refuses(self) -> None:
+        target = self.armed()
+        target.identity = identity_of("MELT0001_pl02")
+        refusal = qc.cancel_rerun_refusal(target)
+        assert refusal is not None and "pl02" in refusal

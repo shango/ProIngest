@@ -40,9 +40,9 @@ class TestConfig:
     def test_the_pinned_config_loads(self) -> None:
         assert color.config().getName() == color.BUILTIN_CONFIG
 
-    def test_it_is_an_aces_1_3_config(self) -> None:
-        """The colour session is ACES 1.3 and the tool has to match it, not track latest."""
-        assert "aces-v1.3" in color.BUILTIN_CONFIG
+    def test_it_is_an_aces_2_0_config(self) -> None:
+        """The colour session is ACES 2.0 and the tool has to match it, not track latest."""
+        assert "aces-v2.0" in color.BUILTIN_CONFIG
 
     def test_it_is_cached(self) -> None:
         assert color.config() is color.config()
@@ -330,15 +330,19 @@ class TestViewLut:
         assert baked == pytest.approx(ramp, abs=0.005)
 
     def test_trilinear_is_the_worse_answer_the_constant_exists_to_avoid(self, tmp_path: Path) -> None:
-        """Read the same cube the default way and mid grey moves twice as far."""
+        """Read the same cube the default way and mid grey lands several times further off.
+
+        Measured under the ACES 2.0 view: 0.0005 tetrahedral, 0.0031 trilinear.
+        """
         cube = color.view_lut(tmp_path / "MELT0001_view.cube", *self.chain())
-        exact, trilinear = grey_frame(ACESCCT_MID_GREY), grey_frame(ACESCCT_MID_GREY)
+        exact = grey_frame(ACESCCT_MID_GREY)
         color.apply(exact, color.processor(*self.chain()))
-        color.apply(
-            trilinear,
-            color.processor(ocio.FileTransform(src=str(cube), interpolation=ocio.INTERP_LINEAR)),
-        )
-        assert abs(float(trilinear[0, 0, 0] - exact[0, 0, 0])) > 0.005
+        error = {}
+        for interpolation in (color.INTERPOLATION, ocio.INTERP_LINEAR):
+            read = grey_frame(ACESCCT_MID_GREY)
+            color.apply(read, color.processor(ocio.FileTransform(src=str(cube), interpolation=interpolation)))
+            error[interpolation] = abs(float(read[0, 0, 0] - exact[0, 0, 0]))
+        assert error[ocio.INTERP_LINEAR] > 4 * error[color.INTERPOLATION]
 
     def test_ffmpeg_reads_it_as_the_same_transform(self, tmp_path: Path) -> None:
         """The whole point of baking one, checked against the tool that will apply it.
