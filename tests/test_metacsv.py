@@ -168,6 +168,15 @@ class TestEncoding:
         )
         assert result.rows[0].written_encoding == "Apple Log"
 
+    def test_scene_is_read_for_the_stringout(self, tmp_path: Path) -> None:
+        """Burned in as the Primary Effect (2026-09-25)."""
+        result = read(
+            tmp_path,
+            ["File Name", "Shot", "Shot Type", "Scene"],
+            [["C1.mov", "SECA0001", "pl01", "Laser/Melt"]],
+        )
+        assert result.rows[0].scene == "Laser/Melt"
+
     def test_the_notes_win_over_input_color_space(self, tmp_path: Path) -> None:
         result = read(
             tmp_path,

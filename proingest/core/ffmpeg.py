@@ -22,7 +22,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
-from collections.abc import Generator
+from collections.abc import Generator, Sequence
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -608,6 +608,15 @@ LUT_INTERPOLATION = "tetrahedral"
 a one word difference nobody notices being wrong."""
 
 
+def _x264(crf: int | None = None) -> list[str]:
+    """How every reference, and every stringout segment, is encoded."""
+    return [
+        "-c:v", "libx264", "-profile:v", "high", "-preset", REFERENCE_PRESET,
+        "-crf", str(_CRF if crf is None else crf), "-g", REFERENCE_KEYINT,
+        "-pix_fmt", REFERENCE_PIXEL_FORMAT, *REFERENCE_TAGS,
+    ]  # fmt: skip
+
+
 def lut_filter(cube: Path) -> str:
     """The filter that applies a baked `.cube`, COLOR_AND_FORMAT section 1.
 
@@ -619,8 +628,7 @@ def lut_filter(cube: Path) -> str:
     rather than pasted. Nothing the tool writes contains either character, and a
     filtergraph that fails to parse is a render that fails on a temp directory name.
     """
-    escaped = str(cube).replace("\\", "\\\\").replace(":", "\\:").replace("'", "\\'")
-    return f"lut3d={escaped}:interp={LUT_INTERPOLATION}"
+    return f"lut3d={_filter_path(cube)}:interp={LUT_INTERPOLATION}"
 
 
 def encode_command(
@@ -642,8 +650,16 @@ def encode_command(
     color_range: str = "",
     canvas: tuple[int, int] | None = None,
     hold: int = 0,
+    overlay: Sequence[str] = (),
+    silence: bool = False,
+    audio_format: Sequence[str] = (),
 ) -> list[str]:
     """The command that encodes `[in_frame, out_frame]` to one reference mp4.
+
+    `overlay` is filters drawn last, on the finished canvas: the stringout's burn-ins.
+    `silence` gives a picture with no `audio` a silent track of the same length, so every
+    stringout segment has the same streams and they join without a re-encode, and
+    `audio_format` pins the sound's rate and layout for the same reason.
 
     With `hold` longer than the range, the last frame is repeated until the reference
     is `hold` frames long: a freeze delivers one frame shown for five seconds.
@@ -712,6 +728,8 @@ def encode_command(
         if audio_skip > 0:
             command += ["-ss", f"{audio_skip:.6f}"]
         command += ["-i", str(audio)]
+    elif silence:
+        command += ["-f", "lavfi", "-i", SILENCE]
 
     filters.append(to_rgb(target_size, color_space, color_range, LUT_PIXEL_FORMAT))
     if lut is not None:
@@ -719,33 +737,23 @@ def encode_command(
     filters.append(REFERENCE_TO_YUV)
     if canvas is not None:
         filters.append(pad_filter(canvas))
+    filters.extend(overlay)
     command += ["-vf", ",".join(filters)]
 
     # fps_mode passthrough for the same reason the decode passes it: ffmpeg must not
     # invent or drop frames to reach a constant rate, because section 6 maps output
     # frame 1001 + k onto source frame in + k and nothing may break that.
     command += ["-map", "0:v:0"]
-    command += ["-map", "1:a:0"] if audio is not None else ["-an"]
+    sounded = audio is not None or silence
+    command += ["-map", "1:a:0"] if sounded else ["-an"]
     command += [
         "-frames:v",
         str(written),
         "-fps_mode",
         "passthrough",
-        "-c:v",
-        "libx264",
-        "-profile:v",
-        "high",
-        "-preset",
-        REFERENCE_PRESET,
-        "-crf",
-        str(_CRF if crf is None else crf),
-        "-g",
-        REFERENCE_KEYINT,
-        "-pix_fmt",
-        REFERENCE_PIXEL_FORMAT,
-        *REFERENCE_TAGS,
+        *_x264(crf),
     ]
-    if audio is not None:
+    if sounded:
         # `apad` then `atrim` states the audio's length outright: pad it to endless,
         # then cut it to exactly the picture. Both halves are needed and neither is
         # about the other stream. A wav shorter than the picture is padded with silence,
@@ -766,10 +774,75 @@ def encode_command(
             REFERENCE_AUDIO_BITRATE,
             "-af",
             _audio_fit(audio_tempo, _seconds(written, rate)),
+            *audio_format,
         ]
     if timecode is not None:
         command += ["-timecode", timecode]
     return [*command, "-movflags", "+faststart", "-f", "mp4", str(destination)]
+
+
+STRINGOUT_AUDIO = ("-ar", "48000", "-ac", "2")
+"""Every stringout segment's sound, whatever its plate recorded, so all of them match."""
+
+SILENCE = "anullsrc=r=48000:cl=stereo"
+"""A stringout segment with no sound of its own: 48 kHz stereo, what AAC from a camera wav
+comes out as, so the segments agree and join by stream copy."""
+
+
+def drawtext_literal(text: str) -> str:
+    """Text for `drawtext` to print as written. Its expansion reads `%{...}` and a backslash
+    even from a `textfile`, so both are escaped: a Scene of `50% rain` must not vanish."""
+    return text.replace("\\", "\\\\").replace("%", "\\%")
+
+
+def drawtext_filter(textfile: Path, font: Path, size: int, x: str, y: str) -> str:
+    """One burn-in, read from a file rather than inlined: the docs warn that inline text
+    can need four levels of escaping, and a file needs one (the path)."""
+    return (
+        f"drawtext=fontfile={_filter_path(font)}:textfile={_filter_path(textfile)}"
+        f":fontsize={size}:fontcolor=white:x={x}:y={y}"
+    )
+
+
+def _filter_path(path: Path) -> str:
+    """A path inside a filtergraph argument: colon separated and backslash escaped."""
+    return str(path).replace("\\", "\\\\").replace(":", "\\:").replace("'", "\\'")
+
+
+def black_command(
+    destination: Path,
+    size: tuple[int, int],
+    rate: str,
+    length: int,
+    overlay: Sequence[str] = (),
+    ffmpeg: Path | None = None,
+) -> list[str]:
+    """`length` frames of black with silence, encoded as a reference is, so it joins the
+    segments either side of it: a gap in the EDL, or an event nothing is known about."""
+    tool = ffmpeg or resolve_tool("ffmpeg")
+    picture = f"color=c=black:s={size[0]}x{size[1]}:r={rate}"
+    filters = [REFERENCE_TO_YUV, *overlay]
+    return [
+        str(tool), "-hide_banner", "-loglevel", "error", "-nostdin", "-y",
+        "-f", "lavfi", "-i", picture, "-f", "lavfi", "-i", SILENCE,
+        "-vf", ",".join(filters), "-map", "0:v:0", "-map", "1:a:0",
+        "-frames:v", str(length), *_x264(),
+        "-c:a", "aac", "-b:a", REFERENCE_AUDIO_BITRATE,
+        "-af", f"atrim=duration={_seconds(length, rate):.6f}", *STRINGOUT_AUDIO,
+        "-movflags", "+faststart", "-f", "mp4", str(destination),
+    ]  # fmt: skip
+
+
+def concat_command(listing: Path, destination: Path, timecode: str, ffmpeg: Path | None = None) -> list[str]:
+    """Join encoded segments by stream copy (the concat demuxer), as one mp4 whose own
+    timecode starts where the EDL's record does. Every segment was encoded with the same
+    settings and streams, which is what makes copying safe."""
+    tool = ffmpeg or resolve_tool("ffmpeg")
+    return [
+        str(tool), "-hide_banner", "-loglevel", "error", "-nostdin", "-y",
+        "-f", "concat", "-safe", "0", "-i", str(listing),
+        "-c", "copy", "-timecode", timecode, "-movflags", "+faststart", "-f", "mp4", str(destination),
+    ]  # fmt: skip
 
 
 def _seconds(count: int, rate: str) -> float:

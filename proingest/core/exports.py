@@ -373,15 +373,15 @@ def _main_plate(rows: list[ShotRow]) -> ShotRow | None:
     return min(plates, key=lambda row: row.identity.index if row.identity else "", default=None)
 
 
-def tracker_row(shot_code: str, rows: list[ShotRow]) -> list[str]:
+def tracker_row(shot_code: str, rows: list[ShotRow], stringout: str = "") -> list[str]:
     """One shot code as the studio's 39 columns, with the thirty that are not ours empty.
 
     **One line per shot code** (user, 2026-09-23), as the studio's own sheet has always
     been: a shot's `pl01`, `cp01` and reference stills are one line, described by its
     main plate. `rows` are the shot's rows that landed.
 
-    The stringout column is left empty because Ben produces and exports that file and
-    the tool does nothing with it at all (user, 2026-09-22, closing OQ-41).
+    The stringout column names the tool's stringout of the shot's turnover, when one was
+    written (OQ-38, reopened 2026-09-25). It was empty while Ben's was the only one.
     """
     plate = _main_plate(rows)
     reference = _delivered(plate, "ref_mp4", "HD") if plate is not None else None
@@ -396,6 +396,7 @@ def tracker_row(shot_code: str, rows: list[ShotRow]) -> list[str]:
     cells[7] = _plate_marks(plate)
     cells[8] = TRACKER_FPS
     cells[9] = _TICK if audio is not None else ""
+    cells[34] = stringout
     return cells
 
 
@@ -405,7 +406,8 @@ def tracker_rows(batch: Batch) -> list[list[str]]:
     for row in batch.rows:
         if row.shot_code and _landed(row):
             shots.setdefault(row.shot_code, []).append(row)
-    return [tracker_row(code, rows) for code, rows in shots.items()]
+    written = {t.turnover_id: t.stringout.name for t in batch.turnovers if t.stringout is not None}
+    return [tracker_row(code, rows, written.get(rows[0].turnover_id, "")) for code, rows in shots.items()]
 
 
 def write_shot_tracker(batch: Batch, path: Path) -> Path:

@@ -28,8 +28,8 @@ from typing import TYPE_CHECKING, cast
 
 from PySide6.QtCore import QObject, QTimer
 
-from proingest.core import clf, exports, planner, qc, render
-from proingest.core.models import Batch, Deliverable, QCResult
+from proingest.core import clf, exports, planner, qc, render, stringout
+from proingest.core.models import Batch, Deliverable, QCResult, Turnover
 from proingest.core.planner import DeliverableJob
 from proingest.ui import settings_form
 from proingest.ui.background import Background, Failure
@@ -58,6 +58,7 @@ CHECKING_BATCH = "Checking the batch"
 PLANNING = "Planning {count} shots"
 CHECKING_RESULTS = "Checking what landed"
 WRITING_REPORTS = "Writing the QC log and the shot tracker"
+BUILDING_STRINGOUT = "Building the stringout"
 """The steps of a run that happen on the UI thread rather than in a worker.
 
 Section 7.1's line names one step at a time, and the ones a worker reports come from
@@ -106,6 +107,13 @@ def must_fix_text(found: Sequence[tuple[str, QCResult]]) -> str:
     lines.append("")
     lines.append("Correct them in the turnover folder, press Scan, then Run.")
     return "\n".join(lines)
+
+
+def turnovers_written(batch: Batch, written: list[Deliverable]) -> list[Turnover]:
+    """The turnovers a run delivered something to, in batch order."""
+    names = {item.name for item in written if item.status == "done"}
+    ids = {row.turnover_id for row in batch.rows if any(item.name in names for item in row.deliverables)}
+    return [turnover for turnover in batch.turnovers if turnover.turnover_id in ids]
 
 
 class RunController(QObject):
@@ -390,15 +398,59 @@ class RunController(QObject):
         window.show_results()
         window.autosave.schedule()
 
-        window.run_strip.say(WRITING_REPORTS)
+        # The stringout of every turnover this run delivered to, before the reports, so the
+        # tracker can name it (OQ-38, 2026-09-25). A cancelled run leaves them as they were.
+        touched = [] if cancelled else turnovers_written(batch, written)
+        pattern = settings_form.show_pattern_of(window.settings)
+        window.run_strip.say(BUILDING_STRINGOUT if touched else WRITING_REPORTS)
         self.background.run(
-            lambda: self._write_reports(batch),
+            lambda: self._stringouts_then_reports(batch, touched, pattern),
             lambda result: self._reported(result, written, cancelled),
         )
         window.update_state()
 
+    @classmethod
+    def _stringouts_then_reports(cls, batch: Batch, touched: list[Turnover], pattern: str) -> Path:
+        """Off the UI thread. A stringout that fails is QC-142 on its turnover, never a raise."""
+        if batch.delivery_root is not None:
+            for turnover in touched:
+                stringout.build(batch, turnover, batch.delivery_root, pattern)
+        return cls._write_reports(batch)
+
+    def build_stringout(self, turnover: Turnover) -> None:
+        """A heading's Build Stringout: this turnover's, now, at its next version."""
+        window = self._window
+        if not window.batch_open or self.busy or window.scanner.busy:
+            return
+        batch = window.batch
+        if batch.delivery_root is None:
+            window.choose_delivery_root()
+            if batch.delivery_root is None:
+                return
+        root, pattern = batch.delivery_root, settings_form.show_pattern_of(window.settings)
+        window.run_strip.start()
+        window.run_strip.say(BUILDING_STRINGOUT)
+        self.background.run(lambda: stringout.build(batch, turnover, root, pattern), self._stringout_built)
+        window.update_state()
+
+    def _stringout_built(self, result: object) -> None:
+        window = self._window
+        window.run_strip.clear()
+        window.show_results()
+        window.autosave.schedule()
+        if isinstance(result, Failure):
+            window.report_problem("The stringout could not be built", str(result.error))
+        elif isinstance(result, Deliverable):
+            window.statusBar().showMessage(f"Wrote {result.name}")
+        else:
+            window.statusBar().showMessage("The stringout was not written; the Issues dock says why (QC-142)")
+        window.update_state()
+        self._idle()
+
     def _reported(self, result: object, written: list[Deliverable], cancelled: bool) -> None:
         window = self._window
+        window.show_results()  # a stringout's QC-142 or QC-143 is on its turnover now
+        window.autosave.schedule()
         reports = self._reports_or_problem(result)
         text = banner_text(written, reports, cancelled)
         window.run_strip.show_banner(text)

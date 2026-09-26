@@ -184,6 +184,9 @@ class TestShotRow:
         assert not make_row().was_edited
         assert make_row(current=InOut(1001, 1300)).was_edited
 
+    def test_the_scene_round_trips(self) -> None:
+        assert ShotRow.from_dict(make_row(scene="Laser").to_dict()).scene == "Laser"
+
     def test_the_delivered_range_round_trips_and_an_old_batch_has_none(self) -> None:
         row = make_row(delivered_range=InOut(1001, 1240))
         assert ShotRow.from_dict(row.to_dict()).delivered_range == InOut(1001, 1240)
@@ -272,6 +275,9 @@ class TestTurnover:
             color_session_edl=Path("/session/MELT_FINAL.edl"),
             number=1,
             shooter="Daniel Luckett",
+            stringout=Deliverable(
+                kind="stringout", name="so.mp4", path=Path("/d/so.mp4"), version=1, status="done"
+            ),
         )
         assert Turnover.from_dict(turnover.to_dict()) == turnover
 

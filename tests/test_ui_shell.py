@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import sys
 from collections.abc import Callable, Iterator
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -45,15 +46,17 @@ from proingest.ui.main_window import (
 )
 from proingest.ui.metadata import MIXED, NO_SELECTION, as_text
 from proingest.ui.run_controller import (
+    BUILDING_STRINGOUT,
     CHECKING_BATCH,
     MUST_FIX_TITLE,
     NOTHING_TO_RENDER,
     WRITING_REPORTS,
+    turnovers_written,
 )
 from proingest.ui.run_strip import LINK_COLOR, RunStrip
 from proingest.ui.runner import RENDERING
 from proingest.ui.settings_dialog import SettingsDialog
-from proingest.ui.shot_list import CANCEL_RERUN_TEXT, RELOCATE_TEXT, RESCAN_TEXT
+from proingest.ui.shot_list import CANCEL_RERUN_TEXT, RELOCATE_TEXT, RESCAN_TEXT, STRINGOUT_TEXT
 from proingest.ui.shot_model import IN, NOTES, PROGRESS, SHOT, DisplayMode, RowState
 from tests.fixtures.batches import (
     batch,
@@ -963,6 +966,26 @@ class TestAddingAndScanningTurnovers:
         self.entries(window, window.shot_list.proxy.index(0, 0))[CANCEL_RERUN_TEXT].trigger()
         assert [r.rerun for r in window.batch.rows] == [False, False]
 
+    def test_a_heading_offers_build_stringout(
+        self, window: DrivenWindow, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """OQ-38, 2026-09-25: a turnover's stringout on demand, off the UI thread."""
+        heading = Turnover("t1", Path("/s/t1"))
+        window.set_batch(batch(row(turnover_id="t1"), turnovers=[heading]))
+        asked: list[Turnover] = []
+        monkeypatch.setattr(window.run, "build_stringout", asked.append)
+        self.entries(window, window.shot_list.proxy.index(0, 0))[STRINGOUT_TEXT].trigger()
+        assert asked == [heading]
+
+    def test_a_run_rebuilds_the_stringout_only_where_it_delivered(self) -> None:
+        first = delivered(row("MELT0001_pl01", turnover_id="t1"))
+        second = delivered(row("MELT0002_pl01", turnover_id="t2"))
+        both = batch(first, second, turnovers=[Turnover("t1", Path("/a")), Turnover("t2", Path("/b"))])
+        landed = replace(second.deliverables[0], status="done")
+        assert [t.turnover_id for t in turnovers_written(both, [landed])] == ["t2"]
+        failed = replace(landed, status="failed")
+        assert turnovers_written(both, [failed]) == []
+
     def test_the_heading_menu_is_greyed_while_the_batch_is_locked(self, window: DrivenWindow) -> None:
         window.set_batch(batch(row(turnover_id="t1"), turnovers=[Turnover("t1", Path("/s/t1"))]))
         stub_scanner(window, busy=True)
@@ -1389,8 +1412,9 @@ class TestRunningABatch:
 
         assert said[0] == CHECKING_BATCH
         assert "Planning 1 shots" in said
-        assert WRITING_REPORTS in said
-        assert said.index(WRITING_REPORTS) == len(said) - 1
+        # A run that delivered builds its turnover's stringout in the same step as the
+        # spreadsheets, and says so (OQ-38, 2026-09-25).
+        assert said[-1] in (WRITING_REPORTS, BUILDING_STRINGOUT)
 
     def test_a_run_that_never_starts_takes_the_strip_away_again(
         self, window: DrivenWindow, tmp_path: Path

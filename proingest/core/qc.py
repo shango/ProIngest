@@ -1036,7 +1036,9 @@ def must_fix(batch: Batch) -> list[tuple[str, QCResult]]:
     """
     found: list[tuple[str, QCResult]] = [("batch", r) for r in batch.qc if r.severity == "error"]
     for turnover in batch.turnovers:
-        found.extend((turnover.folder.name, r) for r in turnover.qc if r.severity == "error")
+        found.extend(
+            (turnover.folder.name, r) for r in turnover.qc if r.severity == "error" and not _phase_b(r)
+        )
     for row in batch.rows:
         if row.skipped:
             continue
@@ -1414,6 +1416,31 @@ def _check_reference_audio(job: DeliverableJob, audio: list[dict[str, Any]]) -> 
         return []
     complaint = "has no audio stream" if wanted else "has an audio stream nothing planned"
     return [_failure("QC-114", f"{job.name} {complaint}", severity="warning")]
+
+
+def check_stringout(path: Path, frames_expected: int, size: tuple[int, int], rate: str) -> list[str]:
+    """What is wrong with a written stringout, for QC-142; empty when it is right.
+
+    The count is decoded, as QC-111 does, because a container can claim frames it does
+    not hold; the size and rate are the stream's; the moov atom is read as QC-115 reads it.
+    """
+    problems: list[str] = []
+    try:
+        counted = ffmpeg.count_frames(path)
+        stream = next(s for s in ffmpeg.probe_raw(path).get("streams", []) if s.get("codec_type") == "video")
+    except (ffmpeg.FFmpegError, ffmpeg.FFprobeError, StopIteration, OSError) as error:
+        return [f"{path.name} could not be read: {error}"]
+    if counted != frames_expected:
+        problems.append(f"{path.name} decodes {counted} frames, not the EDL's {frames_expected}")
+    found = (stream.get("width"), stream.get("height"))
+    if found != size:
+        problems.append(f"{path.name} is {found[0]}x{found[1]}, not {size[0]}x{size[1]}")
+    if stream.get("r_frame_rate") != rate:
+        problems.append(f"{path.name} plays at {stream.get('r_frame_rate')}, not {rate}")
+    order = _top_level_boxes(path)
+    if "moov" not in order or ("mdat" in order and order.index("mdat") < order.index("moov")):
+        problems.append(f"{path.name} does not have its moov atom at the head")
+    return problems
 
 
 def _check_faststart(job: DeliverableJob) -> list[QCResult]:

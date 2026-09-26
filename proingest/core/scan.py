@@ -267,7 +267,23 @@ def _build_row(
     # typed. The CSV is the only carrier: the delivered container declares nothing.
     row.source_encoding = entry.written_encoding or None
     row.source_encoding_origin = "clip metadata" if row.source_encoding else None
+    row.scene = entry.scene
     return row
+
+
+def read_session(
+    turnover: Turnover, rate: FrameRate, show_pattern: str = naming.DEFAULT_SHOW_PATTERN
+) -> clf.ColorSession:
+    """The turnover's final EDL with its events named as the scan named them.
+
+    For the stringout, which needs every event rather than every row. What the ALE said
+    was already reported at scan, so its findings go nowhere here.
+    """
+    if turnover.edl_path is None:
+        raise clf.ColorSessionError(f"{turnover.folder.name} has no EDL")
+    session = clf.load_session(turnover.edl_path, rate, show_pattern)
+    scratch = Turnover(turnover_id=turnover.turnover_id, folder=turnover.folder)
+    return replace(session, events=_named_events(turnover.folder, session.events, scratch))
 
 
 def _named_events(folder: Path, events: list[clf.ConformEvent], turnover: Turnover) -> list[clf.ConformEvent]:
@@ -695,6 +711,7 @@ def carry_over(old: Turnover, old_rows: list[ShotRow], new: Turnover, new_rows: 
         row.deliverables = before.deliverables
         row.delivered_range = before.delivered_range
         row.rerun = before.rerun
+    new.stringout = old.stringout
     changed = [
         name
         for name, was, now in (

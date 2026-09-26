@@ -45,6 +45,8 @@ SHOT_TYPE_COLUMN = "Shot Type"
 GAMMA_COLUMN = "Gamma Notes"
 COLOR_SPACE_COLUMN = "Color Space Notes"
 INPUT_COLOR_SPACE_COLUMN = "Input Color Space"
+SCENE_COLUMN = "Scene"
+"""Burned into the stringout as its Primary Effect, as Ben's Resolve template does (2026-09-25)."""
 
 CSV_SUFFIX = ".csv"
 
@@ -70,6 +72,7 @@ class MetaRow:
     gamma_notes: str
     color_space_notes: str
     input_color_space: str = ""
+    scene: str = ""
     qc: tuple[QCResult, ...] = ()
 
     @property
@@ -240,6 +243,7 @@ def read(path: Path, show_pattern: str = naming.DEFAULT_SHOW_PATTERN) -> MetaCsv
     gamma_positions = _columns(header, GAMMA_COLUMN)
     space_positions = _columns(header, COLOR_SPACE_COLUMN)
     input_positions = _columns(header, INPUT_COLOR_SPACE_COLUMN)
+    scene_positions = _columns(header, SCENE_COLUMN)
 
     result = MetaCsv(path=path)
     for record in records[1:]:
@@ -261,6 +265,7 @@ def read(path: Path, show_pattern: str = naming.DEFAULT_SHOW_PATTERN) -> MetaCsv
                 gamma_notes=_value(record, gamma_positions),
                 color_space_notes=_value(record, space_positions),
                 input_color_space=_value(record, input_positions),
+                scene=_value(record, scene_positions),
                 qc=tuple(type_qc + _row_qc(file_name, shot, shot_type, kind, show_pattern)),
             )
         )

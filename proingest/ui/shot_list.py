@@ -116,6 +116,10 @@ def show_parse(editor: QLineEdit, parsed: ParsedInput) -> None:
     editor.setToolTip("" if parsed.ok else parsed.error or "")
 
 
+STRINGOUT_TEXT = "Build Stringout"
+"""A turnover heading's entry: its stringout, now, at the next version (OQ-38, 2026-09-25).
+A Run builds one on its own for every turnover it delivered to."""
+
 CANCEL_RERUN_TEXT = "Cancel Re-run"
 """Shown on a shot, or a heading, that Re-scan or a new shot code put back for the next Run:
 the mark is withdrawn and the shot reads as the last run left it (user, 2026-09-25)."""
@@ -350,6 +354,9 @@ class ShotListView(QTreeView):
     row_rescan_requested = Signal(object)
     """A `ShotRow` right-clicked for Re-scan."""
 
+    stringout_requested = Signal(object)
+    """A `Turnover` whose heading was right-clicked for Build Stringout."""
+
     cancel_rerun_requested = Signal(object)
     """The `ShotRow`s, one shot or a heading's, whose Re-run is to be cancelled."""
 
@@ -532,7 +539,12 @@ class ShotListView(QTreeView):
         if turnover is None:
             return None
         menu = QMenu(self)
-        for text, signal in ((RESCAN_TEXT, self.rescan_requested), (RELOCATE_TEXT, self.relocate_requested)):
+        entries = (
+            (RESCAN_TEXT, self.rescan_requested),
+            (RELOCATE_TEXT, self.relocate_requested),
+            (STRINGOUT_TEXT, self.stringout_requested),
+        )
+        for text, signal in entries:
             action = menu.addAction(text)
             action.setEnabled(not self.shot_model.locked)
             action.triggered.connect(lambda _checked=False, signal=signal: signal.emit(turnover))

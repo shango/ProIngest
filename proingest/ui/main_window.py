@@ -311,6 +311,7 @@ class MainWindow(QMainWindow):
         self.shot_list.rescan_requested.connect(self.rescan_turnover)
         self.shot_list.row_rescan_requested.connect(self.rescan_row)
         self.shot_list.cancel_rerun_requested.connect(self.cancel_rerun)
+        self.shot_list.stringout_requested.connect(self.build_stringout)
         self.shot_list.relocate_requested.connect(self.relocate_turnover)
         self.autosave = AutoSaver(self)
         self.shot_model.row_edited.connect(lambda _row: self.autosave.schedule())
@@ -686,6 +687,10 @@ class MainWindow(QMainWindow):
             return
         self.shot_model.mark_for_rerun(rows)
         self.rescan([turnover])
+
+    def build_stringout(self, turnover: Turnover) -> None:
+        """A heading's Build Stringout, which the run controller does off this thread."""
+        self.run.build_stringout(turnover)
 
     def cancel_rerun(self, rows: list[ShotRow]) -> None:
         """Cancel Re-run, refusing a shot whose files no longer carry its name (user, 2026-09-25)."""

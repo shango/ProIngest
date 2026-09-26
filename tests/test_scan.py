@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from proingest.core import scan
-from proingest.core.models import Batch, InOut, ShotRow, Turnover
+from proingest.core.models import Batch, Deliverable, InOut, ShotRow, Turnover
 from tests.fixtures import media as fixtures
 
 GOOD_FOLDER = "turnover001_02_23_2026_danielluckett"
@@ -359,6 +359,12 @@ class TestCarryOver:
         scan.carry_over(Turnover("t1", Path("/a")), old, Turnover("t1", Path("/b")), new)
         assert new[0].rerun
         assert new[0].delivered_range == InOut(10, 20)
+
+    def test_the_stringout_stays_with_the_turnover(self) -> None:
+        was, now = Turnover("t1", Path("/a")), Turnover("t1", Path("/a"))
+        was.stringout = Deliverable(kind="stringout", name="so.mp4", path=Path("/d/so.mp4"), version=1)
+        scan.carry_over(was, [], now, [])
+        assert now.stringout == was.stringout
 
     def test_a_trim_never_made_follows_the_new_edl(self) -> None:
         old, new = self.rows("C0145.MP4"), self.rows("C0145.MP4")

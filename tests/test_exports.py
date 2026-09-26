@@ -314,9 +314,17 @@ class TestShotTracker:
         written = exports.write_shot_tracker(batch_of(target), tmp_path / "t.xlsx")
         assert sheet_rows(written, "Shots")[1][7] == "4K ✓\nHD \u2014"
 
-    def test_the_stringout_column_is_left_for_a_human(self, tracker: Path) -> None:
-        """OQ-41: the grammar the tool would rebuild it from matches none of the real names."""
+    def test_the_stringout_column_is_empty_until_one_is_written(self, tracker: Path) -> None:
         assert sheet_rows(tracker, "Shots")[1][34] is None
+
+    def test_the_stringout_column_names_the_turnover_s_stringout(self, tmp_path: Path) -> None:
+        """OQ-38, reopened 2026-09-25: the tool's own stringout of the shot's turnover."""
+        batch = batch_of(row())
+        name = "turnover001_09_23_2026_x_SO_v01.mp4"
+        for turnover in batch.turnovers:
+            turnover.stringout = Deliverable(kind="stringout", name=name, path=tmp_path / name, version=1)
+        written = exports.write_shot_tracker(batch, tmp_path / "t.xlsx")
+        assert sheet_rows(written, "Shots")[1][34] == name
 
     def test_a_23976_source_is_recorded_at_the_24_it_was_delivered_at(self, tmp_path: Path) -> None:
         """Every deliverable is written at 24 frame for frame (user, 2026-09-23)."""

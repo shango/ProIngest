@@ -16,6 +16,30 @@ must-fix and render. What is left is the Mac: `docs/MAC_SESSION.md`, from "The 0
 order" down, and Ben's 4.886 slope. Entries are newest first; anything older than 2026-09-22
 describes the tool before the review and is history.
 
+**2026-09-25, the stringout is built (OQ-38); docs partly done. Read this first after a compact.**
+`core/stringout.py`: `plan` reads the turnover's final EDL (`scan.read_session`, events named by the
+ALE as at scan) and makes one `Segment` per event in record order, plus black gaps. An event is cut
+from its row's **delivered HD reference** when it landed and `delivered_range` holds the cut; else
+**the ungraded source** (`encode_command` with no LUT); else **black** (`ffmpeg.black_command`).
+`Frame:` = `1001 + (cut In - delivered In) + n` (drawtext `%{eif:n+N:d}`), static on a freeze.
+Burn-ins from `burn-ins.png`, measured: Open Sans 42px white, name top centre y 11, `Frame:` x 184,
+`Primary Effect: <Scene>` centred, label `w-150-text_w`, bottom y 892; within 1-3 px of Ben's frame
+at his scale. Segments are encoded like the references (`ffmpeg._x264`, 48k stereo AAC, silence
+where there is no plate sound), joined by stream copy (`ffmpeg.concat_command`, file timecode = the
+EDL's first record TC), checked (`qc.check_stringout`: decoded count, 1920x1080, 24/1, moov first)
+and renamed from `.part`. Name `naming.stringout_stem`, dated as the turnover folder, version past
+any in `<show>/_reports/`. `stringout.build` never raises: QC-142 (error, phase B, **does not
+block**: `qc.must_fix` now skips phase B at turnover scope) or QC-143 (info, events not from a
+reference). Recorded on `Turnover.stringout` (additive, carried over a rescan) and named in the
+tracker's column 34. **Built**: at the end of a Run for every turnover it delivered to
+(`run_controller.turnovers_written`, before the reports), and a heading's **Build Stringout**.
+New: `ShotRow.scene` from the CSV's `Scene`; the font and OFL in `proingest/resources/fonts`,
+bundled (`build/bundle.py`). **Verified**: 22 new tests including real renders, the suite (1738),
+a visual check of a built file. **Left to do**: UI_SPEC section 8 (still says dropped), PRD FR-9,
+NAMING_SPEC section 5's stringout name, QC_RULES_SUMMARY.csv rows for 142/143, the CLI does not
+build stringouts, an ungraded source segment of a plate is silent (only references carry sound),
+and white text with no box vanishes on a bright frame (matches Ben's template; raise with user).
+
 **2026-09-25, deliverables carry 1001-based timecode, not the camera's (user; OQ-35 closed).**
 "After the tool, we are leaving the cam timecode behind." `DeliverableJob.timecode_for` is now the
 output frame's own number, so every EXR frame's `timeCode` is its frame number (1001 is `00:00:41:17`

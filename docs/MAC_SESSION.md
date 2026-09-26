@@ -53,6 +53,11 @@ chunk 7 of `docs/TO_A_WORKING_BUILD.md`, in the order that wastes least.
 - [ ] Work the four 2026-09-23 lines at the end of Session 2 below: the reference against its
       wav (chunk B), colour against Resolve (chunk G), locks and a moved folder (chunk E), and
       failure and re-run (chunk D).
+- [ ] **The stringout on the Mac** (2026-09-25): run a turnover, then open
+      `<show>/_reports/turnover###_..._SO_v01.mp4`. The burn-ins draw (the bundled ffmpeg's
+      `drawtext` and the bundled Open Sans), sit where Ben's `burn-ins.png` has them, the counter
+      starts at 1001 on every shot, and it plays in QuickTime. CI proves the text is drawn only if
+      its ffmpeg has `drawtext`; only a Mac shows the shipped one does.
 - [ ] **Deliverables start at 1001 in Resolve** (2026-09-25): import a newly rendered EXR
       sequence and its HD reference mp4. Both read `00:00:41:17` at their first frame, and a
       Source Frame burn-in reads 1001. The tests read the headers; only Resolve shows what Ben sees.
