@@ -605,7 +605,7 @@ dev = [
 requires-dist = [
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.11" },
     { name = "numpy", specifier = ">=1.26" },
-    { name = "opencolorio", specifier = ">=2.4" },
+    { name = "opencolorio", specifier = ">=2.5" },
     { name = "openexr", specifier = ">=3.2" },
     { name = "openpyxl", specifier = ">=3.1" },
     { name = "pyinstaller", marker = "extra == 'dev'", specifier = ">=6.11" },

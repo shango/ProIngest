@@ -132,7 +132,7 @@ correct if they hold.
 
 | | |
 |---|---|
-| colour science | DaVinci YRGB Color Managed, **ACES 1.3** |
+| colour science | DaVinci YRGB Color Managed, **ACES 2.0** (user, 2026-09-25; 1.3 until then) |
 | timeline colour space | **ACEScct**, by standard (2026-09-18). The CDL is applied there, by Resolve and by the tool alike |
 | input colour space, per clip | **the clip's camera encoding**. Ben sets each clip's `Input Color Space` in his session to it, and Resolve converts from there outside the node graph. The tool reads the same encoding from the metadata (`Gamma Notes` + `Color Space Notes`, joined in that order) and resolves it through `color.INPUT_TRANSFORMS` |
 | grade | **the wheels of node one**, Luma Mix at 0, which is what Resolve's CDL export carries. **That is the whole grade**: there are no per-shot grade files (2026-09-21), so a look the wheels cannot reach is not deliverable through this pipeline |
@@ -532,18 +532,21 @@ the two legs around the grade and the aux still's one, `CDLTransform` is the CDL
 OpenColorIO's default no-clamp style (OQ-55), `FileTransform` loads a cube, and
 `DisplayViewTransform` is the output transform.
 
-The session is ACES 1.3, so the config is pinned to an ACES 1.3 built-in config rather than
+The session is ACES 2.0, so the config is pinned to an ACES 2.0 built-in config rather than
 tracking `studio-config-latest`. Matching the colour session matters more than being current,
 and a dependency bump must not change what the references look like. OQ-29.
 
-The pin is **`studio-config-v2.2.0_aces-v1.3_ocio-v2.4`**, and it lives in
+The pin is **`studio-config-v4.0.0_aces-v2.0_ocio-v2.5`** (from 2026-09-25, when the user found the
+session on ACES 2.0; it was `studio-config-v2.2.0_aces-v1.3_ocio-v2.4`), and it lives in
 `core/color.BUILTIN_CONFIG` where nothing else restates it. The studio config rather than the
 cg one for two reasons: it carries the camera vendor log encodings, which is what OQ-39 may
-yet name, and it carries the full set of view transforms the viewing LUT is baked from. What
-What was still open inside OQ-29 is which sRGB output transform within 1.3, and M4.5.3 built
-it to a default: **`ACES 1.0 - SDR Video` on the `sRGB - Display` display**, in `color.VIEW`.
-The pinned config offers four views on that display and the other three are not candidates: two
-are a D60 simulation and an un-tone-mapped debug view, and `Raw` is no transform at all.
+yet name, and it carries the full set of view transforms the viewing LUT is baked from. The move
+from 1.3 left the plate branch bit for bit the same (measured on frame 30 of `C0148.MP4`); only
+the view changed. The output transform is **`ACES 2.0 - SDR 100 nits (Rec.709)` on the `sRGB -
+Display` display**, in `color.VIEW`. The display is sRGB on the user's belief, not yet read off
+Ben's project (OQ-29). The config offers four views on that display and the other three are not
+candidates: `Un-tone-mapped` and `Video (colorimetric)` are not the ACES rendering, and `Raw` is
+no transform at all.
 
 ### The EXR writer stays as it is
 

@@ -37,7 +37,7 @@ behind it is `COLOR_AND_FORMAT.md` section 1 and `PRD.md`.
 | # | step | output |
 |---|---|---|
 | 9 | Import the consolidated timeline, and the shooters' metadata with it. | his session |
-| 10 | Take the AD meeting's decisions into a **colour managed** Resolve session, ACES 1.3, timeline **ACEScct**, each clip's Input Color Space set to its camera encoding (`COLOUR_SESSION_EXPORT.md`). | nothing yet, this is setup |
+| 10 | Take the AD meeting's decisions into a **colour managed** Resolve session, ACES 2.0, timeline **ACEScct**, each clip's Input Color Space set to its camera encoding (`COLOUR_SESSION_EXPORT.md`). | nothing yet, this is setup |
 | 11 | **Final trims** with the AD, and grade **in node one with the wheels**, Luma Mix 0, Offset rather than Lift. No windows, no qualifiers, no tracked secondaries. | the approved cut and the approved look |
 | 12 | Cut the **final stringout timeline** and render the stringout from it. **Ben produces and exports it, and the tool does nothing with it at all** (user, 2026-09-22): it is not read, not transcoded, not renamed and not checked. | the delivered stringout, delivered by Ben |
 | 13 | Export the **EDL with the CDL in it** from that same stringout timeline (Timelines > Export > CDL). **This is the conform and the grade**, and because it comes off the stringout its events state the final clip durations. | `.edl`: shot identity, the approved In/Out, and `*ASC_SOP` / `*ASC_SAT` per event |

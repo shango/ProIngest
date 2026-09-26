@@ -382,3 +382,6 @@ Treat it as a working session with the editor rather than a delivery.
   errors. The chart and the clean plate each show QC-072. Run it: the cp01 references play five
   seconds of one held frame with no sound in QuickTime, and the SECA0002 colour chart is one EXR.
   Worth a look at any pl reference too, to see the 4.886 slope Ben is being asked about.
+- [ ] **References on ACES 2.0 (2026-09-25).** Put one pl reference mp4 beside the same frame in
+  Ben's session viewer (ACES 2.0, output sRGB) on the same display. The tone and saturation should
+  match; a consistent contrast or gamma shift means his display is not sRGB (OQ-29).

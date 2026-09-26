@@ -42,12 +42,14 @@ class ColorError(RuntimeError):
     """A colour space that does not exist, or pixels that cannot be transformed."""
 
 
-BUILTIN_CONFIG = "studio-config-v2.2.0_aces-v1.3_ocio-v2.4"
+BUILTIN_CONFIG = "studio-config-v4.0.0_aces-v2.0_ocio-v2.5"
 """The config, pinned rather than tracking latest (OQ-29).
 
-ACES 1.3 because that is what the colour session runs, and matching the session matters
-more than being current: a dependency bump must not change what the references look
-like. The studio config rather than the cg one because it carries the camera vendor log
+ACES 2.0 because that is what the colour session runs (user, 2026-09-25; it was 1.3 until
+then), and matching the session matters more than being current: a dependency bump must
+not change what the references look like. Moving from the 1.3 config left the plate branch
+bit for bit the same, measured on frame 30 of `C0148.MP4`; only the view changed.
+The studio config rather than the cg one because it carries the camera vendor log
 encodings, which is what OQ-39 may yet name, and the full set of view transforms M4.5.3
 bakes into the viewing LUT.
 """
@@ -242,13 +244,14 @@ def apply(pixels: npt.NDArray[np.float32], cpu: ocio.CPUProcessor) -> None:
 DISPLAY = "sRGB - Display"
 """What a reference mp4 is viewed on, and therefore what the view branch ends at."""
 
-VIEW = "ACES 1.0 - SDR Video"
-"""Which ACES 1.3 output transform, which is the half of OQ-29 the config did not settle.
+VIEW = "ACES 2.0 - SDR 100 nits (Rec.709)"
+"""Which ACES 2.0 output transform, which is the half of OQ-29 the config did not settle.
 
 The pinned config offers four views on `sRGB - Display`, and the other three are not
-candidates: two are a D60 simulation and an un-tone-mapped debug view, and `Raw` is no
-transform at all. This one is the standard SDR video rendering, which is what the colour
-session is looking at while the grade is decided.
+candidates: `Un-tone-mapped` and `Video (colorimetric)` are not the ACES rendering, and
+`Raw` is no transform at all. This one is the standard SDR rendering, which is what the
+colour session is looking at while the grade is decided. The display is sRGB on the user's
+belief rather than a reading of Ben's project (2026-09-25, OQ-29).
 """
 
 LUT_SIZE = 33

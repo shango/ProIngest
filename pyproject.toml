@@ -5,9 +5,9 @@ description = "VFX turnover ingest and conform tool"
 requires-python = ">=3.11"
 dependencies = [
     "numpy>=1.26",
-    # 2.4 is the floor for the ACES 1.3 studio built-in config the colour session
+    # 2.5 is the floor for the ACES 2.0 studio built-in config the colour session
     # is pinned to (COLOR_AND_FORMAT section 1, OQ-29). No config files ship.
-    "opencolorio>=2.4",
+    "opencolorio>=2.5",
     "openexr>=3.2",
     "openpyxl>=3.1",
     "xxhash>=3.4",

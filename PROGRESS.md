@@ -20,8 +20,18 @@ describes the tool before the review and is history.
 colour: `planner._aux_plan` never passed `source_color_space`/`source_color_range`, so every still
 decoded as BT.709 limited. Harmless on Turnover121 (tagged bt709/tv); a full range (`pc`) source
 such as Turnover199's would have had its colour chart stretched. **Verified**: a planner test and
-the suite (1739). **Raised, not decided**: the user says the Resolve project is on **ACES 2.0**,
-while `color.BUILTIN_CONFIG` is pinned to ACES 1.3 on the grounds that the session ran 1.3.
+the suite (1739).
+
+**2026-09-25, pinned to ACES 2.0 (OQ-29).** The user found Ben's project on ACES 2.0, timeline
+ACEScct, output believed sRGB. `color.BUILTIN_CONFIG` is `studio-config-v4.0.0_aces-v2.0_ocio-v2.5`
+(OCIO floor 2.5; the lock already had 2.5.2) and `color.VIEW` is `ACES 2.0 - SDR 100 nits
+(Rec.709)` on `sRGB - Display`. The plate branch does not change (measured bit for bit earlier,
+OQ-71); the references do. Every camera space the input table maps to exists in v4.
+`test_trilinear_is_the_worse_answer...` now compares the two interpolations on mid grey, 0.0005
+tetrahedral vs 0.0031 trilinear; the old fixed 0.005 threshold no longer held. **Not borne out
+under 2.0**: `color.INTERPOLATION`'s claim that trilinear is visibly worse on saturated colour;
+on four saturated samples the two were within 0.002 of each other, either way. **Open**: the
+display, off Ben's project settings; a MAC_SESSION line compares a reference with his viewer.
 
 **2026-09-25, the stringout is built (OQ-38); docs partly done. Read this first after a compact.**
 `core/stringout.py`: `plan` reads the turnover's final EDL (`scan.read_session`, events named by the
