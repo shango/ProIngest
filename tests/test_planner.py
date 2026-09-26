@@ -7,6 +7,7 @@ the kind, resolution and version the planner intended.
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -469,6 +470,15 @@ class TestShotColourOnJobs:
         jobs = planner.plan_batch(batch)
         still = next(job for job in jobs if job.kind == "aux_still")
         assert still.shot_color.source_encoding_origin == "clip metadata"
+
+    def test_an_aux_still_is_decoded_with_its_own_matrix_and_range(self) -> None:
+        """A full range file read as limited stretches the chart, which still looks like one."""
+        aux = row("MELT0001_pl01_colorChart_01", source="/turnover/chart.mov")
+        assert aux.media is not None
+        aux.media = replace(aux.media, is_sequence=False, color_space="bt2020nc", color_range="pc")
+        batch = Batch(name="b", rows=[aux], delivery_root=ROOT)
+        still = next(job for job in planner.plan_batch(batch) if job.kind == "aux_still")
+        assert (still.source_color_space, still.source_color_range) == ("bt2020nc", "pc")
 
     def test_two_rows_may_name_two_different_encodings(self) -> None:
         """A turnover may mix encodings freely, so nothing batch wide can stand in."""

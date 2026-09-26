@@ -546,6 +546,8 @@ def _aux_plan(shot: _Shot) -> RowPlan:
                 source_is_sequence=shot.media.is_sequence,
                 source_size=shot.media.resolution,
                 rate=shot.media.rate,
+                source_color_space=shot.media.color_space,
+                source_color_range=shot.media.color_range,
                 source_start_frame=shot.media.start_frame,
                 shot_color=clf.ShotColor(
                     source_encoding=shot.color.source_encoding,

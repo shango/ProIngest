@@ -16,6 +16,13 @@ must-fix and render. What is left is the Mac: `docs/MAC_SESSION.md`, from "The 0
 order" down, and Ben's 4.886 slope. Entries are newest first; anything older than 2026-09-22
 describes the tool before the review and is history.
 
+**2026-09-25, a reference still is decoded with its own matrix and range.** Found tracing Turnover121's
+colour: `planner._aux_plan` never passed `source_color_space`/`source_color_range`, so every still
+decoded as BT.709 limited. Harmless on Turnover121 (tagged bt709/tv); a full range (`pc`) source
+such as Turnover199's would have had its colour chart stretched. **Verified**: a planner test and
+the suite (1739). **Raised, not decided**: the user says the Resolve project is on **ACES 2.0**,
+while `color.BUILTIN_CONFIG` is pinned to ACES 1.3 on the grounds that the session ran 1.3.
+
 **2026-09-25, the stringout is built (OQ-38); docs partly done. Read this first after a compact.**
 `core/stringout.py`: `plan` reads the turnover's final EDL (`scan.read_session`, events named by the
 ALE as at scan) and makes one `Segment` per event in record order, plus black gaps. An event is cut
