@@ -7,7 +7,8 @@ disagrees with `PROGRESS.md` or the docs, they are right and this file is wrong.
 ## Where things stand
 
 - **Version 0.5.6 on branch `qc/source-fidelity`**, PR #17 open, not merged. 0.5.4 is on `main`.
-  The dmg command is in the reply that pushed this; CI builds it from the PR.
+  CI run 36220478640 is green on all four jobs and built `ProIngest-0.5.6.dmg`:
+  `gh run download 36220478640 -R shango/ProIngest -n ProIngest-macos-arm64 -D ~/Downloads/ProIngest-0.5.6`
 - **1739 tests pass**; `ruff`, `ruff format` and `mypy --strict` are clean.
 - **Turnover121 no longer renders anything**, by the user's decision: QC-020 (8 bit or 4:2:0) is
   must-fix now, and every clip in it is 8 bit 4:2:0 H.264. Turnover199 (10 bit 4:2:2) is not
