@@ -939,8 +939,6 @@ def test_a_digest_is_stable_and_content_dependent(tmp_path: Path) -> None:
 
 # --- phase B ----------------------------------------------------------------------
 
-ONE_HOUR = 86400
-
 
 def picture_job(
     source: Path,
@@ -964,7 +962,6 @@ def picture_job(
         source_size=fixtures.SMALL,
         rate=RATE_24,
         source_start_frame=in_frame,
-        source_start_timecode=ONE_HOUR,
         shot_color=color_fixtures.UNGRADED,
         **extra,  # type: ignore[arg-type]
     )

@@ -518,7 +518,7 @@ was done to it.
   ACEScg`. Where a cube took its place the note reads `record only; the grade file named in
   proingest/clf is what was applied`. Writing the numbers and the verbatim lines is what makes
   a delivered plate legible to someone who has neither the session nor an OCIO install.
-- The source timecode, as the standard `timeCode` attribute. **Not yet written:**
+- **The frame's own number as timecode**, in the standard `timeCode` attribute: frame 1001 is `00:00:41:17` at 24 (user, 2026-09-25). **The camera's timecode stays behind**: it is read to match Ben's EDL and reported in the QC log, and no deliverable carries it. The reference mp4 starts at the same `00:00:41:17`. **Not yet written:**
   `proingest/tool_version`, the shot ID and the frame range, from the proposal's header list.
   They are spec rather than code until something asks for them.
 
@@ -655,7 +655,7 @@ NVENC was the Windows hardware encoder and **does not exist on macOS**. The macO
 - A frame count is a property of the file, so it is always counted at the file's own rate, never at the timeline's. A 30 fps container conformed to 24 still holds the frames it holds.
 - QC-026 therefore fires when the media states a rate and that rate differs from the project rate. Media that states no rate, such as a DPX sequence, cannot disagree. No retiming is ever performed. See OQ-19 on severity.
 - Timecode is non-drop only. An EDL declaring drop frame (`FCM: DROP FRAME`) is QC-027 error.
-- Source TC = media start timecode from the container or EXR header plus frame offset. If the media has no timecode, source TC is displayed as frames only and QC-028 warning is raised.
+- Source TC = media start timecode from the container or EXR header plus frame offset. If the media has no timecode, source TC is displayed as frames only and QC-028 warning is raised. **Source TC is an input only** (2026-09-25): it matches EDL events to clips and is reported in the QC log. Every deliverable's timecode is its own frame number, from 1001.
 
 ## 6. Frame math
 

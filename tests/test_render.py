@@ -23,14 +23,13 @@ import numpy.typing as npt
 import OpenEXR
 import pytest
 
-from proingest.core import clf, color, exr, ffmpeg, frames, media, naming, qc, render
+from proingest.core import clf, color, exr, ffmpeg, media, naming, qc, render
 from proingest.core.models import CDL, Batch, Deliverable, FrameRate, QCResult, ShotRow
 from proingest.core.planner import DeliverableJob
 from tests.fixtures import color as color_fixtures
 from tests.fixtures import media as fixtures
 
 FPS = FrameRate(24)
-ONE_HOUR = frames.timecode_to_frames("01:00:00:00", 24.0)
 SMALL = fixtures.SMALL
 HALF = (SMALL[0] // 2, SMALL[1] // 2)
 
@@ -43,7 +42,6 @@ def sequence_job(
     kind: str = "raw_dir",
     is_sequence: bool = True,
     start_frame: int = 1001,
-    start_timecode: int | None = ONE_HOUR,
     res: str | None = None,
     shot_color: clf.ShotColor = color_fixtures.UNGRADED,
 ) -> DeliverableJob:
@@ -65,7 +63,6 @@ def sequence_job(
         source_size=SMALL,
         rate=FPS,
         source_start_frame=start_frame,
-        source_start_timecode=start_timecode,
         res=res,  # type: ignore[arg-type]
         shot_color=shot_color,
     )
@@ -149,25 +146,22 @@ class TestRawSequence:
             assert header.windows_match
             assert header.resolution == SMALL
 
-    def test_each_frame_carries_its_own_timecode(self, tmp_path: Path) -> None:
+    def test_each_frame_carries_its_own_number_as_timecode(self, tmp_path: Path) -> None:
+        """User, 2026-09-25: the camera's timecode stays behind; frame 1001 is 00:00:41:17."""
         job = raw_job(tmp_path, count=3, first=1001)
         render.render_job(job)
         written = sorted(job.destination.iterdir())
         got = [exr.start_timecode_frames(path, 24.0) for path in written]
-        assert got == [ONE_HOUR, ONE_HOUR + 1, ONE_HOUR + 2]
+        assert got == [1001, 1002, 1003]
+        assert exr.read_header(written[0]).timecode == "00:00:41:17"
 
-    def test_a_sub_range_timecode_counts_from_the_media_start_not_the_in_point(self, tmp_path: Path) -> None:
-        """Source TC is the media's start plus the offset into the media (section 5)."""
+    def test_a_sub_range_still_starts_at_1001(self, tmp_path: Path) -> None:
+        """Wherever the In sits in the media, the first delivered frame is 1001."""
         fixture = fixtures.make_exr_sequence(tmp_path / "src", count=8, first=1001)
         job = sequence_job(fixture.path_for(1001), tmp_path / "out" / "MELT0001_pl01_raw_4k_v01", 1004, 1005)
         render.render_job(job)
         first = sorted(job.destination.iterdir())[0]
-        assert exr.start_timecode_frames(first, 24.0) == ONE_HOUR + 3
-
-    def test_media_with_no_timecode_writes_frames_without_one(self, tmp_path: Path) -> None:
-        job = raw_job(tmp_path, count=2, start_timecode=None)
-        render.render_job(job)
-        assert exr.read_header(sorted(job.destination.iterdir())[0]).timecode is None
+        assert exr.start_timecode_frames(first, 24.0) == 1001
 
     def test_every_delivered_frame_states_acescg(self, tmp_path: Path) -> None:
         """The plate branch put it there, so the label is a fact rather than a setting."""
@@ -424,7 +418,7 @@ class TestAuxStill:
         assert job.destination.is_file()
         assert deliverable.frame_count == 1
         assert deliverable.checksum == render.file_digest(job.destination)
-        assert exr.start_timecode_frames(job.destination, 24.0) == ONE_HOUR + 1
+        assert exr.start_timecode_frames(job.destination, 24.0) == 1001
 
     def test_one_whose_clip_named_no_encoding_is_refused_rather_than_converted(self, tmp_path: Path) -> None:
         """QC-046's claim, end to end: the deliverable is blocked rather than approximated.
@@ -619,13 +613,13 @@ class TestReferenceMp4:
         assert video_stream(job.destination)["r_frame_rate"] == "24/1"
         assert ffmpeg.count_frames(job.destination) == 4
 
-    def test_the_reference_carries_the_in_frames_timecode(self, tmp_path: Path) -> None:
-        """Not the file's start, which is the head of the handles. The EXRs carry the In."""
+    def test_the_reference_starts_at_frame_1001s_timecode(self, tmp_path: Path) -> None:
+        """Not the camera's, which stays behind (user, 2026-09-25): 1001 at 24 is 00:00:41:17."""
         source = fixtures.make_mov(tmp_path / "src" / "plate.mov", count=8)
         job = replace(ref_job(tmp_path, source, 2, 5), source_start_frame=0)
         render.render_job(job)
         tags = video_stream(job.destination).get("tags", {})
-        assert isinstance(tags, dict) and tags.get("timecode") == "01:00:00:02"
+        assert isinstance(tags, dict) and tags.get("timecode") == "00:00:41:17"
 
     def test_an_exr_sequence_reference_plays_at_the_timeline_rate(self, tmp_path: Path) -> None:
         """The image2 demuxer defaults to 25, so this is the `-framerate` trap."""

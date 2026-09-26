@@ -101,7 +101,7 @@ QC-100 is the exception to that: it reports a render that never produced a file 
 |---|---|---|---|
 | QC-100 | error | deliverable | Render did not complete; the reason is recorded. Every other QC-1xx is NA when this one fails, because there is no file to check |
 | QC-101 | error | exr seq | Frame count equals duration |
-| QC-102 | error | exr seq | First frame is 1001, last is 1000 + duration, no gaps. OQ-35 asks whether frame numbers should instead derive from source timecode; until it is answered this rule and NAMING_SPEC both say 1001 |
+| QC-102 | error | exr seq | First frame is 1001, last is 1000 + duration, no gaps. OQ-35 is closed (2026-09-25): 1001, and each frame's timecode is its own number, so frame 1001 is `00:00:41:17`. It asked whether frame numbers should instead derive from source timecode; until it was answered this rule and NAMING_SPEC both say 1001 |
 | QC-103 | error | exr seq | Every frame opens with OpenEXR and header parses. Also applied to an aux still, which is one EXR written by the same function: a mirror ball delivered unreadable is the same defect |
 | QC-104 | error | exr seq | Data window and display window equal target resolution. Also applied to an aux still |
 | QC-105 | error | exr seq | Compression is DWAA, channels are R,G,B (or R,G,B,A) half. Also applied to an aux still. One result per rule for the whole sequence, naming the first offender: 240 identical rows would bury the rest of the report |

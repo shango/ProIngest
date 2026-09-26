@@ -16,6 +16,21 @@ must-fix and render. What is left is the Mac: `docs/MAC_SESSION.md`, from "The 0
 order" down, and Ben's 4.886 slope. Entries are newest first; anything older than 2026-09-22
 describes the tool before the review and is history.
 
+**2026-09-25, deliverables carry 1001-based timecode, not the camera's (user; OQ-35 closed).**
+"After the tool, we are leaving the cam timecode behind." `DeliverableJob.timecode_for` is now the
+output frame's own number, so every EXR frame's `timeCode` is its frame number (1001 is `00:00:41:17`
+at 24), aux stills included, and a reference mp4 starts at `00:00:41:17`. `source_start_timecode`
+came off the job. The camera TC is still read (EDL matching, QC-026 to QC-028) and in the QC log.
+**Not done, asked, unanswered**: keeping the camera TC as a hidden EXR attribute. Files delivered
+before keep camera TC; a re-run gets the new one. **Verified**: render tests read `timeCode` and
+the mp4 tag, the suite. COLOR_AND_FORMAT EXR metadata and section 5, QC-102, a MAC_SESSION line.
+**Stringout decisions, same day** (OQ-38): route A, cut from the delivered HD references after the
+run; the counter is `Frame: 1001 + (EDL source In - delivered In) + n`, tested on a real
+`drawtext` render; an event with no reference is **the ungraded source with burn-ins**; "Primary"
+spelled right; the name takes **the turnover folder's date**; the file's own timecode is the EDL's
+record start. Layout from `burn-ins.png`: name top centre, `Frame:` bottom left, `Primary Effect:
+<CSV Scene>` bottom centre, `SHOT_elem` bottom right, white, no box. **Next: build it.**
+
 **2026-09-25, a trim re-runs a delivered shot (user).** `ShotListModel._set_frame` marks a row with
 deliverables for the next Run, like a new shot code. So Cancel Re-run cannot leave a trimmed shot
 reading as delivered at a range its files were not, the planner records the range it planned at

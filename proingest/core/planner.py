@@ -106,14 +106,12 @@ class DeliverableJob:
     """The media's own matrix and range tags, which the decode states explicitly (D17)."""
 
     source_start_frame: int = 0
-    """First frame index of the media: the first sequence number, or 0 for a container."""
+    """First frame index of the media: the first sequence number, or 0 for a container.
 
-    source_start_timecode: int | None = None
-    """Start timecode of `source_start_frame`, or None when the media states none (QC-028).
-
-    These three are the last things a worker would otherwise have to reprobe. A job is
-    self contained on purpose, and reprobing in the worker would also mean the render
-    could disagree with the scan about the source.
+    These are the last things a worker would otherwise have to reprobe. A job is self
+    contained on purpose, and reprobing in the worker would also mean the render could
+    disagree with the scan about the source. The start timecode used to be one of them;
+    since deliverables carry their own frame numbers as timecode (2026-09-25) it is not.
     """
 
     shot_color: clf.ShotColor = clf.DEFAULT_SHOT_COLOR
@@ -177,13 +175,11 @@ class DeliverableJob:
             raise ValueError(f"{self.name} has no frame range")
         return frames.source_frame_for(self.in_frame, output_frame)
 
-    def timecode_for(self, output_frame: int) -> int | None:
-        """The source timecode an output frame carries, or None when there is none."""
-        if self.source_start_timecode is None:
-            return None
-        return frames.timecode_frames_for(
-            self.source_frame(output_frame), self.source_start_frame, self.source_start_timecode
-        )
+    def timecode_for(self, output_frame: int) -> int:
+        """The timecode an output frame carries, in frames: its own number, so frame 1001 is
+        `00:00:41:17` at 24. The camera's timecode stays behind (user, 2026-09-25); the
+        tool still reads it to match the EDL, and the QC log still reports it."""
+        return output_frame
 
     def output_frames(self) -> range:
         """The output frame numbers this job writes, 1001 first."""
@@ -472,7 +468,6 @@ def _picture_job(shot: _Shot, kind: JobKind, res: Resolution) -> DeliverableJob:
         source_color_space=shot.media.color_space,
         source_color_range=shot.media.color_range,
         source_start_frame=shot.media.start_frame,
-        source_start_timecode=shot.media.start_timecode,
         shot_color=shot.color,
         hold_frames=_hold_frames(shot) if kind == "ref_mp4" else 0,
     )
@@ -552,7 +547,6 @@ def _aux_plan(shot: _Shot) -> RowPlan:
                 source_size=shot.media.resolution,
                 rate=shot.media.rate,
                 source_start_frame=shot.media.start_frame,
-                source_start_timecode=shot.media.start_timecode,
                 shot_color=clf.ShotColor(
                     source_encoding=shot.color.source_encoding,
                     source_encoding_origin=shot.color.source_encoding_origin,

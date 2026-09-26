@@ -665,8 +665,9 @@ def encode_command(
     - **`setpts=PTS-STARTPTS` follows the trim.** `trim` keeps the source timestamps,
       so the first delivered frame lands at its original offset and the mp4 opens with
       a gap that long. Measured: four frames at 24 came out 0.25s instead of 0.17s.
-    - **`timecode` is the In frame's**, stated with `-timecode`, because otherwise the
-      muxer copies the source's start timecode, which is the head of the handles.
+    - **`timecode` is the first delivered frame's, 1001** (2026-09-25; it was the In frame's
+      camera timecode), stated with `-timecode`, because otherwise the muxer copies the
+      source's start timecode.
     - **`-f mp4` is stated.** The output is a `.part` path, so there is no extension to
       infer a muxer from. This is the same trap `extract_audio_command` documents.
     - **Both matrices are stated.** In through `to_rgb`, from the file's own tags, and
