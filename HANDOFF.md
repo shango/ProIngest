@@ -1,4 +1,4 @@
-# Handoff, 24 September 2026
+# Handoff, 25 September 2026
 
 **This is a short pointer, not the record.** `PROGRESS.md` section 1 holds the record: one entry
 per change, newest first, each saying what was built and how it was verified. If this file
@@ -6,50 +6,66 @@ disagrees with `PROGRESS.md` or the docs, they are right and this file is wrong.
 
 ## Where things stand
 
-- **Version 0.5.4 is on `main`** (`262817e`, PR #16). CI is green on all four jobs. The dmg:
-  `gh run download 35944322464 -R shango/ProIngest -n ProIngest-macos-arm64 -D ~/Downloads/ProIngest-0.5.4`
-- **Released today, in order:** 0.5.0 (review chunks A to H, PR #12), 0.5.1 (only a pl searches
-  for audio, #13, #14), 0.5.2 (cp and el references are silent, #15), 0.5.3 and 0.5.4 (#16: Save
-  Logs as CSV, then Turnover121).
-- **1662 tests pass**; `ruff`, `ruff format` and `mypy --strict` are clean.
-- **Both real turnovers work.** Turnover199 as before. Turnover121 (iPhone, Apple Log, H.264,
-  in the repo root, untracked, 90 MB) with the user's corrected CSV scans 7 rows, 0 errors,
-  8 warnings; a full render wrote 20 deliverables with none failing phase B.
+- **Version 0.5.6 on branch `qc/source-fidelity`**, PR #17 open, not merged. 0.5.4 is on `main`.
+  The dmg command is in the reply that pushed this; CI builds it from the PR.
+- **1739 tests pass**; `ruff`, `ruff format` and `mypy --strict` are clean.
+- **Turnover121 no longer renders anything**, by the user's decision: QC-020 (8 bit or 4:2:0) is
+  must-fix now, and every clip in it is 8 bit 4:2:0 H.264. Turnover199 (10 bit 4:2:2) is not
+  affected.
 
-## What 0.5.4 decided (user, 2026-09-23)
+## What changed since 0.5.5 (all user decisions, 2026-09-24 and 25)
 
-- **The ALE is part of the handover.** It is one row per EDL event in timeline order, so it
-  names the events when the EDL does not (`core/ale.py`, QC-071).
-- **The CSV has one row per clip per use** (distinct EDL source range); rows pair with uses in
-  order (`scan._conform_by_use`).
-- **A reference still is delivered once per shot code**, from its first use; a clip cut twice at
-  the same frames once (`scan._collapse`, QC-072).
-- **A freeze (`M2` at 0) on any clip type** is one frame: a one-frame EXR and a reference held
-  5 seconds (`planner.FREEZE_HOLD_SECONDS`). Silent was my call, not the user's. Any other `M2`
-  speed is refused (QC-073).
-- **Only a pl has audio.** A cp or el is never searched for a wav and its reference is silent.
-- **Save Logs as CSV...** on the Log tab and in the File menu, for diagnostics.
-- A movie file's rate is its average when ffprobe's `r_frame_rate` disagrees (the iPhone
-  reports 480/1); `Input Color Space` names the encoding when the notes columns are empty.
+- **The delivery root defaults to one folder up from the turnover.**
+- **Turnover folders can be dropped on the window**, several at once; anything that is not a
+  turnover folder is skipped.
+- **QC-020, QC-033 and QC-034 are must-fix.**
+- **One right-click entry, Re-scan**, on a shot and on a turnover heading, replaces Reset and
+  Re-run. It re-reads the files, shows new warnings or errors, and otherwise marks the shot to
+  render again at the next version. **Cancel Re-run** withdraws the mark, and refuses (with the
+  reason) when the delivered files no longer match the shot's name or range.
+- **A new shot code or a trimmed In/Out puts a delivered shot back for the next Run.**
+- **Every deliverable's timecode is its own frame number from 1001** (`00:00:41:17` at 24). The
+  camera timecode is left behind.
+- **The stringout is built** (`core/stringout.py`, OQ-38): Ben's final EDL as one HD mp4, cut from
+  the delivered HD references, with the ungraded source or black standing in, burn-ins copied from
+  `burn-ins.png`. Built after a Run and from **Build Stringout** on a turnover heading.
+- **A reference still is decoded with its own matrix and range** (it was always BT.709 limited).
+- **The config is ACES 2.0** (`studio-config-v4.0.0_aces-v2.0_ocio-v2.5`), view `ACES 2.0 - SDR
+  100 nits (Rec.709)` on `sRGB - Display`. The EXRs do not change; the references do.
 
 ## Open
 
-- **Every Turnover121 event's slope is 4.886**, which renders near white. Taken to Ben as an
-  export mistake; the user has not answered yet.
-- The Cube Shots had no Shot or Shot Type as delivered; the user is cleaning up the Resolve-side
-  handoff folder.
-- A changed ALE is not flagged on re-scan (QC-070 digests only the EDL and the CSV).
-- Compound clips are still unread (OQ-63); non-square pixels are not handled when letterboxing.
+- **The display** is sRGB on the user's belief; read it off Ben's project (OQ-29). The config also
+  offers `Gamma 2.2 Rec.709` and `Rec.1886 Rec.709`.
+- **Ben saw a "very slight shift"** between his Resolve output and the tool's. Plausibly the ACES
+  1.3 vs 2.0 view (measured earlier: 3.3% mean, 11% peak in display code), but only for an mp4;
+  the EXR path is bit for bit the same under both configs. Ask which file, which clip, and where it
+  was viewed, then render that frame under both views.
+- **Every Turnover121 event's slope is 4.886**, which renders near white. Still with Ben.
+- **Resolve's reference EXR** (`SECA0003_pl01_colorChart_01_raw_4k_v01.exr`, repo root) is not
+  linear ACEScg: no `chromaticities`, median about 0.5, max 1.03, camera timecode. Five questions
+  asked about it (burn-in, colour encoding, camera metadata and GPS, file name), none answered.
+- **Per-clip AMF** from Ben's session, to be read by hand first (OQ-71). Nothing built.
+- **Drive links in the tracker export**: waiting on `xattr -l` from the Mac and a paste test.
+- **Stringout leftovers**: UI_SPEC section 8, PRD FR-9, NAMING_SPEC section 5 and the QC summary
+  rows for QC-142 and QC-143 still to write; the CLI does not build one; a source segment of a
+  plate is silent; a text shadow or box for bright frames is asked, not answered; whether to keep
+  the camera timecode as hidden metadata is asked, not answered.
+- **Untracked, the user to decide**: `docs/QC_RULES_SUMMARY.csv` and
+  `docs/COLOR_INPUTS_TURNOVER121.md`.
+- From before: a changed ALE is not flagged on re-scan; compound clips are unread (OQ-63);
+  non-square pixels are not letterboxed correctly.
 
 ## Working notes
 
 - **Do not update `build-track.html`.** It is retired.
-- **Every build gets its own patch version** in the four places plus `uv.lock`, and the reply is
-  a `gh run download` command, not a link. CI runs on pull requests and on pushes to `main`,
-  not on a branch push. **Merge only when the user asks**; the permission check refuses otherwise.
+- **Every build gets its own patch version** in `pyproject.toml`, `proingest/__init__.py`,
+  `build/build.py`, `docs/guide/install.md` and `uv.lock`, and the reply is a `gh run download`
+  command, not a link. CI runs on pull requests and on pushes to `main`, not on a bare branch
+  push. **Merge only when the user asks.**
 - **`gh pr edit` fails** on a Projects (classic) GraphQL error; use
   `gh api -X PATCH repos/shango/ProIngest/pulls/<n> -f title=... -f body=...`.
-- The turnover folders in the repo root are untracked; never `git add -A`.
-- Scratch renders of Turnover121 are in the session scratchpad under `t121/`. Disposable.
+- The turnover folders, the reference EXR and `burn-ins.png` in the repo root are untracked;
+  never `git add -A`.
 - **Per-change rules:** `PROGRESS.md` entry in the same commit; a `docs/MAC_SESSION.md` line for
   anything only a Mac can confirm; no em dashes in any file.

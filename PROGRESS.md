@@ -8,11 +8,13 @@ commit.
 
 ## 1. Resume here
 
-**State at 2026-09-25, version 0.5.5, on branch `qc/source-fidelity`** (0.5.4 is on `main`, PR
+**State at 2026-09-25, version 0.5.6, on branch `qc/source-fidelity`, PR #17** (`HANDOFF.md` is
+the short version) (0.5.4 is on `main`, PR
 #16 merged as `262817e`, dmg in CI run 35944322464). The 2026-09-23 review is built (chunks A
 to H of `docs/REVIEW_2026-09-23.md`), and so are the fixes that a second official turnover,
-Turnover121, called for (`docs/SAMPLE_TURNOVER_121.md`). Both real turnovers scan with no
-must-fix and render. What is left is the Mac: `docs/MAC_SESSION.md`, from "The 0.5.0 build, in
+Turnover121, called for (`docs/SAMPLE_TURNOVER_121.md`). Turnover199 scans with no must-fix and
+renders; **Turnover121 is now all must-fix**, every clip being 8 bit 4:2:0 and QC-020 blocking
+since 2026-09-24 (user). What is left is the Mac: `docs/MAC_SESSION.md`, from "The 0.5.0 build, in
 order" down, and Ben's 4.886 slope. Entries are newest first; anything older than 2026-09-22
 describes the tool before the review and is history.
 
