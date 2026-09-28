@@ -8,6 +8,8 @@ disagrees with `PROGRESS.md` or the docs, they are right and this file is wrong.
 
 - **Version 0.5.7 on branch `qc/source-fidelity`**, PR #17 open, not merged. 0.5.4 is on `main`.
   0.5.7 differs from 0.5.6 only in QC-020 being a warning again (user, 2026-09-28).
+  CI run 36462042212 is green on all four jobs and built `ProIngest-0.5.7.dmg`:
+  `gh run download 36462042212 -R shango/ProIngest -n ProIngest-macos-arm64 -D ~/Downloads/ProIngest-0.5.7`
 - **1739 tests pass**; `ruff`, `ruff format` and `mypy --strict` are clean.
 - **Turnover121 renders again**: QC-020 (8 bit or 4:2:0) is a warning since 2026-09-28 (user),
   and every clip in it is 8 bit 4:2:0 H.264. Turnover199 (10 bit 4:2:2) is not affected.
