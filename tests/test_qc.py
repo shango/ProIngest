@@ -235,7 +235,7 @@ class TestSourceFormat:
         """8 bit throws away shadow detail and 4:2:0 throws away two thirds of the chroma."""
         results = qc.check_source_format(row(pixel_format=pixel_format))
         assert ids(results) == ["QC-020"]
-        assert results[0].severity == "error", "must-fix since 2026-09-25 (user)"
+        assert results[0].severity == "warning", "a warning again since 2026-09-28 (user)"
 
     @pytest.mark.parametrize("pixel_format", ["yuv422p10le", "yuv444p12le", "rgb48le", "gbrp10le"])
     def test_integer_containers_are_qc_021(self, pixel_format: str) -> None:

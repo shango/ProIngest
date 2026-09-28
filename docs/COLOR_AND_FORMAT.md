@@ -572,9 +572,9 @@ mix of camera logs and a house wide gamut, and nothing has to be told which in a
   system records RAW, a debayered basic file type with no colours baked in.
 - **RAW never arrives.** ffmpeg decodes no RAW format - BRAW, REDCODE, ARRIRAW, X-OCN, Cinema RAW
   Light, ProRes RAW - so a RAW file in a turnover is refused rather than mis-rendered.
-- **8 bit and 4:2:0 are must-fix** (user, 2026-09-25). They were allowed with a warning from
-  2026-09-19; QC-020 is an error again and blocks the run until the row is skipped or its media
-  replaced. QC-021 stays rebased on what really arrives rather than on a ProRes 4444 intermediate
+- **8 bit and 4:2:0 are a warning** (user, 2026-09-28). They were allowed with a warning from
+  2026-09-19, made must-fix on 2026-09-25, and are a warning again: QC-020 reports them and the
+  run goes ahead. QC-021 stays rebased on what really arrives rather than on a ProRes 4444 intermediate
   that is never made.
 
 4:4:4 matters more on a log source than it would on a display referred one. Subsampled chroma
@@ -588,10 +588,8 @@ in a log signal is stretched when the signal is linearised, and it shows on satu
   what the shooters are asked to deliver, so it is flagged as an unexpected delivery rather
   than a defect.
 
-**Refused:**
-
-- 8 bit anything, and any 4:2:0 source. QC-020, must-fix. Neither can carry a log signal
-  without banding the moment it is linearised.
+- 8 bit anything, and any 4:2:0 source. QC-020. Neither carries a log signal well: it bands
+  when it is linearised. It is reported, not refused.
 
 **The tool does not read the colour space off the container, it overrides it.** No standard
 transfer tag names any camera log or wide gamut log encoding, and a container that does carry tags is as

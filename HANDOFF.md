@@ -1,4 +1,4 @@
-# Handoff, 25 September 2026
+# Handoff, 28 September 2026
 
 **This is a short pointer, not the record.** `PROGRESS.md` section 1 holds the record: one entry
 per change, newest first, each saying what was built and how it was verified. If this file
@@ -6,20 +6,18 @@ disagrees with `PROGRESS.md` or the docs, they are right and this file is wrong.
 
 ## Where things stand
 
-- **Version 0.5.6 on branch `qc/source-fidelity`**, PR #17 open, not merged. 0.5.4 is on `main`.
-  CI run 36220478640 is green on all four jobs and built `ProIngest-0.5.6.dmg`:
-  `gh run download 36220478640 -R shango/ProIngest -n ProIngest-macos-arm64 -D ~/Downloads/ProIngest-0.5.6`
+- **Version 0.5.7 on branch `qc/source-fidelity`**, PR #17 open, not merged. 0.5.4 is on `main`.
+  0.5.7 differs from 0.5.6 only in QC-020 being a warning again (user, 2026-09-28).
 - **1739 tests pass**; `ruff`, `ruff format` and `mypy --strict` are clean.
-- **Turnover121 no longer renders anything**, by the user's decision: QC-020 (8 bit or 4:2:0) is
-  must-fix now, and every clip in it is 8 bit 4:2:0 H.264. Turnover199 (10 bit 4:2:2) is not
-  affected.
+- **Turnover121 renders again**: QC-020 (8 bit or 4:2:0) is a warning since 2026-09-28 (user),
+  and every clip in it is 8 bit 4:2:0 H.264. Turnover199 (10 bit 4:2:2) is not affected.
 
 ## What changed since 0.5.5 (all user decisions, 2026-09-24 and 25)
 
 - **The delivery root defaults to one folder up from the turnover.**
 - **Turnover folders can be dropped on the window**, several at once; anything that is not a
   turnover folder is skipped.
-- **QC-020, QC-033 and QC-034 are must-fix.**
+- **QC-033 and QC-034 are must-fix.** QC-020 was too, and is a warning again in 0.5.7.
 - **One right-click entry, Re-scan**, on a shot and on a turnover heading, replaces Reset and
   Re-run. It re-reads the files, shows new warnings or errors, and otherwise marks the shot to
   render again at the next version. **Cancel Re-run** withdraws the mark, and refuses (with the

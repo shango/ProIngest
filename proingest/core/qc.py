@@ -261,8 +261,9 @@ def check_source_format(row: ShotRow) -> list[QCResult]:
 
     COLOR_AND_FORMAT section 2 is the list. Float formats and EXR are what the
     pipeline wants; an integer container still decodes, so it is a warning about
-    precision rather than a refusal; 8 bit or 4:2:0 cannot be a legitimate linear plate
-    at all, and is must-fix (user, 2026-09-25, reversing the warning of 2026-09-19).
+    precision rather than a refusal; 8 bit or 4:2:0 is a poor linear plate, and is a
+    warning again (user, 2026-09-28, reversing the must-fix of 2026-09-25): it decodes and
+    delivers, and a turnover of it has to be able to run.
     """
     if row.media is None:
         return []
@@ -274,10 +275,10 @@ def check_source_format(row: ShotRow) -> list[QCResult]:
         return [
             QCResult(
                 "QC-020",
-                "error",
+                "warning",
                 "row",
                 f"{row.media.path.name} is {pixel_format} ({depth} bit); 8 bit and 4:2:0 "
-                f"sources cannot carry a linear plate",
+                f"sources are a poor linear plate",
             )
         ]
     return [

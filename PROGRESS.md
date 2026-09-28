@@ -8,15 +8,22 @@ commit.
 
 ## 1. Resume here
 
-**State at 2026-09-25, version 0.5.6, on branch `qc/source-fidelity`, PR #17** (`HANDOFF.md` is
+**State at 2026-09-28, version 0.5.7, on branch `qc/source-fidelity`, PR #17** (`HANDOFF.md` is
 the short version) (0.5.4 is on `main`, PR
 #16 merged as `262817e`, dmg in CI run 35944322464). The 2026-09-23 review is built (chunks A
 to H of `docs/REVIEW_2026-09-23.md`), and so are the fixes that a second official turnover,
 Turnover121, called for (`docs/SAMPLE_TURNOVER_121.md`). Turnover199 scans with no must-fix and
-renders; **Turnover121 is now all must-fix**, every clip being 8 bit 4:2:0 and QC-020 blocking
-since 2026-09-24 (user). What is left is the Mac: `docs/MAC_SESSION.md`, from "The 0.5.0 build, in
+renders; Turnover121, every clip 8 bit 4:2:0, runs again with a QC-020 warning on each row
+since 2026-09-28 (user). What is left is the Mac: `docs/MAC_SESSION.md`, from "The 0.5.0 build, in
 order" down, and Ben's 4.886 slope. Entries are newest first; anything older than 2026-09-22
 describes the tool before the review and is history.
+
+**2026-09-28, QC-020 is a warning again (user), 0.5.7.** An 8 bit 4:2:0 log source is reported and
+no longer blocks the batch, reversing the must-fix of 2026-09-25 below, which had stopped
+Turnover121 rendering at all. Only QC-020 changed: QC-033 and QC-034 stay must-fix, and the
+message now says the source is a poor linear plate rather than that it cannot carry one.
+**Verified**: the rule test asserts warning, the suite (1739), ruff and mypy. QC_RULES,
+COLOR_AND_FORMAT section 2.
 
 **2026-09-25, a reference still is decoded with its own matrix and range.** Found tracing Turnover121's
 colour: `planner._aux_plan` never passed `source_color_space`/`source_color_range`, so every still
