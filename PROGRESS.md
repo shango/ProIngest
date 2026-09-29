@@ -28,7 +28,8 @@ file there. Fix: `ffmpeg.reference_label(display)`, a `setparams=color_primaries
 because `-color_trc` takes `gamma22` and refuses `bt470m` while `setparams` takes `bt470m` and
 refuses `gamma22` (ffmpeg 6.1). **Verified here**: the rendered-file test, parametrised over Gamma
 2.2 (`bt470m`) and sRGB (`iec61966-2-1`), probes transfer, primaries and matrix; the three chain
-pin tests updated; suite (1787), ruff, format, mypy. **The Mac CI job is the real test** of ffmpeg 9.
+pin tests updated; suite (1787), ruff, format, mypy; **CI run 36527984818 green on all four jobs,
+the macOS one probing the labels on the bundled ffmpeg 9.0.1.**
 
 **2026-09-28, a reference is labelled for the AMF's display, 0.5.11.** Found running turnover097:
 the references were rendered for the AMF's Gamma 2.2 Rec.709 but still labelled sRGB

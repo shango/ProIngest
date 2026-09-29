@@ -11,13 +11,13 @@ disagrees with `PROGRESS.md` or the docs, they are right and this file is wrong.
 the bundled ffmpeg 9.0.1 writes no `color_transfer` from `-color_trc` alone. PROGRESS has the
 entry. Suite 1787, ruff, format and mypy clean here.
 
+**CI run 36527984818 is green on all four jobs**: the macOS job's rendered-file probe on the
+bundled ffmpeg 9.0.1 reads `bt470m` and `iec61966-2-1`, so the `setparams` fix holds. Handed over:
+`gh run download 36527984818 -R shango/ProIngest -n ProIngest-macos-arm64 -D ~/Downloads/ProIngest-0.5.12`
+
 **Next steps, in order:**
-1. Watch 0.5.12's CI (`gh run list -R shango/ProIngest --branch qc/source-fidelity`). **The Mac job
-   is the real test**: if ffmpeg 9 still writes no transfer, look at `-bsf:v h264_metadata` or the
-   mp4 `colr` atom (`-movflags +write_colr`) next. Don't guess; read the CI output.
-2. When green, hand over `gh run download <run> -R shango/ProIngest -n ProIngest-macos-arm64 -D
-   ~/Downloads/ProIngest-0.5.12` (memory: release-handoff).
-3. Things to raise with the user, below (step 5).
+1. The Mac check in MAC_SESSION ("Colour from the AMF", 0.5.12) with that dmg.
+2. Raise the points below (step 5) with the user.
 4. **DONE at pause: the re-run finished (30/30, stringout 44.9 s, labelled `bt470m`, frames
    checked: graded, burn-ins right) and is in `C:\Users\shann\Downloads\ProIngest-turnover097\`
    (run log CSV, stringout, QC log, tracker). Only re-run if the user asks.** Background:
