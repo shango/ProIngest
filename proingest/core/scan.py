@@ -1,9 +1,10 @@
 """Turning a turnover folder into shot rows.
 
 **One folder, one phase** (OQ-74, settled 2026-09-22). Ben hands over the media, his
-EDL and his metadata CSV together, and there is nothing to scan before he does. So this
-reads three things and nothing else: the folder for media, the CSV for **who each clip
-is and what it is encoded as**, and the EDL for **the approved cut and the CDL**.
+EDL, his metadata CSV and one AMF per EDL event together, and there is nothing to scan
+before he does. So this reads four things and nothing else: the folder for media, the CSV
+for **who each clip is**, the EDL for **the approved cut**, and each event's AMF with its
+CLFs for **the colour** (user, 2026-09-28).
 
 **Rows come from CSV rows, not from timeline clips.** `Shot Type` is the whole of the
 tool's scope: a clip that carries one becomes a row, and a clip that carries none is
@@ -20,15 +21,18 @@ can re-run after every edit.
 
 from __future__ import annotations
 
+import hashlib
 import re
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
-from proingest.core import ale, clf, ffmpeg, metacsv, naming, qc
+from proingest.core import ale, amf, clf, color, ffmpeg, metacsv, naming, qc
 from proingest.core import media as media_module
 from proingest.core.models import (
     Batch,
     FrameRate,
+    Grade,
+    GradeLook,
     InOut,
     MediaInfo,
     QCResult,
@@ -144,7 +148,9 @@ def scan_turnover(
     session = replace(session, events=_named_events(folder, session.events, turnover))
     index = media_module.index_directory(folder)
     rows = [_build_row(entry, index, turnover_id, settings, cache) for entry in meta.rows]
-    turnover.qc.extend(_conform_all(rows, session))
+    grades = _Grades.read(folder)
+    turnover.qc.extend(grades.qc)
+    turnover.qc.extend(_conform_all(rows, session, grades))
     _refuse_retimes(rows, session.events, settings.project_rate)
     rows = _collapse(rows)
     for row in rows:
@@ -263,11 +269,10 @@ def _build_row(
     if item is not None:
         _probe_into(row, item, cache, settings.project_rate)
 
-    # Verbatim, because what QC-047 has to be able to quote back is the string somebody
-    # typed. The CSV is the only carrier: the delivered container declares nothing.
-    row.source_encoding = entry.written_encoding or None
-    row.source_encoding_origin = "clip metadata" if row.source_encoding else None
     row.scene = entry.scene
+    if entry.shooter_delivered:
+        # Kept, skipped, so the stringout still shows the clip in its place (QC-080).
+        row.skipped, row.skip_reason = True, "HDRI: delivered by the shooters"
     return row
 
 
@@ -326,7 +331,7 @@ def _named_events(folder: Path, events: list[clf.ConformEvent], turnover: Turnov
     ]
 
 
-def _conform_all(rows: list[ShotRow], session: clf.ColorSession) -> list[QCResult]:
+def _conform_all(rows: list[ShotRow], session: clf.ColorSession, grades: _Grades) -> list[QCResult]:
     """Pair every row with its EDL event, and return what the turnover should hear.
 
     A row with no event (QC-066) or with a match that could go two ways (QC-067) gets
@@ -336,7 +341,7 @@ def _conform_all(rows: list[ShotRow], session: clf.ColorSession) -> list[QCResul
     editor can see what arrived. An event no row claims is QC-068, for the record.
     """
     if session.events and all(event.clip_name for event in session.events):
-        return _conform_by_use(rows, session.events)
+        return _conform_by_use(rows, session.events, grades)
     found = [session.candidates(row) for row in rows]
     claims: dict[int, list[str]] = {}
     for row, events in zip(rows, found, strict=True):
@@ -380,7 +385,7 @@ def _conform_all(rows: list[ShotRow], session: clf.ColorSession) -> list[QCResul
             )
             _whole_media(row)
         else:
-            _conform(row, events[0])
+            _conform(row, events[0], grades)
 
     unclaimed = [event.event_id for event in session.events if id(event) not in claims]
     if not unclaimed:
@@ -395,7 +400,7 @@ def _conform_all(rows: list[ShotRow], session: clf.ColorSession) -> list[QCResul
     ]
 
 
-def _conform_by_use(rows: list[ShotRow], events: list[clf.ConformEvent]) -> list[QCResult]:
+def _conform_by_use(rows: list[ShotRow], events: list[clf.ConformEvent], grades: _Grades) -> list[QCResult]:
     """Pair rows with events by name, one CSV row per use of a clip.
 
     Resolve's CSV carries a row for each **distinct source range** a clip is cut at
@@ -444,7 +449,7 @@ def _conform_by_use(rows: list[ShotRow], events: list[clf.ConformEvent]) -> list
                 _whole_media(row)
         else:
             for row, group in zip(clip_rows, uses.values(), strict=True):
-                _conform(row, group[0])
+                _conform(row, group[0], grades)
                 row.freeze = group[0].freeze
 
     unclaimed = [event.event_id for event in events if id(event) not in claimed]
@@ -526,11 +531,11 @@ def _delivers(row: ShotRow) -> tuple[object, ...] | None:
     return ("same", Path(row.clip_name).stem.casefold(), row.identity.kind, row.identity.index, row.current)
 
 
-def _conform(row: ShotRow, event: clf.ConformEvent) -> None:
-    """The approved cut and the CDL off this row's one EDL event."""
+def _conform(row: ShotRow, event: clf.ConformEvent, grades: _Grades) -> None:
+    """The approved cut off this row's one EDL event, and the colour off that event's AMF."""
 
     row.record_in, row.record_out = event.record_in, event.record_out
-    row.cdl = event.cdl
+    grades.attach(row, event)
     approved = clf.approved_in_out(event, row.media) if row.media else None
     if approved is None:
         _whole_media(row)
@@ -732,3 +737,153 @@ def carry_over(old: Turnover, old_rows: list[ShotRow], new: Turnover, new_rows: 
                 f"{old.folder.name}; the trims and skips carried over were made against the old one",
             )
         )
+
+
+@dataclass
+class _Grades:
+    """The turnover's AMFs by the EDL event each grades (`core/amf.py`), read once.
+
+    An AMF that will not parse, or whose name carries no timeline index, is reported on
+    the turnover and matches nothing; two AMFs claiming one event are reported on that
+    event's row rather than chosen between.
+    """
+
+    folder: Path
+    by_event: dict[str, list[amf.Amf]] = field(default_factory=dict)
+    qc: list[QCResult] = field(default_factory=list)
+
+    @classmethod
+    def read(cls, folder: Path) -> _Grades:
+        grades = cls(folder)
+        for path in sorted(folder.glob(f"*{amf.SUFFIX}")):
+            try:
+                found = amf.read(path)
+            except amf.AmfError as exc:
+                grades.qc.append(QCResult("QC-075", "error", "turnover", str(exc)))
+                continue
+            if found.event_id is None:
+                grades.qc.append(
+                    QCResult(
+                        "QC-075",
+                        "warning",
+                        "turnover",
+                        f"{path.name} carries no timeline index in its name, so no EDL event can be "
+                        "matched to it; ignored",
+                    )
+                )
+                continue
+            grades.by_event.setdefault(found.event_id, []).append(found)
+        return grades
+
+    def attach(self, row: ShotRow, event: clf.ConformEvent) -> None:
+        """This row's grade from its event's AMF, and what is wrong with it on the row."""
+        found = self.by_event.get(event.event_id, [])
+        if len(found) != 1:
+            names = ", ".join(item.path.name for item in found)
+            why = f"two or more AMFs claim it ({names})" if found else "no AMF in the folder grades it"
+            row.qc.append(
+                QCResult(
+                    "QC-075",
+                    "error",
+                    "row",
+                    f"EDL event {event.event_id} ({row.clip_name}): {why}, so nothing names its input "
+                    "transform or its grade",
+                )
+            )
+            return
+        (match,) = found
+        if not match.names(row.clip_name):
+            row.qc.append(
+                QCResult(
+                    "QC-075",
+                    "error",
+                    "row",
+                    f"{match.path.name} grades EDL event {event.event_id} but names {match.clip_file}, "
+                    f"not {row.clip_name}",
+                )
+            )
+            return
+        row.grade, findings = _grade_of(match, self.folder)
+        row.qc.extend(findings)
+        space = color.ACES if match.input_applied else amf.colour_space_for(match.input_transform)
+        row.source_encoding = space
+        row.source_encoding_origin = "AMF" if space else None
+
+
+def _grade_of(found: amf.Amf, folder: Path) -> tuple[Grade, list[QCResult]]:
+    """What one AMF resolves to, and every look it names that cannot be applied.
+
+    A look already applied to the media is left out without comment. A look the config
+    does not define, and anything that is neither an ID nor a CLF, is ignored with a
+    warning (QC-077, user 2026-09-28: primaries and simple secondaries only). A CLF that is
+    missing, changed since the export, or unreadable is an error (QC-076), because the
+    grade it carries is the colourist's and cannot be left out quietly.
+    """
+    findings: list[QCResult] = []
+    looks: list[GradeLook] = []
+    for look in found.looks:
+        if look.applied:
+            continue
+        if look.transform_id:
+            name = amf.look_for(look.transform_id)
+            if name is None:
+                findings.append(
+                    _ignored(found, f"the look {look.transform_id}, which {color.BUILTIN_CONFIG} lacks")
+                )
+            else:
+                looks.append(GradeLook("look", name))
+        elif look.file:
+            problem = _clf_problem(folder / look.file, look.md5)
+            if problem:
+                findings.append(
+                    QCResult("QC-076", "error", "row", f"{found.path.name}: {look.file} {problem}")
+                )
+            else:
+                looks.append(GradeLook("clf", str(folder / look.file)))
+        else:
+            findings.append(
+                _ignored(found, f"a look that is not a transform ID or a CLF ({look.unsupported})")
+            )
+    shown = amf.display_view_for(found.output_transform) if found.output_transform else None
+    if shown is None:
+        findings.append(
+            QCResult(
+                "QC-079",
+                "error",
+                "row",
+                f"{found.path.name}: the output transform {found.output_transform or '(none)'} is not one "
+                f"{color.BUILTIN_CONFIG} has, so the references cannot be viewed as the session was",
+            )
+        )
+    if found.preset.casefold() == amf.DAILIES_PRESET.casefold():
+        findings.append(
+            QCResult("QC-078", "info", "row", f"{found.path.name} is from Resolve's {found.preset} preset")
+        )
+    grade = Grade(
+        amf=found.path,
+        input_transform=found.input_transform,
+        looks=tuple(looks),
+        display=shown[0] if shown else None,
+        view=shown[1] if shown else None,
+        preset=found.preset,
+    )
+    return grade, findings
+
+
+def _ignored(found: amf.Amf, what: str) -> QCResult:
+    return QCResult("QC-077", "warning", "row", f"{found.path.name}: {what} is ignored")
+
+
+def _clf_problem(path: Path, md5: str) -> str:
+    """Why a CLF cannot be applied, or empty when it can."""
+    try:
+        data = path.read_bytes()
+    except OSError:
+        return "is not in the turnover folder"
+    if md5 and hashlib.md5(data).hexdigest() != md5:
+        return "has changed since the AMF was exported (its md5 differs)"
+    try:
+        color.config().getProcessor(color.clf_transform(path))
+    except Exception as exc:  # OCIO raises its own Exception type for a file it cannot read
+        return f"cannot be read as a CLF: {exc}"
+    return ""

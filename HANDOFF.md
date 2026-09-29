@@ -35,7 +35,7 @@ sample: EDL + UTF-16 CSV + one AMF per EDL event + CLF grade nodes. **User decis
 
 **Chunks** (commit + PROGRESS entry after each):
 1. **Done** (commit "AMF reader"). `core/amf.py`: parse an AMF, resolve its URNs through the config, tests. Not wired.
-2. Wire it: scan reads each row's AMF by event; `ShotColor` = input space, RGC, CLFs,
+2. **Done** (commit "Colour from the AMF"). Wire it: scan reads each row's AMF by event; `ShotColor` = input space, RGC, CLFs,
    display/view; CDL and CSV encoding removed; QC rules reworked (QC-008/009/046/047, new
    IDs for AMF mismatch, missing/changed CLF, preset info, unapplicable CLF); HDRI rows
    deliver nothing; EXR header provenance; tests.

@@ -855,7 +855,7 @@ class MainWindow(QMainWindow):
             batch_open=open_batch,
             has_rows=open_batch and bool(self.batch.rows),
             has_turnovers=open_batch and bool(self.batch.turnovers),
-            has_session=open_batch and any(t.color_session_edl is not None for t in self.batch.turnovers),
+            has_session=open_batch and any(row.grade is not None for row in self.batch.rows),
             scanning=scanning,
             rendering=running,
             stopping=running and self.run.cancelled,

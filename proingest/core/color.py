@@ -1,25 +1,22 @@
 """The colour transforms every deliverable is built from.
 
-COLOR_AND_FORMAT section 1. Colour is decided before the tool runs: a colour session in
-Resolve exports one final EDL whose events carry the ASC CDL, and the tool applies that
-CDL in the session's working space, ACEScct. Nothing here authors colour, and nothing
-here is a hand written curve or matrix. Every transform comes from OpenColorIO's
-built-in ACES config, which travels inside the wheel, so no config files ship and there
-is nothing for an installer to get wrong.
+COLOR_AND_FORMAT section 1. Colour is decided before the tool runs: the colour session in
+Resolve exports one AMF per clip, naming the input transform, the looks and the output
+transform, and a CLF per corrector node of the grade (user, 2026-09-28). Nothing here
+authors colour, and nothing here is a hand written curve or matrix. Every transform comes
+from OpenColorIO's built-in ACES config, which travels inside the wheel, or is one of the
+colourist's CLFs, which OCIO reads as they are.
 
-The chain, with this module supplying every leg except the grade:
+The chain, in the AMF's own order, with this module supplying each leg:
 
-    source encoding -> ACEScct -> [the shot's CDL, or its cube] -> linear ACEScg   plate
-                                                                -> sRGB display    view
+    source encoding -> ACES2065-1 -> [the AMF's looks, in order] -> linear ACEScg  plate
+                                                                 -> the AMF's display  view
 
-**The tool converts on both sides of the grade** (decided 2026-09-18, OQ-46). The grade is
-the primaries the colourist set in node one of a colour managed session whose timeline
-is ACEScct, so it means something only in ACEScct: `to_working` gets the clip there from
-whatever its metadata says it is encoded in, and `from_working` carries the graded
-result to ACEScg. A `.cube` from Generate LUT out of that same session is the same
-grade with the whole node graph in it, ACEScct in and out, and stands in the same slot
-(`core/clf.py`). `input_transform` is the one leg chain for a shot with no grade at all:
-an aux still, which is delivered ungraded by design.
+**Every look is applied in ACES2065-1**, because that is where the AMF puts them: the
+Reference Gamut Compress is a look the config defines in ACES2065-1, and each of Resolve's
+CLFs takes ACES2065-1 in and gives it back, carrying its own trip into ACEScct and out
+again around the node's LUT. So the tool converts into ACES2065-1 once, applies what the
+AMF lists, and converts out once; there is no working space of its own to get wrong.
 
 Building a processor is expensive and applying it is not, so the two are separate
 calls. Build one per shot, apply it per frame. The view branch is built once per shot
@@ -34,8 +31,6 @@ from pathlib import Path
 import numpy as np
 import numpy.typing as npt
 import PyOpenColorIO as ocio
-
-from proingest.core.models import CDL
 
 
 class ColorError(RuntimeError):
@@ -64,45 +59,9 @@ PLATE_SPACE = "ACEScg"
 # `ShotRow.source_encoding` carries what the clip itself names, and a row that names
 # nothing is QC-046 rather than a row converted through a guess.
 
-WORKING_SPACE = "ACEScct"
-"""The colour session's timeline colour space, which is where the CDL is applied.
-
-A constant and not a setting, because it is the standard the colourist's session is
-set to (decided 2026-09-18) and a value here that disagreed with the session would
-replay the grade in the wrong space without an error: a CDL applied in ACEScc instead
-of ACEScct is wrong in the shadows and looks like a grade. ACEScct rather than ACEScc
-because it is Resolve's default for an ACES managed project and what a colourist
-grades in, its toe behaving like camera log under the wheels. Shown read only on the
-Settings page beside the config, and written into every delivered EXR's header.
-"""
-
-INPUT_TRANSFORMS: dict[str, str] = {
-    "c-log3": "CanonLog3 CinemaGamut D55",
-    "bm film": "BMDFilm WideGamut Gen5",
-    "davinci wide gamut": "DaVinci Intermediate WideGamut",
-}
-"""What a shooter writes, to one colour space in the pinned config. COLOR_AND_FORMAT
-section 1.
-
-Keys are casefolded with their whitespace collapsed, which `resolve_encoding` does to
-both sides before it looks. That is still an exact lookup: a Resolve export and a
-shooter's typing differ in case and spacing far more often than they disagree about
-which camera shot the clip.
-
-**A table, not a search.** No prefix matching and no nearest miss: a name that is not an
-entry and not a colour space the config knows is QC-047, because a near miss converts a
-picture plausibly and wrongly. **Adding a camera is adding a row**, which is why "more
-may be added" costs nothing.
-
-**Only the names the config does not already know need a row.** Every colour space in
-the pinned config resolves to itself, aliases and casing included, so a clip that names
-`S-Log3 S-Gamut3.Cine` or `DaVinci Intermediate WideGamut` needs nothing here. The
-`davinci wide gamut` row is what the house template's shorter name lands on.
-
-**`S-Log3` is deliberately absent.** It names four colour spaces in this config, since a
-curve does not choose a gamut, and a row picking one of them would be picking a gamut on
-the shooter's behalf. It resolves to nothing and QC-047 names the four candidates.
-"""
+ACES = "ACES2065-1"
+"""Where the AMF's looks are applied: the Reference Gamut Compress is defined there, and
+every one of Resolve's CLFs takes it in and gives it back."""
 
 INTERPOLATION = ocio.INTERP_TETRAHEDRAL
 """Read from here, never re-derived, wherever a LUT is loaded or baked.
@@ -129,85 +88,51 @@ def check_encoding(name: str) -> None:
         raise ColorError(f"{name!r} is not a colour space in {BUILTIN_CONFIG}")
 
 
-def resolve_encoding(written: str) -> str:
-    """What a clip's metadata names, as one colour space in the pinned config (QC-047).
+def resolve_encoding(name: str) -> str:
+    """A colour space name as the config's canonical one, aliases and casing included.
 
-    Three ways in, in order: the config's own name for it, including aliases and any
-    casing, then a row of `INPUT_TRANSFORMS`, then nothing. What comes back is the
-    config's canonical name, so a clip that said `acescg` and one that said `ACEScg`
-    record the same provenance in their headers.
-
-    Raises rather than reaching for the nearest entry. The failure this prevents is a
-    mis-converted colour chart: it is the one picture the tool transforms on its own
-    authority, it is delivered precisely to be matched against, and a wrong one still
-    looks exactly like a chart.
+    Raises `ColorError` for a name the config does not know. The name comes from the
+    config itself since 2026-09-28 (`amf.colour_space_for`), so this is a check that a
+    saved batch still names something the pinned config has, not a lookup of what a
+    shooter typed.
     """
-    key = " ".join(written.split()).casefold()
-    if not key:
-        raise ColorError("the clip names no source encoding")
-    known = config().getColorSpace(key)
-    if known is not None:
-        return str(known.getName())
-    mapped = INPUT_TRANSFORMS.get(key)
-    if mapped is not None:
-        return mapped
-    raise ColorError(f"{written!r} {_unresolved_reason(key)}")
+    known = config().getColorSpace(" ".join(name.split()))
+    if known is None:
+        raise ColorError(f"{name!r} is not a colour space in {BUILTIN_CONFIG}")
+    return str(known.getName())
 
 
-def _unresolved_reason(key: str) -> str:
-    """Why a name did not resolve, for QC-047's message. Never used to match.
-
-    A name that appears inside several colour space names is a curve without a gamut,
-    which is the common case and the one worth naming the candidates for: "S-Log3" is
-    four colour spaces here. The search is for the sentence only - resolving to any of
-    them would be the nearest miss this module refuses to make.
-    """
-    contains = [name for name in config().getColorSpaceNames() if key in " ".join(name.split()).casefold()]
-    if len(contains) > 1:
-        return f"names {len(contains)} colour spaces in {BUILTIN_CONFIG}: {', '.join(contains)}"
-    return f"is not a colour space in {BUILTIN_CONFIG} and is not in the input transform table"
+def to_aces(source_encoding: str) -> ocio.ColorSpaceTransform:
+    """The source encoding to ACES2065-1: the AMF's input transform, as the config has it."""
+    check_encoding(source_encoding)
+    return ocio.ColorSpaceTransform(src=source_encoding, dst=ACES)
 
 
 def input_transform(source_encoding: str) -> ocio.ColorSpaceTransform:
-    """The source encoding to linear ACEScg, in one leg. COLOR_AND_FORMAT section 1.
+    """The source encoding to linear ACEScg in one leg, for a chain with no look in it.
 
-    **Only for a chain with no grade in it**: an aux still, which is delivered ungraded by
-    design, and a row the colour session has no CDL and no cube for. A graded chain goes
-    through `to_working` and `from_working` instead, because the grade sits between them.
+    An aux still, which is delivered ungraded by design, and a clip whose AMF lists no
+    look. The same pixels as `to_aces` then `to_plate`, in one transform.
     """
     check_encoding(source_encoding)
     return ocio.ColorSpaceTransform(src=source_encoding, dst=PLATE_SPACE)
 
 
-def to_working(source_encoding: str) -> ocio.ColorSpaceTransform:
-    """The source encoding to ACEScct: the leg ahead of the grade, from the clip's metadata.
-
-    This is where the input transform table earns its keep on a plate: a clip that
-    names the wrong camera lands in ACEScct wrong and the CDL grades the wrong pixels,
-    so QC-046 and QC-047 block a graded plate as they block an aux still.
-    """
-    check_encoding(source_encoding)
-    return ocio.ColorSpaceTransform(src=source_encoding, dst=WORKING_SPACE)
+def to_plate() -> ocio.ColorSpaceTransform:
+    """ACES2065-1 to linear ACEScg: the leg after the looks, the same for every shot."""
+    return ocio.ColorSpaceTransform(src=ACES, dst=PLATE_SPACE)
 
 
-def from_working() -> ocio.ColorSpaceTransform:
-    """ACEScct to linear ACEScg: the leg after the grade, the same for every shot."""
-    return ocio.ColorSpaceTransform(src=WORKING_SPACE, dst=PLATE_SPACE)
+def look_transform(name: str) -> ocio.LookTransform:
+    """A look the config defines, applied in ACES2065-1 and staying there."""
+    if config().getLook(name) is None:
+        raise ColorError(f"{name!r} is not a look in {BUILTIN_CONFIG}")
+    return ocio.LookTransform(src=ACES, dst=ACES, looks=name)
 
 
-def cdl_transform(cdl: CDL) -> ocio.CDLTransform:
-    """The ASC CDL off the EDL's `*ASC_SOP` and `*ASC_SAT` lines, as one OCIO transform.
-
-    OpenColorIO's default style, which does not clamp between the SOP and the
-    saturation. The ASC specification clamps there to 0..1, but Resolve's node graph is
-    32 bit float and clamps nothing, and a clamp in ACEScct would discard the values
-    above 1.0 and the negative values that out of gamut colours legitimately take.
-    Whether this matches what the session showed is what the stringout comparison is for
-    (OQ-55).
-    """
-    return ocio.CDLTransform(
-        slope=list(cdl.slope), offset=list(cdl.offset), power=list(cdl.power), sat=cdl.saturation
-    )
+def clf_transform(path: Path) -> ocio.FileTransform:
+    """One of the colourist's CLFs, as it is: ACES2065-1 in and out (Resolve's export)."""
+    return ocio.FileTransform(src=str(path), interpolation=INTERPOLATION)
 
 
 def processor(*transforms: ocio.Transform) -> ocio.CPUProcessor:
@@ -241,19 +166,6 @@ def apply(pixels: npt.NDArray[np.float32], cpu: ocio.CPUProcessor) -> None:
     cpu.apply(ocio.PackedImageDesc(pixels, width, height, ocio.CHANNEL_ORDERING_RGB))
 
 
-DISPLAY = "sRGB - Display"
-"""What a reference mp4 is viewed on, and therefore what the view branch ends at."""
-
-VIEW = "ACES 2.0 - SDR 100 nits (Rec.709)"
-"""Which ACES 2.0 output transform, which is the half of OQ-29 the config did not settle.
-
-The pinned config offers four views on `sRGB - Display`, and the other three are not
-candidates: `Un-tone-mapped` and `Video (colorimetric)` are not the ACES rendering, and
-`Raw` is no transform at all. This one is the standard SDR rendering, which is what the
-colour session is looking at while the grade is decided. The display is sRGB on the user's
-belief rather than a reading of Ben's project (2026-09-25, OQ-29).
-"""
-
 LUT_SIZE = 33
 """Samples per axis in the baked cube. 33 is what Resolve and Nuke default to.
 
@@ -263,13 +175,14 @@ that only shows up on the delivered reference.
 """
 
 
-def output_transform() -> ocio.DisplayViewTransform:
-    """Linear ACEScg to sRGB display: the tail of the view branch (OQ-29).
+def output_transform(display: str, view: str) -> ocio.DisplayViewTransform:
+    """Linear ACEScg to the display and view the clip's AMF names: the view branch's tail.
 
-    Takes ACEScg because that is where the CLF lands, which is the same reason nothing
-    of this module's is applied ahead of one.
+    From the AMF since 2026-09-28 (user), so a reference is viewed the way the colour
+    session was; turnover097's AMFs name Gamma 2.2 Rec.709 through the ACES 2.0 SDR
+    100 nit rendering. The plates never see it.
     """
-    return ocio.DisplayViewTransform(src=PLATE_SPACE, display=DISPLAY, view=VIEW)
+    return ocio.DisplayViewTransform(src=PLATE_SPACE, display=display, view=view)
 
 
 def view_lut(destination: Path, *transforms: ocio.Transform, size: int = LUT_SIZE) -> Path:

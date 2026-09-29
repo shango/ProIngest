@@ -1322,7 +1322,7 @@ class TestRunningABatch:
         )
         ingested(built, tmp_path)
         waiting.color_session_edl = None
-        built.rows[1].cdl = None
+        built.rows[1].grade = None
         window.set_batch(built)
         started = stub_runner(window)
         window.action_run.trigger()

@@ -18,6 +18,25 @@ since 2026-09-28 (user). What is left is the Mac: `docs/MAC_SESSION.md`, from "T
 order" down, and Ben's 4.886 slope. Entries are newest first; anything older than 2026-09-22
 describes the tool before the review and is history.
 
+**2026-09-28, in progress: colour from AMF + CLF (user). Chunk 2 of 3, wired.** The scan reads
+every `*.amf` in the folder (`scan._Grades`), matches one to each row by its EDL event (the
+filename index) and checks it names the row's file, then resolves it onto the row:
+`ShotRow.source_encoding` from the input transform (origin `AMF`) and `ShotRow.grade` (`Grade`:
+the looks in order as config looks and CLF paths, the display and view, the preset). The CDL is
+gone from the model, the EDL parser, `color` (`cdl_transform`, `WORKING_SPACE`,
+`INPUT_TRANSFORMS`, `DISPLAY`/`VIEW` all removed) and the EXR header, which now carries
+`proingest/amf` and `proingest/looks`; the CSV reads identity only. `ShotColor` is input ->
+ACES2065-1 -> looks -> ACEScg, and the view ends at the AMF's display/view. New rules: QC-075
+(no AMF, two, unreadable, or naming another file; error), QC-076 (CLF missing, md5 changed,
+unreadable; error), QC-077 (a look that is neither a config look nor a CLF; ignored, warning),
+QC-078 (Dailies preset; info), QC-079 (output transform the config lacks; error), QC-080 (HDRI:
+the row is skipped at scan, info). QC-009 is info; QC-008 is "no AMF matches any clip";
+QC-046/047 speak of the AMF. QC-008 and QC-009 left `planner.QC_BYPASSABLE`. Aux stills stay
+ungraded (input transform only). **Verified**: the suite (1779; new `TestTheAmf` in test_scan,
+chain tests in test_clf and test_color), ruff, mypy; turnover097 scanned: must-fix 27 -> 2
+(QC-033 C4261 70 frames, QC-034 C4271 353), every plate's QC-048 names its CLF nodes, QC-009 info
+on C4271, both HDRIs skipped.
+
 **2026-09-28, in progress: colour from AMF + CLF (user). Chunk 1 of 3, `core/amf.py`.** The
 user's decisions and the verified facts are in `HANDOFF.md` "In progress". This chunk reads an
 AMF (clip file or sequence pattern, timeline index from the file name, preset, input

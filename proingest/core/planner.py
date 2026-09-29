@@ -243,11 +243,12 @@ def effective_identity(row: ShotRow, show_pattern: str = naming.DEFAULT_SHOW_PAT
     return replace(row.identity, shot_code=row.shot_code_override)
 
 
-QC_BYPASSABLE = frozenset({"QC-008", "QC-009", "QC-023", "QC-033", "QC-034", "QC-071"})
+QC_BYPASSABLE = frozenset({"QC-023", "QC-033", "QC-034", "QC-071"})
 """The errors Accept As Is (QC-074) renders past, because each was traced through the
-planner and the renderer to a correct file of what is there (2026-09-28): ungraded for
-QC-008 and QC-009, letterboxed for QC-023, the cut as trimmed for QC-033 and QC-034, and
-QC-071's rows match by timecode or carry their own error.
+planner and the renderer to a correct file of what is there (2026-09-28): letterboxed for
+QC-023, the cut as trimmed for QC-033 and QC-034, and QC-071's rows match by timecode or
+carry their own error. QC-008 and QC-009 left it the same day, when colour moved to the
+AMF: QC-009 became info, and QC-008 means no AMF anywhere, so no input transform.
 
 **An allowlist, so a rule nobody has traced holds its row back.** The rest either render
 a plausible wrong file with no error (QC-011 two rows into one set of files, QC-026 and
@@ -358,13 +359,11 @@ def plan_batch(
     run rather than when a batch is opened: the state recorded against a row belongs to
     the version that produced it, not to the one about to be written.
 
-    **The colour session is not a parameter here.** It is ingested onto the rows before
-    a run (`clf.ingest`, PRD section 6 step 4), so every row already carries the CLF, the
-    CDL and the approved In/Out it was matched with and planning reads them off the model
-    like every other field. A batch nothing has been ingested into plans ungraded: the
-    deliverables are the same files in the same places, and the difference is whether the
-    CLF is in them. QC-008 is what refuses a **run** in that state, and every must-fix
-    refuses the whole run before planning is asked (`qc.must_fix`, D8).
+    **The colour session is not a parameter here.** The scan put it on the rows: the
+    approved In/Out off the EDL and the grade off each event's AMF, so planning reads them
+    off the model like every other field. QC-008 is what refuses a **run** with no AMF at
+    all, and every must-fix refuses the whole run before planning is asked
+    (`qc.must_fix`, D8).
     """
     root = delivery_root or batch.delivery_root
     if root is None:

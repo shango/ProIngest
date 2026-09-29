@@ -177,35 +177,25 @@ def sections() -> tuple[Section, ...]:
                     "change what a reference looks like (OQ-29).",
                 ),
                 Field(
-                    "readonly.working_space",
-                    "Working space",
+                    "readonly.colour_source",
+                    "Colour",
                     "readonly",
-                    "Where the colour session's CDL is applied: the timeline colour space "
-                    "the session is set to, by standard. The tool converts each clip into "
-                    "it from the encoding its metadata names, applies the CDL, and carries "
-                    "the result to ACEScg. A session set to anything else grades wrong "
-                    "without an error, so this is a standard rather than a setting.",
+                    "Where each clip's colour comes from. Its AMF names the input "
+                    "transform, the looks and the output transform, and the CLFs beside it "
+                    "carry the grade; the tool applies them in that order, in ACES2065-1, "
+                    "and carries the result to ACEScg.",
                 ),
                 Field(
                     "readonly.output_transform",
                     "Output transform",
                     "readonly",
-                    "What a reference mp4 is viewed through. The plates never see it.",
-                ),
-                Field(
-                    "readonly.input_transforms",
-                    "Input transform table",
-                    "readonly",
-                    "What a shooter may write, and the colour space each resolves to. "
-                    "Every colour space the config knows also resolves to itself, so only "
-                    "the short names need a row. Read only until an override can travel "
-                    "to a worker; adding a camera is adding a row in core/color.py.",
+                    "What a reference mp4 is viewed through: the one each clip's AMF names. "
+                    "The plates never see it.",
                 ),
             ),
             note=(
-                "There is no source encoding setting and no mode: each clip's own metadata "
-                "names what it is encoded in, and the house wide gamut is one more entry in "
-                "the table rather than something to switch into."
+                "There is no colour setting: each clip's AMF says what it is and what was "
+                "done to it, and every ID in it is resolved by the ACES config itself."
             ),
         ),
         Section(
@@ -291,13 +281,11 @@ def sections() -> tuple[Section, ...]:
 
 
 def readonly_values() -> dict[str, str]:
-    """The Colour section's four read-only lines, read from core rather than copied."""
-    table = "\n".join(f"{written} = {space}" for written, space in sorted(color.INPUT_TRANSFORMS.items()))
+    """The Colour section's read-only lines, read from core rather than copied."""
     return {
         "readonly.config": color.BUILTIN_CONFIG,
-        "readonly.working_space": color.WORKING_SPACE,
-        "readonly.output_transform": f"{color.VIEW} on {color.DISPLAY}",
-        "readonly.input_transforms": table,
+        "readonly.colour_source": f"each clip's AMF and its CLFs, applied in {color.ACES}",
+        "readonly.output_transform": "each clip's AMF",
         "readonly.log_file": str(paths.log_dir() / logsetup.LOG_FILENAME),
     }
 

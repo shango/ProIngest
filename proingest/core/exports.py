@@ -122,13 +122,10 @@ SHOTS_HEADERS = (
 )  # fmt: skip
 """The QC log's own columns, QC_RULES "QC log structure".
 
-Source encoding is the whole of the colour chain a row was rendered through that a
-reader can check, the CDL itself being in the delivered EXR header. It is **what the
-clip's metadata named, verbatim**,
-rather than the colour space that resolved to: this column is read when QC-046 or
-QC-047 fires, and what has to be corrected is the string somebody typed. Empty means
-the clip named none. Where the name came from is in the delivered EXR header rather
-than here (`exr.SOURCE_ENCODING_ORIGIN_ATTRIBUTE`).
+Source encoding is the colour space the clip's AMF input transform resolved to in the
+pinned config (user, 2026-09-28); empty means the AMF named none the config has, which
+is QC-046 or QC-047. The looks applied after it are in the delivered EXR header
+(`exr.LOOKS_ATTRIBUTE`).
 
 The eight **Source** columns after it are the file as ffprobe read it, so whoever
 checks a turnover can see whether the media is usable for VFX without opening it: an

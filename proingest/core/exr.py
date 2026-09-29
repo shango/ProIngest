@@ -74,31 +74,21 @@ SOURCE_ENCODING_ATTRIBUTE = "proingest/source_encoding"
 """The log encoding the source was read as, and therefore the input transform applied."""
 
 SOURCE_ENCODING_ORIGIN_ATTRIBUTE = "proingest/source_encoding_origin"
-"""Where that name came from: the clip's metadata, a container tag, or an override.
+"""Where that name came from: since 2026-09-28 always the clip's AMF.
 
 The encoding is the fact that matters and the origin is how a wrong one is traced back
 to whoever wrote it (COLOR_AND_FORMAT, EXR metadata). Written only beside an encoding,
 so the header never carries a source for a name it does not state.
 """
 
-CDL_ATTRIBUTES = (
-    "proingest/cdl_slope",
-    "proingest/cdl_offset",
-    "proingest/cdl_power",
-    "proingest/cdl_saturation",
-    "proingest/cdl_asc_sop",
-    "proingest/cdl_asc_sat",
-    "proingest/cdl_note",
-)
-"""The CDL from the final EDL, as numbers and as the lines it was written on.
+AMF_ATTRIBUTE = "proingest/amf"
+"""The AMF the colour came from, by file name (user, 2026-09-28)."""
 
-Both forms, because the numbers are what a tool reads and the verbatim text is what a
-human compares against the session. `proingest/cdl_note` says where it was applied, which
-since 2026-09-22 is the only thing it can say: there are no per-shot grade files, so the
-CDL is always the grade rather than sometimes a record of one.
-"""
-
-CDL_NOTE_APPLIED = f"applied in {color.WORKING_SPACE}, between the source encoding and {color.PLATE_SPACE}"
+LOOKS_ATTRIBUTE = "proingest/looks"
+"""The looks applied, in order, as the AMF lists them: config looks by name, CLFs by file
+name, joined with `; `. Absent on a plate rendered through its input transform alone.
+Together with the source encoding this is the whole chain, and a human compares it
+against the AMF rather than against numbers."""
 
 RGB_CHANNELS = "RGB"
 RGBA_CHANNELS = "RGBA"
@@ -253,25 +243,21 @@ def provenance(shot_color: clf.ShotColor) -> dict[str, Any]:
     """The header's account of how these pixels got here. COLOR_AND_FORMAT section 1.
 
     A graded plate is only auditable if the file says what was done to it: the source
-    encoding it started from and the CDL it was given. An attribute is written or absent,
-    never written empty: a clip whose metadata named no encoding (QC-046) leaves the
-    attribute out rather than claiming a guess.
+    encoding it started from, the AMF it came from and the looks it was given. An
+    attribute is written or absent, never written empty: a clip whose AMF named no
+    input transform (QC-046) leaves the attribute out rather than claiming a guess.
     """
     header: dict[str, Any] = {}
     if shot_color.source_encoding is not None:
         header[SOURCE_ENCODING_ATTRIBUTE] = shot_color.source_encoding
         if shot_color.source_encoding_origin is not None:
             header[SOURCE_ENCODING_ORIGIN_ATTRIBUTE] = shot_color.source_encoding_origin
-    cdl = shot_color.cdl
-    if cdl is not None:
-        slope, offset, power, saturation, sop, sat, note = CDL_ATTRIBUTES
-        header[slope] = cdl.slope
-        header[offset] = cdl.offset
-        header[power] = cdl.power
-        header[saturation] = float(cdl.saturation)
-        header[sop] = cdl.sop_text
-        header[sat] = cdl.sat_text
-        header[note] = CDL_NOTE_APPLIED
+    if shot_color.amf:
+        header[AMF_ATTRIBUTE] = shot_color.amf
+    if shot_color.looks:
+        header[LOOKS_ATTRIBUTE] = "; ".join(
+            look.name if look.kind == "look" else Path(look.name).name for look in shot_color.looks
+        )
     return header
 
 

@@ -18,11 +18,12 @@ import pytest
 
 from proingest.core import qc, render
 from proingest.core.models import (
-    CDL,
     AudioInfo,
     Batch,
     Deliverable,
     FrameRate,
+    Grade,
+    GradeLook,
     InOut,
     MediaInfo,
     QCResult,
@@ -530,20 +531,32 @@ class TestAuxStill:
         assert qc.check_aux_still(row()) == []
 
 
+GRADED = Grade(
+    amf=Path("/t/C4261.amf"),
+    input_transform="urn:ampas:aces:transformId:v2.0:CSC.Sony.SLog3_SGamut3Cine_to_ACES.a2.v1",
+    looks=(GradeLook("clf", "/t/C4261_1_ClipGraph_CorrectorNode_1.clf"),),
+)
+
+
 class TestSourceEncodingRule:
-    """QC-046 and QC-047. COLOR_AND_FORMAT section 1: an error only where the tool converts."""
+    """QC-046 and QC-047: the AMF names no input transform, or one the config lacks."""
 
     def chart(self, **kwargs: object) -> ShotRow:
         return row(clip_name="MELT0001_pl01_colorChart_01", **kwargs)  # type: ignore[arg-type]
 
     def test_a_resolvable_encoding_raises_nothing(self) -> None:
-        assert qc.check_source_encoding(row(source_encoding="C-Log3")) == []
+        assert qc.check_source_encoding(row(source_encoding="CanonLog3 CinemaGamut D55")) == []
 
-    def test_a_plate_that_names_none_is_qc_046_error(self) -> None:
-        """The grade is applied in ACEScct and this is what gets the clip there."""
+    def test_a_plate_with_no_amf_is_qc_046_error(self) -> None:
         results = qc.check_source_encoding(row(source_encoding=None))
         assert ids(results) == ["QC-046"]
         assert results[0].severity == "error"
+        assert "no AMF" in results[0].message
+
+    def test_an_amf_with_no_input_transform_names_itself(self) -> None:
+        plate = row(source_encoding=None)
+        plate.grade = replace(GRADED, input_transform="")
+        assert "C4261.amf names no input transform" in qc.check_source_encoding(plate)[0].message
 
     def test_an_aux_still_that_names_none_is_qc_046_error(self) -> None:
         """The one picture the tool converts on its own authority, so it cannot be delivered."""
@@ -551,21 +564,18 @@ class TestSourceEncodingRule:
         assert ids(results) == ["QC-046"]
         assert results[0].severity == "error"
 
-    def test_a_plate_naming_something_unresolvable_is_qc_047_error(self) -> None:
-        results = qc.check_source_encoding(row(source_encoding="S-Log3"))
+    def test_an_input_transform_the_config_lacks_is_qc_047_and_quotes_it(self) -> None:
+        plate = row(source_encoding=None)
+        plate.grade = replace(GRADED, input_transform="urn:ampas:aces:transformId:v1.5:IDT.Arri.LogC9.a1.v1")
+        results = qc.check_source_encoding(plate)
         assert ids(results) == ["QC-047"]
         assert results[0].severity == "error"
+        assert "IDT.Arri.LogC9" in results[0].message
 
-    def test_an_aux_still_naming_something_unresolvable_is_qc_047_error(self) -> None:
+    def test_a_saved_name_the_config_no_longer_has_is_qc_047(self) -> None:
         results = qc.check_source_encoding(self.chart(source_encoding="Arri LogC9"))
         assert ids(results) == ["QC-047"]
         assert results[0].severity == "error"
-
-    def test_the_message_quotes_what_was_written_and_what_it_could_not_be(self) -> None:
-        """The fix is somebody retyping a field, so the message has to name both ends."""
-        message = qc.check_source_encoding(row(source_encoding="S-Log3"))[0].message
-        assert "'S-Log3'" in message
-        assert "S-Log3 S-Gamut3.Cine" in message
 
     def test_a_bts_still_is_not_blocked(self) -> None:
         """It is copied byte for byte and never transformed."""
@@ -576,21 +586,27 @@ class TestSourceEncodingRule:
 class TestColorChain:
     """QC-048: what the row was rendered through, recorded rather than inferred (OQ-46)."""
 
-    def test_a_row_with_a_cdl_names_the_three_legs(self) -> None:
-        graded = row(source_encoding="C-Log3")
-        graded.cdl = CDL((1.0,) * 3, (0.0,) * 3, (1.0,) * 3, 1.0, "", "")
+    def test_a_graded_row_names_every_leg_in_order(self) -> None:
+        graded = row(source_encoding="CanonLog3 CinemaGamut D55")
+        graded.grade = replace(
+            GRADED, looks=(GradeLook("look", "ACES 1.3 Reference Gamut Compression"), *GRADED.looks)
+        )
         results = qc.check_color_chain(graded)
         assert ids(results) == ["QC-048"]
         assert results[0].severity == "info"
-        assert "CanonLog3 CinemaGamut D55 to ACEScct, the CDL, ACEScct to ACEScg" in results[0].message
+        assert results[0].message == (
+            "rendered through CanonLog3 CinemaGamut D55 to ACES2065-1, then ACES 1.3 Reference Gamut "
+            "Compression, C4261_1_ClipGraph_CorrectorNode_1.clf, then ACEScg"
+        )
 
-    def test_an_ungraded_row_names_the_input_transform(self) -> None:
-        message = qc.check_color_chain(row(source_encoding="C-Log3"))[0].message
-        assert "no grade" in message
+    def test_a_row_with_no_look_names_the_input_transform(self) -> None:
+        message = qc.check_color_chain(row(source_encoding="CanonLog3 CinemaGamut D55"))[0].message
+        assert "no look" in message
         assert "CanonLog3 CinemaGamut D55 to ACEScg" in message
 
     def test_an_aux_still_says_it_is_never_graded(self) -> None:
-        chart = row(clip_name="MELT0001_pl01_colorChart_01", source_encoding="BM Film")
+        chart = row(clip_name="MELT0001_pl01_colorChart_01", source_encoding="BMDFilm WideGamut Gen5")
+        chart.grade = GRADED
         message = qc.check_color_chain(chart)[0].message
         assert "aux still" in message
         assert "never graded" in message
@@ -601,7 +617,7 @@ class TestColorChain:
         assert "no source encoding: nothing to render through" in message
 
     def test_it_is_recorded_by_a_preflight(self, tmp_path: Path) -> None:
-        """Here rather than with the model rules: the CLF is resolved by the planner."""
+        """Here rather than with the model rules: the chain is resolved by the planner."""
         batch = Batch(delivery_root=tmp_path, rows=[row(source_encoding="ACEScct")])
         qc.preflight(batch)
         assert "QC-048" in ids(batch.rows[0].qc)
@@ -954,42 +970,40 @@ def ingested_batch(tmp_path: Path, *rows: ShotRow, edl_name: str = "MELT_FINAL.e
 
 
 class TestColorSessionRule:
-    """QC-008: the turnover has no colour session behind it, so nothing final can run."""
+    """QC-008: no AMF in the turnover grades any clip, so nothing names an input transform."""
 
     def test_a_turnover_nothing_was_ingested_into_is_an_error(self, tmp_path: Path) -> None:
         batch = Batch(delivery_root=tmp_path, turnovers=[Turnover("t1", tmp_path)], rows=[row()])
         results = qc.check_color_session(batch.turnovers[0], batch.rows)
         assert ids(results) == ["QC-008"]
         assert results[0].severity == "error"
-        assert "ingested" in results[0].message
 
-    def test_an_archived_package_is_not_an_error(self, tmp_path: Path) -> None:
-        """Ingest put what the session said on the rows, so nothing reads the EDL again."""
+    def test_an_archived_edl_is_not_an_error(self, tmp_path: Path) -> None:
+        """The scan put the grade on the rows, so nothing reads the EDL again."""
         graded = row()
-        graded.cdl = CDL((1.0,) * 3, (0.0,) * 3, (1.0,) * 3, 1.0, "", "")
+        graded.grade = GRADED
         batch = ingested_batch(tmp_path, graded)
         edl = batch.turnovers[0].color_session_edl
         assert edl is not None
         edl.unlink()
         assert qc.check_color_session(batch.turnovers[0], batch.rows) == []
 
-    def test_a_session_that_delivered_no_clf_at_all_is_an_error(self, tmp_path: Path) -> None:
-        """Distinct from QC-009: no row with one is a package that was never exported."""
+    def test_no_row_with_an_amf_is_an_error(self, tmp_path: Path) -> None:
         batch = ingested_batch(tmp_path, row())
         results = qc.check_color_session(batch.turnovers[0], batch.rows)
         assert ids(results) == ["QC-008"]
-        assert "no CDL for any row" in results[0].message
+        assert "no AMF" in results[0].message
 
-    def test_one_graded_row_is_enough_to_satisfy_it(self, tmp_path: Path) -> None:
+    def test_one_row_with_an_amf_is_enough_to_satisfy_it(self, tmp_path: Path) -> None:
         graded, ungraded = row(), row(clip_name="MELT0002_pl01")
-        graded.cdl = CDL((1.0,) * 3, (0.0,) * 3, (1.0,) * 3, 1.0, "", "")
+        graded.grade = GRADED
         batch = ingested_batch(tmp_path, graded, ungraded)
         assert qc.check_color_session(batch.turnovers[0], batch.rows) == []
 
     def test_it_is_scoped_per_turnover(self, tmp_path: Path) -> None:
         """One turnover can wait on colour while another renders, which is the point."""
         graded = row()
-        graded.cdl = CDL((1.0,) * 3, (0.0,) * 3, (1.0,) * 3, 1.0, "", "")
+        graded.grade = GRADED
         batch = ingested_batch(tmp_path, graded)
         waiting = Turnover("t2", tmp_path)
         batch.turnovers.append(waiting)
@@ -1001,25 +1015,33 @@ class TestColorSessionRule:
 
 
 class TestClfRule:
-    """QC-009: this row has no usable CLF, and an ungraded plate is the wrong pixels."""
+    """QC-009, info: the colourist left this plate no grade (user, 2026-09-28)."""
 
-    def test_a_row_the_session_matched_no_clf_to_is_an_error(self, tmp_path: Path) -> None:
-        results = qc.check_clf(row(), has_session=True)
+    def test_an_amf_with_no_clf_is_info(self) -> None:
+        plain = row()
+        plain.grade = replace(GRADED, looks=(GradeLook("look", "ACES 1.3 Reference Gamut Compression"),))
+        results = qc.check_clf(plain, has_session=True)
         assert ids(results) == ["QC-009"]
-        assert results[0].severity == "error"
+        assert results[0].severity == "info"
+        assert "C4261.amf carries no grade" in results[0].message
 
-    def test_it_is_silent_until_a_session_has_been_ingested(self, tmp_path: Path) -> None:
+    def test_a_row_with_no_amf_leaves_it_to_qc_075(self) -> None:
+        assert qc.check_clf(row(), has_session=True) == []
+
+    def test_it_is_silent_until_a_session_has_been_ingested(self) -> None:
         """With none the whole turnover is QC-008, and repeating it per row buries it."""
-        assert qc.check_clf(row(), has_session=False) == []
+        plain = row()
+        plain.grade = replace(GRADED, looks=())
+        assert qc.check_clf(plain, has_session=False) == []
 
-    def test_an_aux_still_owes_no_clf(self, tmp_path: Path) -> None:
-        """It is delivered ungraded by design, so this would fire on every colour chart."""
+    def test_an_aux_still_owes_no_grade(self) -> None:
         chart = row(clip_name="MELT0001_pl01_colorChart_01")
+        chart.grade = replace(GRADED, looks=())
         assert qc.check_clf(chart, has_session=True) == []
 
     def test_a_graded_row_passes(self) -> None:
         graded = row()
-        graded.cdl = CDL((1.0,) * 3, (0.0,) * 3, (1.0,) * 3, 1.0, "", "")
+        graded.grade = GRADED
         assert qc.check_clf(graded, has_session=True) == []
 
 

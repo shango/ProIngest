@@ -27,8 +27,8 @@ CLF, and so does this module: the plate branch builds one OCIO processor per job
 applies it to every frame on its way to an EXR, and the view branch bakes the same chain
 plus the ACES output transform into a `.cube` that ffmpeg applies as it encodes. Neither
 branch decides anything about colour. What to apply arrives on the job as a
-`clf.ShotColor`, which is a colour space name and the CDL, because that is what
-survives the pickle into a worker process.
+`clf.ShotColor`, which is a colour space name, the AMF's looks as names and CLF paths,
+and a display and view, because that is what survives the pickle into a worker process.
 """
 
 from __future__ import annotations

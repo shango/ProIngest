@@ -678,38 +678,36 @@ def check_aux_still(row: ShotRow) -> list[QCResult]:
 
 
 def check_source_encoding(row: ShotRow) -> list[QCResult]:
-    """QC-046 and QC-047: the clip named no source encoding, or named one that does not resolve.
+    """QC-046 and QC-047: the clip's AMF names no input transform, or one the config lacks.
 
-    **An error on every row the tool transforms**, which since 2026-09-18 is every plate
-    as well as the aux still: the grade is applied in ACEScct and this name is what gets
-    the clip there, so a wrong one grades the wrong pixels and a missing one renders
-    nothing. Info on a BTS frame, which is copied byte for byte.
-
-    QC-047 quotes what was written and says what it could not be resolved to, because
-    the fix is somebody retyping a field rather than anything in the tool.
+    **An error on every row the tool transforms**, which is every plate as well as the
+    aux still: the input transform is what gets the clip into ACES, so a missing one
+    renders nothing. Info on a row that delivers nothing. Since 2026-09-28 the only
+    carrier is the AMF (`scan._Grades`), whose own problems are QC-075.
     """
     blocking = is_picture_row(row) or delivers_aux_still(row)
-    if row.source_encoding is None:
-        return [
-            QCResult(
-                "QC-046",
-                "error" if blocking else "info",
-                "row",
-                "the clip's metadata names no source encoding",
-            )
-        ]
-    try:
-        color.resolve_encoding(row.source_encoding)
-    except color.ColorError as exc:
+    grade = row.grade
+    if row.source_encoding is not None:
+        try:
+            color.resolve_encoding(row.source_encoding)
+            return []
+        except color.ColorError as exc:
+            return [QCResult("QC-047", "error" if blocking else "warning", "row", f"source encoding {exc}")]
+    if grade is not None and grade.input_transform:
         return [
             QCResult(
                 "QC-047",
                 "error" if blocking else "warning",
                 "row",
-                f"source encoding {exc}",
+                f"the AMF's input transform {grade.input_transform} is not one {color.BUILTIN_CONFIG} has",
             )
         ]
-    return []
+    said = (
+        f"{grade.amf.name} names no input transform"
+        if grade is not None
+        else "no AMF names the clip's input transform"
+    )
+    return [QCResult("QC-046", "error" if blocking else "info", "row", said)]
 
 
 def identity_key(row: ShotRow) -> str | None:
@@ -873,37 +871,36 @@ def check_color_session(turnover: Turnover, rows: list[ShotRow]) -> list[QCResul
                 "until the session's final EDL is ingested for this turnover",
             )
         ]
-    if not any(clf.has_grade(row) for row in rows):
+    if not any(row.grade is not None for row in rows):
         return [
             QCResult(
                 "QC-008",
                 "error",
                 "turnover",
-                f"{edl.name} was ingested but carried no CDL for any row in this turnover",
+                "no AMF in this turnover grades any of its clips, so nothing names an input "
+                "transform; Ben's session exports one per EDL event",
             )
         ]
     return []
 
 
 def check_clf(row: ShotRow, has_session: bool) -> list[QCResult]:
-    """QC-009: this row has no usable grade, and an ungraded plate is the wrong pixels.
+    """QC-009, info: the colourist left this plate no grade, so it renders ungraded.
 
-    Silent until a session has been ingested for the turnover, because with none the
-    whole turnover is QC-008 and repeating it per row would bury it, and silent on an
-    aux still and a BTS frame, which are delivered ungraded by design and owe no grade
-    (`is_picture_row`). Two states report the same way because they cost the same thing:
-    the session left this shot neither a CDL nor a cube (OQ-33), and the cube it left is
-    no longer on the disk.
+    **Info rather than an error** (user, 2026-09-28): a clip Ben did not grade has an AMF
+    with no CLF in it, and that is his decision rather than a fault. Silent where the whole
+    turnover is QC-008, on a row with no AMF at all (QC-075 says that), and on an aux still
+    and a BTS frame, which are delivered ungraded by design.
     """
-    if not has_session or not is_picture_row(row):
+    if not has_session or not is_picture_row(row) or row.grade is None:
         return []
     if not clf.has_grade(row):
         return [
             QCResult(
                 "QC-009",
-                "error",
+                "info",
                 "row",
-                "the colour session left no CDL for this shot; it would render ungraded",
+                f"{row.grade.amf.name} carries no grade for this shot; it renders ungraded",
             )
         ]
     return []
@@ -913,9 +910,8 @@ def check_color_chain(row: ShotRow) -> list[QCResult]:
     """QC-048: which colour chain this row is about to be rendered through.
 
     **Not a check and deliberately not one** (OQ-46). It says what the tool did, so a
-    delivery that turns out to have been graded in the wrong space, or through a cube
-    nobody remembers exporting, is identifiable afterwards rather than re-derived from a
-    setting nobody wrote down.
+    delivery that turns out to have been graded wrong is identifiable afterwards rather
+    than re-derived from a file nobody kept.
 
     Here rather than with the model rules because the chain is resolved by the planner,
     which runs immediately before a render: a row's chain is a fact about the run that
@@ -931,19 +927,25 @@ def check_color_chain(row: ShotRow) -> list[QCResult]:
         return [QCResult("QC-048", "info", "row", f"aux still rendered through {chain}")]
     if encoding is None:
         return [QCResult("QC-048", "info", "row", "no source encoding: nothing to render through")]
-    legs = f"{encoding} to {color.WORKING_SPACE}, {{grade}}, {color.WORKING_SPACE} to {color.PLATE_SPACE}"
-    if row.cdl is not None:
-        grade = "the CDL"
-    else:
+    looks = row.grade.looks if row.grade is not None else ()
+    if not looks:
         return [
             QCResult(
                 "QC-048",
                 "info",
                 "row",
-                f"no grade: rendered through the input transform alone, {encoding} to {color.PLATE_SPACE}",
+                f"no look: rendered through the input transform alone, {encoding} to {color.PLATE_SPACE}",
             )
         ]
-    return [QCResult("QC-048", "info", "row", f"rendered through {legs.format(grade=grade)}")]
+    names = ", ".join(look.name if look.kind == "look" else Path(look.name).name for look in looks)
+    return [
+        QCResult(
+            "QC-048",
+            "info",
+            "row",
+            f"rendered through {encoding} to {color.ACES}, then {names}, then {color.PLATE_SPACE}",
+        )
+    ]
 
 
 def check_destination_writable(delivery_root: Path | None) -> list[QCResult]:

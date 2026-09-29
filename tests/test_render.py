@@ -24,7 +24,7 @@ import OpenEXR
 import pytest
 
 from proingest.core import clf, color, exr, ffmpeg, media, naming, qc, render
-from proingest.core.models import CDL, Batch, Deliverable, FrameRate, QCResult, ShotRow
+from proingest.core.models import Batch, Deliverable, FrameRate, GradeLook, QCResult, ShotRow
 from proingest.core.planner import DeliverableJob
 from tests.fixtures import color as color_fixtures
 from tests.fixtures import media as fixtures
@@ -204,16 +204,17 @@ class TestPlateBranch:
         assert red == pytest.approx(self.expected(color_fixtures.UNGRADED), abs=0.002)
         assert red != pytest.approx(self.SOURCE_PIXEL[0], abs=0.01)
 
-    def test_the_shot_s_cdl_is_what_is_applied(self, tmp_path: Path) -> None:
+    def test_the_shot_s_clf_is_what_is_applied(self, tmp_path: Path) -> None:
         """A different grade has to give a different plate, or nothing was applied."""
+        node = color_fixtures.make_clf(tmp_path / "node.clf", gain=1.6)
         graded = clf.ShotColor(
             source_encoding=color_fixtures.SOURCE_ENCODING,
-            cdl=CDL((1.4, 1.0, 0.7), (0.0,) * 3, (1.0,) * 3, 1.1, "", ""),
+            looks=(GradeLook("look", "ACES 1.3 Reference Gamut Compression"), GradeLook("clf", str(node))),
         )
-        with_cdl = self.delivered(tmp_path / "graded", shot_color=graded)
+        with_grade = self.delivered(tmp_path / "graded", shot_color=graded)
         without = self.delivered(tmp_path / "plain")
-        assert float(with_cdl[0, 0, 0]) != pytest.approx(float(without[0, 0, 0]), abs=0.002)
-        assert float(with_cdl[0, 0, 0]) == pytest.approx(self.expected(graded), abs=0.002)
+        assert float(with_grade[0, 0, 0]) != pytest.approx(float(without[0, 0, 0]), abs=0.002)
+        assert float(with_grade[0, 0, 0]) == pytest.approx(self.expected(graded), abs=0.002)
 
     def test_the_header_names_the_encoding_that_was_applied(self, tmp_path: Path) -> None:
         shot_color = clf.ShotColor(source_encoding=color_fixtures.SOURCE_ENCODING)
