@@ -18,6 +18,16 @@ since 2026-09-28 (user). What is left is the Mac: `docs/MAC_SESSION.md`, from "T
 order" down, and Ben's 4.886 slope. Entries are newest first; anything older than 2026-09-22
 describes the tool before the review and is history.
 
+**2026-09-28, in progress: colour from AMF + CLF (user). Chunk 1 of 3, `core/amf.py`.** The
+user's decisions and the verified facts are in `HANDOFF.md` "In progress". This chunk reads an
+AMF (clip file or sequence pattern, timeline index from the file name, preset, input
+transform, looks in order with CLF names and md5s, output transform) and resolves its IDs
+through the pinned config's own `amf_transform_ids`: no table. Not wired into the scan yet.
+**Verified**: all 17 turnover097 AMFs resolve (S-Log3 S-Gamut3.Cine; ACES 1.3 Reference Gamut
+Compression; Gamma 2.2 Rec.709 - Display with ACES 2.0 - SDR 100 nits (Rec.709)); both HDRI
+sequence patterns match their files; the recorded md5s match the CLFs; OCIO applies a CLF
+directly (0.18 grey to 0.47 through C4261 node 1); `tests/test_amf.py` (16).
+
 **2026-09-28, Accept As Is (Ignore QC) on a turnover (user), 0.5.9.** A tick box on a turnover
 heading's right-click menu (`ShotListView.bypass_toggled` -> `MainWindow.set_qc_bypassed` ->
 `qc.set_qc_bypassed`). `Turnover.qc_bypassed` is saved in the batch and carried over by Re-scan;

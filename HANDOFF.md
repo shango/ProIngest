@@ -4,9 +4,47 @@
 per change, newest first, each saying what was built and how it was verified. If this file
 disagrees with `PROGRESS.md` or the docs, they are right and this file is wrong.
 
+## In progress: colour from AMF + CLF (user, 2026-09-28) - pick up here
+
+Turnover097 (`turnover097_09_28_26_danielluckett/collected files`, untracked) is the spec
+sample: EDL + UTF-16 CSV + one AMF per EDL event + CLF grade nodes. **User decisions,
+2026-09-28**, all final:
+- **Colour comes from the AMF and its CLFs only.** The CDL in the EDL and the CSV's
+  encoding columns are no longer read. "There will be no older turnovers": no fallback path.
+- **EDL = the cut, CSV = identity** (File Name, Shot, Shot Type). OTIO and DRT ignored.
+- Reference mp4s **follow the AMF's output transform** (here Gamma 2.2 Rec.709, not sRGB).
+- A clip whose AMF has no grade: **info**. An AMF from the "Dailies Request" preset: **info**
+  (use whichever preset arrives).
+- Grades are primaries plus simple sky secondaries; anything a CLF cannot carry is
+  **ignored with a warning** if detected.
+- **HDRI rows (Shot Type HDRI) are delivered by the shooters**: the tool delivers nothing for
+  them; an sRGB reference clip for one may sit in the timeline, shown in the stringout only.
+- Ben provides no Resolve frame; the repo's graded EXR is Turnover121's, not comparable.
+
+**Verified facts** (turnover097 + the pinned config):
+- AMF index in the filename (`..._C4261_1_...amf`) = EDL event number - 1, 15 of 15. Each
+  AMF also names its file (`<aces:file>`, or `<aces:sequence>` for an EXR sequence).
+- The pinned config's `interchange: amf_transform_ids` maps every URN the AMFs use: input
+  `CSC.Sony.SLog3_SGamut3Cine_to_ACES.a2.v1` -> `S-Log3 S-Gamut3.Cine`; look
+  `Look.Academy.ReferenceGamutCompress.a2.v1` -> look `ACES 1.3 Reference Gamut Compression`;
+  output `Output.Academy.Rec709-D65_100nit_in_Rec709-D65_Gamma2pt2.a2.v1` -> display colour
+  space `Gamma 2.2 Rec.709 - Display` and view transform `ACES 2.0 - SDR 100 nits (Rec.709)`.
+- Each CLF: ACES2065-1 in/out, AP0->AP1, lin->ACEScct, one 33^3 LUT3D, back out. OCIO 2.5
+  reads `.clf`. The AMF carries each CLF's md5. Pipeline order: IT, RGC, workingLocation,
+  CLF nodes, OT. All `applied="false"`. HDRI AMFs have no input transform.
+
+**Chunks** (commit + PROGRESS entry after each):
+1. **Done** (commit "AMF reader"). `core/amf.py`: parse an AMF, resolve its URNs through the config, tests. Not wired.
+2. Wire it: scan reads each row's AMF by event; `ShotColor` = input space, RGC, CLFs,
+   display/view; CDL and CSV encoding removed; QC rules reworked (QC-008/009/046/047, new
+   IDs for AMF mismatch, missing/changed CLF, preset info, unapplicable CLF); HDRI rows
+   deliver nothing; EXR header provenance; tests.
+3. Docs (COLOR_AND_FORMAT, QC_RULES, OQ-71 resolved), version bump, CI, then run
+   turnover097: log CSV to the user, run (Accept As Is for QC-033/034 if needed), stringout.
+
 ## Where things stand
 
-- **Version 0.5.7 on branch `qc/source-fidelity`**, PR #17 open, not merged. 0.5.4 is on `main`.
+- **Version 0.5.9 on branch `qc/source-fidelity`**, PR #17 open, not merged. 0.5.4 is on `main`.
   0.5.7 made QC-020 a warning again; 0.5.8 puts every QC result into Save Logs as CSV at its
   own level, plus a session start line, problem dialogs and uncaught exceptions (user, 2026-09-28).
   0.5.9 adds **Accept As Is (Ignore QC)** on a turnover heading (QC-074, OQ-76).
