@@ -378,6 +378,11 @@ Treat it as a working session with the editor rather than a delivery.
   (an ffmpeg command line whole in one cell), the ABOUT rows name 0.5.4 and the bundled ffmpeg, and
   the records reach back to the oldest dated file in `~/Library/Logs/ProIngest`. The File menu item
   does the same with no batch open.
+- [ ] **Accept As Is (2026-09-28, 0.5.9).** Right-click a turnover heading with a must-fix (a
+  clip outside the length limits is the easy one): the menu has a tick box, Accept As Is (Ignore
+  QC). Tick it: the heading shows QC-074, Run starts, and that shot renders at its trimmed length.
+  Give another shot a hold-back error (move a clip away, QC-012): it is not rendered and the batch
+  still runs. Save the batch, reopen it: still ticked. Re-scan the turnover: still ticked.
 - [ ] **QC results in the saved log (2026-09-28, 0.5.8).** Scan Turnover121, then Save Logs as
   CSV: each clip's QC-020 is a WARNING row naming the turnover and shot, any info results are INFO,
   and the last `proingest.core.qc` row is the QC summary. Make a row must-fix (point it at a

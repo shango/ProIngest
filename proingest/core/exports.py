@@ -31,7 +31,7 @@ from openpyxl.styles import Alignment, Font
 from openpyxl.worksheet.worksheet import Worksheet
 
 from proingest import __version__
-from proingest.core import ffmpeg, frames, naming, qc
+from proingest.core import ffmpeg, frames, naming, planner, qc
 from proingest.core.models import Batch, Deliverable, MediaInfo, QCResult, ShotRow
 
 DATE_STAMP = "%Y%m%d"
@@ -148,6 +148,7 @@ def _write_summary(book: Workbook, batch: Batch, when: date) -> None:
     """One key and one value per line: what was run, and what it said."""
     sheet = _sheet(book, "Summary", ("Item", "Value"))
     counts = severity_counts(batch)
+    waived = planner.bypassed_turnovers(batch)
     for label, value in (
         ("Batch", batch.name),
         ("Date", when.isoformat()),
@@ -156,9 +157,13 @@ def _write_summary(book: Workbook, batch: Batch, when: date) -> None:
         ("Delivery root", str(batch.delivery_root) if batch.delivery_root else ""),
         ("Turnovers", len(batch.turnovers)),
         ("Rows", len(batch.rows)),
-        ("Rows delivered", sum(1 for row in batch.rows if _row_state(row) == "delivered")),
-        ("Rows skipped", sum(1 for row in batch.rows if _row_state(row) == "skipped")),
-        ("Rows failed", sum(1 for row in batch.rows if _row_state(row) == "failed")),
+        ("Rows delivered", sum(1 for row in batch.rows if _row_state(row, waived) == "delivered")),
+        ("Rows skipped", sum(1 for row in batch.rows if _row_state(row, waived) == "skipped")),
+        ("Rows failed", sum(1 for row in batch.rows if _row_state(row, waived) == "failed")),
+        (
+            "QC bypassed (QC-074)",
+            ", ".join(t.folder.name for t in batch.turnovers if t.qc_bypassed) or "none",
+        ),
         ("Deliverables", sum(len(row.deliverables) for row in batch.rows)),
         ("Errors", counts["error"]),
         ("Warnings", counts["warning"]),
@@ -185,15 +190,18 @@ def _every_result(batch: Batch) -> list[list[QCResult]]:
     return results
 
 
-def _row_state(row: ShotRow) -> str:
+def _row_state(row: ShotRow, waived: set[str]) -> str:
     """`skipped`, `failed` or `delivered`, which is what the Summary counts.
 
     A row with nothing planned counts as delivered rather than failed: the planner had
     nothing to do for it, which is a different thing from a render that did not finish.
+    An error Accept As Is rendered past (`waived` turnovers) is not a failure.
     """
     if row.skipped:
         return "skipped"
-    if row.errors() or any(item.status == "failed" for item in row.deliverables):
+    if planner.holding_errors(row, row.turnover_id in waived) or any(
+        item.status == "failed" for item in row.deliverables
+    ):
         return "failed"
     return "delivered"
 
@@ -336,13 +344,13 @@ _LANDED = ("done", "exists")
 """A deliverable that is on disk and passed: written this run, or already complete."""
 
 
-def _landed(row: ShotRow) -> bool:
+def _landed(row: ShotRow, waived: set[str]) -> bool:
     """Whether this row delivered everything it planned.
 
     Skipped, blocked, failed and cancelled rows did not, and a tracker line for any of
     them would add a shot to the production's sheet that is not in the delivery.
     """
-    if row.skipped or row.errors() or not row.deliverables:
+    if row.skipped or planner.holding_errors(row, row.turnover_id in waived) or not row.deliverables:
         return False
     return all(item.status in _LANDED for item in row.deliverables)
 
@@ -403,8 +411,9 @@ def tracker_row(shot_code: str, rows: list[ShotRow], stringout: str = "") -> lis
 def tracker_rows(batch: Batch) -> list[list[str]]:
     """One line per shot code that delivered anything, in the order the batch lists them."""
     shots: dict[str, list[ShotRow]] = {}
+    waived = planner.bypassed_turnovers(batch)
     for row in batch.rows:
-        if row.shot_code and _landed(row):
+        if row.shot_code and _landed(row, waived):
             shots.setdefault(row.shot_code, []).append(row)
     written = {t.turnover_id: t.stringout.name for t in batch.turnovers if t.stringout is not None}
     return [tracker_row(code, rows, written.get(rows[0].turnover_id, "")) for code, rows in shots.items()]

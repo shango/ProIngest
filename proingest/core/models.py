@@ -733,6 +733,12 @@ class Turnover:
     where that deserves a second look. Additive, so the schema version does not move.
     """
 
+    qc_bypassed: bool = False
+    """The editor accepted this turnover as it is (user, 2026-09-28): its errors are still
+    reported but neither refuse the Run nor hold its rows back, and every row that can
+    physically render does (`qc.must_fix`, `planner.plannable_identity`). QC-074 says so
+    on the turnover. Additive, so the schema version does not move."""
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "turnover_id": self.turnover_id,
@@ -751,6 +757,7 @@ class Turnover:
             "edl_digest": self.edl_digest,
             "csv_digest": self.csv_digest,
             "stringout": self.stringout.to_dict() if self.stringout else None,
+            "qc_bypassed": self.qc_bypassed,
         }
 
     @classmethod
@@ -772,6 +779,7 @@ class Turnover:
             edl_digest=str(data.get("edl_digest", "")),
             csv_digest=str(data.get("csv_digest", "")),
             stringout=Deliverable.from_dict(data["stringout"]) if data.get("stringout") else None,
+            qc_bypassed=bool(data.get("qc_bypassed", False)),
         )
 
 

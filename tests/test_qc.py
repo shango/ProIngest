@@ -817,6 +817,44 @@ class TestBlockingResults:
         assert qc.must_fix(Batch(delivery_root=tmp_path, rows=[failed])) == []
 
 
+class TestQcBypass:
+    """A turnover accepted as it is: reported, never blocking (user, 2026-09-28)."""
+
+    def bypassed_batch(self, tmp_path: Path) -> Batch:
+        broken = row()
+        broken.qc.append(QCResult("QC-033", "error", "row", "too short"))
+        turnover = Turnover("t1", tmp_path / "Turnover121")
+        turnover.qc.append(QCResult("QC-008", "error", "turnover", "no colour session"))
+        return Batch(delivery_root=tmp_path, turnovers=[turnover], rows=[broken])
+
+    def test_without_it_the_turnover_and_its_rows_block(self, tmp_path: Path) -> None:
+        batch = self.bypassed_batch(tmp_path)
+        assert [result.rule_id for _, result in qc.must_fix(batch)] == ["QC-008", "QC-033"]
+
+    def test_with_it_nothing_of_the_turnover_blocks_and_qc_074_says_so(self, tmp_path: Path) -> None:
+        batch = self.bypassed_batch(tmp_path)
+        qc.set_qc_bypassed(batch.turnovers[0], True)
+        assert qc.must_fix(batch) == []
+        assert ids(batch.turnovers[0].qc) == ["QC-008", "QC-074"]
+        assert batch.turnovers[0].qc[-1].severity == "warning"
+        assert ids(batch.rows[0].qc) == ["QC-033"], "the errors are still reported"
+
+    def test_a_batch_scope_error_still_blocks(self, tmp_path: Path) -> None:
+        batch = self.bypassed_batch(tmp_path)
+        qc.set_qc_bypassed(batch.turnovers[0], True)
+        batch.qc.append(QCResult("QC-062", "error", "batch", "not writable"))
+        assert [result.rule_id for _, result in qc.must_fix(batch)] == ["QC-062"]
+
+    def test_unticking_it_takes_qc_074_away_and_the_errors_block_again(self, tmp_path: Path) -> None:
+        batch = self.bypassed_batch(tmp_path)
+        qc.set_qc_bypassed(batch.turnovers[0], True)
+        qc.set_qc_bypassed(batch.turnovers[0], True)
+        assert ids(batch.turnovers[0].qc).count("QC-074") == 1
+        qc.set_qc_bypassed(batch.turnovers[0], False)
+        assert "QC-074" not in ids(batch.turnovers[0].qc)
+        assert len(qc.must_fix(batch)) == 2
+
+
 class TestLogResults:
     """Every result the Issues dock shows goes to the log at its own level (user, 2026-09-28)."""
 
@@ -860,6 +898,29 @@ class TestLogResults:
         assert lines[-1] == (
             "INFO",
             "after the scan: QC summary: 1 errors, 0 warnings, 0 info; nothing blocks the run",
+        )
+
+    def test_a_bypassed_turnover_says_what_was_rendered_past_and_what_was_held(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        plate = row()
+        plate.qc = [
+            QCResult("QC-033", "error", "row", "too short"),
+            QCResult("QC-011", "error", "row", "twice"),
+        ]
+        turnover = Turnover("t1", tmp_path / "T")
+        qc.set_qc_bypassed(turnover, True)
+        batch = Batch(delivery_root=tmp_path, turnovers=[turnover], rows=[plate])
+        lines = self.logged(caplog, batch)
+        assert lines[0][0] == "WARNING" and "QC-074" in lines[0][1]
+        assert lines[1][1].endswith("QC-033 too short (bypassed: rendered as it is)")
+        assert lines[2][1].endswith(
+            "QC-011 twice (bypassed, but not rendered: "
+            "Accept As Is cannot render past this, so the row is held back)"
+        )
+        assert lines[-1] == (
+            "INFO",
+            "after the scan: QC summary: 2 errors, 1 warnings, 0 info; nothing blocks the run",
         )
 
     def test_batch_turnover_and_deliverable_results_are_there_too(

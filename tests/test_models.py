@@ -278,8 +278,14 @@ class TestTurnover:
             stringout=Deliverable(
                 kind="stringout", name="so.mp4", path=Path("/d/so.mp4"), version=1, status="done"
             ),
+            qc_bypassed=True,
         )
         assert Turnover.from_dict(turnover.to_dict()) == turnover
+
+    def test_a_turnover_saved_before_the_bypass_is_not_bypassed(self) -> None:
+        data = Turnover("t1", Path("/t")).to_dict()
+        del data["qc_bypassed"]
+        assert Turnover.from_dict(data).qc_bypassed is False
 
     def test_a_turnover_saved_before_the_session_existed_has_ingested_nothing(self) -> None:
         """Additive, so the schema version does not move (M5.7.1)."""

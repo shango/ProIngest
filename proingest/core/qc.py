@@ -36,7 +36,7 @@ from proingest.core.models import (
     ShotRow,
     Turnover,
 )
-from proingest.core.planner import DeliverableJob, effective_identity
+from proingest.core.planner import QC_BYPASSABLE, DeliverableJob, effective_identity
 
 log = logging.getLogger(__name__)
 
@@ -1037,14 +1037,21 @@ def must_fix(batch: Batch) -> list[tuple[str, QCResult]]:
     errors do not count, because a skipped row renders nothing. Where is the batch, a
     turnover's folder name, or a row's clip name. Phase B (QC-1xx) is not here: it is
     about what a run wrote, and fails the row rather than refusing the next run.
+
+    **A turnover accepted as it is (QC-074) contributes nothing** (user, 2026-09-28): its
+    errors are still on it and its rows, and still reported, but none refuses the run.
+    Batch scope errors are about the delivery root every turnover writes to, and still do.
     """
     found: list[tuple[str, QCResult]] = [("batch", r) for r in batch.qc if r.severity == "error"]
+    bypassed = {turnover.turnover_id for turnover in batch.turnovers if turnover.qc_bypassed}
     for turnover in batch.turnovers:
+        if turnover.qc_bypassed:
+            continue
         found.extend(
             (turnover.folder.name, r) for r in turnover.qc if r.severity == "error" and not _phase_b(r)
         )
     for row in batch.rows:
-        if row.skipped:
+        if row.skipped or row.turnover_id in bypassed:
             continue
         found.extend((row.clip_name, r) for r in row.qc if r.severity == "error" and not _phase_b(r))
     return found
@@ -1060,6 +1067,40 @@ def _phase_b(result: QCResult) -> bool:
     return result.rule_id.startswith("QC-1")
 
 
+def _bypass_note(bypassed: bool, result: QCResult, held: str) -> str:
+    """What Accept As Is did with an error, for its log line; empty when it did nothing."""
+    if not bypassed or result.severity != "error" or _phase_b(result):
+        return ""
+    if result.rule_id in QC_BYPASSABLE:
+        return "bypassed: rendered as it is"
+    return f"bypassed, but not rendered: Accept As Is cannot render past this, so {held} is held back"
+
+
+QC_BYPASSED = "QC-074"
+
+
+def set_qc_bypassed(turnover: Turnover, bypassed: bool) -> None:
+    """Accept a turnover as it is, or withdraw that, and say so on it as QC-074.
+
+    A warning rather than info, because it is the one result that says every error
+    under it was seen and waved through rather than fixed; the QC log and a saved log
+    carry it with the rest.
+    """
+    turnover.qc_bypassed = bypassed
+    turnover.qc = [result for result in turnover.qc if result.rule_id != QC_BYPASSED]
+    if bypassed:
+        turnover.qc.append(
+            QCResult(
+                QC_BYPASSED,
+                "warning",
+                "turnover",
+                "QC is bypassed by the editor: its errors do not block the run. Rows whose only "
+                f"errors are {', '.join(sorted(QC_BYPASSABLE))} render as they are; any other error "
+                "still holds its row back, because rendering past it writes a wrong file",
+            )
+        )
+
+
 LOG_LEVELS = {"info": logging.INFO, "warning": logging.WARNING, "error": logging.ERROR}
 """What each severity is logged at, so the Level column of a saved log is the severity
 the Issues dock shows."""
@@ -1071,8 +1112,10 @@ def log_results(batch: Batch, when: str) -> None:
     The app log is what Save Logs exports, and the dock is gone once the window closes:
     without this, a saved log said nothing about what blocked a run or why (user,
     2026-09-28). The order is the dock's, and a result that is must-fix says it blocks
-    the run, so the lines answer the same question `must_fix` does. A closing line
-    counts them, at ERROR when anything blocks.
+    the run, so the lines answer the same question `must_fix` does. On a turnover
+    accepted as it is (QC-074), an error says whether it was rendered past or still holds
+    its row back (`planner.QC_BYPASSABLE`). A closing line counts them, at ERROR when
+    anything blocks.
     """
     blocking = {id(result) for _, result in must_fix(batch)}
     counts = dict.fromkeys(LOG_LEVELS, 0)
@@ -1097,14 +1140,14 @@ def log_results(batch: Batch, when: str) -> None:
     for turnover in batch.turnovers:
         name = turnover.folder.name
         for result in turnover.qc:
-            emit(name, result)
+            emit(name, result, _bypass_note(turnover.qc_bypassed, result, "every row"))
         for row in batch.rows_for(turnover.turnover_id):
             where = f"{name} / {row.shot_code or row.clip_name}"
             if row.shot_code and row.shot_code != row.clip_name:
                 where += f" ({row.clip_name})"
-            skipped = "row skipped" if row.skipped else ""
             for result in row.qc:
-                emit(where, result, skipped)
+                note = "row skipped" if row.skipped else _bypass_note(turnover.qc_bypassed, result, "the row")
+                emit(where, result, note)
             for deliverable in row.deliverables:
                 for result in deliverable.qc:
                     emit(f"{where} / {deliverable.name}", result)

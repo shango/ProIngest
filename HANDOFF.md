@@ -9,6 +9,7 @@ disagrees with `PROGRESS.md` or the docs, they are right and this file is wrong.
 - **Version 0.5.7 on branch `qc/source-fidelity`**, PR #17 open, not merged. 0.5.4 is on `main`.
   0.5.7 made QC-020 a warning again; 0.5.8 puts every QC result into Save Logs as CSV at its
   own level, plus a session start line, problem dialogs and uncaught exceptions (user, 2026-09-28).
+  0.5.9 adds **Accept As Is (Ignore QC)** on a turnover heading (QC-074, OQ-76).
   CI run 36506630533 is green on all four jobs and built `ProIngest-0.5.8.dmg`:
   `gh run download 36506630533 -R shango/ProIngest -n ProIngest-macos-arm64 -D ~/Downloads/ProIngest-0.5.8`
 - **1739 tests pass**; `ruff`, `ruff format` and `mypy --strict` are clean.

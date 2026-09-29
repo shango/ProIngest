@@ -52,6 +52,16 @@ changed. A trim you never made follows the new EDL.
 **New Folder Location...** when the folder has moved. A batch reopened after its turnover moved
 says so on that header (QC-069) and will not run until you point it at the new folder.
 
+**Accept As Is (Ignore QC)**, on the same right-click menu, is a tick box for a turnover you have
+decided to deliver as it came. Its errors no longer stop Run, and the shots render as they are:
+a clip outside the length limits, one that is not 4K, or one with no grade. The errors are still
+shown, the heading says QC-074, and the QC log and saved logs record that the turnover was
+accepted. A few errors still keep their shot back, because rendering past them would write a
+wrong file rather than an honest one: two shots with the same name, the wrong frame rate or
+drop-frame timecode, a clip that matches no EDL event or two, a retime, a missing input colour
+space, or media the tool cannot find or read. The saved log names each of those as "not
+rendered". Untick it to put QC back in charge.
+
 **While a scan or a run is going the batch is locked.** Nothing in the list can be edited, and
 New, Open, Settings and the delivery root wait until it ends, because a change made under a run
 would change the reports without changing what was rendered.

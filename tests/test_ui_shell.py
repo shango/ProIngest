@@ -28,7 +28,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from proingest.core import batchfile, logsetup, naming
+from proingest.core import batchfile, logsetup, naming, qc
 from proingest.core import settings as core_settings
 from proingest.core.models import Batch, Deliverable, QCResult, Turnover
 from proingest.core.planner import DeliverableJob
@@ -37,6 +37,7 @@ from proingest.ui import app as ui_app
 from proingest.ui import deliverables, paths
 from proingest.ui.background import Inline
 from proingest.ui.batch_bar import NO_DELIVERY_ROOT
+from proingest.ui.issues import issues_for
 from proingest.ui.log_view import SAVE_TEXT
 from proingest.ui.main_window import (
     BOTTOM_TABS,
@@ -58,7 +59,7 @@ from proingest.ui.run_controller import (
 from proingest.ui.run_strip import LINK_COLOR, RunStrip
 from proingest.ui.runner import RENDERING
 from proingest.ui.settings_dialog import SettingsDialog
-from proingest.ui.shot_list import CANCEL_RERUN_TEXT, RELOCATE_TEXT, RESCAN_TEXT, STRINGOUT_TEXT
+from proingest.ui.shot_list import BYPASS_TEXT, CANCEL_RERUN_TEXT, RELOCATE_TEXT, RESCAN_TEXT, STRINGOUT_TEXT
 from proingest.ui.shot_model import IN, NOTES, PROGRESS, SHOT, DisplayMode, RowState
 from tests.fixtures.batches import (
     batch,
@@ -978,6 +979,24 @@ class TestAddingAndScanningTurnovers:
         monkeypatch.setattr(window.run, "build_stringout", asked.append)
         self.entries(window, window.shot_list.proxy.index(0, 0))[STRINGOUT_TEXT].trigger()
         assert asked == [heading]
+
+    def test_accept_as_is_is_a_checkbox_on_the_heading_that_unblocks_the_turnover(
+        self, window: DrivenWindow
+    ) -> None:
+        """User, 2026-09-28: the errors stay reported, QC-074 says why nothing blocks."""
+        broken = row(turnover_id="t1")
+        broken.qc.append(QCResult("QC-033", "error", "row", "too short"))
+        window.set_batch(batch(broken, turnovers=[Turnover("t1", Path("/s/t1"))]))
+        entry = self.entries(window, window.shot_list.proxy.index(0, 0))[BYPASS_TEXT]
+        assert entry.isCheckable() and not entry.isChecked()
+        entry.trigger()
+
+        assert window.batch.turnovers[0].qc_bypassed
+        assert qc.must_fix(window.batch) == []
+        assert "QC-074" in [issue.result.rule_id for issue in issues_for(window.batch)]
+        assert self.entries(window, window.shot_list.proxy.index(0, 0))[BYPASS_TEXT].isChecked()
+        self.entries(window, window.shot_list.proxy.index(0, 0))[BYPASS_TEXT].trigger()
+        assert not window.batch.turnovers[0].qc_bypassed
 
     def test_a_run_rebuilds_the_stringout_only_where_it_delivered(self) -> None:
         first = delivered(row("MELT0001_pl01", turnover_id="t1"))

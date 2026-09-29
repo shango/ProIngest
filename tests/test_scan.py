@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from proingest.core import scan
+from proingest.core import qc, scan
 from proingest.core.models import Batch, Deliverable, InOut, ShotRow, Turnover
 from tests.fixtures import media as fixtures
 
@@ -365,6 +365,13 @@ class TestCarryOver:
         was.stringout = Deliverable(kind="stringout", name="so.mp4", path=Path("/d/so.mp4"), version=1)
         scan.carry_over(was, [], now, [])
         assert now.stringout == was.stringout
+
+    def test_accept_as_is_survives_a_rescan_and_qc_074_with_it(self) -> None:
+        was, now = Turnover("t1", Path("/a")), Turnover("t1", Path("/a"))
+        qc.set_qc_bypassed(was, True)
+        scan.carry_over(was, [], now, [])
+        assert now.qc_bypassed
+        assert [result.rule_id for result in now.qc] == ["QC-074"]
 
     def test_a_trim_never_made_follows_the_new_edl(self) -> None:
         old, new = self.rows("C0145.MP4"), self.rows("C0145.MP4")

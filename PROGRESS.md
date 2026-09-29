@@ -8,7 +8,7 @@ commit.
 
 ## 1. Resume here
 
-**State at 2026-09-28, version 0.5.8, on branch `qc/source-fidelity`, PR #17** (`HANDOFF.md` is
+**State at 2026-09-28, version 0.5.9, on branch `qc/source-fidelity`, PR #17** (`HANDOFF.md` is
 the short version) (0.5.4 is on `main`, PR
 #16 merged as `262817e`, dmg in CI run 35944322464). The 2026-09-23 review is built (chunks A
 to H of `docs/REVIEW_2026-09-23.md`), and so are the fixes that a second official turnover,
@@ -17,6 +17,22 @@ renders; Turnover121, every clip 8 bit 4:2:0, runs again with a QC-020 warning o
 since 2026-09-28 (user). What is left is the Mac: `docs/MAC_SESSION.md`, from "The 0.5.0 build, in
 order" down, and Ben's 4.886 slope. Entries are newest first; anything older than 2026-09-22
 describes the tool before the review and is history.
+
+**2026-09-28, Accept As Is (Ignore QC) on a turnover (user), 0.5.9.** A tick box on a turnover
+heading's right-click menu (`ShotListView.bypass_toggled` -> `MainWindow.set_qc_bypassed` ->
+`qc.set_qc_bypassed`). `Turnover.qc_bypassed` is saved in the batch and carried over by Re-scan;
+QC-074 (warning) says so on the turnover. Agreed with the user: checks still run and report, the
+turnover's errors never refuse the Run (`qc.must_fix`), rows that can render do. **What "can
+render" means was traced, rule by rule** (a subagent read the planner and renderer, the QC-046
+`ClfError` spot-checked): only QC-008, QC-009, QC-023, QC-033, QC-034, QC-071 give a correct file,
+so `planner.QC_BYPASSABLE` is an allowlist and every other error still holds its row, a
+QC-069 turnover all of its rows (OQ-76 has the three groups). The QC log counts a waived row as
+delivered, names the bypass on its Summary, and the tracker lists it; the saved log marks each
+error rendered past or held back. Batch errors still block. **Not changed**: the list still paints
+a delivered bypassed row red, because its errors are real. **Verified**: `TestQcBypass`,
+`TestAcceptAsIs`, the export and log tests, the carry-over and model round trip, a window test of
+the menu entry, the suite (1764), ruff, mypy. **Mac**: a MAC_SESSION line. QC_RULES QC-074,
+UI_SPEC 15, the guide's reference, OQ-76.
 
 **2026-09-28, the saved log holds the QC results (user), 0.5.8.** Save Logs as CSV exported the
 app log, which held no QC result at all: the user could not tell from a log what blocked a run.

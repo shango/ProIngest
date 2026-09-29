@@ -299,6 +299,41 @@ class TestShotCodeCorrection:
         assert planner.plan_row(row(shot_code_override="melt1"), ROOT, 1).jobs == []
 
 
+class TestAcceptAsIs:
+    """A turnover accepted as it is renders past the errors that give a correct file only."""
+
+    def batch(
+        self, *rows: ShotRow, bypassed: bool = True, turnover_qc: list[QCResult] | None = None
+    ) -> Batch:
+        turnover = Turnover("t1", Path("/turnover"), qc_bypassed=bypassed, qc=turnover_qc or [])
+        return Batch(turnovers=[turnover], rows=list(rows))
+
+    def test_a_row_too_short_renders_when_its_turnover_is_bypassed(self, tmp_path: Path) -> None:
+        short = row(qc=[QCResult("QC-033", "error", "row", "too short")])
+        assert planner.plan_batch(self.batch(short), tmp_path)
+        assert not planner.plan_batch(self.batch(short, bypassed=False), tmp_path)
+
+    @pytest.mark.parametrize("rule_id", ["QC-011", "QC-026", "QC-046", "QC-066", "QC-999"])
+    def test_an_error_that_would_write_a_wrong_file_still_holds_the_row(
+        self, rule_id: str, tmp_path: Path
+    ) -> None:
+        """QC-999 stands for a rule nobody has traced: an allowlist holds it back."""
+        wrong = row(qc=[QCResult(rule_id, "error", "row", "wrong")])
+        assert planner.plan_batch(self.batch(wrong), tmp_path) == []
+
+    def test_one_held_error_holds_the_row_even_beside_a_waived_one(self, tmp_path: Path) -> None:
+        both = row(qc=[QCResult("QC-033", "error", "row", "short"), QCResult("QC-027", "error", "row", "df")])
+        assert planner.plan_batch(self.batch(both), tmp_path) == []
+
+    def test_a_missing_turnover_folder_holds_every_row(self, tmp_path: Path) -> None:
+        moved = [QCResult("QC-069", "error", "turnover", "the folder is gone")]
+        assert planner.plan_batch(self.batch(row(), turnover_qc=moved), tmp_path) == []
+
+    def test_no_colour_session_is_waived_and_renders_ungraded(self, tmp_path: Path) -> None:
+        ungraded = [QCResult("QC-008", "error", "turnover", "no colour session")]
+        assert planner.plan_batch(self.batch(row(), turnover_qc=ungraded), tmp_path)
+
+
 class TestRowsThatOweNothing:
     def test_a_skipped_row(self) -> None:
         assert planner.plan_row(row(skipped=True), ROOT, 1).jobs == []

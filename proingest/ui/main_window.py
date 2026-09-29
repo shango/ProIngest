@@ -313,6 +313,7 @@ class MainWindow(QMainWindow):
         self.shot_list.cancel_rerun_requested.connect(self.cancel_rerun)
         self.shot_list.stringout_requested.connect(self.build_stringout)
         self.shot_list.relocate_requested.connect(self.relocate_turnover)
+        self.shot_list.bypass_toggled.connect(self.set_qc_bypassed)
         self.autosave = AutoSaver(self)
         self.shot_model.row_edited.connect(lambda _row: self.autosave.schedule())
         # A commit re-runs that row's rules (M5.3), so what the dock is showing about
@@ -704,6 +705,19 @@ class MainWindow(QMainWindow):
         reasons = [f"{row.shot_code}: {why}" for row in rows if (why := refused[id(row)]) is not None]
         if reasons:
             self.report_problem("Re-run not cancelled", "\n".join(reasons))
+
+    def set_qc_bypassed(self, turnover: Turnover, bypassed: bool) -> None:
+        """A heading's Accept As Is: the turnover's errors stop blocking, QC-074 says so."""
+        if not self._batch_open or self._busy():
+            return
+        qc.set_qc_bypassed(turnover, bypassed)
+        log.warning(
+            "%s: QC bypass %s by the editor", turnover.folder.name, "turned on" if bypassed else "turned off"
+        )
+        self.shot_model.refresh_rows()
+        self.show_results()
+        self.autosave.schedule()
+        self.update_state()
 
     def relocate_turnover(self, turnover: Turnover) -> None:
         """A turnover heading's New Folder Location: re-scan it from where it went (D16)."""

@@ -420,6 +420,11 @@ editor drops the fixed EDL, CSV or clip into the folder and re-scans.
 
 - **Scan re-scans every turnover in the batch.** Right-clicking a turnover's header offers
   **Re-scan** for that one turnover and **New Folder Location...** for one that has moved (D16).
+- **Accept As Is (Ignore QC)**, a checkbox on the same menu (user, 2026-09-28), lets a turnover
+  run whatever its QC says: its errors stay on the rows and in the Issues dock, the heading shows
+  QC-074, and neither the Run nor a row is held back by an error a render gets right. An error
+  that would write a wrong file still holds its row (QC_RULES QC-074 lists which). Saved in the
+  batch and kept across Re-scan; unticking it puts the errors back in charge.
 - **What the editor did is carried over by File Name** (`scan.carry_over`), in CSV order, so a
   clip used twice pairs first with first: a trim the editor made, the shot code correction, the
   skip and its reason, the notes, and the delivered state. A trim never made follows the new EDL.

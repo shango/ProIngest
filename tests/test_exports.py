@@ -153,6 +153,25 @@ class TestQcLogSheets:
         assert summary["Rows delivered"] == 1
         assert summary["Deliverables"] == 7
 
+    def test_a_bypassed_turnover_s_waived_error_is_delivered_named_and_tracked(self, tmp_path: Path) -> None:
+        """Accept As Is (QC-074): QC-033 was rendered past, so the row is not a failure."""
+        short = row(qc=[QCResult("QC-033", "error", "row", "too short")])
+        batch = batch_of(short)
+        batch.turnovers[0].qc_bypassed = True
+        log = exports.write_qc_log(batch, tmp_path / "log.xlsx", date(2026, 9, 28))
+        summary: dict[object, object] = {key: value for key, value in sheet_rows(log, "Summary")[1:]}
+        assert (summary["Rows delivered"], summary["Rows failed"]) == (1, 0)
+        assert summary["QC bypassed (QC-074)"] == "turnover"
+        tracked = exports.tracker_rows(batch)
+        assert len(tracked) == 1 and "MELT0001" in tracked[0]
+
+    def test_without_the_bypass_the_same_row_is_failed_and_untracked(self, tmp_path: Path) -> None:
+        batch = batch_of(row(qc=[QCResult("QC-033", "error", "row", "too short")]))
+        log = exports.write_qc_log(batch, tmp_path / "log.xlsx", date(2026, 9, 28))
+        summary: dict[object, object] = {key: value for key, value in sheet_rows(log, "Summary")[1:]}
+        assert (summary["Rows failed"], summary["QC bypassed (QC-074)"]) == (1, "none")
+        assert exports.tracker_rows(batch) == []
+
     def test_one_shots_row_per_shot(self, log: Path) -> None:
         rows = sheet_rows(log, "Shots")
         assert rows[0][:4] == ["Turnover", "Clip name", "Shot code", "Elem"]
