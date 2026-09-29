@@ -18,6 +18,7 @@ ffmpeg. The user's decisions, all in OQ-38:
   The first cp and the first wit of the shot in EDL order, from their delivered HD
   references, playing from their own cut In at the plate's first frame. Each is gone when
   it runs out or at the plate's Out, whichever is first. No delivered reference, no inset.
+  Each carries its own element (`cp01`) a little smaller, bottom left inside it.
 
 Each segment is encoded on its own and the segments are joined by stream copy, which
 is safe because every one is encoded with the reference's settings and the same
@@ -59,6 +60,11 @@ CENTRE_X = "(w-text_w)/2"
 INSET_SIZE = (480, 270)
 """Resolve's zoom 0.25 on the 1920x1080 stringout."""
 
+INSET_FONT_SIZE = 32
+"""The inset's own label: "slightly smaller" than the frame's burn-ins (user, 2026-09-29)."""
+INSET_LABEL_X = "10"
+INSET_LABEL_Y = "h-text_h-10"
+
 INSET_CORNERS: dict[str, tuple[int, int]] = {"cp": (0, 0), "wit": (SIZE[0] - INSET_SIZE[0], 0)}
 """Which shot type is inset over a plate, and where its top left corner goes."""
 
@@ -70,6 +76,14 @@ SegmentKind = Literal["reference", "source", "black"]
 
 class StringoutError(RuntimeError):
     """A stringout that cannot be planned or did not come out right. Reported as QC-142."""
+
+
+@dataclass(frozen=True)
+class PictureInPicture:
+    """An inset over a plate and the element it is (`cp01`), burned in on it."""
+
+    picture: ffmpeg.Inset
+    label: str
 
 
 @dataclass(frozen=True)
@@ -101,7 +115,7 @@ class Segment:
     """No event here: black, with only the name burned in."""
 
     identity: naming.ShotIdentity | None = None
-    insets: tuple[ffmpeg.Inset, ...] = ()
+    insets: tuple[PictureInPicture, ...] = ()
     """A plate's cp and wit, laid over it (`INSET_CORNERS`)."""
 
 
@@ -193,12 +207,13 @@ def _with_insets(segments: list[Segment]) -> list[Segment]:
     return placed
 
 
-def _inset(source: Segment | None, length: int, corner: tuple[int, int]) -> ffmpeg.Inset | None:
+def _inset(source: Segment | None, length: int, corner: tuple[int, int]) -> PictureInPicture | None:
     """`source`'s delivered reference from its cut In, for as long as it has or `length`."""
-    if source is None or source.kind != "reference" or source.path is None:
+    if source is None or source.kind != "reference" or source.path is None or source.identity is None:
         return None
     frames_held = 1 if source.freeze else source.length
-    return ffmpeg.Inset(source.path, source.start, min(frames_held, length), *corner, INSET_SIZE)
+    picture = ffmpeg.Inset(source.path, source.start, min(frames_held, length), *corner, INSET_SIZE)
+    return PictureInPicture(picture, source.identity.elem)
 
 
 def _next_version(folder: Path, number: int, month: int, day: int, year: int, shooter: str) -> int:
@@ -367,7 +382,7 @@ def _encode(made: Plan, segment: Segment, parts: Path, index: int) -> Path:
             silence=not sound,
             audio_format=ffmpeg.STRINGOUT_AUDIO,
             display=made.display,
-            insets=segment.insets,
+            insets=_labelled(segment, parts / f"{index:04d}"),
         )
     elif segment.kind == "source" and segment.path is not None and segment.media is not None:
         source = segment.media
@@ -388,7 +403,7 @@ def _encode(made: Plan, segment: Segment, parts: Path, index: int) -> Path:
             silence=True,
             audio_format=ffmpeg.STRINGOUT_AUDIO,
             display=made.display,
-            insets=segment.insets,
+            insets=_labelled(segment, parts / f"{index:04d}"),
         )
     else:
         command = ffmpeg.black_command(destination, SIZE, RATE, segment.length, overlay, display=made.display)
@@ -415,6 +430,17 @@ def _fit(size: tuple[int, int]) -> tuple[int, int]:
     width, height = size
     scale = min(SIZE[0] / width, SIZE[1] / height)
     return (int(width * scale) // 2 * 2, int(height * scale) // 2 * 2)
+
+
+def _labelled(segment: Segment, base: Path) -> list[ffmpeg.Inset]:
+    """Each inset with its element burned in on it, read from a file like the rest."""
+    insets = []
+    for position, inset in enumerate(segment.insets):
+        textfile = base.with_name(f"{base.name}_inset{position}.txt")
+        textfile.write_text(ffmpeg.drawtext_literal(inset.label), encoding="utf-8")
+        label = ffmpeg.drawtext_filter(textfile, FONT, INSET_FONT_SIZE, INSET_LABEL_X, INSET_LABEL_Y)
+        insets.append(replace(inset.picture, filters=(label,)))
+    return insets
 
 
 def _burn_ins(stem: str, segment: Segment, base: Path) -> list[str]:

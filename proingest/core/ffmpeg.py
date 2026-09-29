@@ -837,7 +837,8 @@ def drawtext_filter(textfile: Path, font: Path, size: int, x: str, y: str) -> st
 @dataclass(frozen=True)
 class Inset:
     """A picture in picture: `length` frames of the mp4 at `path` from frame `start`,
-    scaled to `size` with its top left corner at (`x`, `y`). It is gone once it ends."""
+    scaled to `size` with its top left corner at (`x`, `y`). It is gone once it ends.
+    `filters` run on it after the scale, so a burn-in on it goes when it does."""
 
     path: Path
     start: int
@@ -845,6 +846,7 @@ class Inset:
     x: int
     y: int
     size: tuple[int, int]
+    filters: tuple[str, ...] = ()
 
 
 def inset_graph(chain: Sequence[str], insets: Sequence[Inset], after: Sequence[str]) -> str:
@@ -860,7 +862,8 @@ def inset_graph(chain: Sequence[str], insets: Sequence[Inset], after: Sequence[s
         end = inset.start + inset.length
         links.append(
             f"movie={_filter_path(inset.path)},trim=start_frame={inset.start}:end_frame={end},"
-            f"setpts=PTS-STARTPTS,scale={inset.size[0]}:{inset.size[1]}:flags=lanczos[p{index}]"
+            f"setpts=PTS-STARTPTS,scale={inset.size[0]}:{inset.size[1]}:flags=lanczos"
+            f"{''.join(',' + step for step in inset.filters)}[p{index}]"
         )
         links.append(f"[m{index}][p{index}]overlay=x={inset.x}:y={inset.y}:eof_action=pass[m{index + 1}]")
     links.append(f"[m{len(insets)}]{','.join(after)}")

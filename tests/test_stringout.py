@@ -195,15 +195,18 @@ class TestInsets:
     def test_a_plate_carries_its_shots_cp_top_left(self, batch: Batch) -> None:
         self.as_kind(batch, 1, "MELT0001", "cp")
         plate, clean = planned(batch).segments
+        assert clean.path is not None
         assert plate.insets == (
-            ffmpeg.Inset(clean.path, 0, FRAMES, 0, 0, stringout.INSET_SIZE),  # type: ignore[arg-type]
+            stringout.PictureInPicture(
+                ffmpeg.Inset(clean.path, 0, FRAMES, 0, 0, stringout.INSET_SIZE), "cp01"
+            ),
         )
         assert clean.insets == (), "only a plate carries insets"
 
     def test_a_wit_goes_top_right(self, batch: Batch) -> None:
         self.as_kind(batch, 1, "MELT0001", "wit")
         (inset,) = planned(batch).segments[0].insets
-        assert (inset.x, inset.y) == (1440, 0)
+        assert (inset.picture.x, inset.picture.y, inset.label) == (1440, 0, "wit01")
 
     def test_another_shots_cp_is_not_inset(self, batch: Batch) -> None:
         self.as_kind(batch, 1, "MELT0009", "cp")
@@ -215,9 +218,29 @@ class TestInsets:
         assert planned(batch).segments[0].insets == ()
 
     def test_an_inset_never_outruns_the_plate(self) -> None:
-        clip = stringout.Segment(kind="reference", length=300, path=Path("/r.mp4"), start=4)
+        clip = stringout.Segment(
+            kind="reference",
+            length=300,
+            path=Path("/r.mp4"),
+            start=4,
+            identity=naming.ShotIdentity("A0001", "cp", "01"),
+        )
         inset = stringout._inset(clip, 120, (0, 0))
-        assert inset is not None and (inset.start, inset.length) == (4, 120)
+        assert inset is not None and (inset.picture.start, inset.picture.length) == (4, 120)
+
+    def test_an_inset_is_labelled_with_its_element_a_little_smaller(self, tmp_path: Path) -> None:
+        picture = ffmpeg.Inset(Path("/r.mp4"), 0, 5, 0, 0, stringout.INSET_SIZE)
+        plate = stringout.Segment(
+            kind="reference", length=5, insets=(stringout.PictureInPicture(picture, "cp01"),)
+        )
+        (labelled,) = stringout._labelled(plate, tmp_path / "0000")
+        (drawn,) = labelled.filters
+        assert (tmp_path / "0000_inset0.txt").read_text() == "cp01"
+        assert (
+            f"fontsize={stringout.INSET_FONT_SIZE}" in drawn
+            and stringout.INSET_FONT_SIZE < stringout.FONT_SIZE
+        )
+        assert "drawtext" in ffmpeg.inset_graph(["null"], [labelled], ["null"]).split("[p0]")[0]
 
     def test_an_inset_is_drawn_and_then_gone(self, tmp_path: Path) -> None:
         """Rendered: red in the top left for the inset's frames, then the plate again."""
