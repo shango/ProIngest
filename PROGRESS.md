@@ -18,6 +18,14 @@ since 2026-09-28 (user). What is left is the Mac: `docs/MAC_SESSION.md`, from "T
 order" down, and Ben's 4.886 slope. Entries are newest first; anything older than 2026-09-22
 describes the tool before the review and is history.
 
+**2026-09-29, docs: Ben exports no stringout (user).** "Anything that says that Ben exports is
+incorrect. The tool does the stringout export." The docs still said the colour session renders
+and exports one, left over from 2026-09-11/22. Rewritten: PRD FR-9 and M6, WORKFLOW steps 12 and
+24, UI_SPEC section 8 (the burn-in layout, from `core/stringout.py`), NAMING_SPEC (the `_SO_v##`
+template), QC_RULES QC-140 and tracker column 34, OQ-12/38/41, COLOR_AND_FORMAT and
+COLOUR_SESSION_EXPORT (section 2: do not export one; comparisons are against Ben's own Resolve
+playback). No code change.
+
 **2026-09-29, OQ-77 answers, 0.5.13 (user).** (4) A two digit year in the folder name
 (`turnover097_09_28_26_danielluckett`) is accepted and read as 20YY, with a new warning **QC-081**
 (`scan.TURNOVER_FOLDER_PATTERN`, `TurnoverFields.two_digit_year`); before, it was QC-005 and all

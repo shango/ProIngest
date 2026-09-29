@@ -45,7 +45,7 @@ behind it is `COLOR_AND_FORMAT.md` section 1 and `PRD.md`.
 | 9 | Import the consolidated timeline, and the shooters' metadata with it. | his session |
 | 10 | Take the AD meeting's decisions into a **colour managed** Resolve session, ACES 2.0, each clip's input transform set to its camera encoding (`COLOUR_SESSION_EXPORT.md`). The timeline space no longer reaches the tool: each exported CLF carries its own trip into and out of it (ACEScct in turnover097). | nothing yet, this is setup |
 | 11 | **Final trims** with the AD, and grade: **primaries plus simple sky secondaries** (user, 2026-09-28), in as many corrector nodes as it takes. | the approved cut and the approved look |
-| 12 | Cut the **final stringout timeline** and render the stringout from it. **Ben produces and exports it, and the tool does nothing with it at all** (user, 2026-09-22): it is not read, not transcoded, not renamed and not checked. | the delivered stringout, delivered by Ben |
+| 12 | Cut the **final stringout timeline**. **Ben does not render or export a stringout** (user, 2026-09-29): the tool builds it from his EDL (step 24). | the final timeline, in his session |
 | 13 | Export the **EDL** from that same stringout timeline. **This is the cut**, and because it comes off the stringout its events state the final clip durations. Any `*ASC_SOP` / `*ASC_SAT` lines in it are **not read** (2026-09-28). | `.edl`: the approved In/Out per event, and any retimes |
 | 13a | Export **one AMF per EDL event** from the same timeline, with the **CLF** for each corrector node it names (user, 2026-09-28). **This is the colour.** Turnover097 used Resolve's `Dailies Request` preset (QC-078, info); whichever preset arrives is used. | `.amf` per event, named with the timeline index (event number less one), and `..._ClipGraph_CorrectorNode_<n>.clf` beside it |
 | 14 | Export the **metadata CSV**. **This is identity only** since 2026-09-28. | `.csv`: `File Name`, `Shot`, `Shot Type`. Its colour columns (`Gamma Notes`, `Color Space Notes`, `Input Color Space`) are not read |
@@ -63,7 +63,7 @@ behind it is `COLOR_AND_FORMAT.md` section 1 and `PRD.md`.
 | 21 | Bake that chain plus **the AMF's output transform** into one LUT and encode the references through it (turnover097: Gamma 2.2 Rec.709, not sRGB). | 4k and HD H.264 mp4 |
 | 22 | Deliver the single-frame reference stills, **converted but never graded**, each at **its EDL event's frame**. A still with no event is a must-fix, never a guess. | `<shot>_colorChart_01_4k_v01.exr` and the rest, keyed to the **shot code**, not to an element |
 | 23 | Deliver the audio of each plate row, renamed to spec, **trimmed to the same event as the picture and retimed by 1000/1001 so it follows the 24 fps video** (2026-09-23). Its contents are not judged. | wav |
-| 24 | *(was: transcode and name Ben's stringout. **Removed 2026-09-22** - the tool does nothing with the stringout.)* | nothing |
+| 24 | **Build the stringout** (OQ-38, PRD FR-9): Ben's final EDL as one HD mp4, cut from the delivered HD references, the ungraded source or black standing in, with the burn-ins of `burn-ins.png`. At the end of a Run and from Build Stringout on a turnover heading. | `turnover###_MM_DD_YYYY_<shooter>_SO_v##.mp4` in `<show>/_reports/` |
 | 25 | Verify every deliverable **under its temp name**, and rename only when it passes. A failure leaves nothing that looks finished: the row is marked failed, naming the output and why, and the user fixes the cause and **resets the row** to re-run it (2026-09-23). | QC-1xx results |
 | 26 | Write the spreadsheets. | `shot_tracker_<batch>_<date>.xlsx` and `qc_ingest_log_<batch>_<date>.xlsx` |
 
@@ -76,7 +76,7 @@ writes is either a deliverable named from the spec or a report about one.
 ## The rules that hold it together
 
 1. **Colour and the cut are both decided once, by Ben and the AD.** The shooters' stringout is a
-   starting point, superseded by Ben's. The tool has no colour controls and no viewers, and its
+   starting point, superseded by Ben's final timeline. The tool has no colour controls and no viewers, and its
    In/Out editing exists for the one-off trim not worth a new EDL.
 2. **Nothing final renders before step 18.** Steps 16 and 17 work without Ben; step 20 onward do
    not.
@@ -104,7 +104,7 @@ writes is either a deliverable named from the spec or a report about one.
    `Shot Type` gets the deliverables for that type. **A clip with no `Shot Type` is ignored**: not
    named, not rendered, not blocked, not an error. The tool never infers a type from a duration, a
    track, a filename or a Resolve VFX flag. Everything in the turnover that is not a `Shot Type`
-   row - HDRI, camData, BTS, the lens grid, Ben's stringout - is delivered by hand or by Ben, and
+   row - HDRI, camData, BTS, the lens grid - is delivered by hand or by Ben, and
    the tool does not touch it. The one exception is a plate's **audio**, which has no row of its
    own and rides along with its `pl` row. **A `Shot Type` the tool does not recognise is a
    must-fix warning** and gets no deliverables (user, 2026-09-23); so is the same shot code, type

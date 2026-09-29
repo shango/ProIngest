@@ -64,7 +64,7 @@ Per shot, into a delivery root the user chooses (default proposed layout in `doc
 - 4k and HD H.264 reference mp4s, the same graded chain plus **the AMF's output transform** (turnover097: Gamma 2.2 Rec.709; a fixed sRGB until 2026-09-28)
 - Audio wav for main plate clips, 16 bit PCM, **trimmed to the same EDL event as the picture and retimed to follow the 24 fps video** (2026-09-23, D2)
 - Single 4k EXR per reference still (`colorChart`, `mirrorBall`, `greyBall`, `sizeRef`), converted and **never graded**, keyed to the shot code
-- **Nothing else.** Decided 2026-09-22: the tool delivers exactly what a `Shot Type` row names. **HDRI, camData, BTS, the lens grid and the stringout are not tool deliverables** - they carry no `Shot Type`, so the tool ignores them, and they are delivered by Ben or by hand. QC-050 to QC-054, QC-056 and QC-057 retire with them, and so do `core/camdata.py`, `naming.lens_grid_png` and `naming.stringout_mp4`
+- **Nothing else.** Decided 2026-09-22: the tool delivers exactly what a `Shot Type` row names. **HDRI, camData, BTS and the lens grid are not tool deliverables** - they carry no `Shot Type`, so the tool ignores them, and they are delivered by Ben or by hand. QC-050 to QC-054, QC-056 and QC-057 retire with them, and so do `core/camdata.py` and `naming.lens_grid_png`. **The stringout is the one exception**: it has no row, and the tool builds it per turnover (FR-9)
 - `shot_tracker.xlsx` for paste into the studio tracker (the studio's own 39 columns, OQ-2)
 - `qc_ingest_log.xlsx` with one row per deliverable, rule results, and turnover-vs-final In/Out diff
 
@@ -125,11 +125,12 @@ FR-7 Render
 FR-8 Post-render QC
 Rules `QC-1xx` in `docs/QC_RULES.md`: frame count, first/last frame numbers, resolution, fps, EXR header integrity, checksum of every frame written, mp4 duration, audio duration.
 
-FR-9 Stringout: **dropped from v01, 2026-09-11. Dropped entirely 2026-09-22.**
-- **The tool does nothing with the stringout at all** (user, 2026-09-22): it does not build one, read one, transcode one, rename one or check a name. Ben produces and exports it, cut on the same timeline his EDL comes off, and it is his deliverable end to end. `naming.stringout_mp4` and OQ-41's filename checker go with this.
-- The tool does not build a stringout. The colour session exports a reference QT with the look and burn-ins, and that is the stringout. Two tools building the same artifact from the same decisions is one too many, and the one with the colourist in front of it wins.
-- What went with it: milestone M6, `core/stringout.py`, the burn-in specification in `docs/UI_SPEC.md` section 8, QC-140 and QC-141, and OQ-12 and OQ-15.
-- **What this gives up, recorded so it is a decision and not an oversight**: the tool's stringout would have been the only one cut to the **edited** In/Out. The session's QT and the shooters' offline are both cut to the turnover as delivered. If it turns out the vendor needs a stringout that reflects the review session, this comes back, and it comes back as a milestone rather than a patch.
+FR-9 Stringout: **the tool builds it** (OQ-38, back 2026-09-25, built the same day in `core/stringout.py`). **Ben does not export one** (user, 2026-09-29): anything saying he does is wrong.
+- One HD mp4 per turnover, cut to **Ben's final EDL** (the approved ranges, not the editor's trims), in record order. Each event is cut from its row's **delivered HD reference**; an event with none is **the ungraded source**, and one with no known source is **black**.
+- Burn-ins copied from Ben's frame (`burn-ins.png`): the name top centre, `Frame:` (the delivered frame number from 1001) bottom left, `Primary Effect: <CSV Scene>` bottom centre, `SHOT_elem` bottom right. Audio from `pl` events only. The file's own timecode starts at the EDL's record start.
+- Named `turnover###_MM_DD_YYYY_<shooter>_SO_v##.mp4` (`naming.stringout_stem`), dated as the turnover folder, in `<show>/_reports/`, and named in the tracker's `Turnover Stringout (Edit)` column.
+- Built at the end of a Run for every turnover it delivered to, and from **Build Stringout** on a turnover heading. Checked before its rename (QC-142, which never blocks a run); events not cut from a reference are listed (QC-143).
+- History: dropped 2026-09-11 and again 2026-09-22 on the belief that the colour session exported one. That belief was wrong and the decision is reversed.
 
 FR-10 Exports
 - `shot_tracker.xlsx` via openpyxl, **rows to paste into the studio's own tracker**: its 39 columns in its own order, nine of them written and the other thirty left empty because the vendor's team owns them (OQ-2, answered 2026-09-11 from the real sheet). The column layout was to be loaded from a template file in Settings, which was right while nobody knew the columns and is a configuration point standing where a fact belongs now that they are known.
@@ -202,7 +203,7 @@ M4 QC: all rules, both phases, xlsx exports. CLI `proingest qc <batch>`.
 M4.5 Colour pipeline, core only: OCIO wired in, the final EDL's In/Out and CDL read and matched per row, the grade file matched and loaded, the chain composed as one GroupTransform, the viewing LUT. Reopens M3's render for the plate/view split. No Qt, testable headless. It was built with an input transform ahead of the grade file, which OQ-37 removed on 2026-09-12; taking it back out is M4.6.
 M4.6 Per shot source encoding: read from the clip metadata, the input transform table it selects from, the input transform removed from the plate and view chains, the source-to-ACEScg conversion kept for the aux still alone, QC-046, QC-047 and QC-048.
 M5 UI: main window, list view with keyboard model, metadata pane, validation coloring, settings page, log panel, batch open/save.
-M6 **Dropped 2026-09-11.** Was: stringout with burn-ins. The colour session exports it instead (FR-9). The number is not reused.
+M6 Stringout with burn-ins. **Dropped 2026-09-11, back and built 2026-09-25** (`core/stringout.py`, FR-9). Ben does not export one.
 M7 Packaging: PyInstaller `.app`, disk image, bundled ffmpeg, first-run experience, icon.
 M8 Polish pass against `docs/UI_SPEC.md`, performance on a real turnover, docs.
 M9 The user guide (FR-17, added 2026-09-12): install guide, quickstart, a reference section per surface of the window, screenshots from a harness, delivered as one document the studio can keep.

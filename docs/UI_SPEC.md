@@ -223,11 +223,23 @@ no message for it, so a line claiming it would be the tool guessing at its own s
 one is a new `render.ProgressState` and a publish in `render_job`, and it can be built when
 the wait is long enough for anyone to notice it.
 
-## 8. Stringout burn-ins: dropped
+## 8. Stringout burn-ins
 
-**The tool no longer builds a stringout** (PRD FR-9, decided 2026-09-11), so there are no
-burn-ins to specify. The colour session exports a reference QT with the look and burn-ins
-already on it.
+**The tool builds the stringout** (PRD FR-9, OQ-38, built 2026-09-25); Ben does not export one
+(user, 2026-09-29). It is built at the end of a Run for every turnover the Run delivered to, and
+on demand from **Build Stringout** on a turnover heading's right-click menu.
+
+The burn-ins copy Ben's frame, `burn-ins.png`, measured at 1920x1080: Open Sans 42 px, white, no
+box or shadow (bundled in `proingest/resources/fonts`).
+
+- **Top centre**, y 11: the stringout's name.
+- **Bottom left**, x 184: `Frame: <n>`, the delivered frame number, `1001 + (cut In - delivered
+  In) + n`; held still on a freeze.
+- **Bottom centre**: `Primary Effect: <Scene>`, from the CSV's `Scene` column.
+- **Bottom right**: `SHOT_elem` (`MELT0001_pl01`).
+
+The bottom line sits at y 892. No source timecode is burned in. White text with no box is hard
+to read on a bright frame; that matches Ben's template and is not yet decided (PROGRESS).
 
 The section number is kept rather than renumbered, because every other section is referenced
 by number from the PRD, from `QC_RULES.md` and from `PROGRESS.md`, and renumbering would

@@ -92,7 +92,7 @@ warning** (QC-077). A CLF that is missing, has a different md5 from the one the 
 that OCIO cannot read is an error (QC-076), because the grade is the colourist's and a node is
 never dropped quietly. **What the tool cannot detect**: a window, a blur or any other spatial
 operation in a Resolve node does not survive into a CLF's 3D LUT, and nothing in the AMF or the
-CLF says one was there. The comparison against Ben's stringout is the only check for it.
+CLF says one was there. Playing a reference mp4 beside Ben's own Resolve playback of the same clip is the only check for it.
 
 A **Resolve export preset** is read from the AMF's description: `Dailies Request` is noted on the
 row (QC-078, info), and whichever preset arrives is used.
@@ -282,8 +282,9 @@ A CDL can say only slope, offset and power per channel plus one saturation, so a
 with a curve in it would arrive silently incomplete. The CDL still travels, and it has a job
 (see EXR metadata below), but it is a record rather than the transform.
 
-The practical safeguard is that the session also exports the stringout with the real look on it.
-**If a reference mp4 from this tool does not match that stringout, something did not survive**,
+The practical safeguard is Ben's own Resolve playback of the same clip. (This read "the session
+also exports the stringout"; it does not, the tool builds it: user, 2026-09-29.) **If a reference
+mp4 from this tool does not match that playback, something did not survive**,
 and that is the comparison to make the first time this runs (OQ-31).
 
 The session exports these, and since 2026-09-28 the tool uses them like this:

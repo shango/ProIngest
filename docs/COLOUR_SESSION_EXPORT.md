@@ -95,7 +95,7 @@ nodes as the shot needs. What does not survive:
 
 - **A window, a blur or any other spatial operation.** A CLF is a per pixel transform, so a
   node's window cannot be written into one, and **nothing in the AMF or the CLF says one was
-  there**. The tool cannot detect it; the reference mp4 against your stringout is the only check.
+  there**. The tool cannot detect it; a reference mp4 played beside your own playback of the clip is the only check.
 - **A look the AMF carries as anything but a config ID or a CLF**, such as an embedded CDL, or an
   ID the pinned config lacks. The tool ignores it and says so (QC-077, warning).
 
@@ -105,14 +105,13 @@ tool never drops a node quietly. A clip you left ungraded has an AMF with no CLF
 noted (QC-009, info) and rendered through its input transform and the Reference Gamut Compress
 alone.
 
-### 2. The stringout. You produce and export it.
+### 2. No stringout. The tool builds it.
 
-The QuickTime of the whole turnover with the look and burn-ins, cut on the timeline the EDL above
-is exported from. **That ordering is the point**: because the EDL comes off the stringout
-timeline, the EDL's events state the final clip durations and the two cannot disagree (user,
-2026-09-22). The tool never builds a stringout of its own. It is also what the tool's reference
-mp4s are compared against the first time a turnover goes through, and whenever something looks
-wrong.
+**Do not render or export a stringout** (user, 2026-09-29). The tool builds it from your final EDL
+after a Run: one HD mp4 cut from its delivered HD references, with the burn-ins of your frame
+(`burn-ins.png`), named `turnover###_MM_DD_YYYY_<shooter>_SO_v##.mp4` (PRD FR-9). What you do is
+cut the final timeline the EDL comes off, which is what makes the EDL's events the final clip
+durations.
 
 ### 3. The metadata CSV. This is identity.
 
@@ -142,8 +141,8 @@ to carry them. A blank `Shot` or `Shot Type` is QC-010 and that deliverable cann
 ## The first time
 
 Before the first real turnover: one shot graded in a session set up as above. Hand over the one
-folder, with the media, the EDL, the CSV, the AMFs and CLFs and the stringout in it. The tool
-renders the shot and its reference mp4 is compared to the stringout. **That comparison has not
+folder, with the media, the EDL, the CSV, the AMFs and CLFs in it. The tool
+renders the shot and its reference mp4 is compared to your own Resolve playback of it. **That comparison has not
 been made yet** (2026-09-28): turnover097 came with no frame rendered by Resolve to compare
 against, and the graded EXR in the repo is Turnover121's and not comparable. Until it is made,
 that the tool's render of an AMF matches Resolve's is unverified.

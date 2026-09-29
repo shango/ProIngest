@@ -17,6 +17,7 @@ reference label on the Mac's ffmpeg 9. Turnover097's stringout (44.9 s, HD, `bt4
 ProIngest-macos-arm64 -D ~/Downloads/ProIngest-0.5.13`), then the Mac check in MAC_SESSION ("Colour
 from the AMF"). Still to raise: the handover folder was `collected files`, which matches no name
 pattern (QC-005), and `docs/COLOR_INPUTS_TURNOVER121.md` is untracked.
+**Ben exports no stringout** (user, 2026-09-29): the tool builds it; every doc now says so.
 
 ## In progress: colour from AMF + CLF (user, 2026-09-28) - pick up here
 
@@ -104,10 +105,9 @@ sample: EDL + UTF-16 CSV + one AMF per EDL event + CLF grade nodes. **User decis
   asked about it (burn-in, colour encoding, camera metadata and GPS, file name), none answered.
 - **Per-clip AMF** from Ben's session, to be read by hand first (OQ-71). Nothing built.
 - **Drive links in the tracker export**: waiting on `xattr -l` from the Mac and a paste test.
-- **Stringout leftovers**: UI_SPEC section 8, PRD FR-9, NAMING_SPEC section 5 and the QC summary
-  rows for QC-142 and QC-143 still to write; the CLI does not build one; a source segment of a
-  plate is silent; a text shadow or box for bright frames is asked, not answered; whether to keep
-  the camera timecode as hidden metadata is asked, not answered.
+- **Stringout leftovers**: the docs are done (2026-09-29); still open: the CLI does not build one;
+  a source segment of a plate is silent; a text shadow or box for bright frames is asked, not
+  answered; whether to keep the camera timecode as hidden metadata is asked, not answered.
 - **Untracked, the user to decide**: `docs/COLOR_INPUTS_TURNOVER121.md`.
 - From before: a changed ALE is not flagged on re-scan; compound clips are unread (OQ-63);
   non-square pixels are not letterboxed correctly.
