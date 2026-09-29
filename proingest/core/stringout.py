@@ -97,6 +97,10 @@ class Plan:
     version: int
     timecode: str
     segments: list[Segment] = field(default_factory=list)
+    display: str = ffmpeg.DEFAULT_DISPLAY
+    """What the joined file is labelled for: the display the turnover's AMFs name, which is
+    what its references were rendered for (2026-09-28). The first graded row's, since one
+    colour session views every clip on one display."""
 
     @property
     def total(self) -> int:
@@ -140,6 +144,10 @@ def plan(
         destination=folder / (stem + naming.STRINGOUT_SUFFIX),
         version=version,
         timecode=frames.frames_to_timecode(events[0].record_in, batch.project_rate.as_float()),
+        display=next(
+            (row.grade.display for row in rows if row.grade is not None and row.grade.display),
+            ffmpeg.DEFAULT_DISPLAY,
+        ),
     )
     cursor = events[0].record_in
     for event in events:
@@ -313,6 +321,7 @@ def _encode(made: Plan, segment: Segment, parts: Path, index: int) -> Path:
             overlay=overlay,
             silence=not sound,
             audio_format=ffmpeg.STRINGOUT_AUDIO,
+            display=made.display,
         )
     elif segment.kind == "source" and segment.path is not None and segment.media is not None:
         source = segment.media
@@ -332,9 +341,10 @@ def _encode(made: Plan, segment: Segment, parts: Path, index: int) -> Path:
             overlay=overlay,
             silence=True,
             audio_format=ffmpeg.STRINGOUT_AUDIO,
+            display=made.display,
         )
     else:
-        command = ffmpeg.black_command(destination, SIZE, RATE, segment.length, overlay)
+        command = ffmpeg.black_command(destination, SIZE, RATE, segment.length, overlay, display=made.display)
     _run(command, f"event {segment.event_id or 'gap'}")
     return destination
 

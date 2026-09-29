@@ -845,7 +845,18 @@ def _grade_of(found: amf.Amf, folder: Path) -> tuple[Grade, list[QCResult]]:
                 _ignored(found, f"a look that is not a transform ID or a CLF ({look.unsupported})")
             )
     shown = amf.display_view_for(found.output_transform) if found.output_transform else None
-    if shown is None:
+    if shown is not None and shown[0] not in ffmpeg.REFERENCE_TRANSFERS:
+        findings.append(
+            QCResult(
+                "QC-079",
+                "error",
+                "row",
+                f"{found.path.name}: the output transform is for {shown[0]}, which an 8 bit Rec.709 "
+                "reference cannot be labelled for",
+            )
+        )
+        shown = None
+    elif shown is None:
         findings.append(
             QCResult(
                 "QC-079",

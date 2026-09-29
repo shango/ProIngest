@@ -44,11 +44,12 @@ sample: EDL + UTF-16 CSV + one AMF per EDL event + CLF grade nodes. **User decis
 
 ## Where things stand
 
-- **Version 0.5.10 on branch `qc/source-fidelity`**, PR #17 open, not merged. 0.5.4 is on `main`.
+- **Version 0.5.11 on branch `qc/source-fidelity`**, PR #17 open, not merged. 0.5.4 is on `main`.
   0.5.7 made QC-020 a warning again; 0.5.8 puts every QC result into Save Logs as CSV at its
   own level, plus a session start line, problem dialogs and uncaught exceptions (user, 2026-09-28).
   0.5.9 adds **Accept As Is (Ignore QC)** on a turnover heading (QC-074, OQ-76). 0.5.10 takes
-  **colour from each event's AMF and its CLFs** (QC-075 to QC-080; see "In progress" above).
+  **colour from each event's AMF and its CLFs** (QC-075 to QC-080; see "In progress" above). 0.5.11 labels each reference for
+  the AMF's display (gamma 2.2 is `bt470m`), not always sRGB.
   CI run 36514483081 is green on all four jobs and built `ProIngest-0.5.9.dmg`:
   `gh run download 36514483081 -R shango/ProIngest -n ProIngest-macos-arm64 -D ~/Downloads/ProIngest-0.5.9`
 - **1739 tests pass**; `ruff`, `ruff format` and `mypy --strict` are clean.

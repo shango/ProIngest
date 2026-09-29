@@ -46,7 +46,16 @@ tool to go stale. What turnover097 uses:
 | `outputTransform` | `Output.Academy.Rec709-D65_100nit_in_Rec709-D65_Gamma2pt2.a2.v1` | display `Gamma 2.2 Rec.709 - Display`, view `ACES 2.0 - SDR 100 nits (Rec.709)` |
 
 An input ID the config lacks is QC-047, and an AMF with none is QC-046. An output ID the config
-lacks is QC-079. A look ID the config lacks is ignored with a warning (QC-077).
+lacks is QC-079.
+
+**A reference is labelled for the display it was rendered for** (2026-09-28): Rec.709 primaries
+and matrix, and the transfer of the AMF's display: `iec61966-2-1` for `sRGB - Display`, `gamma22`
+(written as `bt470m`, the standard's 2.2 code) for `Gamma 2.2 Rec.709 - Display`, `bt709` for
+`Rec.1886 Rec.709 - Display` (`ffmpeg.REFERENCE_TRANSFERS`). Before this every reference was
+labelled sRGB, which with a gamma 2.2 rendering would send it through the wrong curve in any
+player that reads the tag. A display that is not Rec.709 (P3, HDR) is QC-079: an 8 bit Rec.709 mp4
+is not an encode for it. The stringout is labelled for the turnover's display the same way. Whether
+QuickTime honours the 2.2 label is a Mac check. A look ID the config lacks is ignored with a warning (QC-077).
 
 **The chain.** Every look is applied in ACES2065-1, because that is where the AMF puts them: the
 Reference Gamut Compress is a look the config defines there, and each of Resolve's CLFs takes

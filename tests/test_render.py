@@ -605,6 +605,14 @@ class TestReferenceMp4:
         assert video_stream(job.destination)["codec_name"] == "h264"
         assert deliverable.status == "done"
 
+    def test_a_gamma_2_2_reference_is_labelled_gamma_2_2(self, tmp_path: Path) -> None:
+        """Turnover097's AMFs name Gamma 2.2 Rec.709; the file says so (bt470m is 2.2)."""
+        source = fixtures.make_mov(tmp_path / "src" / "plate.mov", count=4)
+        job = ref_job(tmp_path, source, 0, 3)
+        shown = replace(job.shot_color, display="Gamma 2.2 Rec.709 - Display")
+        render.render_job(replace(job, shot_color=shown))
+        assert video_stream(job.destination)["color_transfer"] == "bt470m"
+
     def test_a_24000_1001_file_is_delivered_at_24_frame_for_frame(self, tmp_path: Path) -> None:
         """Every real file states 24000/1001 (user, 2026-09-23). QC-113 refused all four
         references of the real turnover before the encode read the file as 24."""

@@ -374,14 +374,33 @@ class TestEncodeCommand:
         assert command[command.index("-pix_fmt") + 1] == "yuv420p"
         assert command[command.index("-movflags") + 1] == "+faststart"
 
-    def test_the_output_is_tagged_bt709_with_an_srgb_transfer(self) -> None:
-        """Section 1: both colour branches land here, so the tags never vary."""
+    def test_the_output_is_tagged_bt709_with_an_srgb_transfer_by_default(self) -> None:
         command = ffmpeg.encode_command(
             "plate.mov", Path("out.mp4.part"), 0, 3, is_sequence=False, rate="24/1"
         )
         assert command[command.index("-color_primaries") + 1] == "bt709"
         assert command[command.index("-colorspace") + 1] == "bt709"
         assert command[command.index("-color_trc") + 1] == "iec61966-2-1"
+
+    @pytest.mark.parametrize(
+        ("display", "transfer"),
+        [("Gamma 2.2 Rec.709 - Display", "gamma22"), ("Rec.1886 Rec.709 - Display", "bt709")],
+    )
+    def test_the_transfer_follows_the_amf_s_display(self, display: str, transfer: str) -> None:
+        """Since 2026-09-28 the display comes from the AMF, and the label has to agree."""
+        command = ffmpeg.encode_command(
+            "plate.mov", Path("out.mp4.part"), 0, 3, is_sequence=False, rate="24/1", display=display
+        )
+        assert command[command.index("-color_trc") + 1] == transfer
+
+    def test_a_display_a_reference_cannot_be_labelled_for_is_refused(self) -> None:
+        with pytest.raises(ffmpeg.FFmpegError, match="P3"):
+            ffmpeg.reference_tags("Display P3 - Display")
+
+    def test_every_labelled_display_is_one_the_config_has(self) -> None:
+        from proingest.core import color
+
+        assert set(ffmpeg.REFERENCE_TRANSFERS) <= set(color.config().getDisplays())
 
     def test_the_lut_runs_after_the_scale(self) -> None:
         """Section 1: the downscale runs on the log values, which are bounded 0..1.

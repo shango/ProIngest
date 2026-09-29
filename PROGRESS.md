@@ -8,7 +8,7 @@ commit.
 
 ## 1. Resume here
 
-**State at 2026-09-28, version 0.5.10, on branch `qc/source-fidelity`, PR #17** (`HANDOFF.md` is
+**State at 2026-09-28, version 0.5.11, on branch `qc/source-fidelity`, PR #17** (`HANDOFF.md` is
 the short version) (0.5.4 is on `main`, PR
 #16 merged as `262817e`, dmg in CI run 35944322464). The 2026-09-23 review is built (chunks A
 to H of `docs/REVIEW_2026-09-23.md`), and so are the fixes that a second official turnover,
@@ -17,6 +17,17 @@ renders; Turnover121, every clip 8 bit 4:2:0, runs again with a QC-020 warning o
 since 2026-09-28 (user). What is left is the Mac: `docs/MAC_SESSION.md`, from "The 0.5.0 build, in
 order" down, and Ben's 4.886 slope. Entries are newest first; anything older than 2026-09-22
 describes the tool before the review and is history.
+
+**2026-09-28, a reference is labelled for the AMF's display, 0.5.11.** Found running turnover097:
+the references were rendered for the AMF's Gamma 2.2 Rec.709 but still labelled sRGB
+(`REFERENCE_TAGS`, fixed), so a player reading the tag would use the wrong curve.
+`ffmpeg.reference_tags(display)` labels Rec.709 primaries and matrix with the display's transfer
+(`REFERENCE_TRANSFERS`: sRGB `iec61966-2-1`, Gamma 2.2 `gamma22`/`bt470m`, Rec.1886 `bt709`); the
+reference job passes its `shot_color.display`, the stringout its turnover's (`Plan.display`). A
+display a Rec.709 mp4 cannot be labelled for (P3, HDR) is QC-079 at scan. **Verified**: tests for
+the command, a rendered reference probing `bt470m`, QC-079 on a P3 AMF, the suite (1786), ruff,
+mypy. **Mac**: whether QuickTime honours the 2.2 label (MAC_SESSION). 0.5.10 was built by CI but
+not handed over.
 
 **2026-09-28, colour from AMF + CLF (user). Chunk 3 of 3, docs and 0.5.10.** The spec now says
 what the code does: COLOR_AND_FORMAT (a new governing section, the CDL policy marked superseded),

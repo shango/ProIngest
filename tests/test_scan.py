@@ -608,6 +608,19 @@ class TestTheAmf:
         assert "QC-079" in rules(row)
         assert row.grade is not None and row.grade.display is None
 
+    def test_a_display_a_reference_cannot_be_labelled_for_is_qc_079(self, tmp_path: Path) -> None:
+        """P3 is in the config, but an 8 bit Rec.709 mp4 is not a P3 encode."""
+        folder = self.folder(tmp_path)
+        path = self.amf(folder)
+        p3 = "Output.Academy.P3-D65_100nit_in_P3-D65_sRGB-Piecewise.a2.v1"
+        text = path.read_text().replace(
+            "Output.Academy.Rec709-D65_100nit_in_Rec709-D65_sRGB-Piecewise.a2.v1", p3
+        )
+        path.write_text(text)
+        _, row = self.scanned(folder)
+        assert "QC-079" in rules(row)
+        assert row.grade is not None and row.grade.display is None
+
     def test_an_amf_with_no_clf_is_qc_009_info_at_preflight(self, tmp_path: Path) -> None:
         folder = fixtures.make_turnover(tmp_path / GOOD_FOLDER, shots=1, frames=4, graded=False)
         turnover, row = self.scanned(folder)

@@ -376,6 +376,7 @@ def _render_reference(job: DeliverableJob, deliverable: Deliverable) -> None:
             color_range=job.source_color_range,
             canvas=job.target_size if job.fitted_size != job.target_size else None,
             hold=job.hold_frames,
+            display=job.shot_color.display or ffmpeg.DEFAULT_DISPLAY,
         )
     if not job.temp.is_file():
         raise RenderError(f"{job.name}: the encode reported success and wrote nothing")

@@ -579,20 +579,30 @@ def pad_filter(canvas: tuple[int, int]) -> str:
     return f"pad={canvas[0]}:{canvas[1]}:trunc((ow-iw)/4)*2:trunc((oh-ih)/4)*2:black"
 
 
-REFERENCE_TAGS = [
-    "-color_primaries",
-    "bt709",
-    "-colorspace",
-    "bt709",
-    "-color_trc",
-    "iec61966-2-1",
-]
-"""How the output is labelled, whatever the source was.
+DEFAULT_DISPLAY = "sRGB - Display"
 
-COLOR_AND_FORMAT section 1: a reference is a display encode and ends up in display
-sRGB either way. `-colorspace` is the matrix, and sRGB and Rec.709 share primaries, so
-only the transfer names sRGB.
+REFERENCE_TRANSFERS: dict[str, str] = {
+    "sRGB - Display": "iec61966-2-1",
+    "Gamma 2.2 Rec.709 - Display": "gamma22",
+    "Rec.1886 Rec.709 - Display": "bt709",
+}
+"""The transfer a reference is labelled with, by the display its pixels were rendered for.
+
+Since 2026-09-28 the display comes from the clip's AMF, so the label has to follow it: a
+gamma 2.2 encode labelled sRGB is played back through the wrong curve by any player that
+reads the tag. Only the three Rec.709 primaries displays of the pinned config are here,
+because a reference is an 8 bit Rec.709 mp4; a display that is not (P3, HDR) is QC-079 at
+scan. `gamma22` is written as `bt470m`, the standard's code for a 2.2 curve.
 """
+
+
+def reference_tags(display: str = DEFAULT_DISPLAY) -> list[str]:
+    """How the output is labelled: Rec.709 primaries and matrix, the display's transfer."""
+    transfer = REFERENCE_TRANSFERS.get(display)
+    if transfer is None:
+        raise FFmpegError(f"a reference cannot be labelled for {display!r}")
+    return ["-color_primaries", "bt709", "-colorspace", "bt709", "-color_trc", transfer]
+
 
 LUT_PIXEL_FORMAT = "gbrpf32le"
 """What the cube is applied in. Planar float32 RGB, the same format the decode uses.
@@ -608,12 +618,12 @@ LUT_INTERPOLATION = "tetrahedral"
 a one word difference nobody notices being wrong."""
 
 
-def _x264(crf: int | None = None) -> list[str]:
+def _x264(crf: int | None = None, display: str = DEFAULT_DISPLAY) -> list[str]:
     """How every reference, and every stringout segment, is encoded."""
     return [
         "-c:v", "libx264", "-profile:v", "high", "-preset", REFERENCE_PRESET,
         "-crf", str(_CRF if crf is None else crf), "-g", REFERENCE_KEYINT,
-        "-pix_fmt", REFERENCE_PIXEL_FORMAT, *REFERENCE_TAGS,
+        "-pix_fmt", REFERENCE_PIXEL_FORMAT, *reference_tags(display),
     ]  # fmt: skip
 
 
@@ -653,6 +663,7 @@ def encode_command(
     overlay: Sequence[str] = (),
     silence: bool = False,
     audio_format: Sequence[str] = (),
+    display: str = DEFAULT_DISPLAY,
 ) -> list[str]:
     """The command that encodes `[in_frame, out_frame]` to one reference mp4.
 
@@ -751,7 +762,7 @@ def encode_command(
         str(written),
         "-fps_mode",
         "passthrough",
-        *_x264(crf),
+        *_x264(crf, display),
     ]
     if sounded:
         # `apad` then `atrim` states the audio's length outright: pad it to endless,
@@ -816,6 +827,7 @@ def black_command(
     length: int,
     overlay: Sequence[str] = (),
     ffmpeg: Path | None = None,
+    display: str = DEFAULT_DISPLAY,
 ) -> list[str]:
     """`length` frames of black with silence, encoded as a reference is, so it joins the
     segments either side of it: a gap in the EDL, or an event nothing is known about."""
@@ -826,7 +838,7 @@ def black_command(
         str(tool), "-hide_banner", "-loglevel", "error", "-nostdin", "-y",
         "-f", "lavfi", "-i", picture, "-f", "lavfi", "-i", SILENCE,
         "-vf", ",".join(filters), "-map", "0:v:0", "-map", "1:a:0",
-        "-frames:v", str(length), *_x264(),
+        "-frames:v", str(length), *_x264(display=display),
         "-c:a", "aac", "-b:a", REFERENCE_AUDIO_BITRATE,
         "-af", f"atrim=duration={_seconds(length, rate):.6f}", *STRINGOUT_AUDIO,
         "-movflags", "+faststart", "-f", "mp4", str(destination),
@@ -877,6 +889,7 @@ def encode_reference(
     color_range: str = "",
     canvas: tuple[int, int] | None = None,
     hold: int = 0,
+    display: str = DEFAULT_DISPLAY,
 ) -> None:
     """Run the reference encode, raising FFmpegError with ffmpeg's own complaint.
 
@@ -902,6 +915,7 @@ def encode_reference(
         color_range=color_range,
         canvas=canvas,
         hold=hold,
+        display=display,
     )
     result = run(command, timeout=ENCODE_TIMEOUT)
     if result.returncode != 0:
