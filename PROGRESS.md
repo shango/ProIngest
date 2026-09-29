@@ -8,7 +8,7 @@ commit.
 
 ## 1. Resume here
 
-**State at 2026-09-29, version 0.5.17, on branch `qc/source-fidelity`, PR #17** (`HANDOFF.md` is
+**State at 2026-09-29, version 0.5.18, on branch `qc/source-fidelity`, PR #17** (`HANDOFF.md` is
 the short version) (0.5.4 is on `main`, PR
 #16 merged as `262817e`, dmg in CI run 35944322464). The 2026-09-23 review is built (chunks A
 to H of `docs/REVIEW_2026-09-23.md`), and so are the fixes that a second official turnover,
@@ -17,6 +17,19 @@ renders; Turnover121, every clip 8 bit 4:2:0, runs again with a QC-020 warning o
 since 2026-09-28 (user). What is left is the Mac: `docs/MAC_SESSION.md`, from "The 0.5.0 build, in
 order" down, and Ben's 4.886 slope. Entries are newest first; anything older than 2026-09-22
 describes the tool before the review and is history.
+
+**2026-09-29, held frames play a second and are coloured, 0.5.18 (user).** "All the still frame
+items should play out as 1 sec long", "the Balls, Chart and size ref all need color applied", "the
+same for any still image frames". The stills were flat because a still is delivered as one 4K EXR
+and no HD reference, so the stringout fell back to the ungraded camera source; the CSV was not the
+cause (it types all eight). Now `stringout._held` (a reference still, `M2` at 0, or a one frame cut)
+makes a segment `STILL_LENGTH` (24) frames, frame held, and a held source segment is encoded through
+its AMF's view chain (`clf.shot_color(row).view_transforms()` baked by `color.view_lut`, as a
+reference is; ungraded with a logged warning if the chain does not resolve). Charts and balls are one
+frame of an MP4, not image files (user; the EDL agrees: one frame, no `M2`). **Verified**: tests;
+turnover097's stringout rebuilt from its delivered refs: 1118 frames, the eight stills 24 frames each
+and graded like the plates (frames 612, 636, 660 looked at); the two HDRIs black for 24 (no source
+known). Copied over `..._SO_v01_pip.mp4`. PRD FR-9, UI_SPEC 8.
 
 **2026-09-29, the version always in view, 0.5.17 (user).** It was only the status bar's first
 message, which the next one ("Scanning...", "Saved...") replaced for good. Now the window title is

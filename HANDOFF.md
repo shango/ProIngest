@@ -6,7 +6,7 @@ disagrees with `PROGRESS.md` or the docs, they are right and this file is wrong.
 
 ## Current (29 Sep 2026)
 
-**0.5.17** is pushed: the version in the window title and on the status bar. Before it, **0.5.16**: each inset labelled with its element (`cp01`). Before it, **0.5.15**: stringout picture in picture (cp top left, wit top right over each pl;
+**0.5.18** is pushed: held frames play a second on the stringout, coloured through their AMF. Before it, **0.5.17**: the version in the window title and on the status bar. Before it, **0.5.16**: each inset labelled with its element (`cp01`). Before it, **0.5.15**: stringout picture in picture (cp top left, wit top right over each pl;
 PROGRESS). Before it, **0.5.14**: length limits (QC-033/034) for pl rows only (user), so turnover097 has no
 must-fix. Before it, **0.5.13**: OQ-77 (4) to (6) answered by the user (two digit year accepted with QC-081;
 QC-070 left alone; AMFs only in the folder pointed at), HDRI rows run no row rules, and
@@ -16,7 +16,7 @@ reference label on the Mac's ffmpeg 9. Turnover097's stringout (44.9 s, HD, `bt4
 `C:\Users\shann\Downloads\ProIngest-turnover097\`.
 
 **Next:** hand over 0.5.13's dmg when CI is green (`gh run download <run> -R shango/ProIngest -n
-ProIngest-macos-arm64 -D ~/Downloads/ProIngest-0.5.17`), then the Mac check in MAC_SESSION ("Colour
+ProIngest-macos-arm64 -D ~/Downloads/ProIngest-0.5.18`), then the Mac check in MAC_SESSION ("Colour
 from the AMF"). Still to raise: the handover folder was `collected files`, which matches no name
 pattern (QC-005), and `docs/COLOR_INPUTS_TURNOVER121.md` is untracked.
 **Ben exports no stringout** (user, 2026-09-29): the tool builds it; every doc now says so.

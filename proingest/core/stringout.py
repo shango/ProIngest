@@ -12,6 +12,10 @@ ffmpeg. The user's decisions, all in OQ-38:
   `Frame:` bottom left, `Primary Effect:` (the CSV's `Scene`) bottom centre, and the
   shot and element bottom right. White, Open Sans, no box. No camera timecode: the
   counter is the delivered frame number, 1001 on the frame the plate starts with.
+- **Any held frame plays for one second** (user, 2026-09-29): a reference still (a chart,
+  ball or size ref is one frame of a video), a frame hold, a one frame cut. Taken from the
+  source, it is **coloured through its AMF** (input transform, CLF nodes, output transform)
+  the way Resolve shows it; a still's delivered EXR stays ungraded.
 - **Only a plate has sound**; every other segment carries silence of the same length.
 - **A plate carries its shot's cp top left and wit top right** (user, 2026-09-29), each at
   quarter size flush in its corner (Resolve's zoom 0.25 at X -720/+720, Y 405 on 1920x1080).
@@ -34,7 +38,9 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Literal
 
-from proingest.core import clf, ffmpeg, frames, media, naming, qc, scan
+import PyOpenColorIO as ocio
+
+from proingest.core import clf, color, ffmpeg, frames, media, naming, qc, scan
 from proingest.core.models import Batch, Deliverable, InOut, MediaInfo, QCResult, ShotRow, Turnover
 from proingest.core.planner import effective_identity
 
@@ -56,6 +62,9 @@ BOTTOM_Y = "892"
 LEFT_X = "184"
 RIGHT_X = "w-150-text_w"
 CENTRE_X = "(w-text_w)/2"
+
+STILL_LENGTH = 24
+"""A reference still's time on the stringout: one second at 24, whatever the EDL cut."""
 
 INSET_SIZE = (480, 270)
 """Resolve's zoom 0.25 on the 1920x1080 stringout."""
@@ -115,6 +124,9 @@ class Segment:
     """No event here: black, with only the name burned in."""
 
     identity: naming.ShotIdentity | None = None
+    color: clf.ShotColor | None = None
+    """A held frame's AMF colour, baked into a LUT for its source segment."""
+
     insets: tuple[PictureInPicture, ...] = ()
     """A plate's cp and wit, laid over it (`INSET_CORNERS`)."""
 
@@ -233,20 +245,29 @@ def _segment(
     cut = clf.approved_in_out(event, known.media) if known is not None and known.media is not None else None
     if known is None or cut is None:
         name = event.clip_stem or event.reel or f"event {event.event_id}"
-        return Segment(kind="black", length=length, event_id=event.event_id, freeze=event.freeze, label=name)
+        held = event.freeze or length == 1
+        return Segment(
+            kind="black",
+            length=STILL_LENGTH if held else length,
+            event_id=event.event_id,
+            freeze=held,
+            label=name,
+        )
 
     delivering = next((row for row in claimed if _reference(row, cut) is not None), None)
     row = delivering or next((row for row in claimed if row.approved == cut), known)
     identity = effective_identity(row, show_pattern)
     label = naming.shot_label(identity) if identity is not None else Path(row.clip_name).stem
+    held = _held(event, cut, identity)
+    shown = STILL_LENGTH if held else length
     if delivering is not None and delivering.delivered_range is not None:
         offset = cut.in_frame - delivering.delivered_range.in_frame
         return Segment(
             kind="reference",
-            length=length,
+            length=shown,
             event_id=event.event_id,
             first_frame=naming.FIRST_OUTPUT_FRAME + offset,
-            freeze=event.freeze,
+            freeze=held,
             label=label,
             effect=delivering.scene,
             path=_reference(delivering, cut),
@@ -257,17 +278,24 @@ def _segment(
     base = row.current.in_frame if row.current is not None else cut.in_frame
     return Segment(
         kind="source",
-        length=length,
+        length=shown,
         event_id=event.event_id,
         first_frame=naming.FIRST_OUTPUT_FRAME + cut.in_frame - base,
-        freeze=event.freeze,
+        freeze=held,
         label=label,
         effect=row.scene,
         path=known.media.path if known.media is not None else None,
         start=cut.in_frame,
         media=known.media,
         identity=identity,
+        color=clf.shot_color(row) if held else None,
     )
+
+
+def _held(event: clf.ConformEvent, cut: InOut, identity: naming.ShotIdentity | None) -> bool:
+    """One frame on screen: a reference still, a frame hold, or a one frame cut of a video.
+    Each plays for `STILL_LENGTH` on the stringout (user, 2026-09-29)."""
+    return event.freeze or cut.duration == 1 or (identity is not None and identity.is_still)
 
 
 def _reference(row: ShotRow, cut: InOut) -> Path | None:
@@ -315,7 +343,8 @@ def build(
                 "info",
                 "turnover",
                 f"{deliverable.name}: events {', '.join(stand_ins)} have no delivered reference and "
-                f"are the ungraded source, or black where no source is known",
+                f"are cut from the source (a held frame through its AMF's colour, anything else "
+                f"ungraded), or black where no source is known",
             )
         )
     return deliverable
@@ -397,6 +426,7 @@ def _encode(made: Plan, segment: Segment, parts: Path, index: int) -> Path:
             target_size=fitted if fitted != source.resolution else None,
             color_space=source.color_space,
             color_range=source.color_range,
+            lut=_still_lut(segment, parts / f"{index:04d}{LUT_SUFFIX}"),
             canvas=SIZE if fitted != SIZE else None,
             hold=segment.length if segment.freeze else 0,
             overlay=overlay,
@@ -409,6 +439,21 @@ def _encode(made: Plan, segment: Segment, parts: Path, index: int) -> Path:
         command = ffmpeg.black_command(destination, SIZE, RATE, segment.length, overlay, display=made.display)
     _run(command, f"event {segment.event_id or 'gap'}")
     return destination
+
+
+LUT_SUFFIX = ".cube"
+
+
+def _still_lut(segment: Segment, destination: Path) -> Path | None:
+    """A held frame's AMF colour as the LUT its source segment is encoded through, as a
+    reference's is; None, and the source ungraded, when its AMF resolves to no chain."""
+    if segment.color is None:
+        return None
+    try:
+        return color.view_lut(destination, *segment.color.view_transforms())
+    except (clf.ClfError, color.ColorError, ocio.Exception, OSError) as exc:
+        log.warning("event %s (%s) is ungraded on the stringout: %s", segment.event_id, segment.label, exc)
+        return None
 
 
 def _run(command: list[str], what: str) -> None:

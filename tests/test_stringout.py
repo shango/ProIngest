@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from proingest.core import ffmpeg, naming, planner, qc, render, scan, stringout
+from proingest.core import clf, ffmpeg, naming, planner, qc, render, scan, stringout
 from proingest.core.models import Batch, InOut
 from tests.fixtures import media as fixtures
 
@@ -275,3 +275,44 @@ class TestInsets:
 
         assert [red_at(frame, 20, 12) for frame in frames] == [True] * 5 + [False] * 7
         assert not any(red_at(frame, 100, 60) for frame in frames), "only inside the inset"
+
+
+class TestReferenceStills:
+    """A chart, ball or size ref: one frame of a video, held for a second and coloured through
+    its AMF on the stringout (user, 2026-09-29)."""
+
+    @staticmethod
+    def as_chart(batch: Batch) -> None:
+        """No HD reference, as a still has none: its frame comes from the source."""
+        batch.rows[1].identity = naming.ShotIdentity("MELT0002", "colorChart", "01")
+        batch.rows[1].deliverables = []
+
+    def test_a_still_holds_its_frame_for_one_second_through_its_amf(self, batch: Batch) -> None:
+        self.as_chart(batch)
+        still = planned(batch).segments[1]
+        assert (still.kind, still.length, still.freeze) == ("source", stringout.STILL_LENGTH, True)
+        assert still.color is not None and still.color.display is not None
+        assert planned(batch).total == FRAMES + stringout.STILL_LENGTH
+
+    def test_its_colour_is_baked_as_a_reference_is(self, batch: Batch, tmp_path: Path) -> None:
+        self.as_chart(batch)
+        still = planned(batch).segments[1]
+        lut = stringout._still_lut(still, tmp_path / "still.cube")
+        assert lut is not None and lut.read_text().startswith("LUT_3D_SIZE")
+
+    def test_a_still_whose_amf_resolves_to_nothing_stays_ungraded(self, tmp_path: Path) -> None:
+        still = stringout.Segment(kind="source", length=24, color=clf.ShotColor())
+        assert stringout._still_lut(still, tmp_path / "still.cube") is None
+
+    def test_a_one_frame_cut_of_any_clip_is_held_too(self, batch: Batch) -> None:
+        """User: "the same for any still image frames". The cut decides, not the type."""
+        event = scan.read_session(batch.turnovers[0], batch.project_rate).events[1]
+        plate = batch.rows[1].identity
+        assert plate is not None and plate.kind == "pl"
+        assert stringout._held(event, InOut(1001, 1001), plate)
+        assert not stringout._held(event, InOut(1001, 1011), plate)
+
+    def test_a_plate_is_not_held(self, batch: Batch) -> None:
+        batch.rows[1].skipped = True
+        plate = planned(batch).segments[1]
+        assert (plate.kind, plate.length, plate.color) == ("source", FRAMES, None)
