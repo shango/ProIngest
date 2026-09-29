@@ -23,8 +23,8 @@ QC-029,A: scan and pre-flight,row,Error,Must fix,"Yes, unless the row is skipped
 QC-030,A: scan and pre-flight,row,Warning,Info tier,No,Row coloured amber and logged; the run goes ahead,Fewer than the expected handle frames beyond In or Out
 QC-031,A: scan and pre-flight,row,Error,Must fix,"Yes, unless the row is skipped","Stops the whole run; fix and re-scan, or skip the row",In or Out outside the source range after editing
 QC-032,A: scan and pre-flight,row,Error,Must fix,"Yes, unless the row is skipped","Stops the whole run; fix and re-scan, or skip the row",In greater than Out
-QC-033,A: scan and pre-flight,row,Error,Must fix,"Yes, unless the row is skipped","Stops the whole run; trim inside the limit, change the limit in Settings, or skip the row",Duration below minimum (default 120 frames)
-QC-034,A: scan and pre-flight,row,Error,Must fix,"Yes, unless the row is skipped","Stops the whole run; trim inside the limit, change the limit in Settings, or skip the row",Duration above maximum (default 240 frames)
+QC-033,A: scan and pre-flight,row,Error,Must fix,"Yes, unless the row is skipped","Stops the whole run; trim inside the limit, change the limit in Settings, or skip the row",Plate (pl) duration below minimum (default 120 frames); no other Shot Type has a limit
+QC-034,A: scan and pre-flight,row,Error,Must fix,"Yes, unless the row is skipped","Stops the whole run; trim inside the limit, change the limit in Settings, or skip the row",Plate (pl) duration above maximum (default 240 frames); no other Shot Type has a limit
 QC-035,A: scan and pre-flight,row,Info,Info tier,No,Logged only,In/Out differ from the turnover snapshot
 QC-036,A: scan and pre-flight,row,Info,Info tier,No,Logged only,Shot code edited from the original clip name
 QC-040,A: scan and pre-flight,row,Warning,Info tier,No,Row coloured amber and logged; the run goes ahead,"Plate (pl) has no audio, neither a wav beside it nor inside its file"

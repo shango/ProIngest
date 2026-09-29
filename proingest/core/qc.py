@@ -446,8 +446,9 @@ def check_duration(row: ShotRow, settings: RuleSettings) -> list[QCResult]:
     """QC-033 and QC-034: a cut outside the expected shot length, must-fix (user, 2026-09-25).
 
     Fixed by trimming the row inside the limits, or by moving the limits in Settings.
+    **Plates only** (user, 2026-09-29): a cp, el, wit or re is as long as the shoot made it.
     """
-    if row.current is None or not is_picture_row(row):
+    if row.current is None or not is_plate(row):
         return []
     duration = row.current.duration
     if duration < settings.min_duration_frames:

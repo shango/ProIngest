@@ -435,6 +435,15 @@ class TestDuration:
         assert ids(results) == ["QC-034"]
         assert results[0].severity == "error", "must-fix since 2026-09-25 (user)"
 
+    @pytest.mark.parametrize("kind", ["cp01", "el01", "wit01", "re01"])
+    def test_only_a_plate_has_limits(self, kind: str) -> None:
+        """User, 2026-09-29: no min or max for anything but the pl shot type."""
+        for current in (InOut(1009, 1050), InOut(1001, 1264)):
+            assert (
+                qc.check_duration(row(clip_name=f"MELT0001_{kind}", current=current), qc.DEFAULT_SETTINGS)
+                == []
+            )
+
     def test_the_limits_are_settings(self) -> None:
         settings = qc.RuleSettings(min_duration_frames=1, max_duration_frames=10_000)
         assert qc.check_duration(row(current=InOut(1009, 1010)), settings) == []

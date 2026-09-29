@@ -8,7 +8,7 @@ commit.
 
 ## 1. Resume here
 
-**State at 2026-09-29, version 0.5.13, on branch `qc/source-fidelity`, PR #17** (`HANDOFF.md` is
+**State at 2026-09-29, version 0.5.14, on branch `qc/source-fidelity`, PR #17** (`HANDOFF.md` is
 the short version) (0.5.4 is on `main`, PR
 #16 merged as `262817e`, dmg in CI run 35944322464). The 2026-09-23 review is built (chunks A
 to H of `docs/REVIEW_2026-09-23.md`), and so are the fixes that a second official turnover,
@@ -17,6 +17,16 @@ renders; Turnover121, every clip 8 bit 4:2:0, runs again with a QC-020 warning o
 since 2026-09-28 (user). What is left is the Mac: `docs/MAC_SESSION.md`, from "The 0.5.0 build, in
 order" down, and Ben's 4.886 slope. Entries are newest first; anything older than 2026-09-22
 describes the tool before the review and is history.
+
+**2026-09-29, length limits for plates only, 0.5.14 (user).** "There should be no min or max for
+anything but pl shot type." `qc.check_duration` (QC-033/034) now asks only `qc.is_plate` rows; it
+asked every picture row. Settings help text says so. **Effect on turnover097**: its only two
+must-fix were C4261 (cp01, 70 frames) and C4271 (el01, 353), so it now scans with **no must-fix**
+and runs without Accept As Is (checked on the real folder). **Verified**: a parametrised test over
+cp, el, wit, re; the suite, ruff, format, mypy. QC_RULES, the summary CSV, MAC_SESSION. **Open, with
+the user**: a picture-in-picture on the stringout (pl top left, wit top right, Resolve zoom 0.25 at
+X -720/+720, Y 405 = 480x270 flush in the corners of 1920x1080); five questions asked, none
+answered, nothing built.
 
 **2026-09-29, docs: Ben exports no stringout (user).** "Anything that says that Ben exports is
 incorrect. The tool does the stringout export." The docs still said the colour session renders
