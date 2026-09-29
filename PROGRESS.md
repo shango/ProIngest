@@ -8,7 +8,7 @@ commit.
 
 ## 1. Resume here
 
-**State at 2026-09-28, version 0.5.9, on branch `qc/source-fidelity`, PR #17** (`HANDOFF.md` is
+**State at 2026-09-28, version 0.5.10, on branch `qc/source-fidelity`, PR #17** (`HANDOFF.md` is
 the short version) (0.5.4 is on `main`, PR
 #16 merged as `262817e`, dmg in CI run 35944322464). The 2026-09-23 review is built (chunks A
 to H of `docs/REVIEW_2026-09-23.md`), and so are the fixes that a second official turnover,
@@ -17,6 +17,15 @@ renders; Turnover121, every clip 8 bit 4:2:0, runs again with a QC-020 warning o
 since 2026-09-28 (user). What is left is the Mac: `docs/MAC_SESSION.md`, from "The 0.5.0 build, in
 order" down, and Ben's 4.886 slope. Entries are newest first; anything older than 2026-09-22
 describes the tool before the review and is history.
+
+**2026-09-28, colour from AMF + CLF (user). Chunk 3 of 3, docs and 0.5.10.** The spec now says
+what the code does: COLOR_AND_FORMAT (a new governing section, the CDL policy marked superseded),
+COLOUR_SESSION_EXPORT (what Ben exports: EDL, CSV, one AMF per event, the CLFs), PRD, ARCHITECTURE,
+WORKFLOW, UI_SPEC, the guide, QC_RULES (QC-075 to QC-080; QC-008/009/046/047/048 reworded; QC-009
+info), OQ-71 resolved, OQ-76 updated, OQ-77 (what turnover097 did not show: a Resolve render to
+compare, EXR sequence naming, the VFX preset, the two digit year folder, QC-070 not watching AMFs,
+AMFs read only directly in the folder). The metadata pane's Colour section also names the AMF, the
+looks and the display. **Verified**: the suite (1780), ruff, mypy. **Mac**: a MAC_SESSION line.
 
 **2026-09-28, in progress: colour from AMF + CLF (user). Chunk 2 of 3, wired.** The scan reads
 every `*.amf` in the folder (`scan._Grades`), matches one to each row by its EDL event (the

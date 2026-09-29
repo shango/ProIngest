@@ -4,32 +4,38 @@
 
 Rewritten 2026-09-23 from the files on disk (review 2026-09-23, section 3). There is no
 `core/timeline.py`, `core/camdata.py`, `ui/delegates.py`, `ui/docks.py`, `ui/workers.py`,
-`ui/platform_mac.py` or `ui/color_session.py`: the conform and the grade are read from the EDL in
-the turnover folder at scan, and there is no timeline input and no separate colour session step.
+`ui/platform_mac.py` or `ui/color_session.py`: the conform is read from the EDL and, since
+2026-09-28, the grade from each event's AMF and its CLFs, all in the turnover folder at scan, and
+there is no timeline input and no separate colour session step.
 
 ```
 proingest/
   __main__.py            # no subcommand launches the UI; `scan`, `run` and `qc` drive core headless
   core/                  # no Qt anywhere under here
-    models.py            # FrameRate, QCResult, MediaInfo, AudioInfo, InOut, CDL, Deliverable, ShotRow,
+    models.py            # FrameRate, QCResult, MediaInfo, AudioInfo, InOut, GradeLook, Grade, Deliverable, ShotRow,
                          #   Turnover, Batch: dataclasses with explicit to_dict/from_dict, batch schema v2
     batchfile.py         # .pibatch load/save written temp-then-rename, .bak on open, and status
                          #   reconciled against the filesystem so the display never lies after a crash
     settings.py          # AppSettings: defaults, load/save as JSON; the path is handed in by ui/paths.py
-    metacsv.py           # Ben's metadata CSV: File Name, Shot, Shot Type, Gamma Notes, Color Space Notes.
-                         #   Identity and encoding; QC-010, QC-065, and the ignored clips for QC-064
-    clf.py               # Ben's EDL: its own CMX 3600 parser, the approved In/Out and the CDL per event,
-                         #   an event matched to a row by source timecode inside the file (QC-066, QC-067),
-                         #   and ShotColor, the per-row colour chain
-    color.py             # OpenColorIO from the pinned built-in ACES config: input transform table,
-                         #   into and out of ACEScct, the CDL transform, the output transform, the view LUT
+    metacsv.py           # Ben's metadata CSV: File Name, Shot, Shot Type. Identity only (its colour
+                         #   columns are not read since 2026-09-28); QC-010, QC-065, HDRI rows (QC-080),
+                         #   and the ignored clips for QC-064
+    amf.py               # Ben's per-event AMF: clip, input transform, looks, output transform, the
+                         #   timeline index in its name; every ID resolved through the config's own
+                         #   amf_transform_ids (2026-09-28)
+    clf.py               # Ben's EDL: its own CMX 3600 parser, the approved In/Out per event (its CDL is
+                         #   not read), an event matched to a row by source timecode inside the file
+                         #   (QC-066, QC-067), and ShotColor, the per-row colour chain from the AMF
+    color.py             # OpenColorIO from the pinned built-in ACES config: into ACES2065-1, a config
+                         #   look, a CLF, out to ACEScg, the AMF's display/view, the view LUT
     naming.py            # ShotIdentity from Shot + Shot Type, every output name, the delivery layout,
                          #   parse_output_name (QC-151) and next_version
     media.py             # the turnover folder indexed once (DirectoryIndex), image sequence detection,
                          #   ffprobe into MediaInfo, the probe cache, audio probing
     frames.py            # integer frame math, timecode conversion, In/Out input parsing
     scan.py              # turnover folder -> Turnover + ShotRows: one EDL and one CSV (QC-001), rows from
-                         #   CSV rows, media by File Name, the EDL's cut and CDL, audio by name;
+                         #   CSV rows, media by File Name, the EDL's cut, each event's AMF and its
+                         #   CLFs (_Grades, _grade_of: QC-075 to QC-079), audio by name;
                          #   carry_over keeps the editor's edits across a re-scan by File Name
     qc.py                # the rule registry: row and batch rules re-run after every edit, the pre-flight
                          #   that touches the disk, must_fix (the run gate), phase B verification
@@ -82,12 +88,18 @@ build/
 
 1. **Scan** (`scan.scan_turnover`, on `ui/scanner.py`'s thread). The folder must hold exactly one
    `.edl` and one `.csv` (QC-001). `metacsv.read` gives one `MetaRow` per CSV row carrying a
-   `Shot Type`; rows without one are ignored and counted (QC-064). `clf.load_session` reads the
-   EDL's events and CDLs.
+   `Shot Type`; rows without one are ignored and counted (QC-064), and an `HDRI` row is kept and
+   skipped (QC-080). `clf.load_session` reads the EDL's events. `scan._Grades.read` reads every
+   `.amf` directly in the folder once and files it under the EDL event its name's timeline index
+   points at (index + 1); one it cannot read, or whose name has no index, is QC-075 on the turnover.
 2. `media.index_directory` walks the folder once; each row's media is the one file or sequence
    whose name matches its `File Name` (QC-012, QC-013), probed through `media.probe_cached`.
 3. Each row is matched to its EDL event by source timecode inside the file's range, and takes
-   the approved In/Out (`ShotRow.approved`, `snapshot` and `current` alike) and the CDL. Audio is
+   the approved In/Out (`ShotRow.approved`, `snapshot` and `current` alike). Its event's one AMF,
+   which must name the row's file, becomes `ShotRow.grade` through `scan._grade_of`: the input
+   transform resolved to `ShotRow.source_encoding` (origin `AMF`), the looks as config look names
+   and CLF paths (each CLF checked for presence, md5 and readability, QC-076), and the display and
+   view (QC-079). `clf.shot_color(row)` turns that into the `ShotColor` a job carries. Audio is
    found by name. `qc.apply_row_rules` fills `row.qc`, and `qc.apply_batch_rules` adds the rules
    that need every row (QC-011).
 4. A **re-scan** of a turnover already in the batch runs the same scan and then `scan.carry_over`,
@@ -119,7 +131,7 @@ JSON, `schema_version: 2` (`models.SCHEMA_VERSION`; version 1 is refused, D18). 
 
 ## Testing
 
-- Fixtures generate: a 3840x2160 EXR sequence (300 frames, 24 fps, TC 01:00:00:00), a camera-native H.264 mov of the same, a 48k 16 bit wav, a CMX 3600 `.edl` carrying CDL lines, and a Resolve-shaped metadata CSV (UTF-16, `File Name` / `Shot` / `Shot Type` / `Gamma Notes` / `Color Space Notes`) referencing them.
+- Fixtures generate: a 3840x2160 EXR sequence (300 frames, 24 fps, TC 01:00:00:00), a camera-native H.264 mov of the same, a 48k 16 bit wav, a CMX 3600 `.edl`, a Resolve-shaped metadata CSV (UTF-16, `File Name` / `Shot` / `Shot Type`) referencing them, and, since 2026-09-28, an AMF per event and CLFs in Resolve's shape (`tests/fixtures/color.py`: `make_amf`, `make_clf`).
 - Golden tests for every naming example in the shooters' spec.
 - Frame-math tests for all four input formats and both TC modes.
 - Render tests run at reduced resolution flag for speed but assert real EXR headers, DWAA compression, frame counts, and checksums.

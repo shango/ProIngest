@@ -2,12 +2,121 @@
 
 ## 1. Colour policy (v01)
 
-**Colour is decided before the tool runs. A final grade session delivers one final EDL whose
-events carry the ASC CDL, the tool applies that CDL in ACEScct to everything it writes, between
-its own conversion in from the clip's camera encoding and out to linear ACEScg, and the plate is
-delivered graded, scene linear ACEScg.**
+**Colour is decided before the tool runs. The final grade session delivers one final EDL, which
+is the cut, and one AMF per EDL event with the CLFs it names, which is the colour. The tool
+converts each clip into ACES2065-1 through the AMF's input transform, applies the AMF's looks in
+order, and converts to linear ACEScg for the plate; the references add the AMF's own output
+transform. The plate is delivered graded, scene linear ACEScg.**
+
+### 2026-09-28: the colour is each clip's AMF and the CLFs it names
+
+**Decided by the user on 2026-09-28, superseding the CDL policy below.** Turnover097
+(`turnover097_09_28_26_danielluckett/collected files`, untracked) is the sample it was built
+against. A turnover is now:
+
+| file | what the tool reads from it |
+|---|---|
+| the **EDL** | **the cut**: the approved In/Out of every event, and its retimes. Any `*ASC_SOP` / `*ASC_SAT` lines are **not read** |
+| the **metadata CSV** | **identity only**: `File Name`, `Shot`, `Shot Type`. `Gamma Notes`, `Color Space Notes` and `Input Color Space` are **not read** |
+| **one AMF per EDL event**, from Ben's Resolve session | **the colour**: the input transform, the looks in order, and the output transform (`core/amf.py`) |
+| the **CLFs** each AMF names, beside it | the grade, one file per corrector node, checked against the md5 the AMF recorded |
+
+The `.otio` and `.drt` Resolve may write beside them are ignored. **There is no fallback**: there
+will be no older turnovers, so the CDL path and the CSV encoding path are gone from the code
+rather than kept behind a switch.
+
+**An AMF is matched to its event by the timeline index in its file name.** Resolve appends it
+before the export's timestamp (`..._C4261_1_2026-09-28_180306Z.amf` is index 1), and it is the EDL
+event number less one, verified on all 15 of turnover097. The AMF carries no timecode, so that
+index is the only thing that tells two uses of one clip apart. The AMF must also **name the row's
+file**, as `<aces:file>` or as an `<aces:sequence>` pattern whose range covers it. No AMF for an
+event, two claiming one, an AMF that is not readable, or one that names another file is QC-075, an
+error; an AMF whose name carries no index is a QC-075 warning on the turnover and matches nothing.
+
+**Every transform ID is resolved through the pinned config and nothing else.** The config lists,
+per colour space, look and view transform, the AMF transform IDs it implements
+(`interchange: amf_transform_ids`), so the answer is the config's own and there is no table in the
+tool to go stale. What turnover097 uses:
+
+| AMF element | transform ID (after `urn:ampas:aces:transformId:v2.0:`) | resolves to in `studio-config-v4.0.0_aces-v2.0_ocio-v2.5` |
+|---|---|---|
+| `inputTransform` | `CSC.Sony.SLog3_SGamut3Cine_to_ACES.a2.v1` | colour space `S-Log3 S-Gamut3.Cine` |
+| `lookTransform` | `Look.Academy.ReferenceGamutCompress.a2.v1` | look `ACES 1.3 Reference Gamut Compression` |
+| `lookTransform` | a CLF by file name, with its md5 | the file, read by OCIO as it is |
+| `outputTransform` | `Output.Academy.Rec709-D65_100nit_in_Rec709-D65_Gamma2pt2.a2.v1` | display `Gamma 2.2 Rec.709 - Display`, view `ACES 2.0 - SDR 100 nits (Rec.709)` |
+
+An input ID the config lacks is QC-047, and an AMF with none is QC-046. An output ID the config
+lacks is QC-079. A look ID the config lacks is ignored with a warning (QC-077).
+
+**The chain.** Every look is applied in ACES2065-1, because that is where the AMF puts them: the
+Reference Gamut Compress is a look the config defines there, and each of Resolve's CLFs takes
+ACES2065-1 in and gives it back, carrying its own trip from AP0 to AP1, into ACEScct, through one
+33 point 3D LUT and back out. So the tool converts into ACES2065-1 once, applies what the AMF
+lists in its order, and converts out once. **There is no working space of its own**: the
+`color.WORKING_SPACE` constant (ACEScct) is gone from the tool.
+
+```
+source encoding  ->  ACES2065-1  ->  the AMF's looks, in order  ->  linear ACEScg          plate
+ (AMF input)         (tool)          (RGC, then each CLF node)      (tool)
+                                                                 ->  the AMF's display/view  reference
+```
+
+- **The reference follows the AMF** (user, 2026-09-28), no longer a fixed sRGB: turnover097's
+  references are Gamma 2.2 Rec.709 through the ACES 2.0 SDR 100 nit view.
+- **The aux stills stay ungraded**: `colorChart`, `greyBall`, `mirrorBall` and `sizeRef` get the
+  input transform alone, straight to ACEScg.
+- **A look marked `applied="true"`** is already in the media and is skipped.
+- **A clip whose AMF names no CLF** is one Ben left ungraded: QC-009, **info** since 2026-09-28,
+  and it renders through its input transform and the Reference Gamut Compress alone.
+- **No AMF in the turnover grades any clip** is QC-008, because then nothing names an input
+  transform.
+- **An HDRI row** (`Shot Type` `HDRI`) is delivered by the shooters by hand: the tool skips it at
+  scan and shows its clip in the stringout only (QC-080). Turnover097's HDRI AMFs name no input
+  transform.
+
+**What a grade may contain** (user, 2026-09-28): **primaries plus simple sky secondaries**, in as
+many corrector nodes as the shot needs. Anything a CLF or an AMF look cannot carry - a look ID the
+config lacks, an embedded CDL, anything that is neither an ID nor a CLF - is **ignored with a
+warning** (QC-077). A CLF that is missing, has a different md5 from the one the AMF recorded, or
+that OCIO cannot read is an error (QC-076), because the grade is the colourist's and a node is
+never dropped quietly. **What the tool cannot detect**: a window, a blur or any other spatial
+operation in a Resolve node does not survive into a CLF's 3D LUT, and nothing in the AMF or the
+CLF says one was there. The comparison against Ben's stringout is the only check for it.
+
+A **Resolve export preset** is read from the AMF's description: `Dailies Request` is noted on the
+row (QC-078, info), and whichever preset arrives is used.
+
+**Not verified**, and to be read as such:
+
+- **That the tool's render matches Resolve's own.** Ben provides no rendered frame to compare
+  against, and the graded EXR in the repo root (`SECA0003_pl01_colorChart_01_raw_4k_v01.exr`) is
+  Turnover121's and not comparable.
+- **How Resolve names an EXR sequence plate** in the CSV against the AMF's `<aces:sequence>`
+  pattern. Only single-frame HDRI sequences have been seen.
+- **What the `VFX Request` preset writes differently** from `Dailies Request`.
+
+What changed in code: `core/amf.py` (new) reads an AMF and resolves its IDs through the config;
+`clf.ShotColor` carries the resolved input space, the looks as names and CLF paths, the AMF's
+name and the display and view; `scan._Grades` reads every AMF in the folder once and
+`scan._grade_of` turns one into a `Grade` and its findings; `color` lost `WORKING_SPACE`,
+`INPUT_TRANSFORMS`, `to_working`, `from_working`, `cdl_transform` and the fixed `DISPLAY` and
+`VIEW`, and gained `to_aces`, `to_plate`, `look_transform`, `clf_transform` and
+`output_transform(display, view)`; `metacsv` no longer reads the
+colour columns and marks HDRI rows; the EXR header's seven `proingest/cdl_*` attributes are gone
+(see EXR metadata below).
+
+**How to read the rest of this section.** Everything below this heading was written for the CDL
+in the EDL, and before that for a grade file that was the whole conversion. What still holds: the
+two colour stages, the aux still delivered ungraded, the view branch collapsing into one LUT, the
+plate branch unbounded, the EXR writer. What does **not** hold, and is left as history: the CDL,
+ACEScct as the tool's working space, the input transform table and the CSV's `Gamma Notes` +
+`Color Space Notes` as the carrier of the encoding, and the fixed sRGB display. Where the live
+sections below have been corrected, the correction is dated 2026-09-28.
 
 ### 2026-09-18, later the same day: the grade is the CDL in the EDL, applied in ACEScct
+
+*Superseded 2026-09-28 by the section above: the CDL is no longer read, and ACEScct left the
+tool. Kept as the record.*
 
 > **Corrected 2026-09-21/22.** Three things below are superseded and are left in place as the
 > record of how the plan moved. **(1) There are no per-shot grade files**: the `.cube` from
@@ -116,8 +225,8 @@ from it.**
 
 **Final.** The AD meeting decides the look, and that decision goes into a colour session in
 DaVinci Resolve, where Ben works with the AD. That session exports an **updated final EDL**
-carrying the conform, the trims and the CDL, and **a grade file per shot**. The tool conforms from the
-EDL and **applies the grade file**. Final colour is applied before every export, the references and the
+carrying the conform and the trims, and, since 2026-09-28, **one AMF per event with the CLFs it
+names**. The tool conforms from the EDL and **applies what the AMF lists**. Final colour is applied before every export, the references and the
 plates alike.
 
 The consequence to be clear about: **a batch cannot produce final deliverables until the
@@ -133,17 +242,22 @@ correct if they hold.
 | | |
 |---|---|
 | colour science | DaVinci YRGB Color Managed, **ACES 2.0** (user, 2026-09-25; 1.3 until then) |
-| timeline colour space | **ACEScct**, by standard (2026-09-18). The CDL is applied there, by Resolve and by the tool alike |
-| input colour space, per clip | **the clip's camera encoding**. Ben sets each clip's `Input Color Space` in his session to it, and Resolve converts from there outside the node graph. The tool reads the same encoding from the metadata (`Gamma Notes` + `Color Space Notes`, joined in that order) and resolves it through `color.INPUT_TRANSFORMS` |
-| grade | **the wheels of node one**, Luma Mix at 0, which is what Resolve's CDL export carries. **That is the whole grade**: there are no per-shot grade files (2026-09-21), so a look the wheels cannot reach is not deliverable through this pipeline |
-| viewing | on the timeline node or the output, never the clip. With the cube retired there is no grade file to inspect, so QC-039 is retired with it |
+| timeline colour space | **no longer the tool's concern** (2026-09-28). It was ACEScct by standard from 2026-09-18, because the tool replayed the CDL there. Each CLF now carries its own trip into the working space and back (ACEScct in turnover097) |
+| input colour space, per clip | **the clip's camera encoding**, set by Ben in his session. It reaches the tool as the AMF's input transform ID, resolved through the pinned config (2026-09-28). The CSV's `Gamma Notes` + `Color Space Notes` carried it from 2026-09-21 and are no longer read |
+| grade | **primaries plus simple sky secondaries** (user, 2026-09-28), in any number of corrector nodes, each leaving as a CLF. From 2026-09-21 to 2026-09-28 it was the wheels of node one, which is what a CDL export carries |
+| viewing | the AMF's output transform, which the references follow (2026-09-28) |
 
-**ACEScct is back in the chain as of 2026-09-18.** The 2026-09-12 version of this document took
+**ACEScct is back in the chain as of 2026-09-18** (*and out of the tool again on 2026-09-28: it
+now lives inside each CLF, and the tool converts through ACES2065-1*). The 2026-09-12 version of this document took
 it out, because a grade file that started at the source encoding needed no working space. A
 CDL is different in kind: it is arithmetic on code values and means something only in the
 space it was set in, so the tool has to know that space and convert into it. It is a constant
 rather than a setting (`color.WORKING_SPACE`) because a value here that disagreed with the
 session would replay the grade in the wrong space without an error.
+
+*The next three paragraphs were written for a per-shot grade file and then the CDL. Since
+2026-09-28 the rule is primaries plus simple sky secondaries, and what a CLF cannot carry is
+ignored with a warning (QC-077); a spatial operation cannot be detected at all.*
 
 **Primary only is a hard requirement rather than a stylistic preference.** A grade file is a static
 transform of a pixel value. A window, a qualifier or a tracked secondary is a function of where
@@ -161,13 +275,18 @@ The practical safeguard is that the session also exports the stringout with the 
 **If a reference mp4 from this tool does not match that stringout, something did not survive**,
 and that is the comparison to make the first time this runs (OQ-31).
 
-The session exports three things and the tool uses all three:
+The session exports these, and since 2026-09-28 the tool uses them like this:
 
 | export | what it is for |
 |---|---|
-| the **updated final EDL** | the conform: timecode, shot identity, and the **approved In/Out** from Ben and the AD's trims. It also carries the CDL as `*ASC_SOP` / `*ASC_SAT` comment lines. Supersedes the shooters' EDL entirely |
-| a **`.cube` per shot**, 65 point, from Generate LUT | **the whole of what the tool applies**, encoding `source encoding in > grade > linear ACEScg out`, with no display rendering in it. Named with the shot code. A `.clf` is accepted in the same role |
-| the **stringout** | a ProRes QT with the look and burn-ins. The tool does not build one, and it is what the tool's own references should be checked against |
+| the **updated final EDL** | the conform: timecode and the **approved In/Out** from Ben and the AD's trims. Any `*ASC_SOP` / `*ASC_SAT` lines in it are not read (2026-09-28). Supersedes the shooters' EDL entirely |
+| **one AMF per EDL event**, and the **CLFs** it names | **the whole of the colour**: input transform, looks in order, output transform (the section above) |
+| the **metadata CSV** | identity only: `File Name`, `Shot`, `Shot Type` |
+| the **stringout** | with the look and burn-ins. It is what the tool's own references should be checked against |
+
+*The table this replaced (2026-09-18) listed a 65 point `.cube` per shot from Generate LUT as the
+whole of what the tool applied, and the CDL in the EDL. Both are gone, and the next paragraph is
+history with them.*
 
 **The CDL and the grade file both come from this session and they have different jobs**, which is worth
 stating plainly because carrying two grade artifacts looks redundant until it is not. The grade file is
@@ -181,7 +300,7 @@ trim in the same session. It is the tool's authority on In and Out. The tool kee
 In/Out editing for the one-off trim that is not worth asking for a new EDL (PRD FR-5), and
 reports any row that used it (QC-045).
 
-**A trim does not disturb the grade.** A grade file is one static transform for the whole shot rather
+**A trim does not disturb the grade.** The AMF's looks are one static transform for the whole shot rather
 than an animated one, so moving In or Out carries it unchanged. The one thing to know is that
 extending into the handles applies the approved grade to frames nobody looked at in the session.
 For a static primary that is almost always right, and it is the reason the tool's trimming is
@@ -192,11 +311,14 @@ described as a one-off rather than a re-edit facility.
 | | |
 |---|---|
 | picture | **camera native**, one file per timeline clip, as Copy with trim wrote it: camera filename, camera timecode, handles both sides, nothing recompressed. Where the camera system records RAW, a **debayered basic file type with no colours baked in**. RAW itself never arrives |
-| encoding | **named in the metadata, per clip**, as `Gamma Notes` + `Color Space Notes` joined in that order, reaching the tool through Ben's CSV. Camera native log is the expectation; DaVinci Wide Gamut / DaVinci Intermediate is one more value, not a separate mode. A turnover may mix them |
-| grade | **the CDL on each event of Ben's EDL**, applied in ACEScct (2026-09-18). It is the only grade carrier (2026-09-21) |
-| conform | Ben's EDL: timecode, shot identity and the approved In/Out. Identity itself comes from his CSV, not from the EDL or any filename |
+| encoding | **named per clip by its AMF's input transform** (2026-09-28), resolved through the pinned config. Camera native log is the expectation; DaVinci Wide Gamut / DaVinci Intermediate is one more input transform, not a separate mode. A turnover may mix them. From 2026-09-21 to 2026-09-28 it was `Gamma Notes` + `Color Space Notes` in Ben's CSV |
+| grade | **the looks in each clip's AMF**: the Reference Gamut Compress, then a CLF per corrector node (2026-09-28). The CDL on each EDL event was the grade from 2026-09-18 and is no longer read |
+| conform | Ben's EDL: timecode and the approved In/Out. Identity comes from his CSV, not from the EDL or any filename |
 
 ### One mechanism: the clip's metadata names the source encoding
+
+*Since 2026-09-28 the "metadata" is the clip's AMF, and its input transform ID is resolved by the
+config itself. The one-mechanism, no-mode rule below still holds; the CSV columns it names do not.*
 
 **Decided 2026-09-12, and simplified the same evening.** The expectation is **camera native
 log**: each shooter delivers in whatever their camera shoots, and **writes that encoding into
@@ -262,6 +384,11 @@ one is a header that lies, which is worth catching and is not a wrong picture.
 
 ### The input transform is a table, keyed on the metadata
 
+*Superseded 2026-09-28: there is no table. The AMF names an ACES transform ID and the pinned
+config lists the IDs it implements (`interchange: amf_transform_ids`), so the config's own answer
+is used and `color.INPUT_TRANSFORMS` is gone. The rules below (never a near match, one entry or an
+error) are what the config's lookup gives by construction. Kept as history.*
+
 **Required 2026-09-12.** The tool carries **multiple input transforms and picks one per shot
 from what the clip's metadata says**, rather than one transform named in Settings. That is the
 whole of OQ-34 and it is now a build requirement rather than a question: a table from the
@@ -296,12 +423,15 @@ which camera shot the clip.
 **This is the one place in the pipeline where doing the obvious thing twice produces a wrong
 image**, so it is stated as a rule rather than left to a diagram.
 
-| chain | into ACEScct | grade | out to ACEScg | why (2026-09-18) |
+| chain | into ACES2065-1 | looks | out to ACEScg | why (2026-09-28) |
 |---|---|---|---|---|
-| plate, graded | applied, from the metadata | **the CDL, or the shot's cube in its place** | applied | the CDL means something only in ACEScct, and a cube out of the managed session is ACEScct in and out |
-| reference, graded | applied | the same | applied | the same chain plus the output transform |
+| plate | applied, from the AMF's input transform | **the AMF's looks in order**: the Reference Gamut Compress, then each CLF | applied | every look is defined in, or takes and returns, ACES2065-1 |
+| reference | applied | the same | applied | the same chain plus **the AMF's output transform** |
 | **aux still** | one leg, source encoding straight to ACEScg | **never** | | delivered ungraded by design |
-| any row with no grade | one leg, the same | none | | a batch with no colour session yet; QC-009 on a plate |
+| an AMF with no look left to apply | one leg, the same | none | | the same pixels in one transform |
+
+*Until 2026-09-28 this table put the CDL, or a cube in its place, between a leg into ACEScct and a
+leg out of it. That is history.*
 
 **Applying both is the failure to design against.** A grade file that begins at camera log, fed pixels
 that have already been converted to a working space, produces an image that is wrong in a way
@@ -310,8 +440,9 @@ invisible until a compositor tries to work against it. That is the same class of
 QC-039 and it deserves the same treatment.
 
 **Whether the grade contains the input transform was OQ-46, and it is decided rather than
-inferred** (2026-09-18): it does not. A CDL cannot, and a cube out of a colour managed session
-does not, so the tool converts into ACEScct itself on every plate. QC-048 records the chain on
+inferred** (2026-09-18): it does not. Since 2026-09-28 the AMF says so explicitly, listing the
+input transform apart from its looks (with `applied="false"` on all of them in turnover097), so
+the tool converts into ACES2065-1 itself on every plate. QC-048 records the chain on
 every row so a delivery can still be audited afterwards.
 
 ### The aux still is why the table is load bearing even so
@@ -328,8 +459,8 @@ deliverable (QC-047) rather than converting it approximately.
 
 Two consequences worth being explicit about:
 
-- **Every plate needs its encoding resolved to render**, since 2026-09-18: the grade is applied
-  in ACEScct and the encoding is what gets the clip there. So QC-046 and QC-047 are errors on
+- **Every plate needs its encoding resolved to render**, since 2026-09-18: the looks are applied
+  in ACES2065-1 (ACEScct until 2026-09-28) and the encoding is what gets the clip there. So QC-046 and QC-047 are errors on
   every row the tool transforms, plate and aux still alike, and info only on a BTS frame. This
   bullet used to say the opposite, for a grade file that started at the source encoding, and
   ended "if OQ-46 comes back the other way, they become errors everywhere". It did.
@@ -339,6 +470,10 @@ Two consequences worth being explicit about:
   transform of its own: OQ-45, recorded and not decided.
 
 ### The three encodings expected today
+
+*Written for a string a shooter typed. Since 2026-09-28 the AMF names a transform ID; turnover097
+uses `CSC.Sony.SLog3_SGamut3Cine_to_ACES.a2.v1`, which the config resolves to `S-Log3
+S-Gamut3.Cine`. The table below is what the config carries, and is still true of it.*
 
 The shooters named on 2026-09-12 are **S-Log3, C-Log3 and BM Film**, and **more may be added**.
 Since 2026-09-18 this table matters for **every plate**, because the tool converts from the
@@ -364,23 +499,24 @@ same reason.
 **The source encoding is recorded on every deliverable**, and since 2026-09-18 it names the
 transform the tool applied on a plate as well as on a still. A plate that does not say what it
 was made from cannot be checked against the session that made it. `proingest/source_encoding` names it and `proingest/source_encoding_origin` says which
-carrier it was read from.
+carrier it was read from, which since 2026-09-28 is always `AMF`.
 
 ### The chain
 
 One decode, one transform stack, then a branch at the point where the two deliverables stop
-wanting the same thing:
+wanting the same thing. Redrawn 2026-09-28 for the AMF:
 
 ```
-camera native or debayered log, encoding named in the metadata (one file per clip)
+camera native or debayered log, encoding named by the clip's AMF (one file per clip)
         |
         |  decode to float RGB, colour tags overridden, range confirmed
         |
-     source encoding -> ACEScct          (tool: color.to_working, from the metadata)
+     source encoding -> ACES2065-1       (tool: color.to_aces, the AMF's input transform)
         |
-     the CDL, or the shot's cube         (session: the grade, in ACEScct)
+     the AMF's looks, in order           (session: color.look_transform for the Reference
+        |                                 Gamut Compress, color.clf_transform per CLF node)
         |
-     ACEScct -> linear ACEScg            (tool: color.from_working)
+     ACES2065-1 -> linear ACEScg         (tool: color.to_plate)
         |
    +----+--------------------------------------------+
    |                                                  |
@@ -388,18 +524,25 @@ camera native or debayered log, encoding named in the metadata (one file per cli
    |                                                  |
  (linear ACEScg)                                  (linear ACEScg)
    |                                                  |
- resize in numpy, unbounded                       ACES output transform -> sRGB
-   |                                              ... grade file and output transform
- EXR: ACEScg, AP1, graded                             collapsed into one 3D LUT
+ resize in numpy, unbounded                       the AMF's output transform
+   |                                              (color.output_transform(display, view))
+ EXR: ACEScg, AP1, graded                         ... looks and output transform
+                                                      collapsed into one 3D LUT
                                                       |
                                                   ffmpeg lut3d, tetrahedral, resize bounded
                                                       |
-                                                  mp4: sRGB display
+                                                  mp4: the AMF's display (turnover097:
+                                                  Gamma 2.2 Rec.709)
 
 the AUX STILL branch, and the only one with a transform of its own:
 
- aux still -> source encoding -> linear ACEScg    (never the grade file. See above)
+ aux still -> source encoding -> linear ACEScg    (color.input_transform; never a look)
 ```
+
+`ShotColor.plate_transforms` builds the plate branch and `ShotColor.view_transforms` is the same
+list plus the output transform, so the two branches cannot disagree about anything up to linear
+ACEScg. Until 2026-09-28 this diagram converted into ACEScct, applied the CDL there, came back
+out, and viewed every reference on a fixed `sRGB - Display`.
 
 **Every transform is a single OCIO `GroupTransform`, interpolated tetrahedrally.** Not a
 sequence of separate applications, and not trilinear. Tetrahedral is stated here because the
@@ -420,14 +563,14 @@ difference between resampling in log and resampling in linear is OQ-43.
 It used to say everything before the output transform happens in ACEScct, which stopped being
 true when the grade file became the thing applied and stopped being true a second time when ACEScct
 left the chain altogether. What the property actually rests on is the LUT's own ends, which is
-why it survived both corrections unharmed. ffmpeg reads the log source, bounded 0..1, applies one cube and gets display sRGB,
-bounded again; the unbounded stretch in between is inside the cube, where OCIO handles it and
+why it survived both corrections unharmed. ffmpeg reads the log source, bounded 0..1, applies one cube and gets the display encoding
+(the AMF's since 2026-09-28), bounded again; the unbounded stretch in between is inside the cube, where OCIO handles it and
 swscale never sees it. swscale clamps float to 0..1, and that is what would otherwise cost the
 reference its single pass.
 
 **The whole view branch collapses into one 3D LUT per shot**, generated in core by
-`color.view_lut`: source log in, sRGB display out, with the grade file and the
-ACES output transform inside it. **This is how an OCIO
+`color.view_lut`: source log in, the AMF's display out, with the looks and the
+AMF's output transform inside it. **This is how an OCIO
 transform gets into ffmpeg**, which has no OCIO filter and does have `lut3d`, and it is what
 keeps the reference a single fast pass with no frames pulled through Python.
 
@@ -442,16 +585,17 @@ authored, and its output is display referred and therefore bounded. **The plate 
 use one**, because scene linear output is unbounded; that path applies the GroupTransform to
 float pixels directly.
 
-**The grade sits between the tool's two legs and nowhere else** (2026-09-18). The CDL is
-applied in ACEScct because that is the space it was set in; a cube out of the managed session
-is ACEScct in and out and sits in the same slot. Applying either in a different space, or
-applying both, is a plausible looking wrong image rather than an error, which is why
+**The grade sits between the tool's two legs and nowhere else.** Since 2026-09-28 the legs are
+into and out of ACES2065-1, and between them are the AMF's looks in the AMF's order, because
+Resolve's CLFs take ACES2065-1 in and give it back. Applying a CLF in a different space, or
+applying one twice, is a plausible looking wrong image rather than an error, which is why
 `ShotColor.plate_transforms` builds the whole chain and a caller cannot assemble half of one.
-QC-039 probes a cube for a display rendering, through the cube alone, in ACEScct.
+From 2026-09-18 the slot held the CDL, applied in ACEScct; QC-039, which probed a cube there,
+stays retired.
 
 **The one-leg conversion from the source encoding straight to ACEScg still exists in
-`core/color.py`** (`input_transform`), for the two chains with no grade in them: an aux still,
-which must never have one, and a row the session left no grade for.
+`core/color.py`** (`input_transform`), for the two chains with no look in them: an aux still,
+which must never have one, and a clip whose AMF leaves no look to apply.
 
 ### The plate is graded, and what that costs
 
@@ -469,6 +613,10 @@ chain includes an ACES output transform, a film emulation, or any tone curve tha
 display range produces a file that is display referred and says it is linear. That file grades
 and comps wrong, and it looks completely normal until someone tries to work on it. The tool
 probes for it and raises QC-039, because the alternative is trusting a filename.
+
+*QC-039 was retired on 2026-09-21 and stays retired. Since 2026-09-28 the grade files are
+Resolve's CLFs, which take ACES2065-1 in and give it back, and the tool converts to ACEScg after
+them; nothing probes a CLF for a display rendering inside it.*
 
 Within that constraint a grade authored in a log working space and landing in linear keeps its
 float headroom. Values above 1.0 survive it.
@@ -492,32 +640,25 @@ was done to it.
   that is ACEScg and a file that lies about being ACEScg.
 - `proingest/colorspace` states `ACEScg`. It is a constant rather than a setting: the tool
   transforms every plate into it, so the value is a fact about the deliverable.
-- `proingest/source_encoding` names the log encoding the source was read as, and since
-  2026-09-18 that is the transform the tool applied to get into ACEScct ahead of the grade, on
-  a plate as on an aux still. It is what the plate was made from, so the file can be checked
-  against the session that made it.
-- `proingest/source_encoding_origin` says which carrier named it: `clip metadata` or
-  `container tag`, the two the scan reads (OQ-44). The encoding is the fact that matters and
-  the origin is how a wrong one gets traced back to whoever wrote it, because a name typed into
-  the session and a name that travelled inside the file were written by different people at
-  different times. It is written **only beside an encoding**, so the header never states a
-  source for a name it does not carry. This paragraph read "the clip's metadata or a per row
-  override" while no override existed and the second carrier did; **a per row override, if the
-  tool is ever given one, is a third value rather than a second mechanism.** Nothing in
-  `UI_SPEC.md` asks for one today.
-- `proingest/clf` names the cube and `proingest/clf_hash` is its sha256, **only where a cube took
-  the CDL's place** for the shot. The hash is what identifies that grade: a cube re-exported
-  and redelivered gets a different one, so the deliverables rendered from the old version stay
-  findable afterwards. Both are **absent** from a frame graded by its CDL rather than present
-  and empty, so a reader cannot mistake one for the other.
-- The CDL from the EDL, as machine readable numbers in `proingest/cdl_slope`,
-  `proingest/cdl_offset`, `proingest/cdl_power` and `proingest/cdl_saturation`, and as the
-  **original `*ASC_SOP` / `*ASC_SAT` text** in `proingest/cdl_asc_sop` and
-  `proingest/cdl_asc_sat`. Since 2026-09-18 **it is the grade that was applied**, and
-  `proingest/cdl_note` says so and where: `applied in ACEScct, between the source encoding and
-  ACEScg`. Where a cube took its place the note reads `record only; the grade file named in
-  proingest/clf is what was applied`. Writing the numbers and the verbatim lines is what makes
-  a delivered plate legible to someone who has neither the session nor an OCIO install.
+- `proingest/source_encoding` names the colour space the source was read as: the config colour
+  space the clip's AMF input transform resolved to (2026-09-28), the leg the tool applied into
+  ACES2065-1, on a plate as on an aux still. It is what the plate was made from, so the file can
+  be checked against the session that made it.
+- `proingest/source_encoding_origin` says which carrier named it, and since 2026-09-28 that is
+  always `AMF`. It is written **only beside an encoding**, so the header never states a source
+  for a name it does not carry: a clip whose AMF named no input transform (QC-046) leaves both
+  out. Until 2026-09-28 the values were `clip metadata` or `container tag` (OQ-44).
+- `proingest/amf` names the AMF the colour came from, by file name (2026-09-28). Plates only: an
+  aux still carries the encoding and nothing about a grade.
+- `proingest/looks` lists the looks applied, **in the AMF's order**, joined with `; `: a config
+  look by its name (`ACES 1.3 Reference Gamut Compression`), a CLF by its file name. **Absent**
+  on a plate rendered through its input transform alone. With the source encoding it is the
+  whole chain, and a human compares it against the AMF.
+- **Gone 2026-09-28**: the seven `proingest/cdl_*` attributes (`cdl_slope`, `cdl_offset`,
+  `cdl_power`, `cdl_saturation`, `cdl_asc_sop`, `cdl_asc_sat`, `cdl_note`), which from
+  2026-09-18 recorded the CDL that was applied in ACEScct. `proingest/clf` and
+  `proingest/clf_hash`, for a cube in the CDL's place, went on 2026-09-21. The AMF's md5 of each
+  CLF is checked at scan (QC-076) and is not written to the header.
 - **The frame's own number as timecode**, in the standard `timeCode` attribute: frame 1001 is `00:00:41:17` at 24 (user, 2026-09-25). **The camera's timecode stays behind**: it is read to match Ben's EDL and reported in the QC log, and no deliverable carries it. The reference mp4 starts at the same `00:00:41:17`. **Not yet written:**
   `proingest/tool_version`, the shot ID and the frame range, from the proposal's header list.
   They are spec rather than code until something asks for them.
@@ -527,10 +668,11 @@ was done to it.
 Transforms come from **OpenColorIO**, not from hand written curves and matrices.
 `Config.CreateFromBuiltinConfig(...)` carries the ACES transforms inside the wheel, so **no
 config files ship**. The macOS arm64 wheel is 5.7 MB, which is nothing against the 300 MB
-budget in PRD section 8, and a Windows wheel exists for v02. `ColorSpaceTransform` supplies
-the two legs around the grade and the aux still's one, `CDLTransform` is the CDL, in
-OpenColorIO's default no-clamp style (OQ-55), `FileTransform` loads a cube, and
-`DisplayViewTransform` is the output transform.
+budget in PRD section 8, and a Windows wheel exists for v02. Since 2026-09-28
+`ColorSpaceTransform` supplies the two legs around the looks and the aux still's one,
+`LookTransform` is a config look (the Reference Gamut Compress) applied in ACES2065-1,
+`FileTransform` loads each CLF as it is, tetrahedrally, and `DisplayViewTransform` is the AMF's
+output transform. OCIO 2.5 reads Resolve's `.clf`. `CDLTransform` is no longer used.
 
 The session is ACES 2.0, so the config is pinned to an ACES 2.0 built-in config rather than
 tracking `studio-config-latest`. Matching the colour session matters more than being current,
@@ -542,11 +684,12 @@ session on ACES 2.0; it was `studio-config-v2.2.0_aces-v1.3_ocio-v2.4`), and it 
 cg one for two reasons: it carries the camera vendor log encodings, which is what OQ-39 may
 yet name, and it carries the full set of view transforms the viewing LUT is baked from. The move
 from 1.3 left the plate branch bit for bit the same (measured on frame 30 of `C0148.MP4`); only
-the view changed. The output transform is **`ACES 2.0 - SDR 100 nits (Rec.709)` on the `sRGB -
-Display` display**, in `color.VIEW`. The display is sRGB on the user's belief, not yet read off
-Ben's project (OQ-29). The config offers four views on that display and the other three are not
-candidates: `Un-tone-mapped` and `Video (colorimetric)` are not the ACES rendering, and `Raw` is
-no transform at all.
+the view changed. **Since 2026-09-28 the output transform is the clip's AMF's**, resolved
+through the config (`amf.display_view_for`): the display whose colour space lists the output ID
+and the view on it built from the view transform that lists it. Turnover097's is **`ACES 2.0 -
+SDR 100 nits (Rec.709)` on `Gamma 2.2 Rec.709 - Display`**. One the config lacks is QC-079.
+Until then it was fixed in `color.VIEW` on `sRGB - Display`, on the user's belief rather than
+read off Ben's project (OQ-29); the AMF is that reading.
 
 ### The EXR writer stays as it is
 
@@ -562,12 +705,12 @@ and is recorded as OQ-36 rather than built.
 
 The studio sets the delivery spec and the shooters work to it, so this is a specification
 rather than a survey of what might turn up. **The container is fixed; the encoding is per clip
-and its metadata says which** (section 1). A turnover may carry several encodings, including a
+and its AMF says which** (section 1). A turnover may carry several encodings, including a
 mix of camera logs and a house wide gamut, and nothing has to be told which in advance.
 
 **Expected**, and what every QC rule is written around:
 
-- **Whatever the camera recorded**, in the log encoding the metadata names, one file per timeline
+- **Whatever the camera recorded**, in the log encoding its AMF names, one file per timeline
   clip, with handles both sides, copied with trim and **not recompressed**. Where the camera
   system records RAW, a debayered basic file type with no colours baked in.
 - **RAW never arrives.** ffmpeg decodes no RAW format - BRAW, REDCODE, ARRIRAW, X-OCN, Cinema RAW
@@ -593,8 +736,8 @@ in a log signal is stretched when the signal is linearised, and it shows on satu
 
 **The tool does not read the colour space off the container, it overrides it.** No standard
 transfer tag names any camera log or wide gamut log encoding, and a container that does carry tags is as
-likely to carry the wrong ones. **The authority is the clip's metadata**, and the decode is
-forced to match what it names.
+likely to carry the wrong ones. **The authority is the clip's AMF** (its metadata until
+2026-09-28), and the decode is forced to match what it names.
 The distinction worth keeping is between a *colour tag*, which a container writes because it
 must write something, and a *named metadata field a shooter filled in deliberately*: the tool
 overrides the first and trusts the second. QC-018 fires when the file's own tags contradict the
@@ -606,11 +749,11 @@ look very nearly right.
 
 | output | spec |
 |---|---|
-| raw EXR | OpenEXR 2 scanline, DWAA compression level 45, half float RGB (alpha dropped unless source has real alpha, then RGBA), data window = display window, frame numbers start 1001 (OQ-35). **ACEScg, scene linear, AP1 chromaticities, graded with the shot's grade file**, with the source encoding, the grade file name and hash, and the CDL as its readable record, carried in the header (section 1) |
+| raw EXR | OpenEXR 2 scanline, DWAA compression level 45, half float RGB (alpha dropped unless source has real alpha, then RGBA), data window = display window, frame numbers start 1001 (OQ-35). **ACEScg, scene linear, AP1 chromaticities, graded with the looks of the clip's AMF**, with the source encoding, the AMF's file name and the looks applied carried in the header (section 1) |
 | ref mp4 4k | 3840x2160, H.264 High, yuv420p, CRF 18 (x264 `-preset slow`) or `h264_videotoolbox` when hardware encoding is enabled, keyint 24, `-movflags +faststart`, AAC 192k if audio associated. **Only a plate's reference carries sound** (2026-09-23): a cp or el is delivered silent even when its own file has a track |
 | ref mp4 HD | same, 1920x1080 |
 | audio | PCM 16 bit, same sample rate and channel count, no resampling. Cut to the delivered range and sped up with the picture (1.001 for a 24000/1001 source, D2 of `docs/REVIEW_2026-09-23.md`), padded with silence where the range runs past the recorded sound. Only a row with no range is delivered as-is: a wav source byte for byte, audio in a container extracted whole. QC-044 if the source was not 16 bit |
-| HDRI, stills, camData | byte copy with rename, checksum recorded |
+| HDRI, stills, camData | **not delivered by the tool** (2026-09-22). An HDRI row on the timeline is skipped at scan and shown in the stringout only (QC-080, 2026-09-28) |
 | lens grid | not written in v01; moved and renamed by hand (OQ-20) |
 
 **Two of those numbers are editable as of M5.12** and only two: the EXR compression level and
@@ -680,7 +823,7 @@ Editing:
 
 ```
 ffmpeg -i <src> -f rawvideo -pix_fmt gbrpf32le - | numpy frames
-    -> OCIO GroupTransform (the grade file; or the source-to-ACEScg leg for an aux still), tetrahedral
+    -> OCIO GroupTransform (input -> ACES2065-1 -> the AMF's looks -> ACEScg; or the source-to-ACEScg leg for an aux still), tetrahedral
     -> float16 -> OpenEXR (DWAA, level 45)
 ```
 

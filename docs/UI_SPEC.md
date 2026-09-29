@@ -55,10 +55,11 @@ What M5.11 settled, beyond the wording:
   fundamental to the most specific, because "no batch is open" is a truer answer than "a scan is
   going" and only one is shown.
 - **One enabled button carries a note too, and it is the case the feature was asked for.** A
-  batch whose EDL carries no CDL runs, is refused by QC-008 and writes nothing,
+  batch no AMF grades runs, is refused by QC-008 and writes nothing,
   which is correct and reads as a dead button. Run says so before it is pressed. It is the plain
-  question - has any turnover's EDL been read at scan - rather than a second implementation of
-  QC-008, which needs pre-flight and the disk.
+  question - has any row been matched to an AMF at scan (2026-09-28; it asked whether any EDL had
+  been read while the grade was the EDL's CDL) - rather than a second implementation of QC-008,
+  which needs pre-flight and the disk.
 - **A line may not exceed `toolbar_help.MAX_LINE` characters**, and a test holds every line of
   every tooltip in every state under it. Qt word-wraps a tooltip **only** when the text looks
   like rich text, so plain text is drawn on one line however long it is: the first draft had a
@@ -244,7 +245,7 @@ Built in M5.7.2. What that settled, beyond the layout:
 - **A section with nothing behind it yet is listed and disabled**, and its page says what it is waiting on. Same rule as the toolbar in section 1. **Every section is live as of M5.12**; the rule stays because it is how the page was built and how the next section will arrive.
 - **Advanced went live in M5.8.3**: the log level, the ffmpeg override, and a read-only line naming the log file. Both editable values are process wide rather than per batch, both take effect the moment they are applied, and both reach a render's worker processes when the next run starts them - a worker is told at its initialiser (`core/render.execute`), so a change made mid-run applies from the run after. The ffmpeg override takes the folder or the binary, and **a path that is not there is an error rather than a fallback**: an override quietly ignored is a render done with the wrong build of ffmpeg.
 - **Output went live in M5.12**, last, because both its values are applied inside a render's worker processes and had to be able to get there first. They travel on the channel Advanced built, at the worker's initialiser, so a change reaches the next run rather than one already going. Reference quality is the x264 rate factor, bounded 0 to 51 by what the encoder accepts; the preset stays at `slow` and is not editable. EXR compression level is the DWAA level. **Both are pinned by the spec** (`COLOR_AND_FORMAT.md` section 3: CRF 18, DWAA 45) and the page opens on those values, read from `core/ffmpeg.py` and `core/exr.py` rather than typed in a second time: moving either is a decision about a delivery rather than a preference, and each field's help says what the spec is so the person moving it knows what they are leaving.
-- **The Colour section carries no source encoding value and no mode** (2026-09-12): the encoding is a per clip fact. The ACES config, the output transform and the input transform table are shown **read only**, read from `core/color.py` rather than copied, because they are pinned by spec (OQ-29) and an override has nowhere to travel to yet. The EDL is not chosen here either: it is the one in the turnover folder, read at every scan (OQ-74), and the turnover records which file it read (`Turnover.color_session_edl`).
+- **The Colour section carries no source encoding value and no mode** (2026-09-12): the encoding is a per clip fact. **Since 2026-09-28 it is three read-only lines**: the ACES config (`core/color.BUILTIN_CONFIG`), **Colour**, reading `each clip's AMF and its CLFs, applied in ACES2065-1`, and **Output transform**, reading `each clip's AMF`. The working space and the input transform table it used to show are gone with the CDL, because the AMF names what each clip is and what was done to it, and the config resolves every ID in it. Read only because the config is pinned by spec (OQ-29) and there is no colour setting to make. The EDL is not chosen here either: it is the one in the turnover folder, read at every scan (OQ-74), and the turnover records which file it read (`Turnover.color_session_edl`).
 
 ## 10. Empty and first-run states
 
@@ -341,12 +342,13 @@ it is hidden rather than shown empty.
 | Frame rate | the project rate, 24, asserted rather than read and labelled "Timeline rate"; the rate the file is conformed to when it differs; the rate stated by the media; and an explicit disagreement note when they differ. QC-026 is the rule |
 | Range | record In/Out, source In/Out in frames and timecode, turnover snapshot In/Out, current In/Out, duration, max available out, and whether the editor has moved it off the snapshot (QC-035) |
 | Audio | path, sample rate, channels, bit depth, duration in samples and in frames, and the sync difference against the video range (QC-043) |
-| Colour | source encoding as the shooter wrote it (`Gamma Notes` + `Color Space Notes`), which carrier named it, and the CDL from the row's EDL event. **Added 2026-09-12 with M5.6**, corrected 2026-09-21 when per-shot grade files were removed: the encoding is shown verbatim because the string is what has to be corrected when it is wrong |
+| Colour | the source encoding and which carrier named it. **Since 2026-09-28** the encoding is the config colour space the clip's AMF input transform resolved to, the carrier is `AMF`, and three more lines follow: **AMF** (its file name), **Looks** (in the order applied, config looks by name and CLFs by file name, or `none`) and **Viewed on** (the AMF's view and display, which the references are rendered for) |
 | Turnover | number, date, shooter, folder, EDL, metadata CSV, timeline start. Shown alone when a turnover group header is the selection |
 | QC | count by severity with the rule IDs, each clicking through to that row in the Issues dock. **Built across the whole selection rather than merged field by field**, unlike every other section: two rows with different problems agree on nothing, so a merge would reduce this to "mixed", which is the one answer that helps nobody |
 
 There is **no Side files section** since 2026-09-22: HDRI and camData carry no `Shot Type`, so
-the tool reads neither and the pane has nothing to show for them.
+the tool reads neither and the pane has nothing to show for them. An HDRI row with `Shot Type`
+`HDRI` (2026-09-28) is skipped at scan, with the reason `HDRI: delivered by the shooters` and QC-080.
 
 ### 12.3 Empty and edge states
 
@@ -414,9 +416,10 @@ four formats (section 5).
 
 ## 15. Scan, re-scan and a moved turnover (2026-09-23)
 
-**Ingest Colour Session is gone** (review 2026-09-23, chunk E). The cut and the grade are read at
-scan from the EDL in the turnover folder, and a correction reaches the batch the way D8 says: the
-editor drops the fixed EDL, CSV or clip into the folder and re-scans.
+**Ingest Colour Session is gone** (review 2026-09-23, chunk E). The cut is read at scan from the
+EDL in the turnover folder and, since 2026-09-28, the grade from each event's AMF and its CLFs
+beside it. A correction reaches the batch the way D8 says: the editor drops the fixed EDL, CSV,
+AMF, CLF or clip into the folder and re-scans.
 
 - **Scan re-scans every turnover in the batch.** Right-clicking a turnover's header offers
   **Re-scan** for that one turnover and **New Folder Location...** for one that has moved (D16).
