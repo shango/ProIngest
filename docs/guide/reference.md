@@ -199,6 +199,11 @@ Time, level, shot and message, over a filter bar: a minimum level, a search box,
 - **Save Logs as CSV...**, at the right of the filter bar and in the File menu, writes every log
   the tool has kept to one CSV file. **When something goes wrong, this is the file to send**: it
   opens with the ProIngest version, the Mac and the ffmpeg build, and it works with no batch open.
+  It also holds every QC result the Issues dock shows, each at its own level (Error, Warning or
+  Info), with the rule ID, the turnover and the shot, and "blocks the run" on each one that stops
+  Run. They are written after each scan and run and again when you save the logs, so the file
+  always ends with what the Issues dock shows now. A line reading `-v error` or `-loglevel error`
+  is an ffmpeg command, not an error: that flag tells ffmpeg to print only its own errors.
 
 ## The Deliverables tab
 

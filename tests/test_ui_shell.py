@@ -8,6 +8,8 @@ theme, and the theme is the one part of this a person has to judge (docs/MAC_SES
 
 from __future__ import annotations
 
+import csv
+import logging
 import sys
 from collections.abc import Callable, Iterator
 from dataclasses import replace
@@ -26,7 +28,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from proingest.core import batchfile, naming
+from proingest.core import batchfile, logsetup, naming
 from proingest.core import settings as core_settings
 from proingest.core.models import Batch, Deliverable, QCResult, Turnover
 from proingest.core.planner import DeliverableJob
@@ -1847,6 +1849,31 @@ class TestSavingTheLogs:
         window.log_answer = tmp_path / "menu.csv"
         action.trigger()
         assert window.log_answer.is_file()
+
+    def test_the_csv_holds_the_qc_results_the_dock_shows_at_their_own_level(
+        self, window: DrivenWindow, logs: Path, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """What blocks the run and why, from a log someone sends (user, 2026-09-28)."""
+        batch = Batch(delivery_root=tmp_path, turnovers=[Turnover("t1", tmp_path / "Turnover121")])
+        batch.turnovers[0].qc = [QCResult("QC-020", "warning", "turnover", "is yuv420p (8 bit)")]
+        batch.qc = [QCResult("QC-062", "error", "batch", "no delivery root")]
+        window.set_batch(batch)
+        handler = logsetup.file_handler(logs)
+        logging.getLogger().addHandler(handler)
+        try:
+            with caplog.at_level(logging.INFO):
+                window.log_answer = tmp_path / "out.csv"
+                window.log_view.save_button.click()
+        finally:
+            logging.getLogger().removeHandler(handler)
+            handler.close()
+        with window.log_answer.open(newline="", encoding="utf-8") as handle:
+            rows = [(row[1], row[3]) for row in csv.reader(handle) if row[2] == "proingest.core.qc"]
+        assert rows == [
+            ("ERROR", "when the logs were saved: batch: QC-062 no delivery root (blocks the run)"),
+            ("WARNING", "when the logs were saved: Turnover121: QC-020 is yuv420p (8 bit)"),
+            ("ERROR", "when the logs were saved: QC summary: 1 errors, 1 warnings, 0 info; 1 block the run"),
+        ]
 
     def test_cancelling_writes_nothing(self, window: DrivenWindow, logs: Path, tmp_path: Path) -> None:
         window.log_answer = None

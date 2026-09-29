@@ -446,6 +446,7 @@ class MainWindow(QMainWindow):
         # A moved turnover says so on its heading before anything else is asked (D16).
         qc.check_folders(loaded)
         self.set_batch(loaded, path)
+        qc.log_results(loaded, f"on opening {path.name}")
         self._check_roots(loaded)
 
     def save_batch(self) -> bool:
@@ -498,6 +499,7 @@ class MainWindow(QMainWindow):
         batch = self.batch
         batch.settings_overrides[qc.RULES_OVERRIDE_KEY] = rules.to_dict()
         qc.apply_batch_rules(batch, rules)
+        qc.log_results(batch, "after Settings were applied")
         self.shot_model.refresh_rows()
         self.show_results()
         self.autosave.schedule()
@@ -780,6 +782,7 @@ class MainWindow(QMainWindow):
         self.progress.setRange(0, 100)
         if self._batch_open:
             self.statusBar().showMessage(f"{len(self.batch.rows)} shots")
+            qc.log_results(self.batch, "after the scan")
         self.update_state()
 
     # --- what is enabled, and what the centre shows -----------------------------------
@@ -975,6 +978,9 @@ class MainWindow(QMainWindow):
             ("ffmpeg", exports.ffmpeg_version()),
             ("Batch", str(self.batch_path) if self.batch_path else "unsaved"),
         ]
+        if self._batch_open:
+            # What the Issues dock shows now, edits since the last scan included.
+            qc.log_results(self.batch, "when the logs were saved")
         try:
             count = logsetup.export_csv(paths.log_dir(), destination, about)
         except OSError as exc:
@@ -984,6 +990,7 @@ class MainWindow(QMainWindow):
 
     def report_problem(self, title: str, text: str) -> None:
         """Something the editor has to know about and can do something about."""
+        log.error("%s: %s", title, text)
         QMessageBox.warning(self, title, text)
 
     def _start_folder(self, preferred: Path | None) -> str:

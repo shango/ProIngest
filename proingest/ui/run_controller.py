@@ -232,6 +232,7 @@ class RunController(QObject):
             return
         found = qc.must_fix(batch)
         if found:
+            qc.log_results(batch, "Run refused")
             self._refuse(MUST_FIX_TITLE, must_fix_text(found))
             window.show_issues()
             return
@@ -272,6 +273,7 @@ class RunController(QObject):
         window.progress.setValue(0)
         window.progress.setVisible(True)
         self._timer.start()
+        log.info("Run started: %d jobs on %d workers", len(jobs), window.settings.workers)
         self.runner.start(jobs, window.settings.workers)
         window.update_state()
 
@@ -322,6 +324,7 @@ class RunController(QObject):
         window.shot_model.refresh_rows()
         window.show_results()
         window.autosave.schedule()
+        qc.log_results(window.batch, "after Export")
         reports = self._reports_or_problem(result)
         if reports is None:
             window.run_strip.clear()
@@ -451,6 +454,7 @@ class RunController(QObject):
         window = self._window
         window.show_results()  # a stringout's QC-142 or QC-143 is on its turnover now
         window.autosave.schedule()
+        qc.log_results(window.batch, "after the run")
         reports = self._reports_or_problem(result)
         text = banner_text(written, reports, cancelled)
         window.run_strip.show_banner(text)
@@ -458,6 +462,7 @@ class RunController(QObject):
         # The same sentence without its link, because the banner is above the list and
         # the status bar is where the eye already is when a long run ends.
         window.statusBar().showMessage(re.sub(r"<[^>]+>", "", text))
+        log.info("Run finished: %s", re.sub(r"<[^>]+>", "", text))
         window.update_state()
         self._idle()
 

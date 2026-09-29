@@ -378,6 +378,12 @@ Treat it as a working session with the editor rather than a delivery.
   (an ffmpeg command line whole in one cell), the ABOUT rows name 0.5.4 and the bundled ffmpeg, and
   the records reach back to the oldest dated file in `~/Library/Logs/ProIngest`. The File menu item
   does the same with no batch open.
+- [ ] **QC results in the saved log (2026-09-28, 0.5.8).** Scan Turnover121, then Save Logs as
+  CSV: each clip's QC-020 is a WARNING row naming the turnover and shot, any info results are INFO,
+  and the last `proingest.core.qc` row is the QC summary. Make a row must-fix (point it at a
+  missing clip), press Run, and save again: the refusal dialog is an ERROR row, the must-fix reads
+  `(blocks the run)`, and the summary is ERROR. The first rows of the session say `ProIngest 0.5.8
+  started on macOS-...`.
 - [ ] **Turnover121 in the app (2026-09-23, 0.5.4).** Scan the folder with its ALE: 7 rows, no
   errors. The chart and the clean plate each show QC-072. Run it: the cp01 references play five
   seconds of one held frame with no sound in QuickTime, and the SECA0002 colour chart is one EXR.

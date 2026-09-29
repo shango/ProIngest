@@ -8,7 +8,7 @@ commit.
 
 ## 1. Resume here
 
-**State at 2026-09-28, version 0.5.7, on branch `qc/source-fidelity`, PR #17** (`HANDOFF.md` is
+**State at 2026-09-28, version 0.5.8, on branch `qc/source-fidelity`, PR #17** (`HANDOFF.md` is
 the short version) (0.5.4 is on `main`, PR
 #16 merged as `262817e`, dmg in CI run 35944322464). The 2026-09-23 review is built (chunks A
 to H of `docs/REVIEW_2026-09-23.md`), and so are the fixes that a second official turnover,
@@ -17,6 +17,21 @@ renders; Turnover121, every clip 8 bit 4:2:0, runs again with a QC-020 warning o
 since 2026-09-28 (user). What is left is the Mac: `docs/MAC_SESSION.md`, from "The 0.5.0 build, in
 order" down, and Ben's 4.886 slope. Entries are newest first; anything older than 2026-09-22
 describes the tool before the review and is history.
+
+**2026-09-28, the saved log holds the QC results (user), 0.5.8.** Save Logs as CSV exported the
+app log, which held no QC result at all: the user could not tell from a log what blocked a run.
+`qc.log_results` now logs every result the Issues dock shows, in its order, at its own severity
+(info INFO, warning WARNING, error ERROR), `(blocks the run)` on each `must_fix` and `(row skipped)`
+on a skipped row's error, then a summary line at ERROR when anything blocks. Called after a scan,
+on open, after Settings Apply, on a refused Run, after a run, after Export and on Save Logs itself.
+Also logged now: a session start line (version, platform, Python, log level), every
+`report_problem` dialog at ERROR, a run's start and closing banner, uncaught exceptions with their
+tracebacks (`logsetup.install_exception_hooks`; a Finder app's stderr is lost), and why the
+autosave discarded edits (the user's two logs showed 30 of those; the batch had never been saved).
+The user's confusion that started it: INFO rows whose message contains `-v error` are ffmpeg
+command lines, the flag being ffmpeg's own verbosity. **Verified**: `TestLogResults`, the exception
+hook tests, a window test reading the CSV back, the suite (1745), ruff, mypy. **Mac**: a
+MAC_SESSION line. UI_SPEC 6.1, the guide's reference.
 
 **2026-09-28, QC-020 is a warning again (user), 0.5.7.** An 8 bit 4:2:0 log source is reported and
 no longer blocks the batch, reversing the must-fix of 2026-09-25 below, which had stopped

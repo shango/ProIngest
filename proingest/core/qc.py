@@ -17,6 +17,7 @@ firing QC-033 on every colour chart in a turnover would bury the warnings that m
 
 from __future__ import annotations
 
+import logging
 import re
 import shutil
 from dataclasses import dataclass, fields
@@ -36,6 +37,8 @@ from proingest.core.models import (
     Turnover,
 )
 from proingest.core.planner import DeliverableJob, effective_identity
+
+log = logging.getLogger(__name__)
 
 SYNC_TOLERANCE_FRAMES = 1
 """How far audio may run from picture before it is called a sync problem.
@@ -1055,6 +1058,66 @@ def blocking_results(batch: Batch) -> list[QCResult]:
 
 def _phase_b(result: QCResult) -> bool:
     return result.rule_id.startswith("QC-1")
+
+
+LOG_LEVELS = {"info": logging.INFO, "warning": logging.WARNING, "error": logging.ERROR}
+"""What each severity is logged at, so the Level column of a saved log is the severity
+the Issues dock shows."""
+
+
+def log_results(batch: Batch, when: str) -> None:
+    """Every QC result the Issues dock shows, one log line each at its own severity.
+
+    The app log is what Save Logs exports, and the dock is gone once the window closes:
+    without this, a saved log said nothing about what blocked a run or why (user,
+    2026-09-28). The order is the dock's, and a result that is must-fix says it blocks
+    the run, so the lines answer the same question `must_fix` does. A closing line
+    counts them, at ERROR when anything blocks.
+    """
+    blocking = {id(result) for _, result in must_fix(batch)}
+    counts = dict.fromkeys(LOG_LEVELS, 0)
+
+    def emit(where: str, result: QCResult, note: str = "") -> None:
+        counts[result.severity] += 1
+        if id(result) in blocking:
+            note = "blocks the run"
+        suffix = f" ({note})" if note else ""
+        log.log(
+            LOG_LEVELS[result.severity],
+            "%s: %s: %s %s%s",
+            when,
+            where,
+            result.rule_id,
+            result.message,
+            suffix,
+        )
+
+    for result in batch.qc:
+        emit("batch", result)
+    for turnover in batch.turnovers:
+        name = turnover.folder.name
+        for result in turnover.qc:
+            emit(name, result)
+        for row in batch.rows_for(turnover.turnover_id):
+            where = f"{name} / {row.shot_code or row.clip_name}"
+            if row.shot_code and row.shot_code != row.clip_name:
+                where += f" ({row.clip_name})"
+            skipped = "row skipped" if row.skipped else ""
+            for result in row.qc:
+                emit(where, result, skipped)
+            for deliverable in row.deliverables:
+                for result in deliverable.qc:
+                    emit(f"{where} / {deliverable.name}", result)
+    verdict = f"{len(blocking)} block the run" if blocking else "nothing blocks the run"
+    log.log(
+        logging.ERROR if blocking else logging.INFO,
+        "%s: QC summary: %d errors, %d warnings, %d info; %s",
+        when,
+        counts["error"],
+        counts["warning"],
+        counts["info"],
+        verdict,
+    )
 
 
 def check_turnover_folder(turnover: Turnover) -> list[QCResult]:

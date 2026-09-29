@@ -8,6 +8,7 @@ rule is a pure function of the model, so it re-runs after every edit.
 
 from __future__ import annotations
 
+import logging
 import re
 import shutil
 from dataclasses import replace
@@ -814,6 +815,68 @@ class TestBlockingResults:
         failed = row()
         failed.qc.append(QCResult("QC-150", "error", "row", "1 deliverable is not done"))
         assert qc.must_fix(Batch(delivery_root=tmp_path, rows=[failed])) == []
+
+
+class TestLogResults:
+    """Every result the Issues dock shows goes to the log at its own level (user, 2026-09-28)."""
+
+    def logged(self, caplog: pytest.LogCaptureFixture, batch: Batch) -> list[tuple[str, str]]:
+        with caplog.at_level(logging.DEBUG, logger="proingest.core.qc"):
+            qc.log_results(batch, "after the scan")
+        return [(record.levelname, record.getMessage()) for record in caplog.records]
+
+    def test_each_severity_is_its_own_level_and_a_must_fix_says_it_blocks(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        plate = row()
+        plate.qc = [
+            QCResult("QC-012", "error", "row", "no such file"),
+            QCResult("QC-020", "warning", "row", "is yuv420p (8 bit)"),
+            QCResult("QC-018", "info", "row", "decoded as BT.709"),
+        ]
+        batch = Batch(
+            delivery_root=tmp_path, turnovers=[Turnover("t1", tmp_path / "Turnover121")], rows=[plate]
+        )
+        where = "after the scan: Turnover121 / MELT0001 (MELT0001_pl01)"
+        assert self.logged(caplog, batch) == [
+            ("ERROR", f"{where}: QC-012 no such file (blocks the run)"),
+            ("WARNING", f"{where}: QC-020 is yuv420p (8 bit)"),
+            ("INFO", f"{where}: QC-018 decoded as BT.709"),
+            ("ERROR", "after the scan: QC summary: 1 errors, 1 warnings, 1 info; 1 block the run"),
+        ]
+
+    def test_an_error_that_does_not_block_says_why_and_the_summary_is_info(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        skipped = row()
+        skipped.skipped = True
+        skipped.qc = [QCResult("QC-012", "error", "row", "no such file")]
+        batch = Batch(delivery_root=tmp_path, turnovers=[Turnover("t1", tmp_path / "T")], rows=[skipped])
+        lines = self.logged(caplog, batch)
+        assert lines[0] == (
+            "ERROR",
+            "after the scan: T / MELT0001 (MELT0001_pl01): QC-012 no such file (row skipped)",
+        )
+        assert lines[-1] == (
+            "INFO",
+            "after the scan: QC summary: 1 errors, 0 warnings, 0 info; nothing blocks the run",
+        )
+
+    def test_batch_turnover_and_deliverable_results_are_there_too(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        plate = row()
+        plate.deliverables = [Deliverable(kind="ref_mp4", name="r.mp4", path=tmp_path / "r.mp4", version=1)]
+        plate.deliverables[0].qc = [QCResult("QC-100", "error", "deliverable", "ffmpeg failed")]
+        turnover = Turnover("t1", tmp_path / "T")
+        turnover.qc = [QCResult("QC-008", "error", "turnover", "no colour session")]
+        batch = Batch(delivery_root=tmp_path, turnovers=[turnover], rows=[plate])
+        batch.qc = [QCResult("QC-063", "warning", "batch", "not much room left")]
+        assert [message for _, message in self.logged(caplog, batch)][:3] == [
+            "after the scan: batch: QC-063 not much room left",
+            "after the scan: T: QC-008 no colour session (blocks the run)",
+            "after the scan: T / MELT0001 (MELT0001_pl01) / r.mp4: QC-100 ffmpeg failed",
+        ]
 
 
 def ingested_batch(tmp_path: Path, *rows: ShotRow, edl_name: str = "MELT_FINAL.edl") -> Batch:
