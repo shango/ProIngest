@@ -141,7 +141,8 @@ class MainWindow(QMainWindow):
         # the log level is one of the two settings that decide what is kept (FR-13).
         settings_form.apply_to_process(self._settings)
 
-        self.setWindowTitle(WINDOW_TITLE)
+        # The version in the title and on the status bar, always in view (user, 2026-09-29).
+        self.setWindowTitle(f"{WINDOW_TITLE} {__version__}")
         self.resize(*DEFAULT_SIZE)
         # Turnover folders dragged in from Finder, several at once (add_turnovers).
         self.setAcceptDrops(True)
@@ -1149,7 +1150,10 @@ class MainWindow(QMainWindow):
         self.progress.setMaximumWidth(220)
         self.progress.setVisible(False)
         self.statusBar().addPermanentWidget(self.progress)
-        self.statusBar().showMessage(f"{WINDOW_TITLE} {__version__}")
+        # Permanent, so no later message covers it; it was the first message and went.
+        version = QLabel(f"{WINDOW_TITLE} {__version__}", self)
+        version.setObjectName("status_version")
+        self.statusBar().addPermanentWidget(version)
 
     # --- what the window remembers ---------------------------------------------------
 

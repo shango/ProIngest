@@ -28,6 +28,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from proingest import __version__
 from proingest.core import batchfile, logsetup, naming, qc
 from proingest.core import settings as core_settings
 from proingest.core.models import Batch, Deliverable, QCResult, Turnover
@@ -203,6 +204,19 @@ class TestTheApplication:
         """A cosmetic file left out of a bundle must not be the reason the tool will not start."""
         monkeypatch.setattr(ui_app, "THEME_FILE", Path("/nowhere/theme.qss"))
         assert ui_app.theme() == ""
+
+
+class TestTheVersionIsAlwaysInView:
+    """User, 2026-09-29: the version visible on the main window, whatever else has happened."""
+
+    def test_it_is_in_the_window_title(self, window: DrivenWindow) -> None:
+        assert window.windowTitle() == f"ProIngest {__version__}"
+
+    def test_it_stays_on_the_status_bar_after_other_messages(self, window: DrivenWindow) -> None:
+        window.statusBar().showMessage("Scanning turnover097...")
+        label = window.statusBar().findChild(QLabel, "status_version")
+        assert label is not None and label.text() == f"ProIngest {__version__}"
+        assert not label.isHidden()
 
 
 class TestTheToolbarAndMenus:

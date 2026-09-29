@@ -8,7 +8,7 @@ commit.
 
 ## 1. Resume here
 
-**State at 2026-09-29, version 0.5.16, on branch `qc/source-fidelity`, PR #17** (`HANDOFF.md` is
+**State at 2026-09-29, version 0.5.17, on branch `qc/source-fidelity`, PR #17** (`HANDOFF.md` is
 the short version) (0.5.4 is on `main`, PR
 #16 merged as `262817e`, dmg in CI run 35944322464). The 2026-09-23 review is built (chunks A
 to H of `docs/REVIEW_2026-09-23.md`), and so are the fixes that a second official turnover,
@@ -17,6 +17,12 @@ renders; Turnover121, every clip 8 bit 4:2:0, runs again with a QC-020 warning o
 since 2026-09-28 (user). What is left is the Mac: `docs/MAC_SESSION.md`, from "The 0.5.0 build, in
 order" down, and Ben's 4.886 slope. Entries are newest first; anything older than 2026-09-22
 describes the tool before the review and is history.
+
+**2026-09-29, the version always in view, 0.5.17 (user).** It was only the status bar's first
+message, which the next one ("Scanning...", "Saved...") replaced for good. Now the window title is
+`ProIngest <version>` and a permanent status bar label (`status_version`) carries it too.
+**Verified**: two window tests (title; the label survives another message), the suite. UI_SPEC 1,
+a MAC_SESSION line (the title in full screen).
 
 **2026-09-29, each inset labelled with its element, 0.5.16 (user).** "The PiPs should have a
 slightly smaller burn-in of the shot type." Each inset carries its `ShotIdentity.elem` (`cp01`,

@@ -4,6 +4,9 @@ PySide6 6.7+. Dark theme in the spirit of DaVinci Resolve: near-black panels, th
 
 ## 1. Layout
 
+**The version is always in view** (user, 2026-09-29): in the window title (`ProIngest 0.5.17`, whatever the build is)
+and as a permanent label at the right of the status bar, which no status message replaces.
+
 ```
 +------------------------------------------------------------------+
 | Toolbar: [New] [Open] [Save] | [Add Turnover] [Scan] [Run] [Stop] | [Export] [Settings] |

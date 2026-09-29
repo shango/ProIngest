@@ -44,6 +44,9 @@ Do not rent for any of these. Listed because the instinct to rent is usually wro
 What the review of 2026-09-23 changed, checked on the editor's Mac with the real folder. The old
 chunk 7 of `docs/TO_A_WORKING_BUILD.md`, in the order that wastes least.
 
+- [ ] **The version in view (2026-09-29, 0.5.17).** Open the app: the title bar reads `ProIngest 0.5.17`
+      and so does the right end of the status bar, and the status bar one still reads it after a Scan
+      and a Save. Say whether the title also shows in full screen (macOS hides the title bar there).
 - [ ] Download `ProIngest-0.5.0.dmg` from the CI run of the pushed branch (the `package-macos`
       job's artifact) and install it as `docs/guide/install.md` says. Do not build it locally.
 - [ ] **The acceptance test.** Point the tool at `Turnover199`. Scan: five rows, each with a shot
