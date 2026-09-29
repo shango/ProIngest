@@ -8,7 +8,7 @@ commit.
 
 ## 1. Resume here
 
-**State at 2026-09-29, version 0.5.12, on branch `qc/source-fidelity`, PR #17** (`HANDOFF.md` is
+**State at 2026-09-29, version 0.5.13, on branch `qc/source-fidelity`, PR #17** (`HANDOFF.md` is
 the short version) (0.5.4 is on `main`, PR
 #16 merged as `262817e`, dmg in CI run 35944322464). The 2026-09-23 review is built (chunks A
 to H of `docs/REVIEW_2026-09-23.md`), and so are the fixes that a second official turnover,
@@ -17,6 +17,16 @@ renders; Turnover121, every clip 8 bit 4:2:0, runs again with a QC-020 warning o
 since 2026-09-28 (user). What is left is the Mac: `docs/MAC_SESSION.md`, from "The 0.5.0 build, in
 order" down, and Ben's 4.886 slope. Entries are newest first; anything older than 2026-09-22
 describes the tool before the review and is history.
+
+**2026-09-29, OQ-77 answers, 0.5.13 (user).** (4) A two digit year in the folder name
+(`turnover097_09_28_26_danielluckett`) is accepted and read as 20YY, with a new warning **QC-081**
+(`scan.TURNOVER_FOLDER_PATTERN`, `TurnoverFields.two_digit_year`); before, it was QC-005 and all
+three fields were typed. (5) QC-070 not watching AMFs: leave it, not for now. (6) AMFs read only
+from the folder pointed at: right. **HDRI rows get no row rules** (`qc.is_shooter_delivered`, keyed
+on their QC-080): their QC-026 and QC-032 errors were noise on a row the tool never renders.
+`docs/QC_RULES_SUMMARY.csv` is committed, brought up to date (QC-005/008/009/020/046/047/048
+reworded, QC-074 to QC-081 and QC-142/143 added). **Verified**: tests for the parse, the scan's
+QC-081, the HDRI row; suite (1791), ruff, format, mypy.
 
 **2026-09-29, the label is set on the frames too, 0.5.12.** 0.5.11's CI failed on macOS (run
 36526442199): the bundled ffmpeg 9.0.1 wrote **no `color_transfer`** on a reference labelled only by

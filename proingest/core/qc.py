@@ -747,6 +747,12 @@ def check_duplicate_name(row: ShotRow, counts: dict[str, int]) -> list[QCResult]
 # --- registry ---------------------------------------------------------------------
 
 
+def is_shooter_delivered(row: ShotRow) -> bool:
+    """An HDRI row (QC-080): the tool delivers nothing for it, so no row rule has anything
+    to say about it. Its source fps or range said as errors was noise (user, 2026-09-29)."""
+    return any(result.rule_id == "QC-080" for result in row.qc)
+
+
 def run_row_rules(
     row: ShotRow,
     project_rate: FrameRate,
@@ -754,6 +760,8 @@ def run_row_rules(
     name_counts: dict[str, int] | None = None,
 ) -> list[QCResult]:
     """Every row rule that is a pure function of the model, in rule ID order."""
+    if is_shooter_delivered(row):
+        return []
     results: list[QCResult] = []
     results.extend(check_duplicate_name(row, name_counts or {}))
     results.extend(check_source_encoding(row))

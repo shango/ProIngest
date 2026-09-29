@@ -29,8 +29,21 @@ class TestParseTurnoverFolder:
         assert (fields.number, fields.month, fields.day, fields.year) == (1, 2, 23, 2026)
         assert fields.shooter == "danielluckett"
 
+    def test_a_two_digit_year_is_read_as_this_century(self) -> None:
+        """Turnover097's folder: `09_28_26` (user, 2026-09-29: accepted, with QC-081)."""
+        fields = scan.parse_turnover_folder(Path("/x/turnover097_09_28_26_danielluckett"))
+        assert fields is not None and fields.two_digit_year
+        assert (fields.number, fields.month, fields.day, fields.year) == (97, 9, 28, 2026)
+
     @pytest.mark.parametrize(
-        "name", ["messy", "turnover1_02_23_2026_dan", "turnover001_2_23_2026_dan", "turnover001"]
+        "name",
+        [
+            "messy",
+            "turnover001_02_23_202_dan",
+            "turnover1_02_23_2026_dan",
+            "turnover001_2_23_2026_dan",
+            "turnover001",
+        ],
     )
     def test_rejects_other_names(self, name: str) -> None:
         assert scan.parse_turnover_folder(Path(f"/x/{name}")) is None
@@ -243,6 +256,14 @@ class TestTurnoverLevelProblems:
         fixtures.make_turnover(folder, shots=1, frames=4)
         turnover, _ = scan.scan_turnover(folder, "t1")
         assert "QC-005" in {r.rule_id for r in turnover.qc}
+
+    def test_a_two_digit_year_is_a_qc_081_warning_not_qc_005(self, tmp_path: Path) -> None:
+        folder = tmp_path / "turnover097_09_28_26_danielluckett"
+        fixtures.make_turnover(folder, shots=1, frames=4)
+        turnover, _ = scan.scan_turnover(folder, "t1")
+        found = {(r.rule_id, r.severity) for r in turnover.qc}
+        assert ("QC-081", "warning") in found and "QC-005" not in {r[0] for r in found}
+        assert (turnover.number, turnover.year, turnover.shooter) == (97, 2026, "danielluckett")
 
     def test_a_bad_turnover_does_not_raise(self, tmp_path: Path) -> None:
         """One bad folder must not take down a batch."""

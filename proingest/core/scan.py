@@ -43,7 +43,7 @@ from proingest.core.models import (
 EDL_SUFFIX = ".edl"
 
 TURNOVER_FOLDER_PATTERN = re.compile(
-    r"^turnover(?P<number>\d{3})_(?P<month>\d{2})_(?P<day>\d{2})_(?P<year>\d{4})_(?P<shooter>.+)$"
+    r"^turnover(?P<number>\d{3})_(?P<month>\d{2})_(?P<day>\d{2})_(?P<year>\d{4}|\d{2})_(?P<shooter>.+)$"
 )
 
 
@@ -68,6 +68,8 @@ class TurnoverFields:
     day: int
     year: int
     shooter: str
+    two_digit_year: bool = False
+    """`09_28_26`, read as 2026 and warned about (QC-081, user 2026-09-29)."""
 
 
 def parse_turnover_folder(folder: Path) -> TurnoverFields | None:
@@ -79,12 +81,14 @@ def parse_turnover_folder(folder: Path) -> TurnoverFields | None:
     match = TURNOVER_FOLDER_PATTERN.match(folder.name)
     if match is None:
         return None
+    two_digit_year = len(match["year"]) == 2
     return TurnoverFields(
         number=int(match["number"]),
         month=int(match["month"]),
         day=int(match["day"]),
-        year=int(match["year"]),
+        year=int(match["year"]) + (2000 if two_digit_year else 0),
         shooter=match["shooter"],
+        two_digit_year=two_digit_year,
     )
 
 
@@ -175,6 +179,15 @@ def _prefill(turnover: Turnover, folder: Path) -> None:
             )
         )
         return
+    if prefill.two_digit_year:
+        turnover.qc.append(
+            QCResult(
+                "QC-081",
+                "warning",
+                "turnover",
+                f"folder name {folder.name!r} has a two digit year, read as {prefill.year}; check the date",
+            )
+        )
     turnover.number = prefill.number
     turnover.month = prefill.month
     turnover.day = prefill.day

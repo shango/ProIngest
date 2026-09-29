@@ -216,6 +216,13 @@ class TestApplyRowRules:
         qc.apply_row_rules(target, RATE_24)
         assert "QC-012" in ids(target.qc)
 
+    def test_an_hdri_row_gets_no_row_rules(self) -> None:
+        """QC-080: the shooters deliver it, so its fps and range are not the tool's concern."""
+        target = row(stated=RATE_30, current=InOut(CHOSEN.out_frame, CHOSEN.in_frame))
+        target.qc.append(QCResult("QC-080", "info", "row", "an HDRI"))
+        qc.apply_row_rules(target, RATE_24)
+        assert ids(target.qc) == ["QC-080"]
+
     def test_fixing_the_cause_clears_the_result(self) -> None:
         target = row(stated=RATE_30, audio=audio_of(240))
         qc.apply_row_rules(target, RATE_24)
