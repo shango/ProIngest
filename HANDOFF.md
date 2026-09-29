@@ -10,8 +10,8 @@ disagrees with `PROGRESS.md` or the docs, they are right and this file is wrong.
   0.5.7 made QC-020 a warning again; 0.5.8 puts every QC result into Save Logs as CSV at its
   own level, plus a session start line, problem dialogs and uncaught exceptions (user, 2026-09-28).
   0.5.9 adds **Accept As Is (Ignore QC)** on a turnover heading (QC-074, OQ-76).
-  CI run 36506630533 is green on all four jobs and built `ProIngest-0.5.8.dmg`:
-  `gh run download 36506630533 -R shango/ProIngest -n ProIngest-macos-arm64 -D ~/Downloads/ProIngest-0.5.8`
+  CI run 36514483081 is green on all four jobs and built `ProIngest-0.5.9.dmg`:
+  `gh run download 36514483081 -R shango/ProIngest -n ProIngest-macos-arm64 -D ~/Downloads/ProIngest-0.5.9`
 - **1739 tests pass**; `ruff`, `ruff format` and `mypy --strict` are clean.
 - **Turnover121 renders again**: QC-020 (8 bit or 4:2:0) is a warning since 2026-09-28 (user),
   and every clip in it is 8 bit 4:2:0 H.264. Turnover199 (10 bit 4:2:2) is not affected.
