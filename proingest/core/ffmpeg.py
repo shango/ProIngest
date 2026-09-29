@@ -678,10 +678,12 @@ def encode_command(
     silence: bool = False,
     audio_format: Sequence[str] = (),
     display: str = DEFAULT_DISPLAY,
+    insets: Sequence[Inset] = (),
 ) -> list[str]:
     """The command that encodes `[in_frame, out_frame]` to one reference mp4.
 
     `overlay` is filters drawn last, on the finished canvas: the stringout's burn-ins.
+    `insets` are pictures laid over the canvas before them (a stringout plate's cp and wit).
     `silence` gives a picture with no `audio` a silent track of the same length, so every
     stringout segment has the same streams and they join without a re-encode, and
     `audio_format` pins the sound's rate and layout for the same reason.
@@ -762,8 +764,11 @@ def encode_command(
     filters += [REFERENCE_TO_YUV, reference_label(display)]
     if canvas is not None:
         filters.append(pad_filter(canvas))
-    filters.extend(overlay)
-    command += ["-vf", ",".join(filters)]
+    if insets:
+        # The label again after the overlays, so it is on the frames that are encoded.
+        command += ["-vf", inset_graph(filters, insets, [reference_label(display), *overlay])]
+    else:
+        command += ["-vf", ",".join([*filters, *overlay])]
 
     # fps_mode passthrough for the same reason the decode passes it: ffmpeg must not
     # invent or drop frames to reach a constant rate, because section 6 maps output
@@ -827,6 +832,39 @@ def drawtext_filter(textfile: Path, font: Path, size: int, x: str, y: str) -> st
         f"drawtext=fontfile={_filter_path(font)}:textfile={_filter_path(textfile)}"
         f":fontsize={size}:fontcolor=white:x={x}:y={y}"
     )
+
+
+@dataclass(frozen=True)
+class Inset:
+    """A picture in picture: `length` frames of the mp4 at `path` from frame `start`,
+    scaled to `size` with its top left corner at (`x`, `y`). It is gone once it ends."""
+
+    path: Path
+    start: int
+    length: int
+    x: int
+    y: int
+    size: tuple[int, int]
+
+
+def inset_graph(chain: Sequence[str], insets: Sequence[Inset], after: Sequence[str]) -> str:
+    """`chain`, then each inset laid over it in order, then `after` (the burn-ins, on top).
+
+    Still one `-vf` graph with one input and one output: each inset is read by a `movie`
+    source inside it, so the encode stays a single command. `eof_action=pass` is what
+    removes an inset when it runs out rather than holding its last frame (user,
+    2026-09-29).
+    """
+    links = [f"{','.join(chain)}[m0]"]
+    for index, inset in enumerate(insets):
+        end = inset.start + inset.length
+        links.append(
+            f"movie={_filter_path(inset.path)},trim=start_frame={inset.start}:end_frame={end},"
+            f"setpts=PTS-STARTPTS,scale={inset.size[0]}:{inset.size[1]}:flags=lanczos[p{index}]"
+        )
+        links.append(f"[m{index}][p{index}]overlay=x={inset.x}:y={inset.y}:eof_action=pass[m{index + 1}]")
+    links.append(f"[m{len(insets)}]{','.join(after)}")
+    return ";".join(links)
 
 
 def _filter_path(path: Path) -> str:

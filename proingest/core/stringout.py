@@ -13,6 +13,11 @@ ffmpeg. The user's decisions, all in OQ-38:
   shot and element bottom right. White, Open Sans, no box. No camera timecode: the
   counter is the delivered frame number, 1001 on the frame the plate starts with.
 - **Only a plate has sound**; every other segment carries silence of the same length.
+- **A plate carries its shot's cp top left and wit top right** (user, 2026-09-29), each at
+  quarter size flush in its corner (Resolve's zoom 0.25 at X -720/+720, Y 405 on 1920x1080).
+  The first cp and the first wit of the shot in EDL order, from their delivered HD
+  references, playing from their own cut In at the plate's first frame. Each is gone when
+  it runs out or at the plate's Out, whichever is first. No delivered reference, no inset.
 
 Each segment is encoded on its own and the segments are joined by stream copy, which
 is safe because every one is encoded with the reference's settings and the same
@@ -24,7 +29,7 @@ from __future__ import annotations
 
 import logging
 import shutil
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Literal
 
@@ -50,6 +55,12 @@ BOTTOM_Y = "892"
 LEFT_X = "184"
 RIGHT_X = "w-150-text_w"
 CENTRE_X = "(w-text_w)/2"
+
+INSET_SIZE = (480, 270)
+"""Resolve's zoom 0.25 on the 1920x1080 stringout."""
+
+INSET_CORNERS: dict[str, tuple[int, int]] = {"cp": (0, 0), "wit": (SIZE[0] - INSET_SIZE[0], 0)}
+"""Which shot type is inset over a plate, and where its top left corner goes."""
 
 STRINGOUT_RULES = ("QC-142", "QC-143")
 """What a build owns on its turnover, replaced each time it runs."""
@@ -88,6 +99,10 @@ class Segment:
     media: MediaInfo | None = None
     gap: bool = False
     """No event here: black, with only the name burned in."""
+
+    identity: naming.ShotIdentity | None = None
+    insets: tuple[ffmpeg.Inset, ...] = ()
+    """A plate's cp and wit, laid over it (`INSET_CORNERS`)."""
 
 
 @dataclass
@@ -155,7 +170,35 @@ def plan(
             result.segments.append(Segment(kind="black", length=event.record_in - cursor, gap=True))
         result.segments.append(_segment(event, session, rows, show_pattern))
         cursor = max(cursor, event.record_out + 1)
+    result.segments = _with_insets(result.segments)
     return result
+
+
+def _with_insets(segments: list[Segment]) -> list[Segment]:
+    """Each plate with its shot's first cp and first wit in EDL order laid over it."""
+    first: dict[tuple[str, str], Segment] = {}
+    for segment in segments:
+        if segment.identity is not None:
+            first.setdefault((segment.identity.shot_code, segment.identity.kind), segment)
+    placed = []
+    for segment in segments:
+        if segment.identity is not None and segment.identity.kind == "pl":
+            code = segment.identity.shot_code
+            found = (
+                _inset(first.get((code, kind)), segment.length, corner)
+                for kind, corner in INSET_CORNERS.items()
+            )
+            segment = replace(segment, insets=tuple(inset for inset in found if inset is not None))
+        placed.append(segment)
+    return placed
+
+
+def _inset(source: Segment | None, length: int, corner: tuple[int, int]) -> ffmpeg.Inset | None:
+    """`source`'s delivered reference from its cut In, for as long as it has or `length`."""
+    if source is None or source.kind != "reference" or source.path is None:
+        return None
+    frames_held = 1 if source.freeze else source.length
+    return ffmpeg.Inset(source.path, source.start, min(frames_held, length), *corner, INSET_SIZE)
 
 
 def _next_version(folder: Path, number: int, month: int, day: int, year: int, shooter: str) -> int:
@@ -194,6 +237,7 @@ def _segment(
             path=_reference(delivering, cut),
             start=offset,
             audio=qc.is_plate(delivering),
+            identity=identity,
         )
     base = row.current.in_frame if row.current is not None else cut.in_frame
     return Segment(
@@ -207,6 +251,7 @@ def _segment(
         path=known.media.path if known.media is not None else None,
         start=cut.in_frame,
         media=known.media,
+        identity=identity,
     )
 
 
@@ -322,6 +367,7 @@ def _encode(made: Plan, segment: Segment, parts: Path, index: int) -> Path:
             silence=not sound,
             audio_format=ffmpeg.STRINGOUT_AUDIO,
             display=made.display,
+            insets=segment.insets,
         )
     elif segment.kind == "source" and segment.path is not None and segment.media is not None:
         source = segment.media
@@ -342,6 +388,7 @@ def _encode(made: Plan, segment: Segment, parts: Path, index: int) -> Path:
             silence=True,
             audio_format=ffmpeg.STRINGOUT_AUDIO,
             display=made.display,
+            insets=segment.insets,
         )
     else:
         command = ffmpeg.black_command(destination, SIZE, RATE, segment.length, overlay, display=made.display)

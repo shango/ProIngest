@@ -8,7 +8,7 @@ commit.
 
 ## 1. Resume here
 
-**State at 2026-09-29, version 0.5.14, on branch `qc/source-fidelity`, PR #17** (`HANDOFF.md` is
+**State at 2026-09-29, version 0.5.15, on branch `qc/source-fidelity`, PR #17** (`HANDOFF.md` is
 the short version) (0.5.4 is on `main`, PR
 #16 merged as `262817e`, dmg in CI run 35944322464). The 2026-09-23 review is built (chunks A
 to H of `docs/REVIEW_2026-09-23.md`), and so are the fixes that a second official turnover,
@@ -17,6 +17,20 @@ renders; Turnover121, every clip 8 bit 4:2:0, runs again with a QC-020 warning o
 since 2026-09-28 (user). What is left is the Mac: `docs/MAC_SESSION.md`, from "The 0.5.0 build, in
 order" down, and Ben's 4.886 slope. Entries are newest first; anything older than 2026-09-22
 describes the tool before the review and is history.
+
+**2026-09-29, stringout picture in picture, 0.5.15 (user).** Over each `pl` event the shot's first
+cp (EDL order) is inset top left and its first wit top right, 480x270 flush in the corner
+(Resolve zoom 0.25, X -720/+720, Y 405), from their delivered HD references, playing from their
+own cut In at the plate's first frame and **removed** when they run out or at the plate's Out.
+None, or not delivered: no inset. `stringout._with_insets`, `ffmpeg.Inset` and `ffmpeg.inset_graph`
+(a `movie` source per inset inside the one `-vf` graph, `overlay=eof_action=pass`, burn-ins drawn
+after). **Verified**: plan tests, and a real render proving the inset is drawn for its frames and
+gone after (CI runs it on the Mac's ffmpeg 9 too); the suite, ruff, mypy. **Turnover097 run in
+full** (no must-fix now, 30 jobs, 1078 frame stringout): TEST0013_pl01 carries its 70 frame cp01
+and loses it at frame 1071, TEST0014_pl01 its 138 frame cp01; turnover097 has no wit. The top name
+spans x 499 to 1411, clear of the insets (480, 1440) by about 20 px. Copied to
+`turnover097_09_28_26_danielluckett/..._SO_v01_pip.mp4` for the user. **Noticed, not changed**: the
+two HDRI events are black in the stringout (no source known for them). PRD FR-9, UI_SPEC 8, OQ-38.
 
 **2026-09-29, length limits for plates only, 0.5.14 (user).** "There should be no min or max for
 anything but pl shot type." `qc.check_duration` (QC-033/034) now asks only `qc.is_plate` rows; it

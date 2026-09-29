@@ -6,7 +6,8 @@ disagrees with `PROGRESS.md` or the docs, they are right and this file is wrong.
 
 ## Current (29 Sep 2026)
 
-**0.5.14** is pushed: length limits (QC-033/034) for pl rows only (user), so turnover097 has no
+**0.5.15** is pushed: stringout picture in picture (cp top left, wit top right over each pl;
+PROGRESS). Before it, **0.5.14**: length limits (QC-033/034) for pl rows only (user), so turnover097 has no
 must-fix. Before it, **0.5.13**: OQ-77 (4) to (6) answered by the user (two digit year accepted with QC-081;
 QC-070 left alone; AMFs only in the folder pointed at), HDRI rows run no row rules, and
 `docs/QC_RULES_SUMMARY.csv` is committed and current. 0.5.12 (CI run 36527984818, green) fixed the
@@ -15,12 +16,12 @@ reference label on the Mac's ffmpeg 9. Turnover097's stringout (44.9 s, HD, `bt4
 `C:\Users\shann\Downloads\ProIngest-turnover097\`.
 
 **Next:** hand over 0.5.13's dmg when CI is green (`gh run download <run> -R shango/ProIngest -n
-ProIngest-macos-arm64 -D ~/Downloads/ProIngest-0.5.14`), then the Mac check in MAC_SESSION ("Colour
+ProIngest-macos-arm64 -D ~/Downloads/ProIngest-0.5.15`), then the Mac check in MAC_SESSION ("Colour
 from the AMF"). Still to raise: the handover folder was `collected files`, which matches no name
 pattern (QC-005), and `docs/COLOR_INPUTS_TURNOVER121.md` is untracked.
 **Ben exports no stringout** (user, 2026-09-29): the tool builds it; every doc now says so.
-**Asked, unanswered: stringout picture-in-picture** (pl inset top left, wit top right); see the
-PROGRESS 0.5.14 entry for the five questions' gist. Nothing built.
+**Stringout PiP built in 0.5.15**; the user is to look at `..._SO_v01_pip.mp4` in the turnover097 folder.
+The two HDRI events are black in the stringout: worth raising.
 
 ## In progress: colour from AMF + CLF (user, 2026-09-28) - pick up here
 

@@ -4,6 +4,7 @@ the delivered HD references, the ungraded source or black where there is none.""
 from __future__ import annotations
 
 import copy
+import subprocess
 from dataclasses import replace
 from pathlib import Path
 
@@ -182,3 +183,72 @@ class TestFfmpeg:
         command = ffmpeg.concat_command(tmp_path / "list.txt", tmp_path / "out.part", "01:00:00:00")
         assert command[command.index("-c") + 1] == "copy"
         assert command[command.index("-timecode") + 1] == "01:00:00:00"
+
+
+class TestInsets:
+    """A plate carries its shot's cp top left and wit top right (user, 2026-09-29)."""
+
+    @staticmethod
+    def as_kind(batch: Batch, index: int, shot: str, kind: str) -> None:
+        batch.rows[index].identity = naming.ShotIdentity(shot, kind, "01")
+
+    def test_a_plate_carries_its_shots_cp_top_left(self, batch: Batch) -> None:
+        self.as_kind(batch, 1, "MELT0001", "cp")
+        plate, clean = planned(batch).segments
+        assert plate.insets == (
+            ffmpeg.Inset(clean.path, 0, FRAMES, 0, 0, stringout.INSET_SIZE),  # type: ignore[arg-type]
+        )
+        assert clean.insets == (), "only a plate carries insets"
+
+    def test_a_wit_goes_top_right(self, batch: Batch) -> None:
+        self.as_kind(batch, 1, "MELT0001", "wit")
+        (inset,) = planned(batch).segments[0].insets
+        assert (inset.x, inset.y) == (1440, 0)
+
+    def test_another_shots_cp_is_not_inset(self, batch: Batch) -> None:
+        self.as_kind(batch, 1, "MELT0009", "cp")
+        assert planned(batch).segments[0].insets == ()
+
+    def test_a_cp_with_no_delivered_reference_is_no_inset(self, batch: Batch) -> None:
+        self.as_kind(batch, 1, "MELT0001", "cp")
+        batch.rows[1].skipped = True
+        assert planned(batch).segments[0].insets == ()
+
+    def test_an_inset_never_outruns_the_plate(self) -> None:
+        clip = stringout.Segment(kind="reference", length=300, path=Path("/r.mp4"), start=4)
+        inset = stringout._inset(clip, 120, (0, 0))
+        assert inset is not None and (inset.start, inset.length) == (4, 120)
+
+    def test_an_inset_is_drawn_and_then_gone(self, tmp_path: Path) -> None:
+        """Rendered: red in the top left for the inset's frames, then the plate again."""
+
+        def clip(path: Path, colour: str, count: int) -> Path:
+            source = f"color=c={colour}:s=192x108:r=24"
+            subprocess.run(
+                ["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", source, "-frames:v", str(count),
+                 "-pix_fmt", "yuv420p", str(path)],
+                check=True,
+            )  # fmt: skip
+            return path
+
+        plate, red = clip(tmp_path / "plate.mp4", "black", 12), clip(tmp_path / "red.mp4", "red", 10)
+        out = tmp_path / "out.mp4"
+        inset = ffmpeg.Inset(red, 2, 5, 0, 0, (48, 28))
+        command = ffmpeg.encode_command(
+            str(plate), out, 0, 11, is_sequence=False, rate="24/1",
+            color_space="bt709", color_range="tv", insets=[inset], silence=True,
+        )  # fmt: skip
+        assert ffmpeg.run(command).returncode == 0
+        decoded = subprocess.run(
+            ["ffmpeg", "-v", "error", "-i", str(out), "-f", "rawvideo", "-pix_fmt", "rgb24", "-"],
+            capture_output=True, check=True,
+        ).stdout  # fmt: skip
+        frames = [decoded[i : i + 192 * 108 * 3] for i in range(0, len(decoded), 192 * 108 * 3)]
+        assert len(frames) == 12
+
+        def red_at(frame: bytes, x: int, y: int) -> bool:
+            r, g, b = frame[(y * 192 + x) * 3 : (y * 192 + x) * 3 + 3]
+            return r > 150 and g < 80 and b < 80
+
+        assert [red_at(frame, 20, 12) for frame in frames] == [True] * 5 + [False] * 7
+        assert not any(red_at(frame, 100, 60) for frame in frames), "only inside the inset"
