@@ -1,8 +1,44 @@
-# Handoff, 28 September 2026
+# Handoff, 29 September 2026
 
 **This is a short pointer, not the record.** `PROGRESS.md` section 1 holds the record: one entry
 per change, newest first, each saying what was built and how it was verified. If this file
 disagrees with `PROGRESS.md` or the docs, they are right and this file is wrong.
+
+## PAUSED HERE (29 Sep 2026) - pick up exactly this
+
+**State:** 0.5.12 is committed and pushed: the reference label is now set on the frames too
+(`ffmpeg.reference_label`, a `setparams` step), because 0.5.11's Mac CI (run 36526442199) showed
+the bundled ffmpeg 9.0.1 writes no `color_transfer` from `-color_trc` alone. PROGRESS has the
+entry. Suite 1787, ruff, format and mypy clean here.
+
+**Next steps, in order:**
+1. Watch 0.5.12's CI (`gh run list -R shango/ProIngest --branch qc/source-fidelity`). **The Mac job
+   is the real test**: if ffmpeg 9 still writes no transfer, look at `-bsf:v h264_metadata` or the
+   mp4 `colr` atom (`-movflags +write_colr`) next. Don't guess; read the CI output.
+2. When green, hand over `gh run download <run> -R shango/ProIngest -n ProIngest-macos-arm64 -D
+   ~/Downloads/ProIngest-0.5.12` (memory: release-handoff).
+3. Things to raise with the user, below (step 5).
+4. **DONE at pause: the re-run finished (30/30, stringout 44.9 s, labelled `bt470m`, frames
+   checked: graded, burn-ins right) and is in `C:\Users\shann\Downloads\ProIngest-turnover097\`
+   (run log CSV, stringout, QC log, tracker). Only re-run if the user asks.** Background:
+   **Turnover097 result for the user** (they asked: the log dump with every QC message, then
+   the stringout if QC lets it run). A headless re-run was going in the background at pause
+   time: scratchpad `t097/step2_run.py` (Accept As Is ticked, 4 workers; the scan is
+   `t097/step1_scan.py`; both run with `uv run python <script> <scratch>/t097 [workers]`, and
+   step2 needs its `if __name__ == "__main__"` guard, already there). The scratchpad does not
+   survive the session, so **re-run both** if it is gone: the scripts are short, and what they do
+   is in this entry and in PROGRESS. The earlier run of the same code: **30 of 30 jobs done**;
+   stringout `TEST/_reports/turnover097_09_28_2026_danielluckett_SO_v01.mp4`, 44.9 s, HD h264;
+   QC log and tracker written. Deliver to `C:\Users\shann\Downloads\`: the run log CSV
+   (`ProIngest-logs-turnover097-run.csv`) and the stringout mp4, then look at a few stringout
+   frames before calling it good. **Say plainly** that QC refuses the run on its own (2 must-fix:
+   QC-033 C4261 70 frames, QC-034 C4271 353 frames) and it rendered only with Accept As Is ticked;
+   and that `collected files` needed number, date and shooter typed in (QC-005: the folder name
+   has a two digit year, OQ-77).
+5. Things to raise with the user (not yet raised): the two digit year folder name (OQ-77 (4));
+   QC-070 does not watch AMFs (OQ-77 (5)); AMFs are read only from the folder pointed at
+   (OQ-77 (6)); HDRI rows still show QC-026/QC-032 errors (skipped, non-blocking), which is
+   noise worth asking about; `docs/QC_RULES_SUMMARY.csv` (untracked) still lists QC-020 as must-fix.
 
 ## In progress: colour from AMF + CLF (user, 2026-09-28) - pick up here
 

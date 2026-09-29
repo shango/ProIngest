@@ -419,12 +419,13 @@ class TestEncodeCommand:
             lut=Path("/tmp/lut/MELT0001_ref_HD_v01.cube"),
         )
         filters = command[command.index("-vf") + 1].split(",")
-        assert filters[-5:] == [
+        assert filters[-6:] == [
             "scale=1920:1080:flags=lanczos:in_color_matrix=bt709:in_range=limited",
             "format=gbrpf32le",
             "lut3d=/tmp/lut/MELT0001_ref_HD_v01.cube:interp=tetrahedral",
             "scale=out_color_matrix=bt709:out_range=limited",
             "format=yuv420p",
+            "setparams=color_primaries=bt709:color_trc=iec61966-2-1:colorspace=bt709:range=tv",
         ]
 
     def test_the_lut_is_applied_tetrahedrally(self) -> None:
@@ -444,7 +445,8 @@ class TestEncodeCommand:
         )
         assert command[command.index("-vf") + 1] == (
             "scale=in_color_matrix=bt709:in_range=limited,format=gbrpf32le,"
-            "scale=out_color_matrix=bt709:out_range=limited,format=yuv420p"
+            "scale=out_color_matrix=bt709:out_range=limited,format=yuv420p,"
+            "setparams=color_primaries=bt709:color_trc=iec61966-2-1:colorspace=bt709:range=tv"
         )
 
     def test_a_canvas_letterboxes_after_the_conversion(self) -> None:
@@ -460,7 +462,8 @@ class TestEncodeCommand:
             canvas=(3840, 2160),
         )
         assert command[command.index("-vf") + 1].endswith(
-            "format=yuv420p,pad=3840:2160:trunc((ow-iw)/4)*2:trunc((oh-ih)/4)*2:black"
+            "format=yuv420p,setparams=color_primaries=bt709:color_trc=iec61966-2-1:colorspace=bt709:range=tv,"
+            "pad=3840:2160:trunc((ow-iw)/4)*2:trunc((oh-ih)/4)*2:black"
         )
 
     def test_a_pure_red_reference_measures_bt709(self, tmp_path: Path) -> None:

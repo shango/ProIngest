@@ -8,7 +8,7 @@ commit.
 
 ## 1. Resume here
 
-**State at 2026-09-28, version 0.5.11, on branch `qc/source-fidelity`, PR #17** (`HANDOFF.md` is
+**State at 2026-09-29, version 0.5.12, on branch `qc/source-fidelity`, PR #17** (`HANDOFF.md` is
 the short version) (0.5.4 is on `main`, PR
 #16 merged as `262817e`, dmg in CI run 35944322464). The 2026-09-23 review is built (chunks A
 to H of `docs/REVIEW_2026-09-23.md`), and so are the fixes that a second official turnover,
@@ -17,6 +17,18 @@ renders; Turnover121, every clip 8 bit 4:2:0, runs again with a QC-020 warning o
 since 2026-09-28 (user). What is left is the Mac: `docs/MAC_SESSION.md`, from "The 0.5.0 build, in
 order" down, and Ben's 4.886 slope. Entries are newest first; anything older than 2026-09-22
 describes the tool before the review and is history.
+
+**2026-09-29, the label is set on the frames too, 0.5.12.** 0.5.11's CI failed on macOS (run
+36526442199): the bundled ffmpeg 9.0.1 wrote **no `color_transfer`** on a reference labelled only by
+the `-color_trc` option (`KeyError` in the rendered-file probe); Linux ffmpeg 6.1 labels it. So on
+the Mac every reference was probably unlabelled, sRGB included; no earlier test probed a written
+file there. Fix: `ffmpeg.reference_label(display)`, a `setparams=color_primaries=bt709:color_trc=
+...:colorspace=bt709:range=tv` step after `format=yuv420p` in `encode_command` and `black_command`
+(the stringout), with the option tags kept. `REFERENCE_TRANSFERS` now holds two names per display,
+because `-color_trc` takes `gamma22` and refuses `bt470m` while `setparams` takes `bt470m` and
+refuses `gamma22` (ffmpeg 6.1). **Verified here**: the rendered-file test, parametrised over Gamma
+2.2 (`bt470m`) and sRGB (`iec61966-2-1`), probes transfer, primaries and matrix; the three chain
+pin tests updated; suite (1787), ruff, format, mypy. **The Mac CI job is the real test** of ffmpeg 9.
 
 **2026-09-28, a reference is labelled for the AMF's display, 0.5.11.** Found running turnover097:
 the references were rendered for the AMF's Gamma 2.2 Rec.709 but still labelled sRGB

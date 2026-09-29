@@ -581,10 +581,10 @@ def pad_filter(canvas: tuple[int, int]) -> str:
 
 DEFAULT_DISPLAY = "sRGB - Display"
 
-REFERENCE_TRANSFERS: dict[str, str] = {
-    "sRGB - Display": "iec61966-2-1",
-    "Gamma 2.2 Rec.709 - Display": "gamma22",
-    "Rec.1886 Rec.709 - Display": "bt709",
+REFERENCE_TRANSFERS: dict[str, tuple[str, str]] = {
+    "sRGB - Display": ("iec61966-2-1", "iec61966-2-1"),
+    "Gamma 2.2 Rec.709 - Display": ("gamma22", "bt470m"),
+    "Rec.1886 Rec.709 - Display": ("bt709", "bt709"),
 }
 """The transfer a reference is labelled with, by the display its pixels were rendered for.
 
@@ -592,8 +592,22 @@ Since 2026-09-28 the display comes from the clip's AMF, so the label has to foll
 gamma 2.2 encode labelled sRGB is played back through the wrong curve by any player that
 reads the tag. Only the three Rec.709 primaries displays of the pinned config are here,
 because a reference is an 8 bit Rec.709 mp4; a display that is not (P3, HDR) is QC-079 at
-scan. `gamma22` is written as `bt470m`, the standard's code for a 2.2 curve.
+scan. Each is two names for one curve, because the two places it is set spell it
+differently: the `-color_trc` option takes `gamma22` and refuses `bt470m`, and `setparams`
+takes `bt470m` (the standard's code for a 2.2 curve) and refuses `gamma22` (ffmpeg 6.1).
 """
+
+
+def reference_label(display: str = DEFAULT_DISPLAY) -> str:
+    """The same label as a filter, set on every frame as the chain's last step.
+
+    **Both, because ffmpeg versions disagree about which wins.** 6.1 labels the stream from
+    the `-color_trc` option; the bundled 9.0.1 takes the frames' own properties, which the
+    conversion to 4:2:0 leaves unset, and wrote no transfer at all (CI, 2026-09-28).
+    """
+    reference_tags(display)  # the same refusal for a display with no label
+    transfer = REFERENCE_TRANSFERS[display][1]
+    return f"setparams=color_primaries=bt709:color_trc={transfer}:colorspace=bt709:range=tv"
 
 
 def reference_tags(display: str = DEFAULT_DISPLAY) -> list[str]:
@@ -601,7 +615,7 @@ def reference_tags(display: str = DEFAULT_DISPLAY) -> list[str]:
     transfer = REFERENCE_TRANSFERS.get(display)
     if transfer is None:
         raise FFmpegError(f"a reference cannot be labelled for {display!r}")
-    return ["-color_primaries", "bt709", "-colorspace", "bt709", "-color_trc", transfer]
+    return ["-color_primaries", "bt709", "-colorspace", "bt709", "-color_trc", transfer[0]]
 
 
 LUT_PIXEL_FORMAT = "gbrpf32le"
@@ -745,7 +759,7 @@ def encode_command(
     filters.append(to_rgb(target_size, color_space, color_range, LUT_PIXEL_FORMAT))
     if lut is not None:
         filters.append(lut_filter(lut))
-    filters.append(REFERENCE_TO_YUV)
+    filters += [REFERENCE_TO_YUV, reference_label(display)]
     if canvas is not None:
         filters.append(pad_filter(canvas))
     filters.extend(overlay)
@@ -833,7 +847,7 @@ def black_command(
     segments either side of it: a gap in the EDL, or an event nothing is known about."""
     tool = ffmpeg or resolve_tool("ffmpeg")
     picture = f"color=c=black:s={size[0]}x{size[1]}:r={rate}"
-    filters = [REFERENCE_TO_YUV, *overlay]
+    filters = [REFERENCE_TO_YUV, reference_label(display), *overlay]
     return [
         str(tool), "-hide_banner", "-loglevel", "error", "-nostdin", "-y",
         "-f", "lavfi", "-i", picture, "-f", "lavfi", "-i", SILENCE,

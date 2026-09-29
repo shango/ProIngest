@@ -605,13 +605,25 @@ class TestReferenceMp4:
         assert video_stream(job.destination)["codec_name"] == "h264"
         assert deliverable.status == "done"
 
-    def test_a_gamma_2_2_reference_is_labelled_gamma_2_2(self, tmp_path: Path) -> None:
-        """Turnover097's AMFs name Gamma 2.2 Rec.709; the file says so (bt470m is 2.2)."""
+    @pytest.mark.parametrize(
+        ("display", "transfer"),
+        [("Gamma 2.2 Rec.709 - Display", "bt470m"), ("sRGB - Display", "iec61966-2-1")],
+    )
+    def test_the_written_file_is_labelled_for_its_display(
+        self, tmp_path: Path, display: str, transfer: str
+    ) -> None:
+        """The file, not the command: ffmpeg 9 ignored `-color_trc` on its own (CI, 2026-09-28).
+        Turnover097's AMFs name Gamma 2.2 Rec.709, which the standard codes as bt470m."""
         source = fixtures.make_mov(tmp_path / "src" / "plate.mov", count=4)
         job = ref_job(tmp_path, source, 0, 3)
-        shown = replace(job.shot_color, display="Gamma 2.2 Rec.709 - Display")
+        shown = replace(job.shot_color, display=display)
         render.render_job(replace(job, shot_color=shown))
-        assert video_stream(job.destination)["color_transfer"] == "bt470m"
+        stream = video_stream(job.destination)
+        assert (stream.get("color_transfer"), stream.get("color_primaries"), stream.get("color_space")) == (
+            transfer,
+            "bt709",
+            "bt709",
+        )
 
     def test_a_24000_1001_file_is_delivered_at_24_frame_for_frame(self, tmp_path: Path) -> None:
         """Every real file states 24000/1001 (user, 2026-09-23). QC-113 refused all four

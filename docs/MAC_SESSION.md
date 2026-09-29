@@ -378,7 +378,7 @@ Treat it as a working session with the editor rather than a delivery.
   (an ffmpeg command line whole in one cell), the ABOUT rows name 0.5.4 and the bundled ffmpeg, and
   the records reach back to the oldest dated file in `~/Library/Logs/ProIngest`. The File menu item
   does the same with no batch open.
-- [ ] **Colour from the AMF (2026-09-28, 0.5.11).** Scan turnover097's `collected files`: every
+- [ ] **Colour from the AMF (2026-09-28, 0.5.12).** Scan turnover097's `collected files`: every
   C42xx row's metadata pane Colour section names S-Log3 S-Gamut3.Cine, its AMF and its CLF nodes, C4271
   shows QC-009 as info, the two HDRIs are skipped with QC-080, and only C4261 (QC-033) and C4271
   (QC-034) block. Tick Accept As Is and Run: open a delivered EXR in Nuke and check the header's
