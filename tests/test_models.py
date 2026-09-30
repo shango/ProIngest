@@ -12,12 +12,13 @@ from pathlib import Path
 import pytest
 
 from proingest.core.models import (
-    CDL,
     SCHEMA_VERSION,
     AudioInfo,
     Batch,
     Deliverable,
     FrameRate,
+    Grade,
+    GradeLook,
     InOut,
     MediaInfo,
     QCResult,
@@ -184,6 +185,16 @@ class TestShotRow:
         assert not make_row().was_edited
         assert make_row(current=InOut(1001, 1300)).was_edited
 
+    def test_the_scene_round_trips(self) -> None:
+        assert ShotRow.from_dict(make_row(scene="Laser").to_dict()).scene == "Laser"
+
+    def test_the_delivered_range_round_trips_and_an_old_batch_has_none(self) -> None:
+        row = make_row(delivered_range=InOut(1001, 1240))
+        assert ShotRow.from_dict(row.to_dict()).delivered_range == InOut(1001, 1240)
+        older = row.to_dict()
+        del older["delivered_range"]
+        assert ShotRow.from_dict(older).delivered_range is None
+
     def test_was_edited_is_false_without_a_snapshot(self) -> None:
         assert not make_row(snapshot=None).was_edited
 
@@ -229,13 +240,16 @@ class TestShotRow:
         """A batch reopened after the package is archived renders the same grade."""
         row = make_row(
             approved=InOut(1008, 1223),
-            cdl=CDL(
-                slope=(1.02, 0.99, 1.01),
-                offset=(0.001, -0.002, 0.0),
-                power=(0.98, 1.0, 1.02),
-                saturation=1.05,
-                sop_text="(1.02 0.99 1.01)(0.001 -0.002 0.0)(0.98 1.0 1.02)",
-                sat_text="1.05",
+            grade=Grade(
+                amf=Path("/t/Tool_Test2_turnover097_DailiesRequest_C4261_1_2026-09-28_180306Z.amf"),
+                input_transform="urn:ampas:aces:transformId:v2.0:CSC.Sony.SLog3_SGamut3Cine_to_ACES.a2.v1",
+                looks=(
+                    GradeLook("look", "ACES 1.3 Reference Gamut Compression"),
+                    GradeLook("clf", "/t/C4261_1_ClipGraph_CorrectorNode_1.clf"),
+                ),
+                display="Gamma 2.2 Rec.709 - Display",
+                view="ACES 2.0 - SDR 100 nits (Rec.709)",
+                preset="Dailies Request",
             ),
         )
         assert ShotRow.from_dict(row.to_dict()) == row
@@ -244,10 +258,16 @@ class TestShotRow:
         """Additive, so the schema version does not move (M5.7.1)."""
         data = make_row().to_dict()
         del data["approved"]
-        del data["cdl"]
+        del data["grade"]
         read = ShotRow.from_dict(data)
         assert read.approved is None
-        assert read.cdl is None
+        assert read.grade is None
+
+    def test_a_row_saved_with_a_cdl_reads_back_with_no_grade(self) -> None:
+        """Before 2026-09-28 the grade was a CDL; it is not read, the AMF replaces it."""
+        data = make_row().to_dict()
+        data["cdl"] = {"slope": [1, 1, 1]}
+        assert ShotRow.from_dict(data).grade is None
 
     def test_round_trip_of_an_unparsed_row(self) -> None:
         """A QC-010 row still appears so the editor can fix the name in place."""
@@ -265,8 +285,17 @@ class TestTurnover:
             color_session_edl=Path("/session/MELT_FINAL.edl"),
             number=1,
             shooter="Daniel Luckett",
+            stringout=Deliverable(
+                kind="stringout", name="so.mp4", path=Path("/d/so.mp4"), version=1, status="done"
+            ),
+            qc_bypassed=True,
         )
         assert Turnover.from_dict(turnover.to_dict()) == turnover
+
+    def test_a_turnover_saved_before_the_bypass_is_not_bypassed(self) -> None:
+        data = Turnover("t1", Path("/t")).to_dict()
+        del data["qc_bypassed"]
+        assert Turnover.from_dict(data).qc_bypassed is False
 
     def test_a_turnover_saved_before_the_session_existed_has_ingested_nothing(self) -> None:
         """Additive, so the schema version does not move (M5.7.1)."""

@@ -64,7 +64,10 @@ class AutoSaver(QObject):
         replaced, or closing one batch to open another loses the last edit made to it.
         """
         if not self.flush():
-            log.warning("edits to the previous batch were not written and are discarded")
+            reason = (
+                "it was never saved to a file" if self._path is None else f"{self._path} could not be written"
+            )
+            log.warning("edits to the previous batch were not written and are discarded: %s", reason)
         self._batch = batch
         self._path = path
         self._pending = False

@@ -75,10 +75,8 @@ class TestTheForm:
     def test_the_pinned_colour_values_are_read_rather_than_copied(self) -> None:
         values = settings_form.readonly_values()
         assert values["readonly.config"] == color.BUILTIN_CONFIG
-        assert values["readonly.working_space"] == color.WORKING_SPACE == "ACEScct"
-        assert color.VIEW in values["readonly.output_transform"]
-        for written, space in color.INPUT_TRANSFORMS.items():
-            assert f"{written} = {space}" in values["readonly.input_transforms"]
+        assert color.ACES in values["readonly.colour_source"] and "AMF" in values["readonly.colour_source"]
+        assert "AMF" in values["readonly.output_transform"]
 
     def test_values_round_trip_through_the_form(self) -> None:
         app = AppSettings(workers=7, show_pattern="ABC", path_map={"G:/": "/Volumes/g"})

@@ -7,6 +7,7 @@ the kind, resolution and version the planner intended.
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -15,6 +16,8 @@ from proingest.core import clf, naming, planner
 from proingest.core.models import (
     Batch,
     FrameRate,
+    Grade,
+    GradeLook,
     InOut,
     MediaInfo,
     QCResult,
@@ -24,6 +27,12 @@ from proingest.core.models import (
 from tests.fixtures.names import identity_of
 
 ROOT = Path("/delivery")
+GRADE = Grade(
+    amf=Path("/turnover/MELT0001_pl01.amf"),
+    looks=(GradeLook("look", "ACES 1.3 Reference Gamut Compression"),),
+    display="Gamma 2.2 Rec.709 - Display",
+    view="ACES 2.0 - SDR 100 nits (Rec.709)",
+)
 SHOT_DIR = ROOT / "MELT" / "MELT0001"
 RATE = FrameRate(24)
 
@@ -298,6 +307,43 @@ class TestShotCodeCorrection:
         assert planner.plan_row(row(shot_code_override="melt1"), ROOT, 1).jobs == []
 
 
+class TestAcceptAsIs:
+    """A turnover accepted as it is renders past the errors that give a correct file only."""
+
+    def batch(
+        self, *rows: ShotRow, bypassed: bool = True, turnover_qc: list[QCResult] | None = None
+    ) -> Batch:
+        turnover = Turnover("t1", Path("/turnover"), qc_bypassed=bypassed, qc=turnover_qc or [])
+        return Batch(turnovers=[turnover], rows=list(rows))
+
+    def test_a_row_too_short_renders_when_its_turnover_is_bypassed(self, tmp_path: Path) -> None:
+        short = row(qc=[QCResult("QC-033", "error", "row", "too short")])
+        assert planner.plan_batch(self.batch(short), tmp_path)
+        assert not planner.plan_batch(self.batch(short, bypassed=False), tmp_path)
+
+    @pytest.mark.parametrize("rule_id", ["QC-011", "QC-026", "QC-046", "QC-066", "QC-999"])
+    def test_an_error_that_would_write_a_wrong_file_still_holds_the_row(
+        self, rule_id: str, tmp_path: Path
+    ) -> None:
+        """QC-999 stands for a rule nobody has traced: an allowlist holds it back."""
+        wrong = row(qc=[QCResult(rule_id, "error", "row", "wrong")])
+        assert planner.plan_batch(self.batch(wrong), tmp_path) == []
+
+    def test_one_held_error_holds_the_row_even_beside_a_waived_one(self, tmp_path: Path) -> None:
+        both = row(qc=[QCResult("QC-033", "error", "row", "short"), QCResult("QC-027", "error", "row", "df")])
+        assert planner.plan_batch(self.batch(both), tmp_path) == []
+
+    def test_a_missing_turnover_folder_holds_every_row(self, tmp_path: Path) -> None:
+        moved = [QCResult("QC-069", "error", "turnover", "the folder is gone")]
+        assert planner.plan_batch(self.batch(row(), turnover_qc=moved), tmp_path) == []
+
+    def test_no_amf_anywhere_is_not_waived(self, tmp_path: Path) -> None:
+        """QC-008 left the list on 2026-09-28: no AMF means no input transform at all."""
+        assert "QC-008" not in planner.QC_BYPASSABLE and "QC-009" not in planner.QC_BYPASSABLE
+        missing = [QCResult("QC-008", "error", "turnover", "no AMF")]
+        assert planner.plan_batch(self.batch(row(), turnover_qc=missing), tmp_path) == []
+
+
 class TestRowsThatOweNothing:
     def test_a_skipped_row(self) -> None:
         assert planner.plan_row(row(skipped=True), ROOT, 1).jobs == []
@@ -388,34 +434,20 @@ class TestShotColourOnJobs:
     """
 
     def ingest(self, batch: Batch, tmp_path: Path) -> None:
-        """Put each row's event's CDL on it, which is what the scan does (`scan._conform`)."""
+        """Put a grade on each row, which is what the scan does from its AMF (`scan._Grades`)."""
         batch.turnovers.append(Turnover(turnover_id="turnover001", folder=tmp_path))
-        session = self.session(tmp_path)
         for row_ in batch.rows:
-            event = session.event_for(row_)
-            if event is not None:
-                row_.cdl = event.cdl
+            row_.grade = GRADE
 
-    def session(self, tmp_path: Path) -> clf.ColorSession:
-        edl = tmp_path / "MELT_FINAL.edl"
-        edl.write_text(
-            "TITLE: MELT_FINAL\nFCM: NON-DROP FRAME\n\n"
-            "001  MELT0001 V     C        01:00:00:00 01:00:10:00 01:00:00:00 01:00:10:00\n"
-            "* FROM CLIP NAME: MELT0001_pl01.mov\n"
-            "*ASC_SOP (1.020000 0.990000 1.010000)"
-            "(0.001000 -0.002000 0.000000)(0.980000 1.000000 1.020000)\n"
-            "*ASC_SAT 1.050000\n"
-        )
-        return clf.load_session(edl, RATE)
-
-    def test_a_picture_job_carries_the_session_s_cdl(self, tmp_path: Path) -> None:
+    def test_a_picture_job_carries_the_amf_s_looks_and_display(self, tmp_path: Path) -> None:
         batch = Batch(name="b", rows=[row()], delivery_root=ROOT)
         self.ingest(batch, tmp_path)
         jobs = planner.plan_batch(batch)
         picture = [job for job in jobs if job.kind in ("raw_dir", "ref_mp4")]
         assert picture
         for job in picture:
-            assert job.shot_color.cdl is not None
+            assert job.shot_color.looks == GRADE.looks
+            assert (job.shot_color.display, job.shot_color.view) == (GRADE.display, GRADE.view)
 
     def test_an_aux_still_is_never_given_the_shot_s_grade(self, tmp_path: Path) -> None:
         """It still gets the input transform, so it lands in ACEScg like every EXR."""
@@ -424,11 +456,11 @@ class TestShotColourOnJobs:
         self.ingest(batch, tmp_path)
         jobs = planner.plan_batch(batch)
         still = next(job for job in jobs if job.kind == "aux_still")
-        assert still.shot_color.cdl is None
+        assert still.shot_color.looks == ()
         assert still.shot_color.source_encoding == "ACEScc"
 
     def test_without_an_ingest_every_job_plans_ungraded(self) -> None:
-        """The same files in the same places; the CDL is the only difference."""
+        """The same files in the same places; the grade is the only difference."""
         batch = Batch(name="b", rows=[row()], delivery_root=ROOT)
         jobs = planner.plan_batch(batch)
         assert all(job.shot_color == clf.DEFAULT_SHOT_COLOR for job in jobs)
@@ -439,36 +471,45 @@ class TestShotColourOnJobs:
         jobs = planner.plan_batch(batch)
         assert {job.shot_color.source_encoding for job in jobs} == {"ACEScc"}
 
-    def test_what_the_shooter_wrote_reaches_the_job_as_a_colour_space(self) -> None:
-        """The table resolves it at plan time, so a worker is handed a space (M4.6.3)."""
-        batch = Batch(name="b", rows=[row(source_encoding="C-Log3")], delivery_root=ROOT)
+    def test_the_config_s_own_spelling_reaches_the_job(self) -> None:
+        """Resolved at plan time, so a worker is handed the canonical space."""
+        batch = Batch(name="b", rows=[row(source_encoding="acescc")], delivery_root=ROOT)
         jobs = planner.plan_batch(batch)
-        assert {job.shot_color.source_encoding for job in jobs} == {"CanonLog3 CinemaGamut D55"}
+        assert {job.shot_color.source_encoding for job in jobs} == {"ACEScc"}
 
     def test_a_name_that_does_not_resolve_leaves_the_job_naming_none(self) -> None:
-        """`S-Log3` is four colour spaces. QC-047 reports it; the chain carries nothing."""
+        """`S-Log3` is not a colour space. QC-047 reports it; the chain carries nothing."""
         batch = Batch(name="b", rows=[row(source_encoding="S-Log3")], delivery_root=ROOT)
         jobs = planner.plan_batch(batch)
         assert {job.shot_color.source_encoding for job in jobs} == {None}
 
     def test_where_the_name_came_from_reaches_every_job_too(self) -> None:
         """The resolved space loses the shooter's string, so the origin is what traces it."""
-        scanned = row(source_encoding="C-Log3", source_encoding_origin="container tag")
+        scanned = row(source_encoding="ACEScc", source_encoding_origin="AMF")
         batch = Batch(name="b", rows=[scanned], delivery_root=ROOT)
         jobs = planner.plan_batch(batch)
-        assert {job.shot_color.source_encoding_origin for job in jobs} == {"container tag"}
+        assert {job.shot_color.source_encoding_origin for job in jobs} == {"AMF"}
 
     def test_an_aux_still_carries_the_origin_as_well_as_the_encoding(self) -> None:
         """Its chain is the one the encoding is applied on, so its header states both."""
         aux = row(
             "MELT0001_pl01_colorChart_01",
             source_encoding="ACEScc",
-            source_encoding_origin="clip metadata",
+            source_encoding_origin="AMF",
         )
         batch = Batch(name="b", rows=[aux], delivery_root=ROOT)
         jobs = planner.plan_batch(batch)
         still = next(job for job in jobs if job.kind == "aux_still")
-        assert still.shot_color.source_encoding_origin == "clip metadata"
+        assert still.shot_color.source_encoding_origin == "AMF"
+
+    def test_an_aux_still_is_decoded_with_its_own_matrix_and_range(self) -> None:
+        """A full range file read as limited stretches the chart, which still looks like one."""
+        aux = row("MELT0001_pl01_colorChart_01", source="/turnover/chart.mov")
+        assert aux.media is not None
+        aux.media = replace(aux.media, is_sequence=False, color_space="bt2020nc", color_range="pc")
+        batch = Batch(name="b", rows=[aux], delivery_root=ROOT)
+        still = next(job for job in planner.plan_batch(batch) if job.kind == "aux_still")
+        assert (still.source_color_space, still.source_color_range) == ("bt2020nc", "pc")
 
     def test_two_rows_may_name_two_different_encodings(self) -> None:
         """A turnover may mix encodings freely, so nothing batch wide can stand in."""
@@ -482,13 +523,13 @@ class TestShotColourOnJobs:
         assert by_shot == {"MELT0001": "ACEScc", "MELT0002": "S-Log3 S-Gamut3.Cine"}
 
     def test_a_row_that_plans_nothing_keeps_the_grade_it_was_ingested_with(self, tmp_path: Path) -> None:
-        """Planning does not own the CDL: a skipped row is not un-ingested."""
+        """Planning does not own the grade: a skipped row is not un-graded."""
         skipped = row(skipped=True)
         batch = Batch(name="b", rows=[skipped], delivery_root=ROOT)
         self.ingest(batch, tmp_path)
         planner.plan_batch(batch)
         assert skipped.deliverables == []
-        assert skipped.cdl is not None
+        assert skipped.grade is GRADE
 
 
 class TestTheShowPatternTravels:
@@ -539,21 +580,20 @@ class TestTheNextRun:
         assert [job.destination for job in jobs] == [first]
 
     def test_a_failed_row_waits_for_reset(self, tmp_path: Path) -> None:
-        """D11: the editor fixes the cause first; the next Run does not retry blindly."""
+        """D11: the editor fixes the cause and Re-scans first; the next Run does not retry blindly."""
         batch = self.planned(tmp_path)
         self.land(batch, "done", "failed", "done", "done")
         assert planner.plan_batch(batch, tmp_path) == []
         assert batch.rows[0].deliverables[1].status == "failed"
 
-    def test_reset_runs_what_failed_at_the_same_version(self, tmp_path: Path) -> None:
-        from proingest.core import qc
-
+    def test_a_failed_row_re_scanned_runs_whole_at_the_next_version(self, tmp_path: Path) -> None:
+        """User, 2026-09-25: Re-scan puts it back, and what landed at v01 makes this v02."""
         batch = self.planned(tmp_path)
         self.land(batch, "done", "failed", "done", "done")
-        assert qc.reset_row(batch.rows[0])
+        batch.rows[0].rerun = True
         jobs = planner.plan_batch(batch, tmp_path)
-        assert [job.destination for job in jobs] == [batch.rows[0].deliverables[1].path]
-        assert jobs[0].version == 1
+        assert len(jobs) == 4
+        assert {job.version for job in jobs} == {2}
 
     def test_re_run_writes_the_next_version_and_is_consumed(self, tmp_path: Path) -> None:
         batch = self.planned(tmp_path)
@@ -563,3 +603,4 @@ class TestTheNextRun:
         assert len(jobs) == 4
         assert {job.version for job in jobs} == {2}
         assert not batch.rows[0].rerun
+        assert batch.rows[0].delivered_range == batch.rows[0].current

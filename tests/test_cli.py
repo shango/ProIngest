@@ -259,7 +259,7 @@ class TestRunCommand:
 
 
 class TestTheGrade:
-    """The grade comes from the EDL in the turnover folder, read at scan (OQ-74)."""
+    """The grade comes from each event's AMF in the turnover folder, read at scan (2026-09-28)."""
 
     def test_the_grade_reaches_the_delivered_frames(self, tmp_path: Path) -> None:
         folder = tmp_path / FOLDER
@@ -273,7 +273,10 @@ class TestTheGrade:
         frame = next((delivery / "MELT" / "MELT0001" / "MELT0001_pl01_raw_4k_v01").iterdir())
         with OpenEXR.File(str(frame)) as handle:
             header = dict(handle.header())
-        assert header[exr.CDL_ATTRIBUTES[-1]] == exr.CDL_NOTE_APPLIED
+        assert header[exr.LOOKS_ATTRIBUTE] == (
+            "ACES 1.3 Reference Gamut Compression; MELT0001_pl01_0_ClipGraph_CorrectorNode_1.clf"
+        )
+        assert str(header[exr.AMF_ATTRIBUTE]).endswith(".amf")
         assert header[exr.COLORSPACE_ATTRIBUTE] == color.PLATE_SPACE
 
     def test_there_is_no_colour_session_flag_any_more(self) -> None:

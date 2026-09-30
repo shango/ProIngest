@@ -42,8 +42,9 @@ every must-fix - the red rows and headers - with where each one is. Correct them
 folder, press Scan, and Run again. A skipped shot's problems do not count, because a skipped shot
 delivers nothing.
 
-**Scan is how a correction arrives.** The cut and the grade are read at scan from the `.edl` in
-the turnover folder. When something is wrong - a revised EDL, a fixed CSV, a missing clip - drop
+**Scan is how a correction arrives.** The cut is read at scan from the `.edl` in the turnover
+folder, and the grade from each shot's `.amf` and its `.clf` files. When something is wrong - a
+revised EDL, a fixed CSV, a re-exported AMF or CLF, a missing clip - drop
 the corrected file into the folder and press Scan. Your trims, skips, notes and shot code
 corrections are kept, matched by File Name, and the turnover says so (QC-070) when its EDL or CSV
 changed. A trim you never made follows the new EDL.
@@ -51,6 +52,17 @@ changed. A trim you never made follows the new EDL.
 **Right-click a turnover's header** for the same thing on one turnover (**Re-scan**), or for
 **New Folder Location...** when the folder has moved. A batch reopened after its turnover moved
 says so on that header (QC-069) and will not run until you point it at the new folder.
+
+**Accept As Is (Ignore QC)**, on the same right-click menu, is a tick box for a turnover you have
+decided to deliver as it came. Its errors no longer stop Run, and the shots render as they are:
+a clip outside the length limits, or one that is not 4K. (A shot with no grade does not need
+it: that is only a note, QC-009.) The errors are still shown, the heading says
+QC-074, and the QC log and saved logs record that the turnover was accepted. A few errors still
+keep their shot back, because rendering past them would write a wrong file rather than an honest
+one: two shots with the same name, the wrong frame rate or drop-frame timecode, a clip that
+matches no EDL event or two, a retime, a clip with no AMF or a missing or changed CLF, a missing
+input colour space, or media the tool cannot find or read. The saved log names each of those as
+"not rendered". Untick it to put QC back in charge.
 
 **While a scan or a run is going the batch is locked.** Nothing in the list can be edited, and
 New, Open, Settings and the delivery root wait until it ends, because a change made under a run
@@ -160,8 +172,9 @@ media, Frame rate, Range, Colour, Audio, Turnover and QC - each collapsible and 
 - **Select several shots** and it shows what they agree on and marks the rest `mixed`. That is
   how one clip at the wrong resolution in a turnover of thirty is found without reading thirty
   rows.
-- Its **Colour** section is where you check what a shot is graded with: it names the source
-  encoding as the shooter typed it, where that name came from, and the CDL from the row's event.
+- Its **Colour** section names the shot's source encoding, as the colourist's AMF gave it, and
+  where that came from (`AMF`). The looks the shot is graded with are in its QC-048 line in the
+  Issues tab, and in the delivered EXR's header.
 
 ## The Issues tab
 
@@ -199,6 +212,11 @@ Time, level, shot and message, over a filter bar: a minimum level, a search box,
 - **Save Logs as CSV...**, at the right of the filter bar and in the File menu, writes every log
   the tool has kept to one CSV file. **When something goes wrong, this is the file to send**: it
   opens with the ProIngest version, the Mac and the ffmpeg build, and it works with no batch open.
+  It also holds every QC result the Issues dock shows, each at its own level (Error, Warning or
+  Info), with the rule ID, the turnover and the shot, and "blocks the run" on each one that stops
+  Run. They are written after each scan and run and again when you save the logs, so the file
+  always ends with what the Issues dock shows now. A line reading `-v error` or `-loglevel error`
+  is an ffmpeg command, not an error: that flag tells ffmpeg to print only its own errors.
 
 ## The Deliverables tab
 
@@ -257,7 +275,7 @@ button that opens with no batch loaded, because it is where a new batch's number
 |---|---|
 | General | how many shots render at once, and a media path rewrite for timelines exported on Windows |
 | Rules | every threshold the checks compare against: shortest and longest shot, expected handles, expected resolution, audio sync tolerance |
-| Colour | a read-only view of the ACES config, the output transform and the input transform table |
+| Colour | read only: the ACES config, and that the colour and the output transform both come from each clip's AMF |
 | Naming | the pattern every shot code is parsed with and every delivered name is built from |
 | Output | the reference mp4's quality and the EXR compression level |
 | Advanced | how much is logged, an ffmpeg to use instead of the bundled one, and where the log file is |
@@ -274,9 +292,10 @@ month therefore cannot silently re-judge a batch that shipped last week.
 **A value that will not parse changes nothing**, rather than being corrected to something
 plausible - the same rule as In and Out.
 
-There is **no colour mode and no source encoding setting**: each clip's own metadata names what
-it is encoded in. And there is nothing to choose for the grade either: the cut and the grade are
-the `.edl` in the turnover folder, read at every scan, and the batch records which file it read.
+There is **no colour mode and no source encoding setting**: each clip's AMF names what it is
+encoded in, what it was graded with and what its references are viewed on. And there is nothing
+to choose for the grade either: the cut is the `.edl` in the turnover folder and the grade is each
+clip's `.amf` and `.clf` files beside it, read at every scan.
 
 ## Every shortcut
 

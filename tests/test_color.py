@@ -4,8 +4,9 @@ COLOR_AND_FORMAT section 1. Every failure this guards against is a plausible loo
 wrong image rather than a crash, which is why the anchors here are real numbers and not
 just shapes: mid grey has to land on 0.18 and a highlight has to stay above 1.0.
 
-Since 2026-09-18 the grade is the CDL applied in ACEScct, so this module supplies the leg
-into ACEScct and the leg out of it, and the one leg chain is for a shot with no grade.
+Since 2026-09-28 the grade is the AMF's looks applied in ACES2065-1, so this module
+supplies the leg into ACES2065-1, each look, and the leg out to ACEScg, and the one leg
+chain is for a shot with no look.
 """
 
 from __future__ import annotations
@@ -17,7 +18,9 @@ import PyOpenColorIO as ocio
 import pytest
 
 from proingest.core import color, ffmpeg
-from proingest.core.models import CDL
+from tests.fixtures import color as color_fixtures
+
+DISPLAY, VIEW = color_fixtures.DISPLAY, color_fixtures.VIEW
 
 SOURCE = "ACEScct"
 """The encoding these tests read their pixels as.
@@ -40,9 +43,9 @@ class TestConfig:
     def test_the_pinned_config_loads(self) -> None:
         assert color.config().getName() == color.BUILTIN_CONFIG
 
-    def test_it_is_an_aces_1_3_config(self) -> None:
-        """The colour session is ACES 1.3 and the tool has to match it, not track latest."""
-        assert "aces-v1.3" in color.BUILTIN_CONFIG
+    def test_it_is_an_aces_2_0_config(self) -> None:
+        """The colour session is ACES 2.0 and the tool has to match it, not track latest."""
+        assert "aces-v2.0" in color.BUILTIN_CONFIG
 
     def test_it_is_cached(self) -> None:
         assert color.config() is color.config()
@@ -62,7 +65,7 @@ class TestConfig:
 
 
 class TestResolveEncoding:
-    """The input transform table (M4.6.3). A table, not a search: COLOR_AND_FORMAT section 1."""
+    """A name the AMF's input transform resolved to, checked against the pinned config."""
 
     def test_a_colour_space_the_config_knows_resolves_to_itself(self) -> None:
         assert color.resolve_encoding("S-Log3 S-Gamut3.Cine") == "S-Log3 S-Gamut3.Cine"
@@ -71,47 +74,9 @@ class TestResolveEncoding:
         """So two clips that named the same space the two ways record one provenance."""
         assert color.resolve_encoding("acescg") == color.PLATE_SPACE
 
-    @pytest.mark.parametrize(
-        ("written", "expected"),
-        [
-            ("C-Log3", "CanonLog3 CinemaGamut D55"),
-            ("BM Film", "BMDFilm WideGamut Gen5"),
-            ("DaVinci Wide Gamut", "DaVinci Intermediate WideGamut"),
-        ],
-    )
-    def test_the_names_the_shooters_were_given_resolve(self, written: str, expected: str) -> None:
-        """The three encodings named on 2026-09-12, as the shooters write them."""
-        assert color.resolve_encoding(written) == expected
-
-    def test_case_and_spacing_are_not_a_disagreement_about_the_camera(self) -> None:
-        assert color.resolve_encoding("  bm   FILM ") == "BMDFilm WideGamut Gen5"
-
-    def test_every_row_of_the_table_names_a_real_colour_space(self) -> None:
-        """A row added for a fourth camera fails here rather than inside a render."""
-        for name in color.INPUT_TRANSFORMS.values():
-            assert color.config().getColorSpace(name) is not None, name
-
-    def test_a_curve_without_a_gamut_is_refused_and_the_candidates_are_named(self) -> None:
-        """`S-Log3` is four colour spaces, and picking one is picking a gamut."""
-        with pytest.raises(color.ColorError) as raised:
-            color.resolve_encoding("S-Log3")
-        message = str(raised.value)
-        assert "4 colour spaces" in message
-        assert "S-Log3 S-Gamut3.Cine" in message
-        assert "S-Log3 Venice S-Gamut3" in message
-
-    def test_a_name_inside_exactly_one_colour_space_still_does_not_resolve(self) -> None:
-        """No prefix matching: the nearest miss is what converts a chart plausibly wrong."""
+    def test_a_curve_without_a_gamut_is_not_a_colour_space(self) -> None:
         with pytest.raises(color.ColorError, match="not a colour space"):
-            color.resolve_encoding("CanonLog3")
-
-    def test_an_unrecognised_camera_is_refused_rather_than_approximated(self) -> None:
-        with pytest.raises(color.ColorError, match="input transform table"):
-            color.resolve_encoding("Arri LogC9")
-
-    def test_a_clip_that_wrote_nothing_but_spaces_names_nothing(self) -> None:
-        with pytest.raises(color.ColorError, match="names no source encoding"):
-            color.resolve_encoding("   ")
+            color.resolve_encoding("S-Log3")
 
 
 class TestInputTransform:
@@ -160,87 +125,51 @@ class TestInputTransform:
             color.input_transform("Arri LogC9")
 
 
-class TestWorkingSpace:
-    """The two legs around the grade, and the CDL between them (OQ-46, decided 2026-09-18)."""
+class TestTheLegsAroundTheLooks:
+    """Into ACES2065-1, each look there, and out to ACEScg (user, 2026-09-28)."""
 
-    def test_the_working_space_is_acescct(self) -> None:
-        """The standard the colourist's session is set to. A different value here replays
-        the grade in the wrong space and nothing errors."""
-        assert color.WORKING_SPACE == "ACEScct"
-        assert color.config().getColorSpace(color.WORKING_SPACE) is not None
-
-    def test_the_leg_in_ends_at_the_working_space(self) -> None:
-        transform = color.to_working("S-Log3 S-Gamut3.Cine")
-        assert transform.getSrc() == "S-Log3 S-Gamut3.Cine"
-        assert transform.getDst() == color.WORKING_SPACE
-
-    def test_the_leg_out_starts_there_and_ends_at_the_plate_space(self) -> None:
-        transform = color.from_working()
-        assert transform.getSrc() == color.WORKING_SPACE
-        assert transform.getDst() == color.PLATE_SPACE
+    def test_the_leg_in_ends_at_aces2065_1(self) -> None:
+        transform = color.to_aces("S-Log3 S-Gamut3.Cine")
+        assert (transform.getSrc(), transform.getDst()) == ("S-Log3 S-Gamut3.Cine", color.ACES)
 
     def test_the_two_legs_together_are_the_input_transform(self) -> None:
-        """Mid grey from a camera log lands on 0.18 either way; the grade sits between."""
-        pixels = grey_frame(420 / 1023)
-        color.apply(pixels, color.processor(color.to_working("S-Log3 S-Gamut3.Cine"), color.from_working()))
-        assert pixels[0, 0] == pytest.approx([0.18, 0.18, 0.18], abs=1e-3)
+        pixels = grey_frame(ACESCCT_MID_GREY)
+        color.apply(pixels, color.processor(color.to_aces(SOURCE), color.to_plate()))
+        assert pixels[0, 0, 1] == pytest.approx(0.18, abs=1e-3)
 
     def test_the_leg_in_refuses_an_unknown_encoding_by_name(self) -> None:
         with pytest.raises(color.ColorError, match="Arri LogC9"):
-            color.to_working("Arri LogC9")
+            color.to_aces("Arri LogC9")
 
-    def test_the_cdl_carries_the_numbers_off_the_edl(self) -> None:
-        cdl = CDL(
-            slope=(1.02, 0.99, 1.01),
-            offset=(0.001, -0.002, 0.0),
-            power=(0.98, 1.0, 1.02),
-            saturation=1.05,
-            sop_text="",
-            sat_text="",
-        )
-        transform = color.cdl_transform(cdl)
-        assert transform.getSlope() == pytest.approx([1.02, 0.99, 1.01])
-        assert transform.getOffset() == pytest.approx([0.001, -0.002, 0.0])
-        assert transform.getPower() == pytest.approx([0.98, 1.0, 1.02])
-        assert transform.getSat() == pytest.approx(1.05)
+    def test_the_gamut_compress_is_a_look_the_config_has(self) -> None:
+        look = color.look_transform("ACES 1.3 Reference Gamut Compression")
+        assert (look.getSrc(), look.getDst()) == (color.ACES, color.ACES)
 
-    def test_the_cdl_does_not_clamp(self) -> None:
-        """Resolve's node graph is float and clamps nothing; a clamp in ACEScct would
-        throw away the values above 1.0 and the negatives an out of gamut colour takes."""
-        cdl = CDL(
-            slope=(2.0, 2.0, 2.0),
-            offset=(0.0, 0.0, 0.0),
-            power=(1.0, 1.0, 1.0),
-            saturation=1.0,
-            sop_text="",
-            sat_text="",
-        )
-        assert color.cdl_transform(cdl).getStyle() == ocio.CDL_NO_CLAMP
-        pixels = grey_frame(0.8, -0.1)
-        color.apply(pixels, color.processor(color.cdl_transform(cdl)))
-        assert pixels[0, 0, 0] == pytest.approx(1.6)
-        assert pixels[0, 1, 0] == pytest.approx(-0.2)
+    def test_an_unknown_look_is_refused(self) -> None:
+        with pytest.raises(color.ColorError, match="not a look"):
+            color.look_transform("Film Emulation")
 
-    def test_an_offset_in_acescct_is_a_stop_where_it_says_it_is(self) -> None:
-        """One stop is 1 / 17.52 of the ACEScct range, and the plate doubles for it."""
-        cdl = CDL(
-            slope=(1.0, 1.0, 1.0),
-            offset=(1 / 17.52,) * 3,
-            power=(1.0, 1.0, 1.0),
-            saturation=1.0,
-            sop_text="",
-            sat_text="",
-        )
-        pixels = grey_frame(ACESCCT_MID_GREY)
-        color.apply(pixels, color.processor(color.cdl_transform(cdl), color.from_working()))
-        assert pixels[0, 0] == pytest.approx([0.36, 0.36, 0.36], abs=1e-3)
+    def test_the_gamut_compress_leaves_a_neutral_alone(self) -> None:
+        """It compresses saturation; grey has none, so an ungraded grey is untouched."""
+        pixels = grey_frame(0.18)
+        color.apply(pixels, color.processor(color.look_transform("ACES 1.3 Reference Gamut Compression")))
+        assert pixels[0, 0, 0] == pytest.approx(0.18, abs=1e-4)
+
+    def test_a_clf_is_read_as_it_is(self, tmp_path: Path) -> None:
+        clf = color_fixtures.make_clf(tmp_path / "node.clf", gain=2.0)
+        pixels = grey_frame(0.18)
+        color.apply(pixels, color.processor(color.clf_transform(clf)))
+        assert pixels[0, 0, 0] == pytest.approx(0.36, abs=1e-4)
+        assert color.clf_transform(clf).getInterpolation() == color.INTERPOLATION
 
 
 class TestProcessor:
     def test_a_chain_is_one_group(self) -> None:
         """The ungraded view branch: the input leg and the output transform together."""
         chained = grey_frame(ACESCCT_MID_GREY)
-        color.apply(chained, color.processor(color.input_transform(SOURCE), color.output_transform()))
+        color.apply(
+            chained, color.processor(color.input_transform(SOURCE), color.output_transform(DISPLAY, VIEW))
+        )
         assert chained[0, 0, 0] == pytest.approx(0.356, abs=0.01)
 
     def test_an_empty_chain_does_nothing(self) -> None:
@@ -275,22 +204,27 @@ class TestApply:
 class TestOutputTransform:
     def test_the_view_is_one_the_pinned_config_carries(self) -> None:
         """OQ-29's open half. A view name that does not exist fails at the first bake."""
-        assert color.VIEW in color.config().getViews(color.DISPLAY)
+        assert VIEW in color.config().getViews(DISPLAY)
+        assert VIEW in color.config().getViews("Gamma 2.2 Rec.709 - Display"), "turnover097's display"
 
     def test_it_starts_where_the_clf_lands(self) -> None:
         """ACEScg, not ACEScct: the CLF ends in linear, so the view branch starts there."""
-        assert color.output_transform().getSrc() == color.PLATE_SPACE
+        assert color.output_transform(DISPLAY, VIEW).getSrc() == color.PLATE_SPACE
 
     def test_white_comes_out_in_display_range(self) -> None:
         """222 in scene linear arrives at 1. This is the tone map QC-039 probes for."""
         pixels = grey_frame(1.0)
-        color.apply(pixels, color.processor(color.input_transform(SOURCE), color.output_transform()))
+        color.apply(
+            pixels, color.processor(color.input_transform(SOURCE), color.output_transform(DISPLAY, VIEW))
+        )
         assert pixels[0, 0, 0] == pytest.approx(1.0, abs=0.05)
 
     def test_mid_grey_comes_out_where_aces_puts_it(self) -> None:
         """0.18 lands at 0.36, not at sRGB's 0.46: the ODT is a rendering, not a curve."""
         pixels = grey_frame(ACESCCT_MID_GREY)
-        color.apply(pixels, color.processor(color.input_transform(SOURCE), color.output_transform()))
+        color.apply(
+            pixels, color.processor(color.input_transform(SOURCE), color.output_transform(DISPLAY, VIEW))
+        )
         assert pixels[0, 0, 0] == pytest.approx(0.356, abs=0.01)
 
 
@@ -299,7 +233,7 @@ class TestViewLut:
 
     def chain(self) -> tuple[ocio.Transform, ...]:
         """A view branch with no CLF in it: the input leg and the output transform."""
-        return (color.input_transform(SOURCE), color.output_transform())
+        return (color.input_transform(SOURCE), color.output_transform(DISPLAY, VIEW))
 
     def test_it_writes_a_cube_of_the_stated_size(self, tmp_path: Path) -> None:
         cube = color.view_lut(tmp_path / "MELT0001_view.cube", *self.chain(), size=17)
@@ -330,15 +264,19 @@ class TestViewLut:
         assert baked == pytest.approx(ramp, abs=0.005)
 
     def test_trilinear_is_the_worse_answer_the_constant_exists_to_avoid(self, tmp_path: Path) -> None:
-        """Read the same cube the default way and mid grey moves twice as far."""
+        """Read the same cube the default way and mid grey lands several times further off.
+
+        Measured under the ACES 2.0 view: 0.0005 tetrahedral, 0.0031 trilinear.
+        """
         cube = color.view_lut(tmp_path / "MELT0001_view.cube", *self.chain())
-        exact, trilinear = grey_frame(ACESCCT_MID_GREY), grey_frame(ACESCCT_MID_GREY)
+        exact = grey_frame(ACESCCT_MID_GREY)
         color.apply(exact, color.processor(*self.chain()))
-        color.apply(
-            trilinear,
-            color.processor(ocio.FileTransform(src=str(cube), interpolation=ocio.INTERP_LINEAR)),
-        )
-        assert abs(float(trilinear[0, 0, 0] - exact[0, 0, 0])) > 0.005
+        error = {}
+        for interpolation in (color.INTERPOLATION, ocio.INTERP_LINEAR):
+            read = grey_frame(ACESCCT_MID_GREY)
+            color.apply(read, color.processor(ocio.FileTransform(src=str(cube), interpolation=interpolation)))
+            error[interpolation] = abs(float(read[0, 0, 0] - exact[0, 0, 0]))
+        assert error[ocio.INTERP_LINEAR] > 4 * error[color.INTERPOLATION]
 
     def test_ffmpeg_reads_it_as_the_same_transform(self, tmp_path: Path) -> None:
         """The whole point of baking one, checked against the tool that will apply it.

@@ -54,6 +54,9 @@ MACOS = "darwin"
 MINIMUM_MACOS = "12.0"
 """`LSMinimumSystemVersion`. PySide6 6.7's own floor, per PACKAGING.md."""
 
+FONTS_DIR = Path("proingest") / "resources" / "fonts"
+FONT_FILES = ("OpenSans-Regular.ttf", "OFL.txt")
+
 FFMPEG_DIR = Path("proingest") / "resources" / "ffmpeg"
 """Where `core/ffmpeg.py` looks, relative to the package root.
 
@@ -87,6 +90,8 @@ def datas(platform: str = sys.platform) -> list[tuple[str, str]]:
       fatal there by design, which is exactly why it has to be listed: a missing
       stylesheet would ship as an app that merely looks wrong.
     - ffmpeg's licence and provenance, which ship beside the binaries or not at all.
+    - The stringout's burn-in font and its OFL licence (`core/stringout.py`, 2026-09-25),
+      read by path: without it every stringout fails QC-142, so it ships on every platform.
 
     OpenTimelineIO and its adapters went on 2026-09-23: `clf.read_final_edl` reads the
     EDL itself and nothing imported otio any more.
@@ -94,6 +99,7 @@ def datas(platform: str = sys.platform) -> list[tuple[str, str]]:
     collected: list[tuple[str, str]] = [
         (str(REPO_ROOT / "proingest" / "ui" / "theme.qss"), str(Path("proingest") / "ui")),
     ]
+    collected += [(str(REPO_ROOT / FONTS_DIR / name), str(FONTS_DIR)) for name in FONT_FILES]
 
     if platform == MACOS:
         for name in ("LICENSE.ffmpeg.txt", "PROVENANCE.md"):

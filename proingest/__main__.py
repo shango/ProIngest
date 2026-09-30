@@ -205,7 +205,7 @@ def _run(
         return 2
 
     if not planned:
-        print("nothing to render: every shot is complete, skipped or waiting for a Reset")
+        print("nothing to render: every shot is complete, skipped or waiting for a Re-scan")
         return 0
 
     for job in planned:

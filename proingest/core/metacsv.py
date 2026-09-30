@@ -1,10 +1,10 @@
-"""Ben's metadata CSV: the only carrier of identity and encoding.
+"""Ben's metadata CSV: the only carrier of identity.
 
 Resolve writes it from the Media Pool and it sits in the turnover folder beside the
-media and the EDL (docs/WORKFLOW.md). Two things reach the tool through this file and
+media and the EDL (docs/WORKFLOW.md). One thing reaches the tool through this file and
 through nothing else: **which shot and which clip type each file is** (`Shot` and
-`Shot Type`), and **what the pixels are encoded as** (`Gamma Notes` + `Color Space
-Notes`). The EDL carries the cut and the grade; this carries who the clip is.
+`Shot Type`). The EDL carries the cut and each clip's AMF carries its colour; since
+2026-09-28 (user) the CSV's colour columns are not read.
 
 Three properties of the real file drive the whole module, all measured in
 docs/SAMPLE_TURNOVER_199.md sections 7 and 8:
@@ -24,7 +24,7 @@ Nothing here requires a column except `File Name`, which is the key.
 reads 516 / 168 / 312 / 420 / 360 against delivered files of 280 / 49 / 49 / 49 / 248,
 and `Clip Directory` points at the pre-consolidation originals. Resolve exported them
 before Copy with trim and did not revisit them. **So this module reads identity and
-encoding and nothing else**: ffprobe is the authority on every media fact, and a reader
+nothing else**: ffprobe is the authority on every media fact, and a reader
 that helpfully returned `Frames` would be handing out numbers that are wrong by up to
 eight times.
 """
@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import csv
 import io
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -42,9 +43,8 @@ from proingest.core.models import QCResult
 FILE_NAME_COLUMN = "File Name"
 SHOT_COLUMN = "Shot"
 SHOT_TYPE_COLUMN = "Shot Type"
-GAMMA_COLUMN = "Gamma Notes"
-COLOR_SPACE_COLUMN = "Color Space Notes"
-INPUT_COLOR_SPACE_COLUMN = "Input Color Space"
+SCENE_COLUMN = "Scene"
+"""Burned into the stringout as its Primary Effect, as Ben's Resolve template does (2026-09-25)."""
 
 CSV_SUFFIX = ".csv"
 
@@ -67,25 +67,11 @@ class MetaRow:
     shot_type: str
     kind: str | None
     index: str | None
-    gamma_notes: str
-    color_space_notes: str
-    input_color_space: str = ""
+    scene: str = ""
     qc: tuple[QCResult, ...] = ()
-
-    @property
-    def written_encoding(self) -> str:
-        """`Gamma Notes` and `Color Space Notes` joined in that order.
-
-        Verified against the whole sample: the two together give `S-Log3 S-Gamut3.Cine`,
-        which `color.resolve_encoding` resolves with no new `INPUT_TRANSFORMS` row. The
-        order matters and is not interchangeable - the curve names the gamut, not the
-        other way round.
-        """
-        notes = " ".join(part for part in (self.gamma_notes.strip(), self.color_space_notes.strip()) if part)
-        # Resolve's own `Input Color Space` when the shooter wrote no notes: Turnover121
-        # (2026-09-23) has no notes columns and says `Apple Log` there, which the config
-        # knows. The notes win when both exist, because they are what was verified first.
-        return notes or self.input_color_space.strip()
+    shooter_delivered: bool = False
+    """An HDRI: the shooters deliver it by hand, so the tool delivers nothing for it and
+    the row is skipped at scan, kept only so the stringout shows its clip (QC-080)."""
 
 
 @dataclass
@@ -237,9 +223,7 @@ def read(path: Path, show_pattern: str = naming.DEFAULT_SHOW_PATTERN) -> MetaCsv
 
     shot_positions = _columns(header, SHOT_COLUMN)
     type_positions = _columns(header, SHOT_TYPE_COLUMN)
-    gamma_positions = _columns(header, GAMMA_COLUMN)
-    space_positions = _columns(header, COLOR_SPACE_COLUMN)
-    input_positions = _columns(header, INPUT_COLOR_SPACE_COLUMN)
+    scene_positions = _columns(header, SCENE_COLUMN)
 
     result = MetaCsv(path=path)
     for record in records[1:]:
@@ -251,6 +235,10 @@ def read(path: Path, show_pattern: str = naming.DEFAULT_SHOW_PATTERN) -> MetaCsv
             result.ignored.append(file_name)
             continue
         shot = _shot(_value(record, shot_positions), show_pattern)
+        scene = _value(record, scene_positions)
+        if _HDRI.fullmatch(shot_type.strip()):
+            result.rows.append(_hdri(file_name, shot, shot_type, scene))
+            continue
         result.rows.append(
             MetaRow(
                 file_name=file_name,
@@ -258,13 +246,27 @@ def read(path: Path, show_pattern: str = naming.DEFAULT_SHOW_PATTERN) -> MetaCsv
                 shot_type=shot_type,
                 kind=kind,
                 index=index,
-                gamma_notes=_value(record, gamma_positions),
-                color_space_notes=_value(record, space_positions),
-                input_color_space=_value(record, input_positions),
+                scene=scene,
                 qc=tuple(type_qc + _row_qc(file_name, shot, shot_type, kind, show_pattern)),
             )
         )
     return result
+
+
+_HDRI = re.compile(r"hdri\d*", re.IGNORECASE)
+"""`HDRI`, as turnover097's CSV writes it, with or without an index."""
+
+
+def _hdri(file_name: str, shot: str, shot_type: str, scene: str) -> MetaRow:
+    """An HDRI row: delivered by the shooters, never by the tool (user, 2026-09-28)."""
+    note = QCResult(
+        "QC-080",
+        "info",
+        "row",
+        f"{file_name} is an HDRI, which the shooters deliver by hand; the tool delivers nothing "
+        "for it and shows its clip in the stringout only",
+    )
+    return MetaRow(file_name, shot, shot_type, None, None, scene, (note,), shooter_delivered=True)
 
 
 def find(folder: Path) -> list[Path]:

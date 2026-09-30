@@ -14,6 +14,8 @@ worker made.
 from __future__ import annotations
 
 import logging
+import sys
+import threading
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -332,3 +334,38 @@ class TestTheDiagnosticsExport:
             handler.close()
         rows = logsetup.log_rows(tmp_path / logsetup.LOG_FILENAME)
         assert [row[1:4] for row in rows] == [["WARNING", "proingest.test.export", "probe failed: C0145.MP4"]]
+
+
+class TestExceptionHooks:
+    """A Finder-launched app's stderr goes nowhere, so an uncaught exception is logged."""
+
+    @pytest.fixture
+    def hooks(self, monkeypatch: pytest.MonkeyPatch) -> list[str]:
+        seen: list[str] = []
+        monkeypatch.setattr(sys, "excepthook", lambda kind, value, tb: seen.append("sys"))
+        monkeypatch.setattr(threading, "excepthook", lambda args: seen.append("thread"))
+        logsetup.install_exception_hooks()
+        return seen
+
+    def test_an_uncaught_exception_is_logged_with_its_traceback_and_still_handed_on(
+        self, hooks: list[str], caplog: pytest.LogCaptureFixture
+    ) -> None:
+        try:
+            raise ValueError("a slot broke")
+        except ValueError as exc:
+            sys.excepthook(ValueError, exc, exc.__traceback__)
+        assert [(r.levelname, r.getMessage()) for r in caplog.records] == [("CRITICAL", "uncaught exception")]
+        assert caplog.records[0].exc_info is not None
+        assert hooks == ["sys"]
+
+    def test_one_in_a_thread_names_the_thread(
+        self, hooks: list[str], caplog: pytest.LogCaptureFixture
+    ) -> None:
+        def fail() -> None:
+            raise ValueError("a worker thread broke")
+
+        thread = threading.Thread(target=fail, name="scan")
+        thread.start()
+        thread.join()
+        assert [r.getMessage() for r in caplog.records] == ["uncaught exception in scan"]
+        assert hooks == ["thread"]

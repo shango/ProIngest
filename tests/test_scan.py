@@ -6,8 +6,9 @@ from pathlib import Path
 
 import pytest
 
-from proingest.core import scan
-from proingest.core.models import Batch, InOut, ShotRow, Turnover
+from proingest.core import qc, scan
+from proingest.core.models import Batch, Deliverable, InOut, ShotRow, Turnover
+from tests.fixtures import color as color_fixtures
 from tests.fixtures import media as fixtures
 
 GOOD_FOLDER = "turnover001_02_23_2026_danielluckett"
@@ -28,8 +29,21 @@ class TestParseTurnoverFolder:
         assert (fields.number, fields.month, fields.day, fields.year) == (1, 2, 23, 2026)
         assert fields.shooter == "danielluckett"
 
+    def test_a_two_digit_year_is_read_as_this_century(self) -> None:
+        """Turnover097's folder: `09_28_26` (user, 2026-09-29: accepted, with QC-081)."""
+        fields = scan.parse_turnover_folder(Path("/x/turnover097_09_28_26_danielluckett"))
+        assert fields is not None and fields.two_digit_year
+        assert (fields.number, fields.month, fields.day, fields.year) == (97, 9, 28, 2026)
+
     @pytest.mark.parametrize(
-        "name", ["messy", "turnover1_02_23_2026_dan", "turnover001_2_23_2026_dan", "turnover001"]
+        "name",
+        [
+            "messy",
+            "turnover001_02_23_202_dan",
+            "turnover1_02_23_2026_dan",
+            "turnover001_2_23_2026_dan",
+            "turnover001",
+        ],
     )
     def test_rejects_other_names(self, name: str) -> None:
         assert scan.parse_turnover_folder(Path(f"/x/{name}")) is None
@@ -123,8 +137,9 @@ class TestScanTurnover:
         assert row.identity is not None and row.identity.elem == "pl01"
         assert row.media is not None and row.media.is_sequence
         assert row.source_encoding == fixtures.SOURCE_ENCODING
-        assert row.source_encoding_origin == "clip metadata"
-        assert row.cdl is not None, "the CDL on the event is the grade"
+        assert row.source_encoding_origin == "AMF"
+        assert row.grade is not None and row.grade.graded, "the AMF's CLF is the grade"
+        assert (row.grade.display, row.grade.view) == (color_fixtures.DISPLAY, color_fixtures.VIEW)
         assert row.approved is not None
         assert row.current == row.snapshot == row.approved, "a fresh scan has not been edited"
         assert row.audio_path is not None
@@ -181,7 +196,7 @@ class TestScanTurnover:
         _, rows = scan.scan_turnover(folder, "t1")
         orphan = next(row for row in rows if row.clip_name == "MELT0002_pl01")
         assert "QC-066" in rules(orphan)
-        assert orphan.cdl is None and orphan.approved is None
+        assert orphan.grade is None and orphan.approved is None
         assert orphan.current is not None, "it still shows what arrived, so it can be trimmed by hand"
 
     def test_an_unnamed_event_inside_two_files_is_refused_on_both(self, tmp_path: Path) -> None:
@@ -192,7 +207,7 @@ class TestScanTurnover:
         _, rows = scan.scan_turnover(folder, "t1")
         for row in rows:
             assert "QC-067" in rules(row)
-            assert row.cdl is None and row.approved is None
+            assert row.grade is None and row.approved is None
 
     def test_an_event_no_row_claims_is_recorded_at_turnover_scope(self, tmp_path: Path) -> None:
         folder = tmp_path / GOOD_FOLDER
@@ -242,6 +257,14 @@ class TestTurnoverLevelProblems:
         turnover, _ = scan.scan_turnover(folder, "t1")
         assert "QC-005" in {r.rule_id for r in turnover.qc}
 
+    def test_a_two_digit_year_is_a_qc_081_warning_not_qc_005(self, tmp_path: Path) -> None:
+        folder = tmp_path / "turnover097_09_28_26_danielluckett"
+        fixtures.make_turnover(folder, shots=1, frames=4)
+        turnover, _ = scan.scan_turnover(folder, "t1")
+        found = {(r.rule_id, r.severity) for r in turnover.qc}
+        assert ("QC-081", "warning") in found and "QC-005" not in {r[0] for r in found}
+        assert (turnover.number, turnover.year, turnover.shooter) == (97, 2026, "danielluckett")
+
     def test_a_bad_turnover_does_not_raise(self, tmp_path: Path) -> None:
         """One bad folder must not take down a batch."""
         folder = tmp_path / "empty"
@@ -282,6 +305,28 @@ class TestScanBatch:
         assert "QC-001" in turnover_rules(batch)
 
 
+class TestIsTurnoverFolder:
+    """What a drop onto the window keeps: a folder with an EDL and a CSV directly in it."""
+
+    def test_an_edl_and_a_csv_make_a_turnover(self, tmp_path: Path) -> None:
+        (tmp_path / "Turnover121.EDL").write_text("")
+        (tmp_path / "Turnover121.csv").write_text("")
+        assert scan.is_turnover_folder(tmp_path)
+
+    @pytest.mark.parametrize("names", [(), ("cut.edl",), ("meta.csv",), ("sub/cut.edl", "sub/meta.csv")])
+    def test_anything_less_is_not(self, tmp_path: Path, names: tuple[str, ...]) -> None:
+        for name in names:
+            (tmp_path / name).parent.mkdir(exist_ok=True)
+            (tmp_path / name).write_text("")
+        assert not scan.is_turnover_folder(tmp_path)
+
+    def test_a_file_or_a_missing_path_is_not(self, tmp_path: Path) -> None:
+        clip = tmp_path / "clip.mov"
+        clip.write_text("")
+        assert not scan.is_turnover_folder(clip)
+        assert not scan.is_turnover_folder(tmp_path / "gone")
+
+
 class TestNextTurnoverId:
     """One authority for the numbering, whether the CLI or the window is adding it."""
 
@@ -292,6 +337,10 @@ class TestNextTurnoverId:
         """A row points at its turnover by id, so a gap is not an id to hand out again."""
         batch = Batch(turnovers=[Turnover("t1", Path("/a")), Turnover("t5", Path("/b"))])
         assert scan.next_turnover_id(batch) == "t6"
+
+    def test_several_at_once_follow_on_from_the_highest(self) -> None:
+        batch = Batch(turnovers=[Turnover("t2", Path("/a"))])
+        assert scan.next_turnover_ids(batch, 3) == ["t3", "t4", "t5"]
 
     def test_an_id_that_is_not_t_and_a_number_is_left_out_of_the_count(self) -> None:
         batch = Batch(turnovers=[Turnover("hand_edited", Path("/a")), Turnover("t2", Path("/b"))])
@@ -325,6 +374,27 @@ class TestCarryOver:
         assert new[0].current == InOut(12, 18)
         assert (new[0].skipped, new[0].skip_reason, new[0].notes) == (True, "not needed", "sky")
         assert new[0].shot_code == "TEST0009"
+
+    def test_a_re_run_asked_for_survives_the_rescan_it_starts(self) -> None:
+        old, new = self.rows("C0145.MP4"), self.rows("C0145.MP4")
+        old[0].rerun = True
+        old[0].delivered_range = InOut(10, 20)
+        scan.carry_over(Turnover("t1", Path("/a")), old, Turnover("t1", Path("/b")), new)
+        assert new[0].rerun
+        assert new[0].delivered_range == InOut(10, 20)
+
+    def test_the_stringout_stays_with_the_turnover(self) -> None:
+        was, now = Turnover("t1", Path("/a")), Turnover("t1", Path("/a"))
+        was.stringout = Deliverable(kind="stringout", name="so.mp4", path=Path("/d/so.mp4"), version=1)
+        scan.carry_over(was, [], now, [])
+        assert now.stringout == was.stringout
+
+    def test_accept_as_is_survives_a_rescan_and_qc_074_with_it(self) -> None:
+        was, now = Turnover("t1", Path("/a")), Turnover("t1", Path("/a"))
+        qc.set_qc_bypassed(was, True)
+        scan.carry_over(was, [], now, [])
+        assert now.qc_bypassed
+        assert [result.rule_id for result in now.qc] == ["QC-074"]
 
     def test_a_trim_never_made_follows_the_new_edl(self) -> None:
         old, new = self.rows("C0145.MP4"), self.rows("C0145.MP4")
@@ -412,6 +482,8 @@ def overlapping_turnover(folder: Path, ale_names: list[str] | None) -> Path:
         _event(6, start + 1, start + 2, 90127),
     ]
     (folder / "FINAL.edl").write_text("TITLE: T\nFCM: NON-DROP FRAME\n\n" + "\n".join(events))
+    for number, clip in enumerate(ALE_ORDER, 1):
+        color_fixtures.make_amf(folder, number, clip)
     if ale_names is not None:
         header = "Heading\nFPS\t24\n\nColumn\nName\tTracks\t\n\nData\n"
         (folder / "T.ale").write_text(header + "".join(f"{name}\tV\t\n" for name in ale_names))
@@ -473,3 +545,114 @@ class TestTheAleNamesTheEvents:
         _, rows = scan.scan_turnover(folder, "t1", scan.ScanSettings(rules=fixtures.SMALL_RULES))
         plate = next(row for row in rows if row.clip_name == "A")
         assert "QC-073" in rules(plate)
+
+
+class TestTheAmf:
+    """Each event's AMF is the clip's colour (user, 2026-09-28). QC-075 to QC-080."""
+
+    def scanned(self, folder: Path) -> tuple[Turnover, ShotRow]:
+        turnover, rows = scan.scan_turnover(folder, "t1", scan.ScanSettings(rules=fixtures.SMALL_RULES))
+        return turnover, rows[0]
+
+    def folder(self, tmp_path: Path) -> Path:
+        return fixtures.make_turnover(tmp_path / GOOD_FOLDER, shots=1, frames=4)
+
+    def amf(self, folder: Path) -> Path:
+        return next(folder.glob("*.amf"))
+
+    def test_a_clean_amf_raises_nothing_of_its_own(self, tmp_path: Path) -> None:
+        _, row = self.scanned(self.folder(tmp_path))
+        assert not rules(row) & {"QC-075", "QC-076", "QC-077", "QC-078", "QC-079"}
+        assert row.grade is not None
+        assert [look.kind for look in row.grade.looks] == ["look", "clf"]
+
+    def test_an_event_with_no_amf_is_qc_075(self, tmp_path: Path) -> None:
+        folder = self.folder(tmp_path)
+        self.amf(folder).unlink()
+        _, row = self.scanned(folder)
+        assert "QC-075" in rules(row) and "QC-046" in rules(row)
+        assert row.grade is None and row.source_encoding is None
+
+    def test_an_amf_naming_another_file_is_qc_075_not_a_match(self, tmp_path: Path) -> None:
+        folder = self.folder(tmp_path)
+        path = self.amf(folder)
+        path.write_text(path.read_text().replace("<aces:file>MELT0001_pl01<", "<aces:file>MELT0009_pl01<"))
+        _, row = self.scanned(folder)
+        assert "QC-075" in rules(row) and row.grade is None
+
+    def test_an_unreadable_amf_is_reported_on_the_turnover(self, tmp_path: Path) -> None:
+        folder = self.folder(tmp_path)
+        (folder / "Broken_1_2026-09-28_180306Z.amf").write_text("not xml")
+        turnover, _ = self.scanned(folder)
+        assert "QC-075" in {r.rule_id for r in turnover.qc}
+
+    def test_a_missing_clf_is_qc_076(self, tmp_path: Path) -> None:
+        folder = self.folder(tmp_path)
+        next(folder.glob("*.clf")).unlink()
+        _, row = self.scanned(folder)
+        assert "QC-076" in rules(row)
+        assert row.grade is not None and not row.grade.graded
+
+    def test_a_clf_whose_md5_differs_is_qc_076(self, tmp_path: Path) -> None:
+        folder = self.folder(tmp_path)
+        path = self.amf(folder)
+        text = path.read_text().replace(
+            "<aces:file>MELT0001_pl01_0",
+            '<aces:hash algorithm="md5">00</aces:hash><aces:file>MELT0001_pl01_0',
+        )
+        path.write_text(text)
+        _, row = self.scanned(folder)
+        message = next(r.message for r in row.qc if r.rule_id == "QC-076")
+        assert "md5" in message
+
+    def test_a_look_the_config_lacks_is_ignored_with_a_warning(self, tmp_path: Path) -> None:
+        """User, 2026-09-28: anything beyond primaries is ignored with a warning."""
+        folder = self.folder(tmp_path)
+        path = self.amf(folder)
+        path.write_text(path.read_text().replace("ReferenceGamutCompress", "FilmEmulation"))
+        _, row = self.scanned(folder)
+        assert [r.severity for r in row.qc if r.rule_id == "QC-077"] == ["warning"]
+        assert row.grade is not None and [look.kind for look in row.grade.looks] == ["clf"]
+
+    def test_the_dailies_preset_is_info(self, tmp_path: Path) -> None:
+        folder = self.folder(tmp_path)
+        path = self.amf(folder)
+        path.write_text(path.read_text().replace("VFX Request", "Dailies Request"))
+        _, row = self.scanned(folder)
+        assert [r.severity for r in row.qc if r.rule_id == "QC-078"] == ["info"]
+
+    def test_an_output_transform_the_config_lacks_is_qc_079(self, tmp_path: Path) -> None:
+        folder = self.folder(tmp_path)
+        path = self.amf(folder)
+        path.write_text(path.read_text().replace("sRGB-Piecewise", "Unknown-Display"))
+        _, row = self.scanned(folder)
+        assert "QC-079" in rules(row)
+        assert row.grade is not None and row.grade.display is None
+
+    def test_a_display_a_reference_cannot_be_labelled_for_is_qc_079(self, tmp_path: Path) -> None:
+        """P3 is in the config, but an 8 bit Rec.709 mp4 is not a P3 encode."""
+        folder = self.folder(tmp_path)
+        path = self.amf(folder)
+        p3 = "Output.Academy.P3-D65_100nit_in_P3-D65_sRGB-Piecewise.a2.v1"
+        text = path.read_text().replace(
+            "Output.Academy.Rec709-D65_100nit_in_Rec709-D65_sRGB-Piecewise.a2.v1", p3
+        )
+        path.write_text(text)
+        _, row = self.scanned(folder)
+        assert "QC-079" in rules(row)
+        assert row.grade is not None and row.grade.display is None
+
+    def test_an_amf_with_no_clf_is_qc_009_info_at_preflight(self, tmp_path: Path) -> None:
+        folder = fixtures.make_turnover(tmp_path / GOOD_FOLDER, shots=1, frames=4, graded=False)
+        turnover, row = self.scanned(folder)
+        batch = Batch(delivery_root=tmp_path, turnovers=[turnover], rows=[row])
+        qc.preflight(batch)
+        assert [(r.rule_id, r.severity) for r in row.qc if r.rule_id == "QC-009"] == [("QC-009", "info")]
+        assert not qc.must_fix(batch)
+
+    def test_an_hdri_row_is_skipped_as_the_shooters_and_blocks_nothing(self, tmp_path: Path) -> None:
+        folder = fixtures.make_turnover(tmp_path / GOOD_FOLDER, shots=1, frames=4, shot_types=["HDRI"])
+        turnover, row = self.scanned(folder)
+        assert row.skipped and row.skip_reason == "HDRI: delivered by the shooters"
+        assert "QC-080" in rules(row)
+        assert not qc.must_fix(Batch(delivery_root=tmp_path, turnovers=[turnover], rows=[row]))

@@ -1,55 +1,107 @@
-# Handoff, 23 September 2026
+# Handoff, 30 September 2026
 
 **This is a short pointer, not the record.** `PROGRESS.md` section 1 holds the record: one entry
-per chunk, newest first, each saying what was built and how it was verified. If this file
-disagrees with `PROGRESS.md` or the docs, they are right and this file is wrong. Delete it once
-it has been read.
+per change, newest first, each saying what was built and how it was verified. If this file
+disagrees with `PROGRESS.md` or the docs, they are right and this file is wrong.
 
-## Where things stand
+## State
 
-- **All eight chunks of the 2026-09-23 review are built** (`docs/REVIEW_2026-09-23.md` section 5),
-  one commit each, in the order A, B, F, G, E, C, D, H. The version is **0.5.0**.
-- Branch `color/cdl-in-acescct` is **pushed** for the 0.5.0 release. CI builds
-  `ProIngest-0.5.0.dmg` on PR #12, as the `ProIngest-macos-arm64` artifact of the run.
-- **The final check was green:** 1621 tests pass (the count fell because tests for removed code
-  went with it), and `ruff`, `ruff format` and `mypy --strict` are clean.
-- **The real turnover, `Turnover199`, works end to end:**
-  - its five rows scan with no must-fix;
-  - all 12 deliverables render;
-  - the tracker has one line;
-  - a second Run plans nothing.
+- **Version 0.5.21 on branch `qc/source-fidelity`**, pushed, PR #17 open, **not merged** (merge
+  only when the user asks). 0.5.4 is on `main`.
+- **CI run 36720891161 is green on all four jobs** and built the 0.5.21 dmg, handed over as:
+  `gh run download 36720891161 -R shango/ProIngest -n ProIngest-macos-arm64 -D ~/Downloads/ProIngest-0.5.21`
+  (https://github.com/shango/ProIngest/actions/runs/36720891161)
+- **1814 tests pass**; `ruff`, `ruff format` and `mypy --strict` are clean.
+- Nothing uncommitted except the untracked samples listed under Working notes.
+- **Session wrapped up 30 Sep 2026 at the user's request.** Nothing is in flight. Start with "Open,
+  with the user" below, HDRI first.
 
-## Next
+## What 0.5.12 to 0.5.21 did (29 Sep 2026, all user decisions)
 
-1. Download the dmg from the CI run on PR #12.
-2. On the Mac, work through `docs/MAC_SESSION.md`, "The 0.5.0 build, in order". It opens with the
-   acceptance test on Turnover199, then the per-chunk checks for B, G, E and D.
+- **0.5.12** The reference label is set on the frames too (`ffmpeg.reference_label`, a
+  `setparams` step): the Mac's bundled ffmpeg 9.0.1 wrote no transfer from `-color_trc` alone.
+- **0.5.13** A two digit year in a folder name is read as 20YY with a QC-081 warning. HDRI rows
+  (QC-080) run no row rules. `docs/QC_RULES_SUMMARY.csv` committed and current. OQ-77 (4) to (6)
+  answered: QC-070 stays EDL and CSV only; AMFs are read only from the folder pointed at.
+- **0.5.14** Length limits (QC-033/034) apply to `pl` rows only. Turnover097 now has no must-fix.
+- **0.5.15** Stringout picture in picture: over each `pl`, the shot's first cp (EDL order) top
+  left and first wit top right, 480x270 (Resolve zoom 0.25), from their delivered HD refs, playing
+  from their own cut In and removed when they run out or at the plate's Out.
+- **0.5.16** Each inset labelled with its element (`cp01`), 32 px, bottom left inside it.
+- **0.5.17** The version always in view: window title and a permanent status bar label.
+- **0.5.18** Any held frame on the stringout (a reference still, which is one frame of a video; an
+  `M2` hold; any one frame cut) plays for 24 frames, and one taken from the source is coloured
+  through its AMF (grade included). Stills were flat because they have no HD reference.
+- **0.5.19** A clip typed `HDRI` is a reference movie: its stringout event is the clip itself,
+  shown as it is, never given AMF colour. Spelled out in QC-080 and COLOUR_SESSION_EXPORT.
+- **0.5.20** A timeline event whose file is present always plays on the stringout, never black: a
+  file with no timecode is counted from 00:00:00:00 (where Resolve starts one), a single image is
+  its one frame. Delivery stays strict (QC-029).
+- **0.5.21** A held HDRI slot keeps the EDL's length (turnover097: 72 and 120 frames); every
+  other held frame stays one second.
+- **Docs, no code: Ben exports no stringout.** The tool builds it. Every doc says so now.
 
-## Calls I made for the user to confirm
+## Turnover097, the spec sample
 
-These were reported to the user; they are recorded in `PROGRESS.md` too.
+`turnover097_09_28_26_danielluckett/collected files` (untracked): EDL + UTF-16 CSV + one AMF per
+EDL event + CLF grade nodes. **A turnover is only those four: the CMX 3600 EDL, the CSV, one AMF
+per clip and the CLFs** (user); the stray `.otio` and `.drt` in the folder are not part of it and
+are never read or cited. It scans with **no must-fix** and runs in full (30 jobs, about 20
+minutes here). The latest stringout, 1262 frames with the insets, held stills and both HDRI events playing, is
+`turnover097_09_28_26_danielluckett/turnover097_09_28_2026_danielluckett_SO_v01_pip.mp4`; the
+first run's logs are in `C:\Users\shann\Downloads\ProIngest-turnover097\`. The handover folder is
+named `collected files`, so number, date and shooter are typed in (QC-005).
 
-- **Scan re-scans every turnover and keeps the editor's edits**, matched by File Name
-  (`scan.carry_over`). For that reason the Ingest Colour Session button was removed.
-- **A skipped row's must-fix does not block the run** (`qc.must_fix`).
-- **A failed row waits for the editor's right-click Reset.** Outputs a stopped run never wrote
-  resume on their own, at the same version.
-- **Jobs lost when a worker dies get one more pool** (`render._run_pool`). This matters because a
-  dead worker takes every job then in flight with it; that was measured on the real turnover.
-- **QC-018, an info, fires on every real row**: the files state no colour matrix, so each one is
-  decoded as BT.709 (D17, provisional).
+**Colour decisions (2026-09-28), final:** colour comes from each event's AMF and its CLFs only; the
+EDL is the cut and the CSV is identity (File Name, Shot, Shot Type); references follow the AMF's
+output transform (here Gamma 2.2 Rec.709, labelled `bt470m`); a clip with no CLF is info (QC-009);
+HDRI rows are the shooters' to deliver (QC-080). Verified facts: the AMF index in its filename is
+the EDL event number less one (15 of 15); the pinned config maps every URN the AMFs use.
 
-## Left open
+## Open, with the user
 
-- FR-1's "refuse an M2 motion effect" (OQ-63) is not built.
-- Non-square pixels are not handled when letterboxing (COLOR_AND_FORMAT section 4).
+- **HDRI, waiting on Ben** (user, 2026-09-29; this kept being lost, so read it first): a clip typed
+  `HDRI` is expected to be an **sRGB reference MP4** of what the shooter captured, later stitched
+  into an HDRI in another application. The tool never touches an actual HDRI EXR, and the HDRI
+  clip plays in the stringout like any other, as it is. **Turnover097's two HDRI-typed clips are
+  OpenEXR files by content** (`DALU0012_pl01_02_HDRI.exr`, `DALU0016_pl01_HDRI.exr`, EDL events
+  008 and 015, `M2` holds), not MP4s. The user has no access to Ben's timeline and is **asking Ben
+  whether placing the EXRs there was intentional**, and if not, for a re-export with the MP4s.
+  Either way they play now (0.5.20); the linear DALU0012 reads dark, shown without colour. If Ben
+  keeps EXRs there, ask whether they should get their AMF colour.
+- **Inset assumptions, told the user**: cp top left and wit top right (their first message said
+  "left is the pl"); the label bottom left inside the inset; labels on the insets only.
+- **Held stills include Ben's grade** on the stringout; told the user the view-only alternative
+  is a one line change.
+- **The name at top centre clears the insets by about 20 px** (x 499 to 1411 against 480 and
+  1440); a longer shooter name could touch them. The user said adjust later if so.
+- **Ben saw a "very slight shift"** between his Resolve output and the tool's. Ask which file,
+  which clip and where it was viewed. A tool render against a Resolve render of the same frame
+  has never been made (OQ-77 (1)).
+- **Mac checks** in `docs/MAC_SESSION.md`: "Colour from the AMF" (0.5.14) and "The version in
+  view" (0.5.17, including the title in full screen).
+- Older and still open: Turnover121's 4.886 slope (with Ben); Resolve's reference EXR in the repo
+  root (five questions, none answered); Drive links in the tracker export (waiting on `xattr -l`
+  from the Mac); the CLI does not build a stringout; a source segment of a plate is silent; no text
+  shadow or box for bright frames (asked); keeping the camera timecode as hidden metadata (asked);
+  a changed ALE is not flagged on re-scan; compound clips are unread (OQ-63); non-square pixels
+  are not letterboxed correctly.
 
 ## Working notes
 
-- **Do not update `build-track.html`.** It is retired (user, 2026-09-23).
-- **Scratch renders of Turnover199** are in the session scratchpad under `g/`: the batch files
-  `b.pibatch` and `d.pibatch`, plus `delivery/`. They are disposable.
-- **Per-chunk rules:**
-  - one commit per chunk, with the `PROGRESS.md` entry in the same commit;
-  - a `docs/MAC_SESSION.md` line for anything that only a Mac can confirm;
-  - no em dashes in any file.
+- **Do not update `build-track.html`.** It is retired.
+- **Every build gets its own patch version** in `pyproject.toml`, `proingest/__init__.py`,
+  `build/build.py`, `docs/guide/install.md` and `uv.lock` (line 584, the `proingest` package).
+  The reply is a `gh run download` command plus the run's URL. CI runs on pull requests and on
+  pushes to `main`; this branch's pushes run because PR #17 is open.
+- **`gh pr edit` fails** on a Projects (classic) GraphQL error; use
+  `gh api -X PATCH repos/shango/ProIngest/pulls/<n> -f title=... -f body=...`.
+- **Untracked, never `git add -A`**: the turnover folders, the reference EXR, `burn-ins.png`,
+  and `docs/COLOR_INPUTS_TURNOVER121.md` (the user to decide).
+- **A full turnover097 run** is a short script: scan `collected files`, type in 97, 9, 28, 2026,
+  `danielluckett`, `qc.preflight`, `render.execute(planner.plan_batch(...), workers=4)`,
+  `render.apply_results`, `stringout.build`. Put it under an `if __name__ == "__main__":` guard
+  (the worker pool spawns). To rebuild only the stringout, point each row's `deliverables` at the
+  delivered `<stem>_ref_HD_v01.mp4` and set `delivered_range = current`.
+- **Per-change rules:** `PROGRESS.md` entry in the same commit; a `docs/MAC_SESSION.md` line for
+  anything only a Mac can confirm; no em dashes in any file.

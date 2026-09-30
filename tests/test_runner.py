@@ -27,7 +27,7 @@ import pytest
 from PySide6.QtCore import QThread
 from PySide6.QtWidgets import QApplication
 
-from proingest.core import frames, render
+from proingest.core import render
 from proingest.core.models import Deliverable, FrameRate
 from proingest.core.planner import DeliverableJob
 from proingest.core.render import Progress
@@ -395,7 +395,6 @@ def test_a_real_pool_runs_through_the_worker_thread(runner: Runner, tmp_path: Pa
         source_size=media_fixtures.SMALL,
         rate=FrameRate(24),
         source_start_frame=first,
-        source_start_timecode=frames.timecode_to_frames("01:00:00:00", 24.0),
         shot_color=color_fixtures.UNGRADED,
     )
     collected = Collected(runner)

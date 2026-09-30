@@ -34,8 +34,11 @@ import csv
 import logging
 import logging.handlers
 import re
+import sys
+import threading
 from multiprocessing.queues import Queue as MPQueue
 from pathlib import Path
+from types import TracebackType
 
 LOG_FILENAME = "proingest.log"
 """The file being written now. Rotated copies are dated; PACKAGING.md "Runtime locations"."""
@@ -225,6 +228,32 @@ def start_listener(queue: MPQueue[logging.LogRecord | None]) -> logging.handlers
     listener = logging.handlers.QueueListener(queue, _Republish())
     listener.start()
     return listener
+
+
+def install_exception_hooks() -> None:
+    """Log any exception nothing caught, traceback and all, then carry on as before.
+
+    PySide6 hands an exception escaping a slot to `sys.excepthook`, whose default prints
+    it to stderr, and a Finder-launched app's stderr goes nowhere: the one record of a
+    crash in a signal handler was lost. The previous hooks still run afterwards.
+    """
+    previous_hook = sys.excepthook
+    previous_thread_hook = threading.excepthook
+
+    def hook(kind: type[BaseException], value: BaseException, tb: TracebackType | None) -> None:
+        logging.getLogger("proingest").critical("uncaught exception", exc_info=(kind, value, tb))
+        previous_hook(kind, value, tb)
+
+    def thread_hook(args: threading.ExceptHookArgs) -> None:
+        if args.exc_value is not None:
+            name = args.thread.name if args.thread is not None else "a thread"
+            logging.getLogger("proingest").critical(
+                "uncaught exception in %s", name, exc_info=(args.exc_type, args.exc_value, args.exc_traceback)
+            )
+        previous_thread_hook(args)
+
+    sys.excepthook = hook
+    threading.excepthook = thread_hook
 
 
 # --- The diagnostics export: every kept log file as one CSV. ---

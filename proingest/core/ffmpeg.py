@@ -22,7 +22,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
-from collections.abc import Generator
+from collections.abc import Generator, Sequence
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -579,20 +579,44 @@ def pad_filter(canvas: tuple[int, int]) -> str:
     return f"pad={canvas[0]}:{canvas[1]}:trunc((ow-iw)/4)*2:trunc((oh-ih)/4)*2:black"
 
 
-REFERENCE_TAGS = [
-    "-color_primaries",
-    "bt709",
-    "-colorspace",
-    "bt709",
-    "-color_trc",
-    "iec61966-2-1",
-]
-"""How the output is labelled, whatever the source was.
+DEFAULT_DISPLAY = "sRGB - Display"
 
-COLOR_AND_FORMAT section 1: a reference is a display encode and ends up in display
-sRGB either way. `-colorspace` is the matrix, and sRGB and Rec.709 share primaries, so
-only the transfer names sRGB.
+REFERENCE_TRANSFERS: dict[str, tuple[str, str]] = {
+    "sRGB - Display": ("iec61966-2-1", "iec61966-2-1"),
+    "Gamma 2.2 Rec.709 - Display": ("gamma22", "bt470m"),
+    "Rec.1886 Rec.709 - Display": ("bt709", "bt709"),
+}
+"""The transfer a reference is labelled with, by the display its pixels were rendered for.
+
+Since 2026-09-28 the display comes from the clip's AMF, so the label has to follow it: a
+gamma 2.2 encode labelled sRGB is played back through the wrong curve by any player that
+reads the tag. Only the three Rec.709 primaries displays of the pinned config are here,
+because a reference is an 8 bit Rec.709 mp4; a display that is not (P3, HDR) is QC-079 at
+scan. Each is two names for one curve, because the two places it is set spell it
+differently: the `-color_trc` option takes `gamma22` and refuses `bt470m`, and `setparams`
+takes `bt470m` (the standard's code for a 2.2 curve) and refuses `gamma22` (ffmpeg 6.1).
 """
+
+
+def reference_label(display: str = DEFAULT_DISPLAY) -> str:
+    """The same label as a filter, set on every frame as the chain's last step.
+
+    **Both, because ffmpeg versions disagree about which wins.** 6.1 labels the stream from
+    the `-color_trc` option; the bundled 9.0.1 takes the frames' own properties, which the
+    conversion to 4:2:0 leaves unset, and wrote no transfer at all (CI, 2026-09-28).
+    """
+    reference_tags(display)  # the same refusal for a display with no label
+    transfer = REFERENCE_TRANSFERS[display][1]
+    return f"setparams=color_primaries=bt709:color_trc={transfer}:colorspace=bt709:range=tv"
+
+
+def reference_tags(display: str = DEFAULT_DISPLAY) -> list[str]:
+    """How the output is labelled: Rec.709 primaries and matrix, the display's transfer."""
+    transfer = REFERENCE_TRANSFERS.get(display)
+    if transfer is None:
+        raise FFmpegError(f"a reference cannot be labelled for {display!r}")
+    return ["-color_primaries", "bt709", "-colorspace", "bt709", "-color_trc", transfer[0]]
+
 
 LUT_PIXEL_FORMAT = "gbrpf32le"
 """What the cube is applied in. Planar float32 RGB, the same format the decode uses.
@@ -608,6 +632,15 @@ LUT_INTERPOLATION = "tetrahedral"
 a one word difference nobody notices being wrong."""
 
 
+def _x264(crf: int | None = None, display: str = DEFAULT_DISPLAY) -> list[str]:
+    """How every reference, and every stringout segment, is encoded."""
+    return [
+        "-c:v", "libx264", "-profile:v", "high", "-preset", REFERENCE_PRESET,
+        "-crf", str(_CRF if crf is None else crf), "-g", REFERENCE_KEYINT,
+        "-pix_fmt", REFERENCE_PIXEL_FORMAT, *reference_tags(display),
+    ]  # fmt: skip
+
+
 def lut_filter(cube: Path) -> str:
     """The filter that applies a baked `.cube`, COLOR_AND_FORMAT section 1.
 
@@ -619,8 +652,7 @@ def lut_filter(cube: Path) -> str:
     rather than pasted. Nothing the tool writes contains either character, and a
     filtergraph that fails to parse is a render that fails on a temp directory name.
     """
-    escaped = str(cube).replace("\\", "\\\\").replace(":", "\\:").replace("'", "\\'")
-    return f"lut3d={escaped}:interp={LUT_INTERPOLATION}"
+    return f"lut3d={_filter_path(cube)}:interp={LUT_INTERPOLATION}"
 
 
 def encode_command(
@@ -642,8 +674,19 @@ def encode_command(
     color_range: str = "",
     canvas: tuple[int, int] | None = None,
     hold: int = 0,
+    overlay: Sequence[str] = (),
+    silence: bool = False,
+    audio_format: Sequence[str] = (),
+    display: str = DEFAULT_DISPLAY,
+    insets: Sequence[Inset] = (),
 ) -> list[str]:
     """The command that encodes `[in_frame, out_frame]` to one reference mp4.
+
+    `overlay` is filters drawn last, on the finished canvas: the stringout's burn-ins.
+    `insets` are pictures laid over the canvas before them (a stringout plate's cp and wit).
+    `silence` gives a picture with no `audio` a silent track of the same length, so every
+    stringout segment has the same streams and they join without a re-encode, and
+    `audio_format` pins the sound's rate and layout for the same reason.
 
     With `hold` longer than the range, the last frame is repeated until the reference
     is `hold` frames long: a freeze delivers one frame shown for five seconds.
@@ -665,8 +708,9 @@ def encode_command(
     - **`setpts=PTS-STARTPTS` follows the trim.** `trim` keeps the source timestamps,
       so the first delivered frame lands at its original offset and the mp4 opens with
       a gap that long. Measured: four frames at 24 came out 0.25s instead of 0.17s.
-    - **`timecode` is the In frame's**, stated with `-timecode`, because otherwise the
-      muxer copies the source's start timecode, which is the head of the handles.
+    - **`timecode` is the first delivered frame's, 1001** (2026-09-25; it was the In frame's
+      camera timecode), stated with `-timecode`, because otherwise the muxer copies the
+      source's start timecode.
     - **`-f mp4` is stated.** The output is a `.part` path, so there is no extension to
       infer a muxer from. This is the same trap `extract_audio_command` documents.
     - **Both matrices are stated.** In through `to_rgb`, from the file's own tags, and
@@ -711,40 +755,35 @@ def encode_command(
         if audio_skip > 0:
             command += ["-ss", f"{audio_skip:.6f}"]
         command += ["-i", str(audio)]
+    elif silence:
+        command += ["-f", "lavfi", "-i", SILENCE]
 
     filters.append(to_rgb(target_size, color_space, color_range, LUT_PIXEL_FORMAT))
     if lut is not None:
         filters.append(lut_filter(lut))
-    filters.append(REFERENCE_TO_YUV)
+    filters += [REFERENCE_TO_YUV, reference_label(display)]
     if canvas is not None:
         filters.append(pad_filter(canvas))
-    command += ["-vf", ",".join(filters)]
+    if insets:
+        # The label again after the overlays, so it is on the frames that are encoded.
+        command += ["-vf", inset_graph(filters, insets, [reference_label(display), *overlay])]
+    else:
+        command += ["-vf", ",".join([*filters, *overlay])]
 
     # fps_mode passthrough for the same reason the decode passes it: ffmpeg must not
     # invent or drop frames to reach a constant rate, because section 6 maps output
     # frame 1001 + k onto source frame in + k and nothing may break that.
     command += ["-map", "0:v:0"]
-    command += ["-map", "1:a:0"] if audio is not None else ["-an"]
+    sounded = audio is not None or silence
+    command += ["-map", "1:a:0"] if sounded else ["-an"]
     command += [
         "-frames:v",
         str(written),
         "-fps_mode",
         "passthrough",
-        "-c:v",
-        "libx264",
-        "-profile:v",
-        "high",
-        "-preset",
-        REFERENCE_PRESET,
-        "-crf",
-        str(_CRF if crf is None else crf),
-        "-g",
-        REFERENCE_KEYINT,
-        "-pix_fmt",
-        REFERENCE_PIXEL_FORMAT,
-        *REFERENCE_TAGS,
+        *_x264(crf, display),
     ]
-    if audio is not None:
+    if sounded:
         # `apad` then `atrim` states the audio's length outright: pad it to endless,
         # then cut it to exactly the picture. Both halves are needed and neither is
         # about the other stream. A wav shorter than the picture is padded with silence,
@@ -765,10 +804,112 @@ def encode_command(
             REFERENCE_AUDIO_BITRATE,
             "-af",
             _audio_fit(audio_tempo, _seconds(written, rate)),
+            *audio_format,
         ]
     if timecode is not None:
         command += ["-timecode", timecode]
     return [*command, "-movflags", "+faststart", "-f", "mp4", str(destination)]
+
+
+STRINGOUT_AUDIO = ("-ar", "48000", "-ac", "2")
+"""Every stringout segment's sound, whatever its plate recorded, so all of them match."""
+
+SILENCE = "anullsrc=r=48000:cl=stereo"
+"""A stringout segment with no sound of its own: 48 kHz stereo, what AAC from a camera wav
+comes out as, so the segments agree and join by stream copy."""
+
+
+def drawtext_literal(text: str) -> str:
+    """Text for `drawtext` to print as written. Its expansion reads `%{...}` and a backslash
+    even from a `textfile`, so both are escaped: a Scene of `50% rain` must not vanish."""
+    return text.replace("\\", "\\\\").replace("%", "\\%")
+
+
+def drawtext_filter(textfile: Path, font: Path, size: int, x: str, y: str) -> str:
+    """One burn-in, read from a file rather than inlined: the docs warn that inline text
+    can need four levels of escaping, and a file needs one (the path)."""
+    return (
+        f"drawtext=fontfile={_filter_path(font)}:textfile={_filter_path(textfile)}"
+        f":fontsize={size}:fontcolor=white:x={x}:y={y}"
+    )
+
+
+@dataclass(frozen=True)
+class Inset:
+    """A picture in picture: `length` frames of the mp4 at `path` from frame `start`,
+    scaled to `size` with its top left corner at (`x`, `y`). It is gone once it ends.
+    `filters` run on it after the scale, so a burn-in on it goes when it does."""
+
+    path: Path
+    start: int
+    length: int
+    x: int
+    y: int
+    size: tuple[int, int]
+    filters: tuple[str, ...] = ()
+
+
+def inset_graph(chain: Sequence[str], insets: Sequence[Inset], after: Sequence[str]) -> str:
+    """`chain`, then each inset laid over it in order, then `after` (the burn-ins, on top).
+
+    Still one `-vf` graph with one input and one output: each inset is read by a `movie`
+    source inside it, so the encode stays a single command. `eof_action=pass` is what
+    removes an inset when it runs out rather than holding its last frame (user,
+    2026-09-29).
+    """
+    links = [f"{','.join(chain)}[m0]"]
+    for index, inset in enumerate(insets):
+        end = inset.start + inset.length
+        links.append(
+            f"movie={_filter_path(inset.path)},trim=start_frame={inset.start}:end_frame={end},"
+            f"setpts=PTS-STARTPTS,scale={inset.size[0]}:{inset.size[1]}:flags=lanczos"
+            f"{''.join(',' + step for step in inset.filters)}[p{index}]"
+        )
+        links.append(f"[m{index}][p{index}]overlay=x={inset.x}:y={inset.y}:eof_action=pass[m{index + 1}]")
+    links.append(f"[m{len(insets)}]{','.join(after)}")
+    return ";".join(links)
+
+
+def _filter_path(path: Path) -> str:
+    """A path inside a filtergraph argument: colon separated and backslash escaped."""
+    return str(path).replace("\\", "\\\\").replace(":", "\\:").replace("'", "\\'")
+
+
+def black_command(
+    destination: Path,
+    size: tuple[int, int],
+    rate: str,
+    length: int,
+    overlay: Sequence[str] = (),
+    ffmpeg: Path | None = None,
+    display: str = DEFAULT_DISPLAY,
+) -> list[str]:
+    """`length` frames of black with silence, encoded as a reference is, so it joins the
+    segments either side of it: a gap in the EDL, or an event nothing is known about."""
+    tool = ffmpeg or resolve_tool("ffmpeg")
+    picture = f"color=c=black:s={size[0]}x{size[1]}:r={rate}"
+    filters = [REFERENCE_TO_YUV, reference_label(display), *overlay]
+    return [
+        str(tool), "-hide_banner", "-loglevel", "error", "-nostdin", "-y",
+        "-f", "lavfi", "-i", picture, "-f", "lavfi", "-i", SILENCE,
+        "-vf", ",".join(filters), "-map", "0:v:0", "-map", "1:a:0",
+        "-frames:v", str(length), *_x264(display=display),
+        "-c:a", "aac", "-b:a", REFERENCE_AUDIO_BITRATE,
+        "-af", f"atrim=duration={_seconds(length, rate):.6f}", *STRINGOUT_AUDIO,
+        "-movflags", "+faststart", "-f", "mp4", str(destination),
+    ]  # fmt: skip
+
+
+def concat_command(listing: Path, destination: Path, timecode: str, ffmpeg: Path | None = None) -> list[str]:
+    """Join encoded segments by stream copy (the concat demuxer), as one mp4 whose own
+    timecode starts where the EDL's record does. Every segment was encoded with the same
+    settings and streams, which is what makes copying safe."""
+    tool = ffmpeg or resolve_tool("ffmpeg")
+    return [
+        str(tool), "-hide_banner", "-loglevel", "error", "-nostdin", "-y",
+        "-f", "concat", "-safe", "0", "-i", str(listing),
+        "-c", "copy", "-timecode", timecode, "-movflags", "+faststart", "-f", "mp4", str(destination),
+    ]  # fmt: skip
 
 
 def _seconds(count: int, rate: str) -> float:
@@ -803,6 +944,7 @@ def encode_reference(
     color_range: str = "",
     canvas: tuple[int, int] | None = None,
     hold: int = 0,
+    display: str = DEFAULT_DISPLAY,
 ) -> None:
     """Run the reference encode, raising FFmpegError with ffmpeg's own complaint.
 
@@ -828,6 +970,7 @@ def encode_reference(
         color_range=color_range,
         canvas=canvas,
         hold=hold,
+        display=display,
     )
     result = run(command, timeout=ENCODE_TIMEOUT)
     if result.returncode != 0:
