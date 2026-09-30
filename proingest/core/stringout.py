@@ -245,7 +245,7 @@ def _segment(
     length = frames.duration(event.record_in, event.record_out)
     claimed = [row for row in rows if event in session.candidates(row)]
     known = next((row for row in claimed if row.media is not None), None)
-    cut = clf.approved_in_out(event, known.media) if known is not None and known.media is not None else None
+    cut = _cut(event, known.media) if known is not None and known.media is not None else None
     if known is None or cut is None:
         name = event.clip_stem or event.reel or f"event {event.event_id}"
         held = event.freeze or length == 1
@@ -294,6 +294,21 @@ def _segment(
         # An HDRI is the shooter's sRGB reference video, shown as it is (QC-080).
         color=clf.shot_color(row) if held and not qc.is_shooter_delivered(row) else None,
     )
+
+
+def _cut(event: clf.ConformEvent, source: MediaInfo) -> InOut:
+    """The event's frames in its file. **Never None: a file that is there plays** (user,
+    2026-09-29). A file with no timecode is counted from 00:00:00:00, which is where Resolve
+    starts one and what the EDL's source In counts from (turnover097's events 008 and 015
+    cut from 00:00:00:00). Stringout only: a delivery still refuses to guess (QC-029).
+    A single image has only its one frame."""
+    cut = clf.approved_in_out(event, source)
+    if cut is not None:
+        return cut
+    if not source.is_sequence and source.frame_count <= 1:
+        return InOut(source.start_frame, source.start_frame)
+    start = source.start_frame + event.source_in
+    return InOut(start, start + event.duration - 1)
 
 
 def _held(event: clf.ConformEvent, cut: InOut, identity: naming.ShotIdentity | None) -> bool:

@@ -1,6 +1,6 @@
 [project]
 name = "proingest"
-version = "0.5.19"
+version = "0.5.20"
 description = "VFX turnover ingest and conform tool"
 requires-python = ">=3.11"
 dependencies = [

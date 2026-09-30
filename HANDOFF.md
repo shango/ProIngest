@@ -6,7 +6,7 @@ disagrees with `PROGRESS.md` or the docs, they are right and this file is wrong.
 
 ## State
 
-- **Version 0.5.19 on branch `qc/source-fidelity`**, pushed, PR #17 open, **not merged** (merge
+- **Version 0.5.20 on branch `qc/source-fidelity`**, pushed, PR #17 open, **not merged** (merge
   only when the user asks). 0.5.4 is on `main`.
 - **CI run 36635978851 is green on all four jobs** and built the 0.5.18 dmg, handed over as:
   `gh run download 36635978851 -R shango/ProIngest -n ProIngest-macos-arm64 -D ~/Downloads/ProIngest-0.5.18`
@@ -48,13 +48,12 @@ the EDL event number less one (15 of 15); the pinned config maps every URN the A
 
 ## Open, with the user
 
-- **HDRI** (user, 2026-09-29, repeated because it kept being lost): the HDRI on the timeline is an
-  **sRGB video clip** of the capture, typed `HDRI`, shown in the stringout as it is (0.5.19). The
-  tool never touches an HDRI EXR. **Turnover097's timeline has no HDRI video**: its EDL and CSV put
-  the stitched `.exr` files in its two HDRI slots and the folder has none, so they are black. A
-  turnover is only the CMX 3600 EDL, the CSV, an AMF per clip and the CLFs; the stray `.otio` and
-  `.drt` in `collected files` are not part of it and are never read. Told the user;
-  waiting on whether Ben re-exports with the videos.
+- **HDRI** (user, 2026-09-29, repeated because it kept being lost): a clip typed `HDRI` is a
+  reference movie (the user expects MP4, sRGB) that plays in the stringout like any other, shown
+  as it is; the tool never touches an actual HDRI EXR. **Every event whose file is present plays,
+  never black** (0.5.20). Turnover097's two HDRI-typed files are OpenEXR by content, not MP4 (told
+  the user); they now play, and the linear one reads dark. Open: whether Ben's real export has MP4s
+  there, and whether an HDRI that turns out to be linear should get its AMF colour.
 - **Inset assumptions, told the user**: cp top left and wit top right (their first message said
   "left is the pl"); the label bottom left inside the inset; labels on the insets only.
 - **Held stills include Ben's grade** on the stringout; told the user the view-only alternative

@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 
 from proingest.core import clf, ffmpeg, naming, planner, qc, render, scan, stringout
-from proingest.core.models import Batch, InOut
+from proingest.core.models import Batch, FrameRate, InOut, MediaInfo
 from tests.fixtures import media as fixtures
 
 FOLDER = "turnover007_09_23_2026_testshooter"
@@ -354,3 +354,20 @@ class TestAnHdriReferenceClip:
         assert with_hdri.delivery_root is not None
         made = stringout.build(with_hdri, with_hdri.turnovers[0], with_hdri.delivery_root)
         assert made is not None and made.frame_count == 2 * FRAMES
+
+
+class TestAFileThatIsThereAlwaysPlays:
+    """User, 2026-09-29: an event whose file is present is never black."""
+
+    def test_a_file_with_no_timecode_counts_from_zero(self, batch: Batch) -> None:
+        media = batch.rows[1].media
+        assert media is not None
+        batch.rows[1].media = replace(media, start_timecode=None)
+        batch.rows[1].deliverables = []
+        segment = planned(batch).segments[1]
+        assert segment.kind == "source" and segment.path == media.path
+
+    def test_a_single_image_with_no_timecode_is_its_one_frame(self) -> None:
+        event = clf.ConformEvent("008", "AX", "hdri.exr", 0, 72, 100, 172, freeze=True)
+        still = MediaInfo(Path("/t/hdri.exr"), "exr", "gbrpf32le", 6483, 3242, FrameRate(24), frame_count=0)
+        assert stringout._cut(event, still) == InOut(0, 0)

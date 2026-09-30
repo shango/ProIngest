@@ -8,7 +8,7 @@ commit.
 
 ## 1. Resume here
 
-**State at 2026-09-29, version 0.5.19, on branch `qc/source-fidelity`, PR #17** (`HANDOFF.md` is
+**State at 2026-09-29, version 0.5.20, on branch `qc/source-fidelity`, PR #17** (`HANDOFF.md` is
 the short version) (0.5.4 is on `main`, PR
 #16 merged as `262817e`, dmg in CI run 35944322464). The 2026-09-23 review is built (chunks A
 to H of `docs/REVIEW_2026-09-23.md`), and so are the fixes that a second official turnover,
@@ -17,6 +17,18 @@ renders; Turnover121, every clip 8 bit 4:2:0, runs again with a QC-020 warning o
 since 2026-09-28 (user). What is left is the Mac: `docs/MAC_SESSION.md`, from "The 0.5.0 build, in
 order" down, and Ben's 4.886 slope. Entries are newest first; anything older than 2026-09-22
 describes the tool before the review and is history.
+
+**2026-09-29, a file that is there always plays, 0.5.20 (user).** "They should never be black, the
+mp4 or file should play in the timeline along with all the others." Turnover097's events 008 and
+015 were black because their files carry no timecode, so `clf.approved_in_out` could not place the
+EDL's source range. `stringout._cut` now counts a timecode-less file from 00:00:00:00 (where Resolve
+starts one, and where those events' source In is) and takes a single image's one frame; the scan
+and delivery stay strict. **Checked on disk**: the two files the EDL and CSV name for those events,
+`DALU0012_pl01_02_HDRI.exr` and `DALU0016_pl01_HDRI.exr`, are OpenEXR images by content (magic
+`762f3101`, float 6483x3242 and 6520x3260), not MP4s; told the user, who expects the HDRI-typed
+clips to be MP4s. Shown as they are (the HDRI rule), so the linear DALU0012 reads dark.
+**Verified**: two tests (no timecode counts from zero; a single image is its frame); turnover097's
+stringout rebuilt, both events play (frames 705 and 1100 looked at). Copied over `..._SO_v01_pip.mp4`.
 
 **2026-09-29, the HDRI is a video clip, 0.5.19 (user).** "The hdri that is on the timeline is a
 video clip, not a single frame. It's the sRGB version of what the shooter captured that was later
