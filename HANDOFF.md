@@ -48,8 +48,11 @@ the EDL event number less one (15 of 15); the pinned config maps every URN the A
 
 ## Open, with the user
 
-- **The two HDRI events are black on the stringout** (now for one second each): no source is known
-  for them. Asked whether they should show their clip; unanswered.
+- **HDRI on the stringout** (user, 2026-09-29): the HDRI EXR files are never handled by the tool,
+  so turnover097's two HDRI events (which cut the EXRs) being black is expected. A **reference clip
+  tagged HDRI** (a video) is what should show: it would be the skipped row's ungraded source. None
+  has been seen yet (turnover097 has none). Asked: exempt HDRI clips from 0.5.18's held-frame
+  AMF colouring (they may be sRGB), or wait for one to arrive.
 - **Inset assumptions, told the user**: cp top left and wit top right (their first message said
   "left is the pl"); the label bottom left inside the inset; labels on the insets only.
 - **Held stills include Ben's grade** on the stringout; told the user the view-only alternative
