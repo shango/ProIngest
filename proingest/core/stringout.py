@@ -13,7 +13,8 @@ ffmpeg. The user's decisions, all in OQ-38:
   shot and element bottom right. White, Open Sans, no box. No camera timecode: the
   counter is the delivered frame number, 1001 on the frame the plate starts with.
 - **Any held frame plays for one second** (user, 2026-09-29): a reference still (a chart,
-  ball or size ref is one frame of a video), a frame hold, a one frame cut. Taken from the
+  ball or size ref is one frame of a video), a frame hold, a one frame cut. **Except a held
+  HDRI, which keeps the EDL's length** (user, 2026-09-30). Taken from the
   source, it is **coloured through its AMF** (input transform, CLF nodes, output transform)
   the way Resolve shows it; a still's delivered EXR stays ungraded.
 - **An HDRI on the timeline is a video clip** (user, 2026-09-29): the sRGB version of what the
@@ -262,7 +263,8 @@ def _segment(
     identity = effective_identity(row, show_pattern)
     label = naming.shot_label(identity) if identity is not None else Path(row.clip_name).stem
     held = _held(event, cut, identity)
-    shown = STILL_LENGTH if held else length
+    # A held HDRI keeps the EDL's length (user, 2026-09-30); every other held frame is a second.
+    shown = STILL_LENGTH if held and not qc.is_shooter_delivered(row) else length
     if delivering is not None and delivering.delivered_range is not None:
         offset = cut.in_frame - delivering.delivered_range.in_frame
         return Segment(

@@ -343,12 +343,17 @@ class TestAnHdriReferenceClip:
         assert segment.color is None, "shown as it is: never through an AMF"
         assert hdri.media is not None and segment.path == hdri.media.path
 
-    def test_held_it_is_still_not_coloured(self, with_hdri: Batch) -> None:
-        hdri = with_hdri.rows[1]
-        assert hdri.approved is not None
-        hdri.current = hdri.approved = InOut(hdri.approved.in_frame, hdri.approved.in_frame)
+    def test_held_it_keeps_the_edl_length_and_is_not_coloured(self, with_hdri: Batch) -> None:
+        """An `M2` hold on the HDRI event (turnover097's 008 and 015): the EDL's length, the
+        frame held, never coloured (user, 2026-09-30). Any other hold is one second."""
+        edl = with_hdri.turnovers[0].edl_path
+        assert edl is not None
+        lines = edl.read_text().splitlines()
+        second = next(i for i, line in enumerate(lines) if line.startswith("002"))
+        lines.insert(second + 1, "M2   AX             000.0                00:00:00:00")
+        edl.write_text("\n".join(lines) + "\n")
         segment = planned(with_hdri).segments[1]
-        assert segment.color is None
+        assert (segment.length, segment.freeze, segment.color) == (FRAMES, True, None)
 
     def test_the_stringout_is_written_with_it(self, with_hdri: Batch) -> None:
         assert with_hdri.delivery_root is not None

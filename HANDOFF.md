@@ -6,7 +6,7 @@ disagrees with `PROGRESS.md` or the docs, they are right and this file is wrong.
 
 ## State
 
-- **Version 0.5.20 on branch `qc/source-fidelity`**, pushed, PR #17 open, **not merged** (merge
+- **Version 0.5.21 on branch `qc/source-fidelity`**, pushed, PR #17 open, **not merged** (merge
   only when the user asks). 0.5.4 is on `main`.
 - **CI run 36718374715 is green on all four jobs** and built the 0.5.20 dmg, handed over as:
   `gh run download 36718374715 -R shango/ProIngest -n ProIngest-macos-arm64 -D ~/Downloads/ProIngest-0.5.20`
@@ -14,7 +14,7 @@ disagrees with `PROGRESS.md` or the docs, they are right and this file is wrong.
 - **1814 tests pass**; `ruff`, `ruff format` and `mypy --strict` are clean.
 - Nothing uncommitted except the untracked samples listed under Working notes.
 
-## What 0.5.12 to 0.5.20 did (29 Sep 2026, all user decisions)
+## What 0.5.12 to 0.5.21 did (29 Sep 2026, all user decisions)
 
 - **0.5.12** The reference label is set on the frames too (`ffmpeg.reference_label`, a
   `setparams` step): the Mac's bundled ffmpeg 9.0.1 wrote no transfer from `-color_trc` alone.
@@ -35,6 +35,8 @@ disagrees with `PROGRESS.md` or the docs, they are right and this file is wrong.
 - **0.5.20** A timeline event whose file is present always plays on the stringout, never black: a
   file with no timecode is counted from 00:00:00:00 (where Resolve starts one), a single image is
   its one frame. Delivery stays strict (QC-029).
+- **0.5.21** A held HDRI slot keeps the EDL's length (turnover097: 72 and 120 frames); every
+  other held frame stays one second.
 - **Docs, no code: Ben exports no stringout.** The tool builds it. Every doc says so now.
 
 ## Turnover097, the spec sample
@@ -43,7 +45,7 @@ disagrees with `PROGRESS.md` or the docs, they are right and this file is wrong.
 EDL event + CLF grade nodes. **A turnover is only those four: the CMX 3600 EDL, the CSV, one AMF
 per clip and the CLFs** (user); the stray `.otio` and `.drt` in the folder are not part of it and
 are never read or cited. It scans with **no must-fix** and runs in full (30 jobs, about 20
-minutes here). The latest stringout, 1118 frames with the insets, held stills and both HDRI events playing, is
+minutes here). The latest stringout, 1262 frames with the insets, held stills and both HDRI events playing, is
 `turnover097_09_28_26_danielluckett/turnover097_09_28_2026_danielluckett_SO_v01_pip.mp4`; the
 first run's logs are in `C:\Users\shann\Downloads\ProIngest-turnover097\`. The handover folder is
 named `collected files`, so number, date and shooter are typed in (QC-005).
@@ -65,8 +67,6 @@ the EDL event number less one (15 of 15); the pinned config maps every URN the A
   whether placing the EXRs there was intentional**, and if not, for a re-export with the MP4s.
   Either way they play now (0.5.20); the linear DALU0012 reads dark, shown without colour. If Ben
   keeps EXRs there, ask whether they should get their AMF colour.
-- **Held HDRI slots are 1 second** (the 0.5.18 held-frame rule; the EDL gives 3 s and 5 s). Offered
-  to keep the EDL length for them; not answered.
 - **Inset assumptions, told the user**: cp top left and wit top right (their first message said
   "left is the pl"); the label bottom left inside the inset; labels on the insets only.
 - **Held stills include Ben's grade** on the stringout; told the user the view-only alternative

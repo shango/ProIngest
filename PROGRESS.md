@@ -8,7 +8,7 @@ commit.
 
 ## 1. Resume here
 
-**State at 2026-09-29, version 0.5.20, on branch `qc/source-fidelity`, PR #17** (`HANDOFF.md` is
+**State at 2026-09-30, version 0.5.21, on branch `qc/source-fidelity`, PR #17** (`HANDOFF.md` is
 the short version) (0.5.4 is on `main`, PR
 #16 merged as `262817e`, dmg in CI run 35944322464). The 2026-09-23 review is built (chunks A
 to H of `docs/REVIEW_2026-09-23.md`), and so are the fixes that a second official turnover,
@@ -17,6 +17,14 @@ renders; Turnover121, every clip 8 bit 4:2:0, runs again with a QC-020 warning o
 since 2026-09-28 (user). What is left is the Mac: `docs/MAC_SESSION.md`, from "The 0.5.0 build, in
 order" down, and Ben's 4.886 slope. Entries are newest first; anything older than 2026-09-22
 describes the tool before the review and is history.
+
+**2026-09-30, a held HDRI keeps the EDL's length, 0.5.21 (user).** The 0.5.18 one second rule made
+turnover097's two `M2` held HDRI slots 24 frames; they now keep the EDL's 72 and 120, frame held,
+uncoloured (`stringout._segment`: `STILL_LENGTH` only when the row is not `qc.is_shooter_delivered`).
+Other held frames stay one second. **Verified**: a test that writes a real `M2` line into the
+fixture EDL (the old "held HDRI" test changed the row, not the EDL, and never made a hold; replaced);
+turnover097's stringout rebuilt: 008 is 72, 015 is 120, the stills 24, 1262 frames in all. Copied
+over `..._SO_v01_pip.mp4`.
 
 **2026-09-29, a file that is there always plays, 0.5.20 (user).** "They should never be black, the
 mp4 or file should play in the timeline along with all the others." Turnover097's events 008 and
