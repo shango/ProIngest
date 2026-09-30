@@ -1,4 +1,4 @@
-# Handoff, 29 September 2026
+# Handoff, 30 September 2026
 
 **This is a short pointer, not the record.** `PROGRESS.md` section 1 holds the record: one entry
 per change, newest first, each saying what was built and how it was verified. If this file
@@ -8,12 +8,13 @@ disagrees with `PROGRESS.md` or the docs, they are right and this file is wrong.
 
 - **Version 0.5.20 on branch `qc/source-fidelity`**, pushed, PR #17 open, **not merged** (merge
   only when the user asks). 0.5.4 is on `main`.
-- **CI run 36635978851 is green on all four jobs** and built the 0.5.18 dmg, handed over as:
-  `gh run download 36635978851 -R shango/ProIngest -n ProIngest-macos-arm64 -D ~/Downloads/ProIngest-0.5.18`
-- **1809 tests pass**; `ruff`, `ruff format` and `mypy --strict` are clean.
+- **CI run 36718374715 is green on all four jobs** and built the 0.5.20 dmg, handed over as:
+  `gh run download 36718374715 -R shango/ProIngest -n ProIngest-macos-arm64 -D ~/Downloads/ProIngest-0.5.20`
+  (https://github.com/shango/ProIngest/actions/runs/36718374715)
+- **1814 tests pass**; `ruff`, `ruff format` and `mypy --strict` are clean.
 - Nothing uncommitted except the untracked samples listed under Working notes.
 
-## What 0.5.12 to 0.5.18 did (29 Sep 2026, all user decisions)
+## What 0.5.12 to 0.5.20 did (29 Sep 2026, all user decisions)
 
 - **0.5.12** The reference label is set on the frames too (`ffmpeg.reference_label`, a
   `setparams` step): the Mac's bundled ffmpeg 9.0.1 wrote no transfer from `-color_trc` alone.
@@ -29,13 +30,20 @@ disagrees with `PROGRESS.md` or the docs, they are right and this file is wrong.
 - **0.5.18** Any held frame on the stringout (a reference still, which is one frame of a video; an
   `M2` hold; any one frame cut) plays for 24 frames, and one taken from the source is coloured
   through its AMF (grade included). Stills were flat because they have no HD reference.
+- **0.5.19** A clip typed `HDRI` is a reference movie: its stringout event is the clip itself,
+  shown as it is, never given AMF colour. Spelled out in QC-080 and COLOUR_SESSION_EXPORT.
+- **0.5.20** A timeline event whose file is present always plays on the stringout, never black: a
+  file with no timecode is counted from 00:00:00:00 (where Resolve starts one), a single image is
+  its one frame. Delivery stays strict (QC-029).
 - **Docs, no code: Ben exports no stringout.** The tool builds it. Every doc says so now.
 
 ## Turnover097, the spec sample
 
 `turnover097_09_28_26_danielluckett/collected files` (untracked): EDL + UTF-16 CSV + one AMF per
-EDL event + CLF grade nodes. It scans with **no must-fix** and runs in full (30 jobs, about 20
-minutes here). The latest stringout, 1118 frames with the insets and held stills, is
+EDL event + CLF grade nodes. **A turnover is only those four: the CMX 3600 EDL, the CSV, one AMF
+per clip and the CLFs** (user); the stray `.otio` and `.drt` in the folder are not part of it and
+are never read or cited. It scans with **no must-fix** and runs in full (30 jobs, about 20
+minutes here). The latest stringout, 1118 frames with the insets, held stills and both HDRI events playing, is
 `turnover097_09_28_26_danielluckett/turnover097_09_28_2026_danielluckett_SO_v01_pip.mp4`; the
 first run's logs are in `C:\Users\shann\Downloads\ProIngest-turnover097\`. The handover folder is
 named `collected files`, so number, date and shooter are typed in (QC-005).
@@ -48,12 +56,17 @@ the EDL event number less one (15 of 15); the pinned config maps every URN the A
 
 ## Open, with the user
 
-- **HDRI** (user, 2026-09-29, repeated because it kept being lost): a clip typed `HDRI` is a
-  reference movie (the user expects MP4, sRGB) that plays in the stringout like any other, shown
-  as it is; the tool never touches an actual HDRI EXR. **Every event whose file is present plays,
-  never black** (0.5.20). Turnover097's two HDRI-typed files are OpenEXR by content, not MP4 (told
-  the user); they now play, and the linear one reads dark. Open: whether Ben's real export has MP4s
-  there, and whether an HDRI that turns out to be linear should get its AMF colour.
+- **HDRI, waiting on Ben** (user, 2026-09-29; this kept being lost, so read it first): a clip typed
+  `HDRI` is expected to be an **sRGB reference MP4** of what the shooter captured, later stitched
+  into an HDRI in another application. The tool never touches an actual HDRI EXR, and the HDRI
+  clip plays in the stringout like any other, as it is. **Turnover097's two HDRI-typed clips are
+  OpenEXR files by content** (`DALU0012_pl01_02_HDRI.exr`, `DALU0016_pl01_HDRI.exr`, EDL events
+  008 and 015, `M2` holds), not MP4s. The user has no access to Ben's timeline and is **asking Ben
+  whether placing the EXRs there was intentional**, and if not, for a re-export with the MP4s.
+  Either way they play now (0.5.20); the linear DALU0012 reads dark, shown without colour. If Ben
+  keeps EXRs there, ask whether they should get their AMF colour.
+- **Held HDRI slots are 1 second** (the 0.5.18 held-frame rule; the EDL gives 3 s and 5 s). Offered
+  to keep the EDL length for them; not answered.
 - **Inset assumptions, told the user**: cp top left and wit top right (their first message said
   "left is the pl"); the label bottom left inside the inset; labels on the insets only.
 - **Held stills include Ben's grade** on the stringout; told the user the view-only alternative
