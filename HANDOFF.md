@@ -4,128 +4,85 @@
 per change, newest first, each saying what was built and how it was verified. If this file
 disagrees with `PROGRESS.md` or the docs, they are right and this file is wrong.
 
-## Current (29 Sep 2026)
+## State
 
-**0.5.18** is pushed: held frames play a second on the stringout, coloured through their AMF. Before it, **0.5.17**: the version in the window title and on the status bar. Before it, **0.5.16**: each inset labelled with its element (`cp01`). Before it, **0.5.15**: stringout picture in picture (cp top left, wit top right over each pl;
-PROGRESS). Before it, **0.5.14**: length limits (QC-033/034) for pl rows only (user), so turnover097 has no
-must-fix. Before it, **0.5.13**: OQ-77 (4) to (6) answered by the user (two digit year accepted with QC-081;
-QC-070 left alone; AMFs only in the folder pointed at), HDRI rows run no row rules, and
-`docs/QC_RULES_SUMMARY.csv` is committed and current. 0.5.12 (CI run 36527984818, green) fixed the
-reference label on the Mac's ffmpeg 9. Turnover097's stringout (44.9 s, HD, `bt470m`) was copied to
-`turnover097_09_28_26_danielluckett/` for the user; its logs are in
-`C:\Users\shann\Downloads\ProIngest-turnover097\`.
+- **Version 0.5.18 on branch `qc/source-fidelity`**, pushed, PR #17 open, **not merged** (merge
+  only when the user asks). 0.5.4 is on `main`.
+- **CI run 36635978851 is green on all four jobs** and built the 0.5.18 dmg, handed over as:
+  `gh run download 36635978851 -R shango/ProIngest -n ProIngest-macos-arm64 -D ~/Downloads/ProIngest-0.5.18`
+- **1809 tests pass**; `ruff`, `ruff format` and `mypy --strict` are clean.
+- Nothing uncommitted except the untracked samples listed under Working notes.
 
-**Next:** hand over 0.5.13's dmg when CI is green (`gh run download <run> -R shango/ProIngest -n
-ProIngest-macos-arm64 -D ~/Downloads/ProIngest-0.5.18`), then the Mac check in MAC_SESSION ("Colour
-from the AMF"). Still to raise: the handover folder was `collected files`, which matches no name
-pattern (QC-005), and `docs/COLOR_INPUTS_TURNOVER121.md` is untracked.
-**Ben exports no stringout** (user, 2026-09-29): the tool builds it; every doc now says so.
-**Stringout PiP built in 0.5.15**; the user is to look at `..._SO_v01_pip.mp4` in the turnover097 folder.
-The two HDRI events are black in the stringout: worth raising.
+## What 0.5.12 to 0.5.18 did (29 Sep 2026, all user decisions)
 
-## In progress: colour from AMF + CLF (user, 2026-09-28) - pick up here
+- **0.5.12** The reference label is set on the frames too (`ffmpeg.reference_label`, a
+  `setparams` step): the Mac's bundled ffmpeg 9.0.1 wrote no transfer from `-color_trc` alone.
+- **0.5.13** A two digit year in a folder name is read as 20YY with a QC-081 warning. HDRI rows
+  (QC-080) run no row rules. `docs/QC_RULES_SUMMARY.csv` committed and current. OQ-77 (4) to (6)
+  answered: QC-070 stays EDL and CSV only; AMFs are read only from the folder pointed at.
+- **0.5.14** Length limits (QC-033/034) apply to `pl` rows only. Turnover097 now has no must-fix.
+- **0.5.15** Stringout picture in picture: over each `pl`, the shot's first cp (EDL order) top
+  left and first wit top right, 480x270 (Resolve zoom 0.25), from their delivered HD refs, playing
+  from their own cut In and removed when they run out or at the plate's Out.
+- **0.5.16** Each inset labelled with its element (`cp01`), 32 px, bottom left inside it.
+- **0.5.17** The version always in view: window title and a permanent status bar label.
+- **0.5.18** Any held frame on the stringout (a reference still, which is one frame of a video; an
+  `M2` hold; any one frame cut) plays for 24 frames, and one taken from the source is coloured
+  through its AMF (grade included). Stills were flat because they have no HD reference.
+- **Docs, no code: Ben exports no stringout.** The tool builds it. Every doc says so now.
 
-Turnover097 (`turnover097_09_28_26_danielluckett/collected files`, untracked) is the spec
-sample: EDL + UTF-16 CSV + one AMF per EDL event + CLF grade nodes. **User decisions,
-2026-09-28**, all final:
-- **Colour comes from the AMF and its CLFs only.** The CDL in the EDL and the CSV's
-  encoding columns are no longer read. "There will be no older turnovers": no fallback path.
-- **EDL = the cut, CSV = identity** (File Name, Shot, Shot Type). OTIO and DRT ignored.
-- Reference mp4s **follow the AMF's output transform** (here Gamma 2.2 Rec.709, not sRGB).
-- A clip whose AMF has no grade: **info**. An AMF from the "Dailies Request" preset: **info**
-  (use whichever preset arrives).
-- Grades are primaries plus simple sky secondaries; anything a CLF cannot carry is
-  **ignored with a warning** if detected.
-- **HDRI rows (Shot Type HDRI) are delivered by the shooters**: the tool delivers nothing for
-  them; an sRGB reference clip for one may sit in the timeline, shown in the stringout only.
-- Ben provides no Resolve frame; the repo's graded EXR is Turnover121's, not comparable.
+## Turnover097, the spec sample
 
-**Verified facts** (turnover097 + the pinned config):
-- AMF index in the filename (`..._C4261_1_...amf`) = EDL event number - 1, 15 of 15. Each
-  AMF also names its file (`<aces:file>`, or `<aces:sequence>` for an EXR sequence).
-- The pinned config's `interchange: amf_transform_ids` maps every URN the AMFs use: input
-  `CSC.Sony.SLog3_SGamut3Cine_to_ACES.a2.v1` -> `S-Log3 S-Gamut3.Cine`; look
-  `Look.Academy.ReferenceGamutCompress.a2.v1` -> look `ACES 1.3 Reference Gamut Compression`;
-  output `Output.Academy.Rec709-D65_100nit_in_Rec709-D65_Gamma2pt2.a2.v1` -> display colour
-  space `Gamma 2.2 Rec.709 - Display` and view transform `ACES 2.0 - SDR 100 nits (Rec.709)`.
-- Each CLF: ACES2065-1 in/out, AP0->AP1, lin->ACEScct, one 33^3 LUT3D, back out. OCIO 2.5
-  reads `.clf`. The AMF carries each CLF's md5. Pipeline order: IT, RGC, workingLocation,
-  CLF nodes, OT. All `applied="false"`. HDRI AMFs have no input transform.
+`turnover097_09_28_26_danielluckett/collected files` (untracked): EDL + UTF-16 CSV + one AMF per
+EDL event + CLF grade nodes. It scans with **no must-fix** and runs in full (30 jobs, about 20
+minutes here). The latest stringout, 1118 frames with the insets and held stills, is
+`turnover097_09_28_26_danielluckett/turnover097_09_28_2026_danielluckett_SO_v01_pip.mp4`; the
+first run's logs are in `C:\Users\shann\Downloads\ProIngest-turnover097\`. The handover folder is
+named `collected files`, so number, date and shooter are typed in (QC-005).
 
-**Chunks** (commit + PROGRESS entry after each):
-1. **Done** (commit "AMF reader"). `core/amf.py`: parse an AMF, resolve its URNs through the config, tests. Not wired.
-2. **Done** (commit "Colour from the AMF"). Wire it: scan reads each row's AMF by event; `ShotColor` = input space, RGC, CLFs,
-   display/view; CDL and CSV encoding removed; QC rules reworked (QC-008/009/046/047, new
-   IDs for AMF mismatch, missing/changed CLF, preset info, unapplicable CLF); HDRI rows
-   deliver nothing; EXR header provenance; tests.
-3. **Done** (commit "0.5.10") except the run. Docs (COLOR_AND_FORMAT, QC_RULES, OQ-71 resolved), version bump, CI, then run
-   turnover097: log CSV to the user, run (Accept As Is for QC-033/034 if needed), stringout.
+**Colour decisions (2026-09-28), final:** colour comes from each event's AMF and its CLFs only; the
+EDL is the cut and the CSV is identity (File Name, Shot, Shot Type); references follow the AMF's
+output transform (here Gamma 2.2 Rec.709, labelled `bt470m`); a clip with no CLF is info (QC-009);
+HDRI rows are the shooters' to deliver (QC-080). Verified facts: the AMF index in its filename is
+the EDL event number less one (15 of 15); the pinned config maps every URN the AMFs use.
 
-## Where things stand
+## Open, with the user
 
-- **Version 0.5.11 on branch `qc/source-fidelity`**, PR #17 open, not merged. 0.5.4 is on `main`.
-  0.5.7 made QC-020 a warning again; 0.5.8 puts every QC result into Save Logs as CSV at its
-  own level, plus a session start line, problem dialogs and uncaught exceptions (user, 2026-09-28).
-  0.5.9 adds **Accept As Is (Ignore QC)** on a turnover heading (QC-074, OQ-76). 0.5.10 takes
-  **colour from each event's AMF and its CLFs** (QC-075 to QC-080; see "In progress" above). 0.5.11 labels each reference for
-  the AMF's display (gamma 2.2 is `bt470m`), not always sRGB.
-  CI run 36514483081 is green on all four jobs and built `ProIngest-0.5.9.dmg`:
-  `gh run download 36514483081 -R shango/ProIngest -n ProIngest-macos-arm64 -D ~/Downloads/ProIngest-0.5.9`
-- **1739 tests pass**; `ruff`, `ruff format` and `mypy --strict` are clean.
-- **Turnover121 renders again**: QC-020 (8 bit or 4:2:0) is a warning since 2026-09-28 (user),
-  and every clip in it is 8 bit 4:2:0 H.264. Turnover199 (10 bit 4:2:2) is not affected.
-
-## What changed since 0.5.5 (all user decisions, 2026-09-24 and 25)
-
-- **The delivery root defaults to one folder up from the turnover.**
-- **Turnover folders can be dropped on the window**, several at once; anything that is not a
-  turnover folder is skipped.
-- **QC-033 and QC-034 are must-fix.** QC-020 was too, and is a warning again in 0.5.7.
-- **One right-click entry, Re-scan**, on a shot and on a turnover heading, replaces Reset and
-  Re-run. It re-reads the files, shows new warnings or errors, and otherwise marks the shot to
-  render again at the next version. **Cancel Re-run** withdraws the mark, and refuses (with the
-  reason) when the delivered files no longer match the shot's name or range.
-- **A new shot code or a trimmed In/Out puts a delivered shot back for the next Run.**
-- **Every deliverable's timecode is its own frame number from 1001** (`00:00:41:17` at 24). The
-  camera timecode is left behind.
-- **The stringout is built** (`core/stringout.py`, OQ-38): Ben's final EDL as one HD mp4, cut from
-  the delivered HD references, with the ungraded source or black standing in, burn-ins copied from
-  `burn-ins.png`. Built after a Run and from **Build Stringout** on a turnover heading.
-- **A reference still is decoded with its own matrix and range** (it was always BT.709 limited).
-- **The config is ACES 2.0** (`studio-config-v4.0.0_aces-v2.0_ocio-v2.5`), view `ACES 2.0 - SDR
-  100 nits (Rec.709)` on `sRGB - Display`. The EXRs do not change; the references do.
-
-## Open
-
-- **The display** is sRGB on the user's belief; read it off Ben's project (OQ-29). The config also
-  offers `Gamma 2.2 Rec.709` and `Rec.1886 Rec.709`.
-- **Ben saw a "very slight shift"** between his Resolve output and the tool's. Plausibly the ACES
-  1.3 vs 2.0 view (measured earlier: 3.3% mean, 11% peak in display code), but only for an mp4;
-  the EXR path is bit for bit the same under both configs. Ask which file, which clip, and where it
-  was viewed, then render that frame under both views.
-- **Every Turnover121 event's slope is 4.886**, which renders near white. Still with Ben.
-- **Resolve's reference EXR** (`SECA0003_pl01_colorChart_01_raw_4k_v01.exr`, repo root) is not
-  linear ACEScg: no `chromaticities`, median about 0.5, max 1.03, camera timecode. Five questions
-  asked about it (burn-in, colour encoding, camera metadata and GPS, file name), none answered.
-- **Per-clip AMF** from Ben's session, to be read by hand first (OQ-71). Nothing built.
-- **Drive links in the tracker export**: waiting on `xattr -l` from the Mac and a paste test.
-- **Stringout leftovers**: the docs are done (2026-09-29); still open: the CLI does not build one;
-  a source segment of a plate is silent; a text shadow or box for bright frames is asked, not
-  answered; whether to keep the camera timecode as hidden metadata is asked, not answered.
-- **Untracked, the user to decide**: `docs/COLOR_INPUTS_TURNOVER121.md`.
-- From before: a changed ALE is not flagged on re-scan; compound clips are unread (OQ-63);
-  non-square pixels are not letterboxed correctly.
+- **The two HDRI events are black on the stringout** (now for one second each): no source is known
+  for them. Asked whether they should show their clip; unanswered.
+- **Inset assumptions, told the user**: cp top left and wit top right (their first message said
+  "left is the pl"); the label bottom left inside the inset; labels on the insets only.
+- **Held stills include Ben's grade** on the stringout; told the user the view-only alternative
+  is a one line change.
+- **The name at top centre clears the insets by about 20 px** (x 499 to 1411 against 480 and
+  1440); a longer shooter name could touch them. The user said adjust later if so.
+- **Ben saw a "very slight shift"** between his Resolve output and the tool's. Ask which file,
+  which clip and where it was viewed. A tool render against a Resolve render of the same frame
+  has never been made (OQ-77 (1)).
+- **Mac checks** in `docs/MAC_SESSION.md`: "Colour from the AMF" (0.5.14) and "The version in
+  view" (0.5.17, including the title in full screen).
+- Older and still open: Turnover121's 4.886 slope (with Ben); Resolve's reference EXR in the repo
+  root (five questions, none answered); Drive links in the tracker export (waiting on `xattr -l`
+  from the Mac); the CLI does not build a stringout; a source segment of a plate is silent; no text
+  shadow or box for bright frames (asked); keeping the camera timecode as hidden metadata (asked);
+  a changed ALE is not flagged on re-scan; compound clips are unread (OQ-63); non-square pixels
+  are not letterboxed correctly.
 
 ## Working notes
 
 - **Do not update `build-track.html`.** It is retired.
 - **Every build gets its own patch version** in `pyproject.toml`, `proingest/__init__.py`,
-  `build/build.py`, `docs/guide/install.md` and `uv.lock`, and the reply is a `gh run download`
-  command, not a link. CI runs on pull requests and on pushes to `main`, not on a bare branch
-  push. **Merge only when the user asks.**
+  `build/build.py`, `docs/guide/install.md` and `uv.lock` (line 584, the `proingest` package).
+  The reply is a `gh run download` command plus the run's URL. CI runs on pull requests and on
+  pushes to `main`; this branch's pushes run because PR #17 is open.
 - **`gh pr edit` fails** on a Projects (classic) GraphQL error; use
   `gh api -X PATCH repos/shango/ProIngest/pulls/<n> -f title=... -f body=...`.
-- The turnover folders, the reference EXR and `burn-ins.png` in the repo root are untracked;
-  never `git add -A`.
+- **Untracked, never `git add -A`**: the turnover folders, the reference EXR, `burn-ins.png`,
+  and `docs/COLOR_INPUTS_TURNOVER121.md` (the user to decide).
+- **A full turnover097 run** is a short script: scan `collected files`, type in 97, 9, 28, 2026,
+  `danielluckett`, `qc.preflight`, `render.execute(planner.plan_batch(...), workers=4)`,
+  `render.apply_results`, `stringout.build`. Put it under an `if __name__ == "__main__":` guard
+  (the worker pool spawns). To rebuild only the stringout, point each row's `deliverables` at the
+  delivered `<stem>_ref_HD_v01.mp4` and set `delivered_range = current`.
 - **Per-change rules:** `PROGRESS.md` entry in the same commit; a `docs/MAC_SESSION.md` line for
   anything only a Mac can confirm; no em dashes in any file.
