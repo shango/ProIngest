@@ -316,3 +316,41 @@ class TestReferenceStills:
         batch.rows[1].skipped = True
         plate = planned(batch).segments[1]
         assert (plate.kind, plate.length, plate.color) == ("source", FRAMES, None)
+
+
+class TestAnHdriReferenceClip:
+    """The HDRI on the timeline is an sRGB video clip, not a frame and not an EXR (user,
+    2026-09-29). Its row delivers nothing (QC-080); its event is in the stringout, as it is."""
+
+    @pytest.fixture
+    def with_hdri(self, tmp_path: Path) -> Batch:
+        folder = fixtures.make_turnover(
+            tmp_path / FOLDER, shots=2, frames=FRAMES, shot_types=["pl01", "HDRI"]
+        )
+        batch = Batch(delivery_root=tmp_path / "delivery")
+        settings = scan.ScanSettings(rules=fixtures.SMALL_RULES)
+        turnover, rows = scan.scan_turnover(folder, "t1", settings, probe_cache=batch.probe_cache)
+        batch.turnovers, batch.rows = [turnover], rows
+        assert batch.delivery_root is not None
+        render.apply_results(batch, render.execute(planner.plan_batch(batch, batch.delivery_root), workers=2))
+        return batch
+
+    def test_its_event_is_the_clip_itself_as_it_is(self, with_hdri: Batch) -> None:
+        hdri = with_hdri.rows[1]
+        assert hdri.skipped and qc.is_shooter_delivered(hdri) and not hdri.deliverables
+        segment = planned(with_hdri).segments[1]
+        assert (segment.kind, segment.length, segment.freeze) == ("source", FRAMES, False)
+        assert segment.color is None, "shown as it is: never through an AMF"
+        assert hdri.media is not None and segment.path == hdri.media.path
+
+    def test_held_it_is_still_not_coloured(self, with_hdri: Batch) -> None:
+        hdri = with_hdri.rows[1]
+        assert hdri.approved is not None
+        hdri.current = hdri.approved = InOut(hdri.approved.in_frame, hdri.approved.in_frame)
+        segment = planned(with_hdri).segments[1]
+        assert segment.color is None
+
+    def test_the_stringout_is_written_with_it(self, with_hdri: Batch) -> None:
+        assert with_hdri.delivery_root is not None
+        made = stringout.build(with_hdri, with_hdri.turnovers[0], with_hdri.delivery_root)
+        assert made is not None and made.frame_count == 2 * FRAMES

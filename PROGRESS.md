@@ -8,7 +8,7 @@ commit.
 
 ## 1. Resume here
 
-**State at 2026-09-29, version 0.5.18, on branch `qc/source-fidelity`, PR #17** (`HANDOFF.md` is
+**State at 2026-09-29, version 0.5.19, on branch `qc/source-fidelity`, PR #17** (`HANDOFF.md` is
 the short version) (0.5.4 is on `main`, PR
 #16 merged as `262817e`, dmg in CI run 35944322464). The 2026-09-23 review is built (chunks A
 to H of `docs/REVIEW_2026-09-23.md`), and so are the fixes that a second official turnover,
@@ -17,6 +17,19 @@ renders; Turnover121, every clip 8 bit 4:2:0, runs again with a QC-020 warning o
 since 2026-09-28 (user). What is left is the Mac: `docs/MAC_SESSION.md`, from "The 0.5.0 build, in
 order" down, and Ben's 4.886 slope. Entries are newest first; anything older than 2026-09-22
 describes the tool before the review and is history.
+
+**2026-09-29, the HDRI is a video clip, 0.5.19 (user).** "The hdri that is on the timeline is a
+video clip, not a single frame. It's the sRGB version of what the shooter captured that was later
+stitched into an actual exr hdri frame... The tool never touches an hdri exr." The user said this
+keeps being lost; it is now in QC_RULES QC-080, COLOUR_SESSION_EXPORT and a memory. An HDRI clip's
+stringout event is its own source, shown as it is: `stringout._segment` never gives a shooter
+delivered row AMF colour, held or not. **Verified**: three tests on a fixture turnover with a
+multi-frame clip typed HDRI (its event is the clip, `source`, full length, uncoloured; held, still
+uncoloured; the stringout is written with it). **Turnover097 holds no HDRI video**: its EDL and its
+CSV put the two stitched `.exr` files in the HDRI slots (events 008 and 015, `M2` holds of 72 and
+120 frames) and the folder has no HDRI video, so those events are black. Told the user. (A stray
+`.otio` and `.drt` sit in `collected files`; **a turnover is only the CMX 3600 EDL, the CSV, one
+AMF per clip and the CLFs** (user), and the tool reads nothing else.)
 
 **2026-09-29, held frames play a second and are coloured, 0.5.18 (user).** "All the still frame
 items should play out as 1 sec long", "the Balls, Chart and size ref all need color applied", "the

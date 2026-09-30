@@ -121,8 +121,9 @@ tool cannot build a shot list without it:
 - `File Name`, which is how a row is matched to its media
 - `Shot`, the shot code
 - `Shot Type`, what the clip is: `pl`, `cp`, `el`, `wit`, `re`, or a reference type. `HDRI` is
-  the shooters' to deliver: the tool skips the row and shows its clip in the stringout only
-  (QC-080)
+  **the sRGB reference video** of the HDRI capture (user, 2026-09-29): put that video on the
+  timeline and tag it `HDRI`, not the stitched EXR, which the tool never touches. The tool
+  delivers nothing for it and shows it in the stringout as it is (QC-080)
 
 **Its colour columns are no longer read** (user, 2026-09-28): `Gamma Notes`, `Color Space Notes`
 and `Input Color Space` may be in the export and change nothing. The encoding comes from the AMF.

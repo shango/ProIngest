@@ -16,6 +16,9 @@ ffmpeg. The user's decisions, all in OQ-38:
   ball or size ref is one frame of a video), a frame hold, a one frame cut. Taken from the
   source, it is **coloured through its AMF** (input transform, CLF nodes, output transform)
   the way Resolve shows it; a still's delivered EXR stays ungraded.
+- **An HDRI on the timeline is a video clip** (user, 2026-09-29): the sRGB version of what the
+  shooter captured, later stitched into an EXR HDRI the tool never touches. Its row delivers
+  nothing (QC-080) and its event is cut from the clip itself, **shown as it is**, never coloured.
 - **Only a plate has sound**; every other segment carries silence of the same length.
 - **A plate carries its shot's cp top left and wit top right** (user, 2026-09-29), each at
   quarter size flush in its corner (Resolve's zoom 0.25 at X -720/+720, Y 405 on 1920x1080).
@@ -288,7 +291,8 @@ def _segment(
         start=cut.in_frame,
         media=known.media,
         identity=identity,
-        color=clf.shot_color(row) if held else None,
+        # An HDRI is the shooter's sRGB reference video, shown as it is (QC-080).
+        color=clf.shot_color(row) if held and not qc.is_shooter_delivered(row) else None,
     )
 
 
