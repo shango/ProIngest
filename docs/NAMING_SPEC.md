@@ -80,7 +80,7 @@ Tokens: `{shotcode}` `{elem}` `{kind}` `{res}` `{ver}` `{frame}` `{aux}` `{auxid
 | ref mp4 | `{shotcode}_{elem}_ref_{res}_v{ver}.mp4` | `MELT0001_pl01_ref_HD_v01.mp4` |
 | audio | `{shotcode}_{elem}_audio_v{ver}.wav` | `MELT0001_pl01_audio_v01.wav` |
 | aux still exr | `{shotcode}_{aux}_{auxidx}_4k_v{ver}.exr` | `MELT0001_colorChart_01_4k_v01.exr`. **No element segment** (shooters' spec, 2026-09-21): a reference still is keyed to the shot code |
-| stringout mp4 | `turnover{num:03}_{MM}_{DD}_{YYYY}_{shooter}_SO_v{ver}.mp4`, in `<show>/_reports/` | `turnover121_09_23_2026_danielluckett_SO_v01.mp4`. Dated as the turnover folder, not the render; the year is always four digits (a folder's two digit year is read as 20YY, QC-081). `naming.stringout_stem` (2026-09-25) |
+| stringout mp4 | `turnover{num:03}_{MM}_{DD}_{YY}_{shooter}_SO_v{ver}.mp4`, in `<show>/_reports/` | `turnover121_09_23_26_danielluckett_SO_v01.mp4`. Dated as the turnover folder, not the render; month, day and year are always two digits each (user, 2026-10-05; a folder's four digit year is written as its last two). A stringout written earlier with a four digit year still counts as a version. `naming.stringout_stem` (2026-09-25) |
 
 The HDRI, camData, BTS and lens grid templates were removed on 2026-09-22 with the deliverables (section 2). The stringout's was removed then too and came back with the stringout on 2026-09-25.
 

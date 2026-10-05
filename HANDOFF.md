@@ -1,4 +1,4 @@
-# Handoff, 30 September 2026
+# Handoff, 5 October 2026
 
 **This is a short pointer, not the record.** `PROGRESS.md` section 1 holds the record: one entry
 per change, newest first, each saying what was built and how it was verified. If this file
@@ -6,15 +6,20 @@ disagrees with `PROGRESS.md` or the docs, they are right and this file is wrong.
 
 ## State
 
-- **Version 0.5.21 on branch `qc/source-fidelity`**, pushed, PR #17 open, **not merged** (merge
+- **Version 0.5.22 on branch `qc/source-fidelity`**, pushed, PR #17 open, **not merged** (merge
   only when the user asks). 0.5.4 is on `main`.
 - **CI run 36720891161 is green on all four jobs** and built the 0.5.21 dmg, handed over as:
   `gh run download 36720891161 -R shango/ProIngest -n ProIngest-macos-arm64 -D ~/Downloads/ProIngest-0.5.21`
   (https://github.com/shango/ProIngest/actions/runs/36720891161)
-- **1814 tests pass**; `ruff`, `ruff format` and `mypy --strict` are clean.
+- **1817 tests pass**; `ruff`, `ruff format` and `mypy --strict` are clean.
 - Nothing uncommitted except the untracked samples listed under Working notes.
 - **Session wrapped up 30 Sep 2026 at the user's request.** Nothing is in flight. Start with "Open,
   with the user" below, HDRI first.
+
+## What 0.5.22 did (5 Oct 2026, user)
+
+- Turnover dates are `MM_DD_YY`: QC-081 retired, the stringout name written with a two digit
+  year. Burn-ins sit on a 30% black box. A done row's dot is the progress bar's blue.
 
 ## What 0.5.12 to 0.5.21 did (29 Sep 2026, all user decisions)
 

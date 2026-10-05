@@ -231,7 +231,7 @@ class TestTheEdgeStates:
         held = turnover(number=1, month=2, day=23, year=2026, shooter="danielluckett")
         sections = describe_turnover(held, RATE_24)
         assert titles(sections) == ["Turnover"]
-        assert value(sections, "Turnover", "Date") == "02_23_2026"
+        assert value(sections, "Turnover", "Date") == "02_23_26"
         assert value(sections, "Turnover", "Shooter") == "danielluckett"
 
     def test_the_timeline_start_is_read_at_the_project_rate(self) -> None:

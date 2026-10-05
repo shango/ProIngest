@@ -43,7 +43,7 @@ from proingest.core.models import (
 EDL_SUFFIX = ".edl"
 
 TURNOVER_FOLDER_PATTERN = re.compile(
-    r"^turnover(?P<number>\d{3})_(?P<month>\d{2})_(?P<day>\d{2})_(?P<year>\d{4}|\d{2})_(?P<shooter>.+)$"
+    r"^turnover(?P<number>\d{3})_(?P<month>\d{2})_(?P<day>\d{2})_(?P<year>\d{2}|\d{4})_(?P<shooter>.+)$"
 )
 
 
@@ -68,27 +68,25 @@ class TurnoverFields:
     day: int
     year: int
     shooter: str
-    two_digit_year: bool = False
-    """`09_28_26`, read as 2026 and warned about (QC-081, user 2026-09-29)."""
 
 
 def parse_turnover_folder(folder: Path) -> TurnoverFields | None:
     """Prefill turnover number, date and shooter from the folder name.
 
     Returns None when the name does not match, which is QC-005 and means the editor
-    types the fields by hand.
+    types the fields by hand. The date is `MM_DD_YY` (user, 2026-10-05), read as 20YY; a
+    four digit year, as older folders carry, is still read.
     """
     match = TURNOVER_FOLDER_PATTERN.match(folder.name)
     if match is None:
         return None
-    two_digit_year = len(match["year"]) == 2
+    year = int(match["year"])
     return TurnoverFields(
         number=int(match["number"]),
         month=int(match["month"]),
         day=int(match["day"]),
-        year=int(match["year"]) + (2000 if two_digit_year else 0),
+        year=year + 2000 if year < 100 else year,
         shooter=match["shooter"],
-        two_digit_year=two_digit_year,
     )
 
 
@@ -174,20 +172,11 @@ def _prefill(turnover: Turnover, folder: Path) -> None:
                 "QC-005",
                 "info",
                 "turnover",
-                f"folder name {folder.name!r} does not match turnover###_MM_DD_YYYY_name; "
+                f"folder name {folder.name!r} does not match turnover###_MM_DD_YY_name; "
                 f"number, date and shooter need manual entry",
             )
         )
         return
-    if prefill.two_digit_year:
-        turnover.qc.append(
-            QCResult(
-                "QC-081",
-                "warning",
-                "turnover",
-                f"folder name {folder.name!r} has a two digit year, read as {prefill.year}; check the date",
-            )
-        )
     turnover.number = prefill.number
     turnover.month = prefill.month
     turnover.day = prefill.day

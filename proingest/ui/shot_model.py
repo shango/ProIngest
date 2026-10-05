@@ -85,7 +85,9 @@ class RowState(Enum):
     warning is skipped, and a row whose render failed is failed even though it also has
     an error rule about it. The order below is the order they are tested in, and it runs
     from "the editor decided this" through "the machine is busy" to "nobody has done
-    anything to it yet".
+    anything to it yet". One exception: `row_state` asks for done before the rules, so a
+    delivered row's dot matches its full bar (user, 2026-10-05); the turnover header still
+    takes the worst by this order.
     """
 
     SKIPPED = "skipped"
@@ -103,11 +105,12 @@ DOT_COLORS = {
     RowState.FAILED: QColor("#cf5a52"),
     RowState.ERROR: QColor("#cf5a52"),
     RowState.WARNING: QColor("#cf9a3a"),
-    RowState.DONE: QColor("#58a97a"),
+    RowState.DONE: QColor("#4d8fd6"),
     RowState.OK: QColor("#868d9a"),
 }
 """One colour per state, the palette `ui/theme.qss` states at the top. A stylesheet
-cannot see a model, so the dot and the tint are painted from here."""
+cannot see a model, so the dot and the tint are painted from here. Done is the accent,
+as rendering is, so the dot is the colour of the row's progress bar (user, 2026-10-05)."""
 
 HOLLOW_STATES = frozenset({RowState.SKIPPED})
 """Drawn as an outline rather than filled: the row is deliberately not being delivered."""
@@ -213,12 +216,12 @@ def row_state(row: ShotRow) -> RowState:
         return RowState.RENDERING
     if "failed" in statuses:
         return RowState.FAILED
+    if statuses and statuses <= DELIVERED:
+        return RowState.DONE
     if row.errors():
         return RowState.ERROR
     if row.warnings():
         return RowState.WARNING
-    if statuses and statuses <= DELIVERED and not row.rerun:
-        return RowState.DONE
     return RowState.OK
 
 

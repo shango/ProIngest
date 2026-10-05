@@ -2,7 +2,7 @@ Rule,Phase,Scope,Severity,Tier,Blocks the run?,What happens,Check
 QC-001,A: scan and pre-flight,turnover,Error,Must fix,Yes,Stops the whole run until fixed and re-scanned,Turnover folder is missing the EDL or the metadata CSV (checked at Add Turnover)
 QC-002,A: scan and pre-flight,turnover,Error,Must fix,Yes,Stops the whole run until fixed and re-scanned,EDL or metadata CSV failed to parse
 QC-004,A: scan and pre-flight,turnover,Error,Must fix,Yes,Stops the whole run until fixed and re-scanned,"Metadata CSV has no rows, or the EDL has no events"
-QC-005,A: scan and pre-flight,turnover,Info,Info tier,No,Logged only,Folder name does not match turnover###_MM_DD_YYYY_name; fields need manual entry (a two digit year is QC-081)
+QC-005,A: scan and pre-flight,turnover,Info,Info tier,No,Logged only,Folder name does not match turnover###_MM_DD_YY_name; fields need manual entry (a four digit year still matches)
 QC-008,A: scan and pre-flight,turnover,Error,Must fix,Yes,Stops the whole run until fixed and re-scanned,"No AMF in the turnover grades any of its clips, so nothing names an input transform"
 QC-009,A: scan and pre-flight,row,Info,Info tier,No,Logged only,The clip's AMF carries no CLF: Ben left it ungraded; it renders through its input transform and gamut compress only
 QC-010,A: scan and pre-flight,row,Error,Must fix,"Yes, unless the row is skipped","Stops the whole run; fix and re-scan, or skip the row","Shot Type the tool does not deliver, or a Shot Type with no parseable shot code"
@@ -58,7 +58,7 @@ QC-077,A: scan and pre-flight,row,Warning,Info tier,No,Row coloured amber and lo
 QC-078,A: scan and pre-flight,row,Info,Info tier,No,Logged only,The AMF was exported with Resolve's Dailies Request preset
 QC-079,A: scan and pre-flight,row,Error,Must fix,"Yes, unless the row is skipped","Stops the whole run; fix and re-scan, or skip the row","The AMF's output transform is not in the pinned config, or names a display a Rec.709 reference cannot be labelled for (P3, HDR)"
 QC-080,A: scan and pre-flight,row,Info,Info tier,No,Row skipped; no row rule runs on it,"Shot Type HDRI: the shooters deliver it, the tool delivers nothing; the stringout still shows its clip"
-QC-081,A: scan and pre-flight,turnover,Warning,Info tier,No,Row coloured amber and logged; the run goes ahead,"Folder name has a two digit year, read as 20YY; check the date"
+QC-081,A: scan and pre-flight,turnover,Retired,,,,"Retired 2026-10-05: a two digit year is the expected form"
 QC-100,B: after render,deliverable,Error,Deliverable fails,No,Nothing was written; the row waits until fixed and Re-scanned (right-click); other rows carry on,Render did not complete; reason recorded
 QC-101,B: after render,exr seq,Error,Deliverable fails,No,That deliverable is deleted and marked failed; the row waits until fixed and Re-scanned (right-click); other rows carry on,Frame count equals duration
 QC-102,B: after render,exr seq,Error,Deliverable fails,No,That deliverable is deleted and marked failed; the row waits until fixed and Re-scanned (right-click); other rows carry on,"Frames numbered 1001 to 1000 + duration, no gaps"

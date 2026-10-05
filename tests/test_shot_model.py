@@ -22,6 +22,7 @@ from proingest.ui.runner import RunProgress
 from proingest.ui.shot_model import (
     AUDIO,
     COLUMNS,
+    DOT_COLORS,
     DURATION,
     ELEM,
     FPS,
@@ -389,8 +390,13 @@ class TestRowState:
         assert row_state(delivered(row(), status="exists")) is RowState.DONE
 
     def test_a_warning_on_a_delivered_row_still_shows_as_delivered(self) -> None:
-        """The rules ran before the render; a warning that did not stop it is history."""
-        assert row_state(delivered(warn(row()))) is RowState.WARNING
+        """The rules ran before the render; a warning that did not stop it is history, and
+        the dot matches the full bar beside it (user, 2026-10-05)."""
+        assert row_state(delivered(warn(row()))) is RowState.DONE
+        assert row_state(delivered(fail(row()))) is RowState.DONE
+
+    def test_done_is_the_progress_bar_s_blue(self) -> None:
+        assert DOT_COLORS[RowState.DONE] == DOT_COLORS[RowState.RENDERING]
 
 
 class TestTheGroupHeader:

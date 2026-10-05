@@ -8,7 +8,7 @@ commit.
 
 ## 1. Resume here
 
-**State at 2026-09-30, version 0.5.21, on branch `qc/source-fidelity`, PR #17** (`HANDOFF.md` is
+**State at 2026-10-05, version 0.5.22, on branch `qc/source-fidelity`, PR #17** (`HANDOFF.md` is
 the short version) (0.5.4 is on `main`, PR
 #16 merged as `262817e`, dmg in CI run 35944322464). The 2026-09-23 review is built (chunks A
 to H of `docs/REVIEW_2026-09-23.md`), and so are the fixes that a second official turnover,
@@ -17,6 +17,23 @@ renders; Turnover121, every clip 8 bit 4:2:0, runs again with a QC-020 warning o
 since 2026-09-28 (user). What is left is the Mac: `docs/MAC_SESSION.md`, from "The 0.5.0 build, in
 order" down, and Ben's 4.886 slope. Entries are newest first; anything older than 2026-09-22
 describes the tool before the review and is history.
+
+**2026-10-05, two digit dates, burn-in boxes, blue done dots, 0.5.22 (user).** Three requests.
+(1) "For turnovers, the date should always be and should be recognized as 2 digits for month day
+and year." A folder's `MM_DD_YY` is now the expected form: **QC-081 is retired** (no warning) and
+the stringout's name, the Metadata panel's date and the headless listing write `MM_DD_YY`
+(`naming.stringout_stem`, `metadata.format_date`). **Assumed, told the user**: a four digit year
+folder (Turnover121, Turnover199, the studio spec CSV's example) still parses silently, and an
+older stringout named `..._2026_SO_v##` still counts toward the next version. (2) A black 30%
+box behind every burn-in, insets' labels too, 8 px padding (`ffmpeg.BURN_IN_BOX`,
+`BURN_IN_PADDING`); `y_align=font` makes each box the font's line height so the bottom three match,
+which moves the text about 12 px down inside it. **Assumed**: black, 8 px. (3) "The little balls
+... should match the progress bar ... if the item is done, it should be blue." Done is the accent
+`#4d8fd6` (dot, row bar and Deliverables panel), and `shot_model.row_state` asks for done before
+the rules, so a delivered row with a warning is blue, not amber (the turnover header still takes
+the worst). **Verified**: tests for each; a 1920x1080 frame with all four burn-ins and an inset
+label rendered and looked at; the suite, ruff, format, mypy. UI_SPEC 3 and 8, QC_RULES, NAMING_SPEC,
+PRD, MAC_SESSION.
 
 **2026-09-30, a held HDRI keeps the EDL's length, 0.5.21 (user).** The 0.5.18 one second rule made
 turnover097's two `M2` held HDRI slots 24 frames; they now keep the EDL's 72 and 120, frame held,

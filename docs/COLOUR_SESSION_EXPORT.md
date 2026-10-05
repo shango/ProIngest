@@ -109,7 +109,7 @@ alone.
 
 **Do not render or export a stringout** (user, 2026-09-29). The tool builds it from your final EDL
 after a Run: one HD mp4 cut from its delivered HD references, with the burn-ins of your frame
-(`burn-ins.png`), named `turnover###_MM_DD_YYYY_<shooter>_SO_v##.mp4` (PRD FR-9). What you do is
+(`burn-ins.png`), named `turnover###_MM_DD_YY_<shooter>_SO_v##.mp4` (PRD FR-9). What you do is
 cut the final timeline the EDL comes off, which is what makes the EDL's events the final clip
 durations.
 

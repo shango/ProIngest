@@ -684,7 +684,7 @@ class Turnover:
     """One turnover folder and the fields that identify it.
 
     Number, date and shooter are prefilled from the folder name when it matches the
-    `turnover###_MM_DD_YYYY_name` pattern (a two digit year too, QC-081), and entered by
+    `turnover###_MM_DD_YY_name` pattern (a four digit year too), and entered by
     hand otherwise (QC-005). They name the turnover in the window and the headless listing,
     and the stringout's name (OQ-38).
     """

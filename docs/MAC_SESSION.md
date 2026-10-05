@@ -47,6 +47,10 @@ chunk 7 of `docs/TO_A_WORKING_BUILD.md`, in the order that wastes least.
 - [ ] **The version in view (2026-09-29, 0.5.17).** Open the app: the title bar reads `ProIngest 0.5.17`
       and so does the right end of the status bar, and the status bar one still reads it after a Scan
       and a Save. Say whether the title also shows in full screen (macOS hides the title bar there).
+- [ ] **Burn-in boxes and blue dots (2026-10-05, 0.5.22).** Build a stringout: every burn-in, the
+      insets' labels too, sits on a faint black box a little larger than the text, and the three
+      along the bottom are one height. Run a turnover: each row's dot turns the progress bar's blue
+      when its bar is full, warnings or not. CI proves the filter runs; only the eye says it reads.
 - [ ] Download `ProIngest-0.5.0.dmg` from the CI run of the pushed branch (the `package-macos`
       job's artifact) and install it as `docs/guide/install.md` says. Do not build it locally.
 - [ ] **The acceptance test.** Point the tool at `Turnover199`. Scan: five rows, each with a shot

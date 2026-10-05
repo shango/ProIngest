@@ -74,7 +74,7 @@ class TestScanCommand:
         folder = tmp_path / FOLDER
         fixtures.make_turnover(folder, shots=1, frames=4)
         main(["scan", str(folder)])
-        assert "turnover001  02_23_2026  danielluckett" in capsys.readouterr().out
+        assert "turnover001  02_23_26  danielluckett" in capsys.readouterr().out
 
     def test_errors_exit_one(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
         """A row-level error is a non-zero exit so a script can react."""

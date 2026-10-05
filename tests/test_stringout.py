@@ -14,7 +14,7 @@ from proingest.core import clf, ffmpeg, naming, planner, qc, render, scan, strin
 from proingest.core.models import Batch, FrameRate, InOut, MediaInfo
 from tests.fixtures import media as fixtures
 
-FOLDER = "turnover007_09_23_2026_testshooter"
+FOLDER = "turnover007_09_23_26_testshooter"
 FRAMES = 12
 
 
@@ -45,14 +45,19 @@ def planned(batch: Batch) -> stringout.Plan:
 class TestNaming:
     def test_the_stem_is_dated_as_the_turnover_folder_is(self) -> None:
         stem = naming.stringout_stem(121, 9, 23, 2026, "danielluckett", 1)
-        assert stem == "turnover121_09_23_2026_danielluckett_SO_v01"
-        assert naming.stringout_mp4(7, 9, 23, 2026, "x", 2) == "turnover007_09_23_2026_x_SO_v02.mp4"
+        assert stem == "turnover121_09_23_26_danielluckett_SO_v01"
+        assert naming.stringout_mp4(7, 9, 23, 2026, "x", 2) == "turnover007_09_23_26_x_SO_v02.mp4"
 
     def test_a_version_is_read_back_only_for_the_same_turnover(self) -> None:
-        name = "turnover121_09_23_2026_danielluckett_SO_v03.mp4"
+        name = "turnover121_09_23_26_danielluckett_SO_v03.mp4"
         assert naming.stringout_version(name, 121, 9, 23, 2026, "danielluckett") == 3
         assert naming.stringout_version(name, 122, 9, 23, 2026, "danielluckett") is None
         assert naming.stringout_version("qc_ingest_log.xlsx", 121, 9, 23, 2026, "danielluckett") is None
+
+    def test_a_stringout_named_with_a_four_digit_year_is_still_a_version(self) -> None:
+        """Written before 2026-10-05, when the stem carried the year in full."""
+        name = "turnover121_09_23_2026_danielluckett_SO_v02.mp4"
+        assert naming.stringout_version(name, 121, 9, 23, 2026, "danielluckett") == 2
 
     def test_the_label_is_the_shot_and_element_or_the_still(self) -> None:
         assert naming.shot_label(naming.ShotIdentity("TIME1001", "pl", "01")) == "TIME1001_pl01"

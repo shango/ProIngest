@@ -1,6 +1,6 @@
 # UI Spec
 
-PySide6 6.7+. Dark theme in the spirit of DaVinci Resolve: near-black panels, thin 1px separators, muted grey text, one accent color for selection and primary actions, amber for warnings, red for errors, green for done. No gradients, no drop shadows on panels, no rounded cards. Density is professional, not spacious.
+PySide6 6.7+. Dark theme in the spirit of DaVinci Resolve: near-black panels, thin 1px separators, muted grey text, one accent color for selection and primary actions, amber for warnings, red for errors; done is the accent too, the colour of the progress bar (2026-10-05). No gradients, no drop shadows on panels, no rounded cards. Density is professional, not spacious.
 
 ## 1. Layout
 
@@ -91,7 +91,7 @@ Scrolling: Source file, Res, FPS, In (editable), Out (editable), Duration, Max A
 | error (blocked) | red | faint red |
 | skipped by user | hollow | dimmed text |
 | rendering | accent, animated | none |
-| done | green | none |
+| done (every deliverable written) | accent blue, the progress bar's colour (user, 2026-10-05); ahead of warning and error, which ran before the render | none |
 | failed render | red | faint red |
 
 Hovering the dot or the row shows a tooltip listing rule IDs and messages. Clicking the dot focuses the Issues dock on that row.
@@ -233,7 +233,11 @@ the wait is long enough for anyone to notice it.
 on demand from **Build Stringout** on a turnover heading's right-click menu.
 
 The burn-ins copy Ben's frame, `burn-ins.png`, measured at 1920x1080: Open Sans 42 px, white, no
-box or shadow (bundled in `proingest/resources/fonts`).
+shadow (bundled in `proingest/resources/fonts`). **Each sits on a black rectangle at 30% opacity,
+8 px past the text on every side** (user, 2026-10-05; `ffmpeg.BURN_IN_BOX`, `BURN_IN_PADDING`),
+the insets' labels too. The rectangle is as tall as the font's line, not the text's glyphs
+(drawtext `y_align=font`), so the three along the bottom match; that puts the text about 12 px
+lower inside it than the measured y.
 
 - **Top centre**, y 11: the stringout's name.
 - **Bottom left**, x 184: `Frame: <n>`, the delivered frame number, `1001 + (cut In - delivered

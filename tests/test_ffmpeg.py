@@ -645,3 +645,11 @@ class TestAvailableDecoders:
 
     def test_it_does_not_list_encoder_only_names(self) -> None:
         assert "libx264" not in ffmpeg.available_decoders()
+
+
+class TestTheBurnInBox:
+    def test_every_burn_in_sits_on_a_faint_black_box_the_font_s_height(self) -> None:
+        """30% opacity, a little padding (user, 2026-10-05); one height whatever the glyphs."""
+        drawn = ffmpeg.drawtext_filter(Path("t.txt"), Path("f.ttf"), 42, "0", "0")
+        assert ":box=1:boxcolor=black@0.3:boxborderw=8" in drawn
+        assert ":y_align=font" in drawn

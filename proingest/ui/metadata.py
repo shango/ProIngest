@@ -132,10 +132,10 @@ def format_rate(rate: FrameRate) -> str:
 
 
 def format_date(turnover: Turnover) -> str:
-    """`02_23_2026`, the form the folder name carries (QC-005), or empty when unparsed."""
+    """`02_23_26`, the form the folder name carries (QC-005), or empty when unparsed."""
     if turnover.month is None or turnover.day is None or turnover.year is None:
         return ""
-    return f"{turnover.month:02d}_{turnover.day:02d}_{turnover.year}"
+    return f"{turnover.month:02d}_{turnover.day:02d}_{turnover.year % 100:02d}"
 
 
 def _plural(count: int, noun: str) -> str:

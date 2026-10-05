@@ -185,18 +185,19 @@ def aux_still_exr(identity: ShotIdentity, version: int) -> str:
 STRINGOUT_SUFFIX = ".mp4"
 
 _STRINGOUT = re.compile(
-    r"^turnover(?P<number>\d{3,})_(?P<month>\d{2})_(?P<day>\d{2})_(?P<year>\d{4})_"
+    r"^turnover(?P<number>\d{3,})_(?P<month>\d{2})_(?P<day>\d{2})_(?P<year>\d{2}|\d{4})_"
     r"(?P<shooter>.+)_SO_v(?P<ver>\d{2})\.mp4$"
 )
 
 
 def stringout_stem(number: int, month: int, day: int, year: int, shooter: str, version: int) -> str:
-    """`turnover121_09_23_2026_danielluckett_SO_v01`: the file's name without `.mp4`, which
+    """`turnover121_09_23_26_danielluckett_SO_v01`: the file's name without `.mp4`, which
     is also what the stringout burns in at the top of every frame (Ben's `burn-ins.png`).
 
-    Dated as the turnover folder is, not as the render (user, 2026-09-25).
+    Dated as the turnover folder is, not as the render (user, 2026-09-25), and always
+    two digits each for month, day and year (user, 2026-10-05).
     """
-    return f"turnover{number:03d}_{month:02d}_{day:02d}_{year:04d}_{shooter}_SO_{_ver(version)}"
+    return f"turnover{number:03d}_{month:02d}_{day:02d}_{year % 100:02d}_{shooter}_SO_{_ver(version)}"
 
 
 def stringout_mp4(number: int, month: int, day: int, year: int, shooter: str, version: int) -> str:
@@ -209,7 +210,8 @@ def stringout_version(name: str, number: int, month: int, day: int, year: int, s
     if match is None:
         return None
     said = tuple(int(match[key]) for key in ("number", "month", "day", "year"))
-    same = said == (number, month, day, year) and match["shooter"] == shooter
+    # A stringout written before 2026-10-05 carries a four digit year; it is still a version.
+    same = said[:3] == (number, month, day) and said[3] % 100 == year % 100 and match["shooter"] == shooter
     return int(match["ver"]) if same else None
 
 

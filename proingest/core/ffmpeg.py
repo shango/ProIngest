@@ -825,12 +825,20 @@ def drawtext_literal(text: str) -> str:
     return text.replace("\\", "\\\\").replace("%", "\\%")
 
 
+BURN_IN_BOX = "black@0.3"
+"""The semi-transparent rectangle behind every burn-in, 30% opaque (user, 2026-10-05)."""
+
+BURN_IN_PADDING = 8
+"""How far the rectangle reaches past the text on each side, in pixels."""
+
+
 def drawtext_filter(textfile: Path, font: Path, size: int, x: str, y: str) -> str:
     """One burn-in, read from a file rather than inlined: the docs warn that inline text
     can need four levels of escaping, and a file needs one (the path)."""
     return (
         f"drawtext=fontfile={_filter_path(font)}:textfile={_filter_path(textfile)}"
         f":fontsize={size}:fontcolor=white:x={x}:y={y}"
+        f":y_align=font:box=1:boxcolor={BURN_IN_BOX}:boxborderw={BURN_IN_PADDING}"
     )
 
 
