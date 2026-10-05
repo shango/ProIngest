@@ -8,9 +8,9 @@ commit.
 
 ## 1. Resume here
 
-**State at 2026-10-05, version 0.5.22, on branch `qc/source-fidelity`, PR #17** (`HANDOFF.md` is
-the short version) (0.5.4 is on `main`, PR
-#16 merged as `262817e`, dmg in CI run 35944322464). The 2026-09-23 review is built (chunks A
+**State at 2026-10-05, version 0.5.22 on `main`** (`HANDOFF.md` is the short version): PR #17
+(`qc/source-fidelity`) merged as `70e1160` at the user's request, after its CI run 37276656318
+built the 0.5.22 dmg. The 2026-09-23 review is built (chunks A
 to H of `docs/REVIEW_2026-09-23.md`), and so are the fixes that a second official turnover,
 Turnover121, called for (`docs/SAMPLE_TURNOVER_121.md`). Turnover199 scans with no must-fix and
 renders; Turnover121, every clip 8 bit 4:2:0, runs again with a QC-020 warning on each row

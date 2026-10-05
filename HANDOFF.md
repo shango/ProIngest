@@ -6,8 +6,8 @@ disagrees with `PROGRESS.md` or the docs, they are right and this file is wrong.
 
 ## State
 
-- **Version 0.5.22 on branch `qc/source-fidelity`**, pushed, PR #17 open, **not merged** (merge
-  only when the user asks). 0.5.4 is on `main`.
+- **Version 0.5.22 is on `main`**: PR #17 (`qc/source-fidelity`) merged as `70e1160` on 5 Oct
+  2026 at the user's request. New work starts on a new branch.
 - **CI run 37276656318 is green on all four jobs** and built the 0.5.22 dmg, handed over as:
   `gh run download 37276656318 -R shango/ProIngest -n ProIngest-macos-arm64 -D ~/Downloads/ProIngest-0.5.22`
   (https://github.com/shango/ProIngest/actions/runs/37276656318)
@@ -98,7 +98,7 @@ the EDL event number less one (15 of 15); the pinned config maps every URN the A
 - **Every build gets its own patch version** in `pyproject.toml`, `proingest/__init__.py`,
   `build/build.py`, `docs/guide/install.md` and `uv.lock` (line 584, the `proingest` package).
   The reply is a `gh run download` command plus the run's URL. CI runs on pull requests and on
-  pushes to `main`; this branch's pushes run because PR #17 is open.
+  pushes to `main`; a branch's pushes run only once a PR is open for it.
 - **`gh pr edit` fails** on a Projects (classic) GraphQL error; use
   `gh api -X PATCH repos/shango/ProIngest/pulls/<n> -f title=... -f body=...`.
 - **Untracked, never `git add -A`**: the turnover folders, the reference EXR, `burn-ins.png`,
