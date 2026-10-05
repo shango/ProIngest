@@ -62,7 +62,7 @@ CLF_LOOK = (
 class TestReading:
     def test_what_turnover097_s_amf_says(self, tmp_path: Path) -> None:
         read = amf.read(written(tmp_path, looks=CLF_LOOK))
-        assert (read.event_id, read.preset, read.clip_file) == ("002", "Dailies Request", "C4261.MP4")
+        assert (read.index, read.preset, read.clip_file) == (1, "Dailies Request", "C4261.MP4")
         assert read.input_transform == SLOG3 and not read.input_applied
         assert [(look.transform_id, look.file, look.md5) for look in read.looks] == [
             (RGC, "", ""),
@@ -73,10 +73,10 @@ class TestReading:
     def test_the_index_is_the_one_before_the_timestamp(self, tmp_path: Path) -> None:
         """`DALU0012_pl01_02_02_7`: the clip name is full of numbers, the index is the last."""
         name = "Tool_Test2_turnover097_DailiesRequest_DALU0012_pl01_02_02_7_2026-09-28_180306Z.amf"
-        assert amf.read(written(tmp_path, name=name)).event_id == "008"
+        assert amf.read(written(tmp_path, name=name)).index == 7
 
     def test_a_name_with_no_index_says_so(self, tmp_path: Path) -> None:
-        assert amf.read(written(tmp_path, name="C4261.amf")).event_id is None
+        assert amf.read(written(tmp_path, name="C4261.amf")).index is None
 
     def test_an_hdri_amf_has_no_input_transform_and_names_a_sequence(self, tmp_path: Path) -> None:
         sequence = '<aces:sequence min="2" max="2" idx="#">DALU0012_pl01_##_HDRI.exr</aces:sequence>'

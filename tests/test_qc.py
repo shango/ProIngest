@@ -947,7 +947,7 @@ class TestLogResults:
         assert lines[0][0] == "WARNING" and "QC-074" in lines[0][1]
         assert lines[1][1].endswith("QC-033 too short (bypassed: rendered as it is)")
         assert lines[2][1].endswith(
-            "QC-011 twice (bypassed, but not rendered: "
+            "QC-011 Fix in Resolve - twice (bypassed, but not rendered: "
             "Accept As Is cannot render past this, so the row is held back)"
         )
         assert lines[-1] == (
@@ -967,7 +967,7 @@ class TestLogResults:
         batch.qc = [QCResult("QC-063", "warning", "batch", "not much room left")]
         assert [message for _, message in self.logged(caplog, batch)][:3] == [
             "after the scan: batch: QC-063 not much room left",
-            "after the scan: T: QC-008 no colour session (blocks the run)",
+            "after the scan: T: QC-008 Fix in Resolve - no colour session (blocks the run)",
             "after the scan: T / MELT0001 (MELT0001_pl01) / r.mp4: QC-100 ffmpeg failed",
         ]
 

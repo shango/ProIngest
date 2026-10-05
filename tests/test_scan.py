@@ -580,6 +580,22 @@ class TestTheAmf:
         _, row = self.scanned(folder)
         assert "QC-075" in rules(row) and row.grade is None
 
+    def test_an_audio_only_event_does_not_shift_the_amfs(self, tmp_path: Path) -> None:
+        """Turnover134 (2026-10-05): its EDL numbers audio-only events of its own and every
+        AMF after the first was paired with the event before its clip (QC-075 on each)."""
+        folder = fixtures.make_turnover(tmp_path / GOOD_FOLDER, shots=2, frames=4)
+        edl = folder / "FINAL_v01.edl"
+        lines = edl.read_text().splitlines()
+        second = next(i for i, line in enumerate(lines) if line.startswith("002 "))
+        audio = lines[second - 2].replace("001 ", "002 ").replace(" V ", " A ")
+        lines[second] = lines[second].replace("002 ", "003 ", 1)
+        lines[second:second] = [audio, ""]
+        edl.write_text("\n".join(lines) + "\n")
+        _, rows = scan.scan_turnover(folder, "t1", scan.ScanSettings(rules=fixtures.SMALL_RULES))
+        assert len(rows) == 2
+        for row in rows:
+            assert "QC-075" not in rules(row) and row.grade is not None, row.clip_name
+
     def test_an_unreadable_amf_is_reported_on_the_turnover(self, tmp_path: Path) -> None:
         folder = self.folder(tmp_path)
         (folder / "Broken_1_2026-09-28_180306Z.amf").write_text("not xml")
@@ -656,3 +672,10 @@ class TestTheAmf:
         assert row.skipped and row.skip_reason == "HDRI: delivered by the shooters"
         assert "QC-080" in rules(row)
         assert not qc.must_fix(Batch(delivery_root=tmp_path, turnovers=[turnover], rows=[row]))
+
+    def test_an_hdri_with_no_amf_is_not_an_error(self, tmp_path: Path) -> None:
+        """Turnover135 (2026-10-05): QC-075 on each HDRI, which is never graded (QC-080)."""
+        folder = fixtures.make_turnover(tmp_path / GOOD_FOLDER, shots=1, frames=4, shot_types=["HDRI"])
+        self.amf(folder).unlink()
+        _, row = self.scanned(folder)
+        assert "QC-080" in rules(row) and not row.errors()

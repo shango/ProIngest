@@ -18,6 +18,23 @@ since 2026-09-28 (user). What is left is the Mac: `docs/MAC_SESSION.md`, from "T
 order" down, and Ben's 4.886 slope. Entries are newest first; anything older than 2026-09-22
 describes the tool before the review and is history.
 
+**2026-10-06, turnover134 and turnover135 run headless; two fixes and "Fix in Resolve", 0.5.23
+(user).** "Run these headless end to end... let me know what's missing... check for any bugs in
+the run that might be producing false results." **Fixed**: (1) the AMF to EDL event pairing
+(`amf.Amf.event_id` was the AMF index plus one, the event number). Resolve numbers AMFs by video
+clip, and turnover134's EDL numbers its audio-only events (002, 010, 018) too, so every AMF after
+the first was paired with the wrong event: 34 false QC-075/QC-046 errors. Now
+`clf.ConformEvent.position` (place among video events, a dissolve's zero-length side taking none)
+is what `scan._Grades` keys on. Verified: all 21 AMFs pair on the real folder. (2) QC-075 no longer
+fires on an HDRI row (never graded, QC-080), three false errors in turnover135. (3) **"Fix in
+Resolve - "** leads every error whose fix is in Ben's session (`models.RESOLVE_FIX_RULES`, set in
+`QCResult.__post_init__`, so every surface says it; user's mid-run request). **Turnover134 run end
+to end** on a linked copy without its `Proxy/` folder and with the two proxy-conformed mirror balls
+skipped: 37 deliverables written, all QC passed. **Not changed, raised with the user**: Ben's grade
+in turnover134 is an inline ASC CDL in each AMF (no CLF), which QC-077 ignores by the 2026-09-28
+rule, so the deliverables are ungraded with only a warning (the reference looks dim). Turnover135
+cannot run: one AMF for 18 graded clips. Ben's lists are published pages.
+
 **2026-10-05, the status dots are QC levels again, 0.5.23 (user).** "I had you change the color
 to reflect the color of the progress bars... That was wrong. The colored balls should reflect the
 error levels as before." The 0.5.22 dot change is reverted exactly (`shot_model.DOT_COLORS` done

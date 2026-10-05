@@ -537,7 +537,9 @@ def _conform(row: ShotRow, event: clf.ConformEvent, grades: _Grades) -> None:
     """The approved cut off this row's one EDL event, and the colour off that event's AMF."""
 
     row.record_in, row.record_out = event.record_in, event.record_out
-    grades.attach(row, event)
+    # An HDRI is shown as it is and never graded (QC-080), so a missing AMF says nothing.
+    if not qc.is_shooter_delivered(row):
+        grades.attach(row, event)
     approved = clf.approved_in_out(event, row.media) if row.media else None
     if approved is None:
         _whole_media(row)
@@ -743,7 +745,7 @@ def carry_over(old: Turnover, old_rows: list[ShotRow], new: Turnover, new_rows: 
 
 @dataclass
 class _Grades:
-    """The turnover's AMFs by the EDL event each grades (`core/amf.py`), read once.
+    """The turnover's AMFs by the timeline index each grades (`core/amf.py`), read once.
 
     An AMF that will not parse, or whose name carries no timeline index, is reported on
     the turnover and matches nothing; two AMFs claiming one event are reported on that
@@ -751,7 +753,7 @@ class _Grades:
     """
 
     folder: Path
-    by_event: dict[str, list[amf.Amf]] = field(default_factory=dict)
+    by_index: dict[int, list[amf.Amf]] = field(default_factory=dict)
     qc: list[QCResult] = field(default_factory=list)
 
     @classmethod
@@ -763,7 +765,7 @@ class _Grades:
             except amf.AmfError as exc:
                 grades.qc.append(QCResult("QC-075", "error", "turnover", str(exc)))
                 continue
-            if found.event_id is None:
+            if found.index is None:
                 grades.qc.append(
                     QCResult(
                         "QC-075",
@@ -774,12 +776,12 @@ class _Grades:
                     )
                 )
                 continue
-            grades.by_event.setdefault(found.event_id, []).append(found)
+            grades.by_index.setdefault(found.index, []).append(found)
         return grades
 
     def attach(self, row: ShotRow, event: clf.ConformEvent) -> None:
         """This row's grade from its event's AMF, and what is wrong with it on the row."""
-        found = self.by_event.get(event.event_id, [])
+        found = self.by_index.get(event.position, [])
         if len(found) != 1:
             names = ", ".join(item.path.name for item in found)
             why = f"two or more AMFs claim it ({names})" if found else "no AMF in the folder grades it"
@@ -800,8 +802,8 @@ class _Grades:
                     "QC-075",
                     "error",
                     "row",
-                    f"{match.path.name} grades EDL event {event.event_id} but names {match.clip_file}, "
-                    f"not {row.clip_name}",
+                    f"{match.path.name} grades video clip {event.position + 1} of the EDL (event "
+                    f"{event.event_id}) but names {match.clip_file}, not {row.clip_name}",
                 )
             )
             return

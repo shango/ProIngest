@@ -100,14 +100,53 @@ class FrameRate:
         return cls(numerator=int(data["numerator"]), denominator=int(data["denominator"]))
 
 
+FIX_IN_RESOLVE = "Fix in Resolve - "
+
+RESOLVE_FIX_RULES = frozenset(
+    {
+        "QC-001",  # the EDL or the metadata CSV is missing
+        "QC-002",  # one of them does not parse
+        "QC-004",  # one of them is empty
+        "QC-008",  # no AMF at all
+        "QC-010",  # a Shot Type with no shot code, or one the tool does not deliver
+        "QC-011",  # two rows with one shot code, type and index
+        "QC-029",  # an EDL event cut outside its clip's frames
+        "QC-046",  # the AMF names no input transform
+        "QC-047",  # the AMF's input transform is not one the config knows
+        "QC-065",  # the CSV's two Shot Type columns disagree
+        "QC-066",  # no EDL event cuts this clip
+        "QC-067",  # two EDL events claim one clip
+        "QC-071",  # the ALE cannot name the EDL's events
+        "QC-073",  # a retime in the EDL
+        "QC-075",  # the clip's AMF is missing or names another clip
+        "QC-076",  # a CLF the AMF names is missing or changed
+        "QC-079",  # the AMF's output transform is not one the config knows
+    }
+)
+"""Errors fixed in Resolve: in Ben's timeline, metadata, or the EDL, CSV, AMF and CLF
+exports, rather than in the turnover folder or on the Settings page (docs/QC_RULES.md)."""
+
+
 @dataclass(frozen=True)
 class QCResult:
-    """One rule outcome. `rule_id` is the stable ID from docs/QC_RULES.md."""
+    """One rule outcome. `rule_id` is the stable ID from docs/QC_RULES.md.
+
+    An error whose fix is in Ben's Resolve session leads with `FIX_IN_RESOLVE` (user,
+    2026-10-05), so the editor knows at a glance where it gets fixed.
+    """
 
     rule_id: str
     severity: Severity
     scope: Scope
     message: str
+
+    def __post_init__(self) -> None:
+        if (
+            self.severity == "error"
+            and self.rule_id in RESOLVE_FIX_RULES
+            and not self.message.startswith(FIX_IN_RESOLVE)
+        ):
+            object.__setattr__(self, "message", FIX_IN_RESOLVE + self.message)
 
     def to_dict(self) -> dict[str, str]:
         return {
