@@ -8,15 +8,28 @@ commit.
 
 ## 1. Resume here
 
-**State at 2026-10-05, version 0.5.22 on `main`** (`HANDOFF.md` is the short version): PR #17
-(`qc/source-fidelity`) merged as `70e1160` at the user's request, after its CI run 37276656318
-built the 0.5.22 dmg. The 2026-09-23 review is built (chunks A
+**State at 2026-10-05, version 0.5.23 on branch `app/expiry`** (`HANDOFF.md` is the short
+version); 0.5.22 is on `main` (PR #17 merged as `70e1160` at the user's request, after its CI
+run 37276656318 built the 0.5.22 dmg). The 2026-09-23 review is built (chunks A
 to H of `docs/REVIEW_2026-09-23.md`), and so are the fixes that a second official turnover,
 Turnover121, called for (`docs/SAMPLE_TURNOVER_121.md`). Turnover199 scans with no must-fix and
 renders; Turnover121, every clip 8 bit 4:2:0, runs again with a QC-020 warning on each row
 since 2026-09-28 (user). What is left is the Mac: `docs/MAC_SESSION.md`, from "The 0.5.0 build, in
 order" down, and Ben's 4.886 slope. Entries are newest first; anything older than 2026-09-22
 describes the tool before the review and is history.
+
+**2026-10-05, a build expires a calendar month after its release, 0.5.23 (user).** "Prevent user
+from loading a batch, presenting a modal saying they need to update... one month past the release
+of each new version." Answers: calendar month, block everything, text only, warn the last week.
+`core/expiry.py` (`one_month_after`, `Expiry`, `current`, `refusal`); `build/build.py` stamps
+`proingest/resources/release.txt` (untracked) with the build day and `bundle.datas` ships it. Only
+a frozen app expires. The window refuses New, Open, Add Turnover, a drop, Scan/Re-scan, Run,
+Export and Build Stringout with an "Update ProIngest" modal, asked at each press and once at
+launch; a permanent `status_expiry` label in the last 7 days. Headless subcommands of a frozen
+build exit 3. **Assumed, told the user** (OQ-78): Save, Stop, Settings, Save Logs stay; a missing
+stamp does not expire. **Verified**: tests (core, window, CLI, bundle); a real PyInstaller build
+(Linux) carries the stamp, and its binary with the stamp backdated to 2020 refuses `scan` with
+exit 3, with today's stamp runs. UI_SPEC 1, PACKAGING "Expiry", MAC_SESSION.
 
 **2026-10-05, two digit dates, burn-in boxes, blue done dots, 0.5.22 (user).** Three requests.
 (1) "For turnovers, the date should always be and should be recognized as 2 digits for month day

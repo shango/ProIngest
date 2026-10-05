@@ -7,6 +7,14 @@ PySide6 6.7+. Dark theme in the spirit of DaVinci Resolve: near-black panels, th
 **The version is always in view** (user, 2026-09-29): in the window title (`ProIngest 0.5.17`, whatever the build is)
 and as a permanent label at the right of the status bar, which no status message replaces.
 
+**A packaged build expires a calendar month after its release** (user, 2026-10-05; `core/expiry.py`,
+PACKAGING "Expiry"). From that day New, Open, Add Turnover, a drop, Scan and Re-scan, Run, Export
+and Build Stringout are each refused with a modal, "ProIngest <version> expired on <day>, one
+month after its release. Install the next version of ProIngest to continue.", asked when the
+action is pressed, so a window left open over the date stops too; the modal also shows at launch.
+Save, Stop, Settings and Save Logs still work, so nothing done is lost. In the last seven days a
+permanent status bar label says when it expires. Running from source never expires.
+
 ```
 +------------------------------------------------------------------+
 | Toolbar: [New] [Open] [Save] | [Add Turnover] [Scan] [Run] [Stop] | [Export] [Settings] |

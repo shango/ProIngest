@@ -20,6 +20,9 @@ proingest/resources/ffmpeg/*
 !proingest/resources/ffmpeg/PROVENANCE.md
 !proingest/resources/ffmpeg/LICENSE.ffmpeg.txt
 
+# The build's date, written by build/build.py for core/expiry.py.
+proingest/resources/release.txt
+
 # Tooling caches
 .pytest_cache/
 .ruff_cache/

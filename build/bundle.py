@@ -67,6 +67,9 @@ binaries out under the same relative path is what makes that resolution work unc
 
 FFMPEG_TOOLS = ("ffmpeg", "ffprobe")
 
+RELEASE_FILE = Path("proingest") / "resources" / "release.txt"
+"""The build's date, which `core/expiry.py` counts a month from. `build.py` writes it."""
+
 
 def version() -> str:
     """The version the bundle is stamped with, read from the package itself.
@@ -92,6 +95,9 @@ def datas(platform: str = sys.platform) -> list[tuple[str, str]]:
     - ffmpeg's licence and provenance, which ship beside the binaries or not at all.
     - The stringout's burn-in font and its OFL licence (`core/stringout.py`, 2026-09-25),
       read by path: without it every stringout fails QC-142, so it ships on every platform.
+    - The release date `build.py` stamps (`core/expiry.py`, 2026-10-05). Without it the
+      app never expires, so it is listed whether or not it is there yet: PyInstaller
+      then fails a build that forgot to write it.
 
     OpenTimelineIO and its adapters went on 2026-09-23: `clf.read_final_edl` reads the
     EDL itself and nothing imported otio any more.
@@ -100,6 +106,7 @@ def datas(platform: str = sys.platform) -> list[tuple[str, str]]:
         (str(REPO_ROOT / "proingest" / "ui" / "theme.qss"), str(Path("proingest") / "ui")),
     ]
     collected += [(str(REPO_ROOT / FONTS_DIR / name), str(FONTS_DIR)) for name in FONT_FILES]
+    collected.append((str(REPO_ROOT / RELEASE_FILE), str(RELEASE_FILE.parent)))
 
     if platform == MACOS:
         for name in ("LICENSE.ffmpeg.txt", "PROVENANCE.md"):

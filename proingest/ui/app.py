@@ -67,4 +67,5 @@ def run(argv: list[str] | None = None) -> int:
         logsetup.name_of(logging.getLogger().getEffectiveLevel()),
     )
     window.show()
+    window.check_expiry()
     return app.exec()

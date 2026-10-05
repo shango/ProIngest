@@ -208,6 +208,21 @@ M7 rather than at delivery.
 These are the Apple-sanctioned locations and are what `core/settings.py` must use. They are
 also per-user and need no elevated permissions, which matches the single-user design.
 
+## Expiry
+
+**A packaged build stops loading work one calendar month after its release** (user,
+2026-10-05): released 5 October, refused from 5 November; released 31 January, refused from
+28 February. The release date is the day it was built: `build/build.py` writes
+`proingest/resources/release.txt` (untracked) and `bundle.datas` ships it, listed whether or
+not it exists so PyInstaller fails a build that did not write it. `core/expiry.py` reads it only
+when `sys.frozen`, so a source run, the tests and CI never expire. The last week is warned on
+the status bar; what is refused is UI_SPEC section 1. The headless subcommands of a frozen
+build exit 3 with the same message.
+
+It reads the Mac's clock, so it is a request to update, not protection: setting the clock back
+gets round it. **A new build restarts the month**, so if a release is late, a rebuild with
+only the patch version bumped is the way out of a lockout.
+
 ## First run
 
 - **Do not detect the Google Drive mount.** OQ-25 was resolved by the user on 2026-09-10:
