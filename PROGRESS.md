@@ -18,6 +18,16 @@ since 2026-09-28 (user). What is left is the Mac: `docs/MAC_SESSION.md`, from "T
 order" down, and Ben's 4.886 slope. Entries are newest first; anything older than 2026-09-22
 describes the tool before the review and is history.
 
+**2026-10-05, the status dots are QC levels again, 0.5.23 (user).** "I had you change the color
+to reflect the color of the progress bars... That was wrong. The colored balls should reflect the
+error levels as before." The 0.5.22 dot change is reverted exactly (`shot_model.DOT_COLORS` done
+green, `row_state` asks the rules before done, Deliverables green, theme and UI_SPEC 3). The row's
+progress bar is blue while rendering and green when full, as before. **Verified**: the shot model
+and list tests. The same message said the saved log CSV's Level column read INFO for blocking
+errors; the file supplied (`ProIngest-logs-20261005-1301.csv`, untracked) does not show that: its
+1064 "blocks the run" lines are all `ERROR`, the QC lines' levels follow each rule's severity.
+Asked the user what they saw; nothing changed there.
+
 **2026-10-05, a build expires a calendar month after its release, 0.5.23 (user).** "Prevent user
 from loading a batch, presenting a modal saying they need to update... one month past the release
 of each new version." Answers: calendar month, block everything, text only, warn the last week.

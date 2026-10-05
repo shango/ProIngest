@@ -32,14 +32,14 @@ COLUMNS = ("Shot", "Deliverable", "Kind", "Res", "Ver", "Status", "Frames", "Siz
 WIDTHS = (120, 300, 80, 50, 40, 80, 60, 80, 120, 500)
 
 STATUS_COLORS = {
-    "done": QColor("#4d8fd6"),
-    "exists": QColor("#4d8fd6"),
+    "done": QColor("#58a97a"),
+    "exists": QColor("#58a97a"),
     "failed": QColor("#cf5a52"),
     "rendering": QColor("#4d8fd6"),
     "skipped": QColor("#868d9a"),
 }
-"""The shot list's own colours for the same states (UI_SPEC section 3): the accent for a
-file that is there or being written, red for one that failed."""
+"""The shot list's own colours for the same states (UI_SPEC section 3): green for a
+file that is there, red for one that failed, the accent for one being written."""
 
 NO_DELIVERABLES = "Nothing planned yet. A run plans a row's deliverables and writes them."
 """The one line shown when the selected rows have no deliverables, so an empty table

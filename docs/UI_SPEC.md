@@ -1,6 +1,6 @@
 # UI Spec
 
-PySide6 6.7+. Dark theme in the spirit of DaVinci Resolve: near-black panels, thin 1px separators, muted grey text, one accent color for selection and primary actions, amber for warnings, red for errors; done is the accent too, the colour of the progress bar (2026-10-05). No gradients, no drop shadows on panels, no rounded cards. Density is professional, not spacious.
+PySide6 6.7+. Dark theme in the spirit of DaVinci Resolve: near-black panels, thin 1px separators, muted grey text, one accent color for selection and primary actions, amber for warnings, red for errors, green for done. No gradients, no drop shadows on panels, no rounded cards. Density is professional, not spacious.
 
 ## 1. Layout
 
@@ -99,7 +99,7 @@ Scrolling: Source file, Res, FPS, In (editable), Out (editable), Duration, Max A
 | error (blocked) | red | faint red |
 | skipped by user | hollow | dimmed text |
 | rendering | accent, animated | none |
-| done (every deliverable written) | accent blue, the progress bar's colour (user, 2026-10-05); ahead of warning and error, which ran before the render | none |
+| done | green | none |
 | failed render | red | faint red |
 
 Hovering the dot or the row shows a tooltip listing rule IDs and messages. Clicking the dot focuses the Issues dock on that row.
