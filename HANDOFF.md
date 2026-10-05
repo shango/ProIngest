@@ -8,9 +8,9 @@ disagrees with `PROGRESS.md` or the docs, they are right and this file is wrong.
 
 - **Version 0.5.22 on branch `qc/source-fidelity`**, pushed, PR #17 open, **not merged** (merge
   only when the user asks). 0.5.4 is on `main`.
-- **CI run 36720891161 is green on all four jobs** and built the 0.5.21 dmg, handed over as:
-  `gh run download 36720891161 -R shango/ProIngest -n ProIngest-macos-arm64 -D ~/Downloads/ProIngest-0.5.21`
-  (https://github.com/shango/ProIngest/actions/runs/36720891161)
+- **CI run 37276656318 is green on all four jobs** and built the 0.5.22 dmg, handed over as:
+  `gh run download 37276656318 -R shango/ProIngest -n ProIngest-macos-arm64 -D ~/Downloads/ProIngest-0.5.22`
+  (https://github.com/shango/ProIngest/actions/runs/37276656318)
 - **1817 tests pass**; `ruff`, `ruff format` and `mypy --strict` are clean.
 - Nothing uncommitted except the untracked samples listed under Working notes.
 - **Session wrapped up 30 Sep 2026 at the user's request.** Nothing is in flight. Start with "Open,
