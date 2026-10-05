@@ -44,6 +44,13 @@ Do not rent for any of these. Listed because the instinct to rent is usually wro
 What the review of 2026-09-23 changed, checked on the editor's Mac with the real folder. The old
 chunk 7 of `docs/TO_A_WORKING_BUILD.md`, in the order that wastes least.
 
+- [ ] **The version in view (2026-09-29, 0.5.17).** Open the app: the title bar reads `ProIngest 0.5.17`
+      and so does the right end of the status bar, and the status bar one still reads it after a Scan
+      and a Save. Say whether the title also shows in full screen (macOS hides the title bar there).
+- [ ] **Burn-in boxes and blue dots (2026-10-05, 0.5.22).** Build a stringout: every burn-in, the
+      insets' labels too, sits on a faint black box a little larger than the text, and the three
+      along the bottom are one height. Run a turnover: each row's dot turns the progress bar's blue
+      when its bar is full, warnings or not. CI proves the filter runs; only the eye says it reads.
 - [ ] Download `ProIngest-0.5.0.dmg` from the CI run of the pushed branch (the `package-macos`
       job's artifact) and install it as `docs/guide/install.md` says. Do not build it locally.
 - [ ] **The acceptance test.** Point the tool at `Turnover199`. Scan: five rows, each with a shot
@@ -53,6 +60,17 @@ chunk 7 of `docs/TO_A_WORKING_BUILD.md`, in the order that wastes least.
 - [ ] Work the four 2026-09-23 lines at the end of Session 2 below: the reference against its
       wav (chunk B), colour against Resolve (chunk G), locks and a moved folder (chunk E), and
       failure and re-run (chunk D).
+- [ ] **The stringout on the Mac** (2026-09-25): run a turnover, then open
+      `<show>/_reports/turnover###_..._SO_v01.mp4`. The burn-ins draw (the bundled ffmpeg's
+      `drawtext` and the bundled Open Sans), sit where Ben's `burn-ins.png` has them, the counter
+      starts at 1001 on every shot, and it plays in QuickTime. CI proves the text is drawn only if
+      its ffmpeg has `drawtext`; only a Mac shows the shipped one does.
+- [ ] **Deliverables start at 1001 in Resolve** (2026-09-25): import a newly rendered EXR
+      sequence and its HD reference mp4. Both read `00:00:41:17` at their first frame, and a
+      Source Frame burn-in reads 1001. The tests read the headers; only Resolve shows what Ben sees.
+- [ ] **Drag and drop from Finder** (2026-09-25): select two turnover folders and a stray file in
+      Finder and drop them on an open batch. Both turnovers scan, the file is listed as skipped.
+      The tests drive a synthetic drop; only Finder shows the window accepting one.
 - [ ] Neither shell script (`build/mac_build.sh`, `ProIngest.command`) has ever run on a Mac;
       CI does the same steps from its own YAML. Run `./ProIngest.command` once from a clone.
 
@@ -354,18 +372,42 @@ Treat it as a working session with the editor rather than a delivery.
   skips. (4) Right-click on the frozen left columns of a header works as well as on the rest.
   (5) Close during a run: the window closes within a few seconds of the run stopping.
 - [ ] **Chunk D, failure and re-run (2026-09-23).** On the Mac: (1) Run the real turnover twice; the
-  second Run says nothing to render and each row carries QC-061. (2) Right-click a shot, Re-run,
-  Run: that shot alone comes back at v02. (3) Force a failure (for instance make the delivery
-  folder read-only part way through, or delete a source clip) and check nothing under a final
-  name is left for it, the row names the output, and Reset then Run writes it at the same
-  version. (4) Kill one `ProIngest` worker in Activity Monitor during a run: the run finishes,
+  second Run says nothing to render and each row carries QC-061. (2) Right-click a shot, Re-scan,
+  Run: that shot alone comes back at v02, and its bar emptied the moment Re-scan was chosen.
+  Right-click a turnover heading, Re-scan, Run: every shot in it comes back at the next version.
+  (3) Force a failure (for instance make the delivery folder read-only part way through, or
+  delete a source clip) and check nothing under a final name is left for it and the row names
+  the output; put the clip back, Re-scan the shot, and Run writes it again (2026-09-25: Re-scan
+  replaced Reset and Re-run). (4) Kill one `ProIngest` worker in Activity Monitor during a run: the run finishes,
   the lost jobs are rendered again, and nothing that had landed is lost.
 - [ ] **Save Logs as CSV (2026-09-23).** On the Mac: Log tab, Save Logs as CSV..., save to the
   Desktop. The dialog is the macOS one, the file opens in Numbers or Excel with one record per row
   (an ffmpeg command line whole in one cell), the ABOUT rows name 0.5.4 and the bundled ffmpeg, and
   the records reach back to the oldest dated file in `~/Library/Logs/ProIngest`. The File menu item
   does the same with no batch open.
+- [ ] **Colour from the AMF (2026-09-28, 0.5.14).** Scan turnover097's `collected files`: every
+  C42xx row's metadata pane Colour section names S-Log3 S-Gamut3.Cine, its AMF and its CLF nodes, C4271
+  shows QC-009 as info, the two HDRIs are skipped with QC-080, and nothing blocks (since 0.5.14 the
+  length limits are for pl rows only, so C4261 cp01 and C4271 el01 pass). Run: open a delivered EXR in Nuke and check the header's
+  `proingest/amf` and `proingest/looks`; play a pl reference mp4 in QuickTime beside Ben's own
+  Resolve playback of the same clip and say whether the grade and the gamma 2.2 display match.
+  `ffprobe` should report the reference's `color_transfer` as `bt470m` (gamma 2.2); say whether
+  QuickTime shows it the same as Resolve's viewer, since that is what the label is for.
+- [ ] **Accept As Is (2026-09-28, 0.5.9).** Right-click a turnover heading with a must-fix (a
+  clip outside the length limits is the easy one): the menu has a tick box, Accept As Is (Ignore
+  QC). Tick it: the heading shows QC-074, Run starts, and that shot renders at its trimmed length.
+  Give another shot a hold-back error (move a clip away, QC-012): it is not rendered and the batch
+  still runs. Save the batch, reopen it: still ticked. Re-scan the turnover: still ticked.
+- [ ] **QC results in the saved log (2026-09-28, 0.5.8).** Scan Turnover121, then Save Logs as
+  CSV: each clip's QC-020 is a WARNING row naming the turnover and shot, any info results are INFO,
+  and the last `proingest.core.qc` row is the QC summary. Make a row must-fix (point it at a
+  missing clip), press Run, and save again: the refusal dialog is an ERROR row, the must-fix reads
+  `(blocks the run)`, and the summary is ERROR. The first rows of the session say `ProIngest 0.5.8
+  started on macOS-...`.
 - [ ] **Turnover121 in the app (2026-09-23, 0.5.4).** Scan the folder with its ALE: 7 rows, no
   errors. The chart and the clean plate each show QC-072. Run it: the cp01 references play five
   seconds of one held frame with no sound in QuickTime, and the SECA0002 colour chart is one EXR.
   Worth a look at any pl reference too, to see the 4.886 slope Ben is being asked about.
+- [ ] **References on ACES 2.0 (2026-09-25).** Put one pl reference mp4 beside the same frame in
+  Ben's session viewer (ACES 2.0, output sRGB) on the same display. The tone and saturation should
+  match; a consistent contrast or gamma shift means his display is not sRGB (OQ-29).

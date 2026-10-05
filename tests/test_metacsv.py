@@ -144,49 +144,49 @@ class TestShot:
         assert read_back.rows[0].shot == "ZZ0001"
 
 
-class TestEncoding:
-    def test_two_fields_join_in_order(self, tmp_path: Path) -> None:
-        result = read(
-            tmp_path, REAL_HEADER, [["C1.MP4", "MELT0001", "pl01", "S-Log3", "S-Gamut3.Cine", "", "pl01"]]
-        )
-        assert result.rows[0].written_encoding == "S-Log3 S-Gamut3.Cine"
-
-    def test_one_field_alone_carries_what_there_is(self, tmp_path: Path) -> None:
+class TestColumnsNotRead:
+    def test_scene_is_read_for_the_stringout(self, tmp_path: Path) -> None:
+        """Burned in as the Primary Effect (2026-09-25)."""
         result = read(
             tmp_path,
-            ["File Name", "Shot", "Shot Type", "Gamma Notes"],
-            [["C1.MP4", "MELT0001", "pl01", "S-Log3"]],
+            ["File Name", "Shot", "Shot Type", "Scene"],
+            [["C1.mov", "SECA0001", "pl01", "Laser/Melt"]],
         )
-        assert result.rows[0].written_encoding == "S-Log3"
+        assert result.rows[0].scene == "Laser/Melt"
 
-    def test_resolves_input_color_space_stands_in_for_absent_notes(self, tmp_path: Path) -> None:
-        """Turnover121: no notes columns, `Input Color Space` says `Apple Log`."""
-        result = read(
-            tmp_path,
-            ["File Name", "Shot", "Shot Type", "Input Color Space"],
-            [["C1.mov", "SECA0001", "pl01", "Apple Log"]],
-        )
-        assert result.rows[0].written_encoding == "Apple Log"
-
-    def test_the_notes_win_over_input_color_space(self, tmp_path: Path) -> None:
+    def test_the_colour_columns_are_not_read(self, tmp_path: Path) -> None:
+        """Colour comes from each clip's AMF since 2026-09-28 (user); these are ignored."""
         result = read(
             tmp_path,
             ["File Name", "Shot", "Shot Type", "Gamma Notes", "Color Space Notes", "Input Color Space"],
-            [["C1.MP4", "MELT0001", "pl01", "S-Log3", "S-Gamut3.Cine", "Something Else"]],
+            [["C1.MP4", "MELT0001", "pl01", "S-Log3", "S-Gamut3.Cine", "Gamma 2.4"]],
         )
-        assert result.rows[0].written_encoding == "S-Log3 S-Gamut3.Cine"
-
-    def test_absent_columns_are_empty_rather_than_malformed(self, tmp_path: Path) -> None:
-        result = read(tmp_path, ["File Name", "Shot", "Shot Type"], [["C1.MP4", "MELT0001", "pl01"]])
-        assert result.rows[0].written_encoding == ""
         assert result.rows[0].qc == ()
+        assert not hasattr(result.rows[0], "written_encoding")
+
+
+class TestHdri:
+    """Delivered by the shooters by hand; the tool delivers nothing for it (user, 2026-09-28)."""
+
+    @pytest.mark.parametrize("written", ["HDRI", "hdri", "HDRI01"])
+    def test_an_hdri_row_is_kept_marked_and_carries_only_info(self, tmp_path: Path, written: str) -> None:
+        result = read(
+            tmp_path, ["File Name", "Shot", "Shot Type"], [["DALU0012_pl01_02_HDRI.exr", "TEST0013", written]]
+        )
+        (row,) = result.rows
+        assert row.shooter_delivered and row.kind is None
+        assert [(q.rule_id, q.severity) for q in row.qc] == [("QC-080", "info")]
+
+    def test_a_type_merely_containing_hdri_is_still_qc_010(self, tmp_path: Path) -> None:
+        result = read(tmp_path, ["File Name", "Shot", "Shot Type"], [["x.exr", "TEST0013", "HDRIref"]])
+        assert [q.rule_id for q in result.rows[0].qc] == ["QC-010"]
 
 
 class TestFileShape:
     def test_short_rows_do_not_raise(self, tmp_path: Path) -> None:
         """Resolve pads with empty cells; nothing guarantees every row is full width."""
         result = read(tmp_path, REAL_HEADER, [["C1.MP4", "MELT0001", "pl01"]])
-        assert result.rows[0].written_encoding == ""
+        assert result.rows[0].shot == "MELT0001"
 
     def test_blank_lines_are_skipped(self, tmp_path: Path) -> None:
         result = read(tmp_path, ["File Name", "Shot", "Shot Type"], [[], ["C1.MP4", "MELT0001", "pl01"], []])

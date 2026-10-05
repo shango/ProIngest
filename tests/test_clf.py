@@ -1,10 +1,10 @@
-"""The colour session package: the final EDL with the CDL per event, and any cube (M4.5.2).
+"""The final EDL, which is the cut, and a shot's colour chain from its AMF.
 
 COLOR_AND_FORMAT section 1. Two failures are what these tests exist for and neither
 looks like a failure: a row conformed from a neighbour's event delivers the wrong
-frames, and a row paired with a neighbour's cube delivers the wrong grade under the
-right filename. So the matching tests mostly ask what does **not** match, and the cube
-tests ask a written file what it actually does to a pixel rather than what it is called.
+frames, and a chain with a look in the wrong place delivers the wrong grade under the
+right filename. So the matching tests mostly ask what does **not** match, and the chain
+tests ask what a written CLF actually does to a pixel rather than what it is called.
 """
 
 from __future__ import annotations
@@ -18,12 +18,14 @@ import pytest
 
 from proingest.core import clf, color
 from proingest.core.models import (
-    CDL,
     FrameRate,
+    Grade,
+    GradeLook,
     MediaInfo,
     ShotRow,
     SourceEncodingOrigin,
 )
+from tests.fixtures import color as color_fixtures
 from tests.fixtures.names import identity_of
 
 RATE_24 = FrameRate(24)
@@ -31,26 +33,19 @@ RATE_24 = FrameRate(24)
 ACESCCT_MID_GREY = 0.413588
 """The ACEScct encoding of 0.18 scene linear, as `tests/test_color.py` derives it."""
 
-CLF_SOURCE = color.WORKING_SPACE
-"""Where a cube starts and ends: the session's timeline space, ACEScct by the standard
-decided on 2026-09-18. The tool's own legs get the clip there and carry the result on."""
+UNGRADED = color_fixtures.UNGRADED
+"""A clip whose AMF names ACEScct and no look, viewed on sRGB.
 
-ONE_STOP_UP = CDL(
-    slope=(1.0, 1.0, 1.0),
-    offset=(1 / 17.52,) * 3,
-    power=(1.0, 1.0, 1.0),
-    saturation=1.0,
-    sop_text="*ASC_SOP (1.0 1.0 1.0)(0.0571 0.0571 0.0571)(1.0 1.0 1.0)",
-    sat_text="*ASC_SAT 1.0",
-)
-"""A CDL that opens the plate by one stop: `1 / 17.52` of the ACEScct range."""
-
-UNGRADED = clf.ShotColor(source_encoding="ACEScct")
-"""A row the session left no grade for, in a clip whose metadata named ACEScct.
-
-The encoding has to be stated now that no default stands in for one (M4.6.1), and
-ACEScct keeps the numeric anchors here where they were.
+ACEScct keeps the numeric anchors here where they were before the AMF (2026-09-28).
 """
+
+GAMUT_COMPRESS = GradeLook("look", "ACES 1.3 Reference Gamut Compression")
+
+
+def doubled(tmp_path: Path) -> GradeLook:
+    """A CLF that doubles scene linear, ACES2065-1 in and out."""
+    return GradeLook("clf", str(color_fixtures.make_clf(tmp_path / "node_1.clf", gain=2.0)))
+
 
 FINAL_EDL = """TITLE: MELT_FINAL_v03
 FCM: NON-DROP FRAME
@@ -168,38 +163,6 @@ class TestReadFinalEdl:
             clf.read_final_edl(edl(tmp_path, text), RATE_24)
 
 
-class TestCdl:
-    def test_the_numbers_come_off_the_asc_lines(self, tmp_path: Path) -> None:
-        cdl = clf.read_final_edl(edl(tmp_path), RATE_24)[0].cdl
-        assert cdl is not None
-        assert cdl.slope == (1.02, 0.99, 1.01)
-        assert cdl.offset == (0.001, -0.002, 0.0)
-        assert cdl.power == (0.98, 1.0, 1.02)
-        assert cdl.saturation == 1.05
-
-    def test_the_original_text_is_kept_verbatim(self, tmp_path: Path) -> None:
-        """The EXR header carries the lines as written, for a reader with no OCIO."""
-        cdl = clf.read_final_edl(edl(tmp_path), RATE_24)[0].cdl
-        assert cdl is not None
-        assert cdl.sop_text == (
-            "*ASC_SOP (1.020000 0.990000 1.010000)(0.001000 -0.002000 0.000000)(0.980000 1.000000 1.020000)"
-        )
-        assert cdl.sat_text == "*ASC_SAT 1.050000"
-
-    def test_an_event_with_no_cdl_carries_none(self, tmp_path: Path) -> None:
-        text = "\n".join(line for line in FINAL_EDL.splitlines() if not line.startswith("*ASC"))
-        assert clf.read_final_edl(edl(tmp_path, text), RATE_24)[0].cdl is None
-
-    def test_half_a_cdl_is_none_rather_than_a_neutral_grade(self, tmp_path: Path) -> None:
-        """Slope 1 offset 0 power 1 is a real grade that says do nothing, not a default."""
-        text = "\n".join(line for line in FINAL_EDL.splitlines() if not line.startswith("*ASC_SAT"))
-        assert clf.read_final_edl(edl(tmp_path, text), RATE_24)[0].cdl is None
-
-    def test_an_unparseable_sop_line_is_none(self, tmp_path: Path) -> None:
-        text = FINAL_EDL.replace("1.020000 0.990000 1.010000", "one 0.990000 1.010000")
-        assert clf.read_final_edl(edl(tmp_path, text), RATE_24)[0].cdl is None
-
-
 RESOLVE_EDL = """TITLE: Turnover199
 FCM: NON-DROP FRAME
 
@@ -272,7 +235,7 @@ class TestEdlLayouts:
     def test_resolves_real_export_reads_with_crlf(self, tmp_path: Path) -> None:
         events = clf.read_final_edl(edl(tmp_path, RESOLVE_EDL.replace("\n", "\r\n")), RATE_24)
         assert [event.event_id for event in events] == ["001", "002"]
-        assert all(event.clip_name == "" and event.cdl is not None for event in events)
+        assert all(event.clip_name == "" for event in events)
 
     def test_an_audio_line_under_the_same_event_keeps_the_pictures_comments(self, tmp_path: Path) -> None:
         text = FINAL_EDL.replace(
@@ -282,7 +245,6 @@ class TestEdlLayouts:
         )
         first = clf.read_final_edl(edl(tmp_path, text), RATE_24)[0]
         assert first.clip_name == "MELT0001_pl01.mov"
-        assert first.cdl is not None
 
     def test_a_wipe_is_an_event_not_a_comment(self, tmp_path: Path) -> None:
         text = FINAL_EDL.replace("002  MELT0002 V     C       ", "002  MELT0002 V     W001 030")
@@ -333,17 +295,16 @@ class TestSession:
 
 
 class TestShotColor:
-    """What rides on a render job: a colour space name and the CDL.
+    """What rides on a render job: a colour space name, the AMF's looks and its display.
 
     The failure these guard against is the one COLOR_AND_FORMAT section 1 warns about
-    under the chain diagram: a grade applied in the wrong space, or a conversion applied
+    under the chain diagram: a look applied in the wrong space, or a conversion applied
     twice. It raises nothing and looks like a grade. So these ask **which** transforms a
-    chain contains as well as what it does to a pixel, because two arrangements agree on
-    a pixel whenever the tool's own leg happens to be identity.
+    chain contains as well as what it does to a pixel.
     """
 
     def applied(self, shot_color: clf.ShotColor, value: float) -> float:
-        """One neutral ACEScct value through the plate branch, green channel out."""
+        """One neutral value through the plate branch, green channel out."""
         pixels = np.array([[[value, value, value]]], dtype=np.float32)
         color.apply(pixels, color.processor(*shot_color.plate_transforms()))
         return float(pixels[0, 0, 1])
@@ -353,119 +314,119 @@ class TestShotColor:
         color.apply(pixels, color.processor(*shot_color.view_transforms()))
         return float(pixels[0, 0, 1])
 
-    def test_with_no_grade_the_chain_supplies_the_conversion_itself(self) -> None:
+    def test_with_no_look_the_chain_supplies_the_conversion_itself(self) -> None:
         """ACEScct mid grey is 0.18 scene linear, and nothing else is."""
         assert self.applied(UNGRADED, ACESCCT_MID_GREY) == pytest.approx(0.18, abs=1e-3)
 
-    def test_the_cdl_sits_between_the_two_legs(self) -> None:
-        """Into ACEScct from the clip's encoding, the CDL, out to ACEScg."""
-        shot_color = clf.ShotColor(source_encoding="S-Log3 S-Gamut3.Cine", cdl=ONE_STOP_UP)
-        legs_in, grade, legs_out = shot_color.plate_transforms()
-        assert (legs_in.getSrc(), legs_in.getDst()) == ("S-Log3 S-Gamut3.Cine", color.WORKING_SPACE)
-        assert isinstance(grade, ocio.CDLTransform)
-        assert grade.getOffset() == pytest.approx([1 / 17.52] * 3)
-        assert (legs_out.getSrc(), legs_out.getDst()) == (color.WORKING_SPACE, color.PLATE_SPACE)
+    def test_the_looks_sit_in_aces2065_1_in_the_amf_s_order(self, tmp_path: Path) -> None:
+        """Into ACES2065-1 from the clip's encoding, each look, out to ACEScg."""
+        shot_color = clf.ShotColor(
+            source_encoding="S-Log3 S-Gamut3.Cine", looks=(GAMUT_COMPRESS, doubled(tmp_path))
+        )
+        into, compress, node, out = shot_color.plate_transforms()
+        assert (into.getSrc(), into.getDst()) == ("S-Log3 S-Gamut3.Cine", color.ACES)
+        assert isinstance(compress, ocio.LookTransform) and compress.getLooks() == GAMUT_COMPRESS.name
+        assert isinstance(node, ocio.FileTransform) and node.getSrc().endswith("node_1.clf")
+        assert (out.getSrc(), out.getDst()) == (color.ACES, color.PLATE_SPACE)
+
+    def test_a_clf_does_to_a_pixel_what_it_says(self, tmp_path: Path) -> None:
+        """Doubling in ACES2065-1 doubles the plate: the matrices either side are linear."""
+        graded = clf.ShotColor(source_encoding="ACEScct", looks=(doubled(tmp_path),))
+        assert self.applied(graded, ACESCCT_MID_GREY) == pytest.approx(0.36, abs=1e-3)
+
+    def test_turnover097_s_node_changes_mid_grey(self) -> None:
+        """A real CLF shape: AP0 to ACEScct, a 33 cube, back. Skipped where the sample is absent."""
+        node = Path(__file__).parent.parent / "turnover097_09_28_26_danielluckett" / "collected files"
+        node = node / "C4261_1_ClipGraph_CorrectorNode_1.clf"
+        if not node.is_file():
+            pytest.skip("turnover097 is not committed")
+        graded = clf.ShotColor(source_encoding="ACEScct", looks=(GradeLook("clf", str(node)),))
+        assert self.applied(graded, ACESCCT_MID_GREY) != pytest.approx(0.18, abs=1e-2)
 
     def test_an_ungraded_plate_chain_is_one_leg_to_acescg(self) -> None:
-        """The reference still's chain, and every row the session has no grade for."""
+        """The reference still's chain, and every clip whose AMF lists no look."""
         transforms = UNGRADED.plate_transforms()
         assert len(transforms) == 1
         assert transforms[0].getDst() == color.PLATE_SPACE
 
-    def test_a_graded_row_with_no_encoding_is_refused(self) -> None:
-        """The grade is applied in ACEScct and the encoding is what gets the clip there,
-        so a graded row cannot render without it. QC-046 is an error on every plate."""
+    def test_a_graded_row_with_no_encoding_is_refused(self, tmp_path: Path) -> None:
+        """The encoding is what gets the clip into ACES, so nothing renders without it."""
         with pytest.raises(clf.ClfError, match="no source encoding"):
-            clf.ShotColor(cdl=ONE_STOP_UP).plate_transforms()
+            clf.ShotColor(looks=(doubled(tmp_path),)).plate_transforms()
 
-    def test_no_grade_and_no_encoding_is_refused_rather_than_guessed(self) -> None:
-        """The one chain that cannot be built. Nothing turns those pixels into ACEScg.
-
-        Passing them through would deliver a log frame under a header claiming ACEScg,
-        which is the silent wrong image this module is written to make impossible.
-        QC-046 and QC-047 stop the row long before a worker reaches this.
-        """
+    def test_no_look_and_no_encoding_is_refused_rather_than_guessed(self) -> None:
+        """Passing the pixels through would deliver a log frame under a header claiming
+        ACEScg. QC-046 and QC-047 stop the row long before a worker reaches this."""
         with pytest.raises(clf.ClfError, match="no source encoding"):
             clf.DEFAULT_SHOT_COLOR.plate_transforms()
 
-    def test_the_cdl_is_applied_in_acescct_whatever_the_clip_was_shot_on(self) -> None:
-        """One stop up in ACEScct doubles the plate, from a camera log as from ACEScct.
-
-        S-Log3 puts 18% grey at 10 bit code 420. Applied in the camera's own log instead,
-        the same offset would be a different number of stops and nothing would say so.
-        """
-        shot_color = clf.ShotColor(source_encoding="S-Log3 S-Gamut3.Cine", cdl=ONE_STOP_UP)
-        assert self.applied(shot_color, 420 / 1023) == pytest.approx(0.36, abs=2e-3)
-        from_acescct = clf.ShotColor(source_encoding="ACEScct", cdl=ONE_STOP_UP)
-        assert self.applied(from_acescct, ACESCCT_MID_GREY) == pytest.approx(0.36, abs=1e-3)
-
     def test_the_plate_branch_is_unbounded_and_the_view_branch_is_not(self) -> None:
-        """ACEScct 1.0 is 222 in scene linear; every display rendering tone maps it.
-
-        Display range rather than clamped: OCIO clamps nothing, and what finally bounds
-        the reference is ffmpeg's own pixel format. 1.03 against 222 is the difference
-        the branch exists for.
-        """
+        """ACEScct 1.0 is 222 in scene linear; every display rendering tone maps it."""
         assert self.applied(UNGRADED, 1.0) > 200.0
         assert self.viewed(UNGRADED, 1.0) < 1.1
 
-    def test_the_view_branch_is_the_plate_branch_plus_one_leg(self) -> None:
+    def test_the_view_branch_is_the_plate_branch_plus_the_amf_s_output(self) -> None:
         """Compared by what each transform says it is: OCIO transforms compare by identity."""
         plate = [str(item) for item in UNGRADED.plate_transforms()]
-        view = [str(item) for item in UNGRADED.view_transforms()]
-        assert view[: len(plate)] == plate
-        assert len(view) == len(plate) + 1
+        view = UNGRADED.view_transforms()
+        assert [str(item) for item in view[: len(plate)]] == plate
+        (output,) = view[len(plate) :]
+        assert isinstance(output, ocio.DisplayViewTransform)
+        assert (output.getDisplay(), output.getView()) == (color_fixtures.DISPLAY, color_fixtures.VIEW)
 
-    def test_a_graded_view_branch_is_the_three_legs_and_the_output_transform(self) -> None:
-        """Four transforms, which is what `view_lut` bakes into a shot's viewing cube."""
-        shot_color = clf.ShotColor(source_encoding="ACEScct", cdl=ONE_STOP_UP)
-        assert len(shot_color.view_transforms()) == 4
+    def test_the_display_follows_the_amf(self) -> None:
+        """Gamma 2.2 Rec.709 is turnover097's; it renders mid grey differently from sRGB."""
+        gamma = clf.ShotColor(
+            source_encoding="ACEScct", display="Gamma 2.2 Rec.709 - Display", view=color_fixtures.VIEW
+        )
+        assert self.viewed(gamma, ACESCCT_MID_GREY) != pytest.approx(
+            self.viewed(UNGRADED, ACESCCT_MID_GREY), abs=1e-3
+        )
 
-    def test_it_pickles(self) -> None:
+    def test_no_output_transform_is_refused_for_a_reference(self) -> None:
+        with pytest.raises(clf.ClfError, match="QC-079"):
+            clf.ShotColor(source_encoding="ACEScct").view_transforms()
+
+    def test_it_pickles(self, tmp_path: Path) -> None:
         """A job crosses a spawn boundary, so everything it carries has to survive one."""
-        shot_color = clf.ShotColor(source_encoding="ACEScct", cdl=ONE_STOP_UP)
+        shot_color = clf.ShotColor(source_encoding="ACEScct", looks=(GAMUT_COMPRESS, doubled(tmp_path)))
         assert pickle.loads(pickle.dumps(shot_color)) == shot_color
 
 
 class TestShotColorFromRow:
-    """`clf.shot_color` is the one place a row becomes a chain, ingested or not."""
+    """`clf.shot_color` is the one place a row becomes a chain."""
 
-    def test_a_matched_row_carries_its_cdl(self, tmp_path: Path) -> None:
-        scanned = row()
-        event = clf.load_session(edl(tmp_path), RATE_24).event_for(scanned)
-        assert event is not None
-        scanned.cdl = event.cdl
-        assert clf.shot_color(scanned).cdl is not None
+    def test_a_graded_row_carries_its_looks_and_display(self, tmp_path: Path) -> None:
+        graded = row(source_encoding="ACEScct")
+        graded.grade = Grade(
+            amf=tmp_path / "x.amf",
+            looks=(GAMUT_COMPRESS,),
+            display=color_fixtures.DISPLAY,
+            view=color_fixtures.VIEW,
+        )
+        shot_color = clf.shot_color(graded)
+        assert shot_color.looks == (GAMUT_COMPRESS,)
+        assert (shot_color.display, shot_color.view, shot_color.amf) == (
+            color_fixtures.DISPLAY,
+            color_fixtures.VIEW,
+            "x.amf",
+        )
 
-    def test_a_row_with_no_cdl_gets_the_ungraded_chain(self) -> None:
-        assert clf.shot_color(row("MELT0009_pl01")).cdl is None
+    def test_a_row_with_no_amf_gets_no_looks(self) -> None:
+        assert clf.shot_color(row("MELT0009_pl01")).looks == ()
 
-    def test_the_source_encoding_comes_off_the_row(self, tmp_path: Path) -> None:
-        """A per clip fact, so the session neither carries it nor is asked for it."""
+    def test_the_source_encoding_comes_off_the_row(self) -> None:
         assert clf.shot_color(row(source_encoding="ACEScc")).source_encoding == "ACEScc"
 
-    def test_the_encoding_is_resolved_through_the_table_on_the_way(self, tmp_path: Path) -> None:
-        """What the shooter wrote in, a colour space out (M4.6.3)."""
-        shot_color = clf.shot_color(row(source_encoding="BM Film"))
-        assert shot_color.source_encoding == "BMDFilm WideGamut Gen5"
-
-    def test_a_name_the_table_cannot_resolve_is_carried_as_none(self, tmp_path: Path) -> None:
-        """QC-047 is where this is reported. A graded row renders regardless."""
+    def test_a_name_the_config_lacks_is_carried_as_none(self) -> None:
+        """QC-047 is where this is reported."""
         assert clf.shot_color(row(source_encoding="S-Log3")).source_encoding is None
 
-    def test_the_origin_of_the_name_travels_with_it(self, tmp_path: Path) -> None:
-        scanned = row(source_encoding="BM Film", source_encoding_origin="container tag")
-        assert clf.shot_color(scanned).source_encoding_origin == "container tag"
+    def test_the_origin_of_the_name_travels_with_it(self) -> None:
+        scanned = row(source_encoding="ACEScc", source_encoding_origin="AMF")
+        assert clf.shot_color(scanned).source_encoding_origin == "AMF"
 
-    def test_a_name_that_resolved_to_nothing_still_says_where_it_came_from(self, tmp_path: Path) -> None:
-        """Which is the case the origin exists for: QC-047 names a string to correct."""
-        scanned = row(source_encoding="S-Log3", source_encoding_origin="clip metadata")
-        shot_color = clf.shot_color(scanned)
-        assert shot_color.source_encoding is None
-        assert shot_color.source_encoding_origin == "clip metadata"
-
-    def test_a_row_naming_no_encoding_gets_a_chain_that_names_none(self, tmp_path: Path) -> None:
-        """Renderable where the CLF is the whole chain, and QC-046 where it is not."""
+    def test_a_row_naming_no_encoding_gets_a_chain_that_names_none(self) -> None:
         assert clf.shot_color(row()).source_encoding is None
 
 
@@ -475,8 +436,7 @@ class TestMotionEffects:
     EDL = (
         "TITLE: T\nFCM: NON-DROP FRAME\n\n"
         "001  AX       V     C        00:00:40:10 00:00:50:10 01:00:10:00 01:00:20:00  \n"
-        "M2   AX             000.0                00:00:40:10\n"
-        "*ASC_SOP (1.0 1.0 1.0)(0.0 0.0 0.0)(1.0 1.0 1.0)\n*ASC_SAT 1.0\n\n"
+        "M2   AX             000.0                00:00:40:10\n\n"
         "002  AX       V     C        00:00:06:04 00:00:16:04 01:00:20:00 01:00:30:00  \n"
     )
 
@@ -488,7 +448,6 @@ class TestMotionEffects:
         assert frozen.used_out == frozen.source_in == 970
         assert frozen.duration == 1
         assert frozen.use == (970, 1209), "the stated out tells two holds of one frame apart"
-        assert frozen.cdl is not None, "the M2 line does not swallow the grade"
         assert cut.duration == 240
 
     def test_a_retime_or_a_reversal_is_flagged_and_a_freeze_is_not(self, tmp_path: Path) -> None:

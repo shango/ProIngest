@@ -1,0 +1,81 @@
+Rule,Phase,Scope,Severity,Tier,Blocks the run?,What happens,Check
+QC-001,A: scan and pre-flight,turnover,Error,Must fix,Yes,Stops the whole run until fixed and re-scanned,Turnover folder is missing the EDL or the metadata CSV (checked at Add Turnover)
+QC-002,A: scan and pre-flight,turnover,Error,Must fix,Yes,Stops the whole run until fixed and re-scanned,EDL or metadata CSV failed to parse
+QC-004,A: scan and pre-flight,turnover,Error,Must fix,Yes,Stops the whole run until fixed and re-scanned,"Metadata CSV has no rows, or the EDL has no events"
+QC-005,A: scan and pre-flight,turnover,Info,Info tier,No,Logged only,Folder name does not match turnover###_MM_DD_YY_name; fields need manual entry (a four digit year still matches)
+QC-008,A: scan and pre-flight,turnover,Error,Must fix,Yes,Stops the whole run until fixed and re-scanned,"No AMF in the turnover grades any of its clips, so nothing names an input transform"
+QC-009,A: scan and pre-flight,row,Info,Info tier,No,Logged only,The clip's AMF carries no CLF: Ben left it ungraded; it renders through its input transform and gamut compress only
+QC-010,A: scan and pre-flight,row,Error,Must fix,"Yes, unless the row is skipped","Stops the whole run; fix and re-scan, or skip the row","Shot Type the tool does not deliver, or a Shot Type with no parseable shot code"
+QC-011,A: scan and pre-flight,row,Error,Must fix,"Yes, unless the row is skipped","Stops the whole run; fix and re-scan, or skip the row","Two rows with the same shot code, type and index (would write the same files)"
+QC-012,A: scan and pre-flight,row,Error,Must fix,"Yes, unless the row is skipped","Stops the whole run; fix and re-scan, or skip the row",Media not found for the CSV's File Name
+QC-013,A: scan and pre-flight,row,Error,Must fix,"Yes, unless the row is skipped","Stops the whole run; fix and re-scan, or skip the row",Media ambiguous: more than one file matches
+QC-014,A: scan and pre-flight,row,Error,Must fix,"Yes, unless the row is skipped","Stops the whole run; fix and re-scan, or skip the row",Media unreadable by ffprobe / OpenEXR
+QC-015,A: scan and pre-flight,row,Warning,Info tier,No,Row coloured amber and logged; the run goes ahead,Image sequence has gaps in frame numbering
+QC-018,A: scan and pre-flight,row,Info,Info tier,No,Logged only,"Matrix and range the file is decoded with, when not simply the BT.709 it states"
+QC-020,A: scan and pre-flight,row,Warning,Info tier,No,Row coloured amber and logged; the run goes ahead,"Source is 8 bit or 4:2:0, poor for a log plate"
+QC-021,A: scan and pre-flight,row,Warning,Info tier,No,Row coloured amber and logged; the run goes ahead,"Reports the source's codec, bit depth and chroma"
+QC-022,A: scan and pre-flight,row,Error,Must fix,"Yes, unless the row is skipped","Stops the whole run; fix and re-scan, or skip the row",Source codec not decodable (includes camera RAW)
+QC-023,A: scan and pre-flight,row,"Error, or Warning with allow non-4k on",Must fix / Info tier,"Yes, unless allow non-4k is on or the row is skipped",Error stops the run; as a warning the source is letterboxed or pillarboxed onto 3840x2160,Source resolution is not 3840x2160 (aux stills not asked)
+QC-026,A: scan and pre-flight,row,Error,Must fix,"Yes, unless the row is skipped","Stops the whole run; fix and re-scan, or skip the row",Source frame rate is not the project rate (24)
+QC-027,A: scan and pre-flight,row,Error,Must fix,"Yes, unless the row is skipped","Stops the whole run; fix and re-scan, or skip the row",Drop-frame timecode
+QC-028,A: scan and pre-flight,row,Warning,Info tier,No,Row coloured amber and logged; the run goes ahead,Source has no embedded timecode
+QC-029,A: scan and pre-flight,row,Error,Must fix,"Yes, unless the row is skipped","Stops the whole run; fix and re-scan, or skip the row",EDL event's source range does not fit inside the media
+QC-030,A: scan and pre-flight,row,Warning,Info tier,No,Row coloured amber and logged; the run goes ahead,Fewer than the expected handle frames beyond In or Out
+QC-031,A: scan and pre-flight,row,Error,Must fix,"Yes, unless the row is skipped","Stops the whole run; fix and re-scan, or skip the row",In or Out outside the source range after editing
+QC-032,A: scan and pre-flight,row,Error,Must fix,"Yes, unless the row is skipped","Stops the whole run; fix and re-scan, or skip the row",In greater than Out
+QC-033,A: scan and pre-flight,row,Error,Must fix,"Yes, unless the row is skipped","Stops the whole run; trim inside the limit, change the limit in Settings, or skip the row",Plate (pl) duration below minimum (default 120 frames); no other Shot Type has a limit
+QC-034,A: scan and pre-flight,row,Error,Must fix,"Yes, unless the row is skipped","Stops the whole run; trim inside the limit, change the limit in Settings, or skip the row",Plate (pl) duration above maximum (default 240 frames); no other Shot Type has a limit
+QC-035,A: scan and pre-flight,row,Info,Info tier,No,Logged only,In/Out differ from the turnover snapshot
+QC-036,A: scan and pre-flight,row,Info,Info tier,No,Logged only,Shot code edited from the original clip name
+QC-040,A: scan and pre-flight,row,Warning,Info tier,No,Row coloured amber and logged; the run goes ahead,"Plate (pl) has no audio, neither a wav beside it nor inside its file"
+QC-041,A: scan and pre-flight,row,Warning,Info tier,No,Row coloured amber and logged; the run goes ahead,More than one audio file matches the plate's name
+QC-042,A: scan and pre-flight,row,Error,Must fix,"Yes, unless the row is skipped","Stops the whole run; fix and re-scan, or skip the row",Plate's associated audio file missing or unreadable
+QC-043,A: scan and pre-flight,row,Warning,Info tier,No,Row coloured amber and logged; the run goes ahead,Audio length differs from the In/Out range by more than one frame
+QC-044,A: scan and pre-flight,row,Warning,Info tier,No,Row coloured amber and logged; the run goes ahead,Audio not 16 bit PCM (will be extracted as 16 bit)
+QC-045,A: scan and pre-flight,row,Warning,Info tier,No,Row coloured amber and logged; the run goes ahead,Current In/Out differ from the approved In/Out on the EDL (an editor trim)
+QC-046,A: scan and pre-flight,row,Error on a row the tool renders; Info on a row that delivers nothing,Must fix / Info tier,"Yes on a rendered row, unless skipped",Error stops the run,"The clip's AMF has no input transform, or no AMF matched the row"
+QC-047,A: scan and pre-flight,row,Error on a row the tool renders; Warning on a row that delivers nothing,Must fix / Info tier,"Yes on a rendered row, unless skipped",Error stops the run,The AMF's input transform ID is not one the pinned config lists
+QC-048,A: scan and pre-flight,row,Info,Info tier,No,Logged only,"Records the colour chain the row renders through: source encoding to ACES2065-1, each AMF look, then ACEScg"
+QC-055,A: scan and pre-flight,row,Warning,Info tier,No,Row coloured amber and logged; the run goes ahead,Aux still is cut as more than one frame; the In frame is used
+QC-060,A: scan and pre-flight,row,Warning,Info tier,No,Row coloured amber and logged; the run goes ahead,Existing deliverables found at version N; this render will be N+1
+QC-061,A: scan and pre-flight,row,Info,Info tier,No,Logged only,Every deliverable already landed; the next Run leaves the row alone
+QC-062,A: scan and pre-flight,batch,Error,Must fix,Yes,Stops the whole run until fixed and re-scanned,Delivery root not writable
+QC-063,A: scan and pre-flight,batch,Error; Warning if free space cannot be read,Must fix / Info tier,Yes when space is known to be short,Error stops the run,Free space at the delivery root below the estimated output size
+QC-064,A: scan and pre-flight,turnover,Warning,Info tier,No,Row coloured amber and logged; the run goes ahead,N clips carry no Shot Type and were ignored
+QC-065,A: scan and pre-flight,row,Error,Must fix,"Yes, unless the row is skipped","Stops the whole run; fix and re-scan, or skip the row",The CSV's two Shot Type columns disagree
+QC-066,A: scan and pre-flight,row,Error,Must fix,"Yes, unless the row is skipped","Stops the whole run; fix and re-scan, or skip the row","No EDL event falls inside this clip, so it has no cut and no grade"
+QC-067,A: scan and pre-flight,row,Error,Must fix,"Yes, unless the row is skipped","Stops the whole run; fix and re-scan, or skip the row","Ambiguous match: two events in this file, or one event claimed by two files"
+QC-068,A: scan and pre-flight,turnover,Info,Info tier,No,Logged only,EDL events that fall inside no file the CSV describes
+QC-069,A: scan and pre-flight,turnover,Error,Must fix,Yes,Stops the whole run until fixed and re-scanned,Turnover folder is not where the batch last found it
+QC-070,A: scan and pre-flight,turnover,Warning,Info tier,No,Row coloured amber and logged; the run goes ahead,EDL or CSV changed since the last scan; carried-over trims deserve a look
+QC-071,A: scan and pre-flight,turnover,Error,Must fix,Yes,Stops the whole run until fixed and re-scanned,"ALE cannot name the EDL's events (several ALEs, no Name column, or wrong row count)"
+QC-072,A: scan and pre-flight,row,Info,Info tier,No,Logged only,Clip cut more than once is delivered once
+QC-073,A: scan and pre-flight,row,Error,Must fix,"Yes, unless the row is skipped","Stops the whole run; fix and re-scan, or skip the row",EDL plays the clip at a speed other than normal or freeze (retime or reverse)
+QC-074,A: scan and pre-flight,turnover,Warning,Info tier,No,Logged only,Accept As Is (Ignore QC) is ticked on the turnover: its errors do not refuse the Run; rows render past QC-023/033/034/071 only
+QC-075,A: scan and pre-flight,row / turnover,Error; Warning for an AMF with no index in its name,Must fix / Info tier,"Yes, unless the row is skipped","Stops the whole run; fix and re-scan, or skip the row","The clip's AMF cannot be matched (none, two, or one naming another file), or an AMF is unreadable"
+QC-076,A: scan and pre-flight,row,Error,Must fix,"Yes, unless the row is skipped","Stops the whole run; fix and re-scan, or skip the row","A CLF the AMF names is missing, changed since export (md5), or unreadable by OCIO"
+QC-077,A: scan and pre-flight,row,Warning,Info tier,No,Row coloured amber and logged; the run goes ahead,"A look in the AMF the tool does not apply, and ignores (unknown look ID, embedded CDL, other)"
+QC-078,A: scan and pre-flight,row,Info,Info tier,No,Logged only,The AMF was exported with Resolve's Dailies Request preset
+QC-079,A: scan and pre-flight,row,Error,Must fix,"Yes, unless the row is skipped","Stops the whole run; fix and re-scan, or skip the row","The AMF's output transform is not in the pinned config, or names a display a Rec.709 reference cannot be labelled for (P3, HDR)"
+QC-080,A: scan and pre-flight,row,Info,Info tier,No,Row skipped; no row rule runs on it,"Shot Type HDRI: the shooters deliver it, the tool delivers nothing; the stringout still shows its clip"
+QC-081,A: scan and pre-flight,turnover,Retired,,,,"Retired 2026-10-05: a two digit year is the expected form"
+QC-100,B: after render,deliverable,Error,Deliverable fails,No,Nothing was written; the row waits until fixed and Re-scanned (right-click); other rows carry on,Render did not complete; reason recorded
+QC-101,B: after render,exr seq,Error,Deliverable fails,No,That deliverable is deleted and marked failed; the row waits until fixed and Re-scanned (right-click); other rows carry on,Frame count equals duration
+QC-102,B: after render,exr seq,Error,Deliverable fails,No,That deliverable is deleted and marked failed; the row waits until fixed and Re-scanned (right-click); other rows carry on,"Frames numbered 1001 to 1000 + duration, no gaps"
+QC-103,B: after render,exr seq / aux still,Error,Deliverable fails,No,That deliverable is deleted and marked failed; the row waits until fixed and Re-scanned (right-click); other rows carry on,Every frame opens and its header parses
+QC-104,B: after render,exr seq / aux still,Error,Deliverable fails,No,That deliverable is deleted and marked failed; the row waits until fixed and Re-scanned (right-click); other rows carry on,Data and display windows equal the target resolution
+QC-105,B: after render,exr seq / aux still,Error,Deliverable fails,No,That deliverable is deleted and marked failed; the row waits until fixed and Re-scanned (right-click); other rows carry on,"DWAA compression, R,G,B(,A) half float"
+QC-106,B: after render,exr seq / aux still,Error,Deliverable fails,No,That deliverable is deleted and marked failed; the row waits until fixed and Re-scanned (right-click); other rows carry on,Checksum matches what the writer recorded
+QC-107,B: after render,exr seq,Warning,Info tier,No,Deliverable kept; logged,A frame is under 10% of the median size (likely black or empty)
+QC-110,B: after render,mp4,Error,Deliverable fails,No,That deliverable is deleted and marked failed; the row waits until fixed and Re-scanned (right-click); other rows carry on,ffprobe opens it and the stream count is right
+QC-111,B: after render,mp4,Error,Deliverable fails,No,That deliverable is deleted and marked failed; the row waits until fixed and Re-scanned (right-click); other rows carry on,Decoded frame count equals duration
+QC-112,B: after render,mp4,Error,Deliverable fails,No,That deliverable is deleted and marked failed; the row waits until fixed and Re-scanned (right-click); other rows carry on,Resolution equals target
+QC-113,B: after render,mp4,Error,Deliverable fails,No,That deliverable is deleted and marked failed; the row waits until fixed and Re-scanned (right-click); other rows carry on,Frame rate equals project rate
+QC-114,B: after render,mp4,Warning,Info tier,No,Deliverable kept; logged,Audio stream present if and only if audio was associated (plates only)
+QC-115,B: after render,mp4,Error,Deliverable fails,No,That deliverable is deleted and marked failed; the row waits until fixed and Re-scanned (right-click); other rows carry on,moov atom at the head of the file (faststart)
+QC-120,B: after render,wav,Error,Deliverable fails,No,That deliverable is deleted and marked failed; the row waits until fixed and Re-scanned (right-click); other rows carry on,Duration in samples is right
+QC-121,B: after render,wav,Error; Warning on a byte-copied wav source,Deliverable fails / Info tier,No,Error: the wav is deleted and marked failed,16 bit PCM
+QC-142,B: after render,turnover,Error,Reported,No,Reported in the QC log; never blocks the next run,"The turnover's stringout was not written (no name, no EDL, a segment refused, or the join failed its check)"
+QC-143,B: after render,turnover,Info,Info tier,No,Logged only,"Stringout events with no delivered HD reference, shown as the ungraded source or black"
+QC-150,B: after render,row,Error,Row not done,No,Row reported not done,Every planned deliverable for the row exists and passed
+QC-151,B: after render,batch,Error,Reported,No,Reported in the QC log,"Every delivered filename re-parses to the shot, element, kind, res and version planned"

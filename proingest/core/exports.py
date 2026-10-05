@@ -31,8 +31,8 @@ from openpyxl.styles import Alignment, Font
 from openpyxl.worksheet.worksheet import Worksheet
 
 from proingest import __version__
-from proingest.core import ffmpeg, frames, naming, qc
-from proingest.core.models import Batch, Deliverable, QCResult, ShotRow
+from proingest.core import ffmpeg, frames, naming, planner, qc
+from proingest.core.models import Batch, Deliverable, MediaInfo, QCResult, ShotRow
 
 DATE_STAMP = "%Y%m%d"
 """NAMING_SPEC section 5 writes `<date>` in the report names and does not say what it
@@ -116,17 +116,25 @@ SHOTS_HEADERS = (
     "Delivered In", "Delivered Out", "Delivered In TC", "Delivered Out TC",
     "Final In", "Final Out", "Duration", "Max available", "Audio", "Edited",
     "Source encoding",
+    "Source codec", "Source pixel format", "Source bit depth", "Source chroma",
+    "Source primaries", "Source transfer", "Source matrix", "Source range",
     "Skip reason", "Notes", "Warnings", "Errors",
 )  # fmt: skip
 """The QC log's own columns, QC_RULES "QC log structure".
 
-Source encoding is the whole of the colour chain a row was rendered through that a
-reader can check, the CDL itself being in the delivered EXR header. It is **what the
-clip's metadata named, verbatim**,
-rather than the colour space that resolved to: this column is read when QC-046 or
-QC-047 fires, and what has to be corrected is the string somebody typed. Empty means
-the clip named none. Where the name came from is in the delivered EXR header rather
-than here (`exr.SOURCE_ENCODING_ORIGIN_ATTRIBUTE`)."""
+Source encoding is the colour space the clip's AMF input transform resolved to in the
+pinned config (user, 2026-09-28); empty means the AMF named none the config has, which
+is QC-046 or QC-047. The looks applied after it are in the delivered EXR header
+(`exr.LOOKS_ATTRIBUTE`).
+
+The eight **Source** columns after it are the file as ffprobe read it, so whoever
+checks a turnover can see whether the media is usable for VFX without opening it: an
+8 bit 4:2:0 clip labelled BT.709 beside a log encoding is visible here at a glance
+(user, 2026-09-24). They report and never block; QC-020 is the rule that warns. A
+colour tag the file does not state reads `not stated`, so an absent label is told apart
+from a row with no media, whose cells are empty."""
+
+NOT_STATED = "not stated"
 
 DELIVERABLE_HEADERS = (
     "Shot code", "Elem", "Kind", "Res", "Version", "Path", "Frames", "Size", "Checksum",
@@ -137,6 +145,7 @@ def _write_summary(book: Workbook, batch: Batch, when: date) -> None:
     """One key and one value per line: what was run, and what it said."""
     sheet = _sheet(book, "Summary", ("Item", "Value"))
     counts = severity_counts(batch)
+    waived = planner.bypassed_turnovers(batch)
     for label, value in (
         ("Batch", batch.name),
         ("Date", when.isoformat()),
@@ -145,9 +154,13 @@ def _write_summary(book: Workbook, batch: Batch, when: date) -> None:
         ("Delivery root", str(batch.delivery_root) if batch.delivery_root else ""),
         ("Turnovers", len(batch.turnovers)),
         ("Rows", len(batch.rows)),
-        ("Rows delivered", sum(1 for row in batch.rows if _row_state(row) == "delivered")),
-        ("Rows skipped", sum(1 for row in batch.rows if _row_state(row) == "skipped")),
-        ("Rows failed", sum(1 for row in batch.rows if _row_state(row) == "failed")),
+        ("Rows delivered", sum(1 for row in batch.rows if _row_state(row, waived) == "delivered")),
+        ("Rows skipped", sum(1 for row in batch.rows if _row_state(row, waived) == "skipped")),
+        ("Rows failed", sum(1 for row in batch.rows if _row_state(row, waived) == "failed")),
+        (
+            "QC bypassed (QC-074)",
+            ", ".join(t.folder.name for t in batch.turnovers if t.qc_bypassed) or "none",
+        ),
         ("Deliverables", sum(len(row.deliverables) for row in batch.rows)),
         ("Errors", counts["error"]),
         ("Warnings", counts["warning"]),
@@ -174,15 +187,18 @@ def _every_result(batch: Batch) -> list[list[QCResult]]:
     return results
 
 
-def _row_state(row: ShotRow) -> str:
+def _row_state(row: ShotRow, waived: set[str]) -> str:
     """`skipped`, `failed` or `delivered`, which is what the Summary counts.
 
     A row with nothing planned counts as delivered rather than failed: the planner had
     nothing to do for it, which is a different thing from a render that did not finish.
+    An error Accept As Is rendered past (`waived` turnovers) is not a failure.
     """
     if row.skipped:
         return "skipped"
-    if row.errors() or any(item.status == "failed" for item in row.deliverables):
+    if planner.holding_errors(row, row.turnover_id in waived) or any(
+        item.status == "failed" for item in row.deliverables
+    ):
         return "failed"
     return "delivered"
 
@@ -213,12 +229,27 @@ def _write_shots(book: Workbook, batch: Batch) -> None:
                 str(row.audio_path) if row.audio_path else "",
                 "yes" if row.was_edited else "",
                 row.source_encoding or "",
+                *_source_fidelity(media),
                 row.skip_reason or "",
                 row.notes,
                 _rule_ids(row.qc, "warning"),
                 _rule_ids(row.qc, "error"),
             ],
         )
+
+
+def _source_fidelity(media: MediaInfo | None) -> list[object]:
+    """The eight Source columns: codec, pixel format, bit depth, chroma, then the tags."""
+    if media is None:
+        return [""] * 8
+    tags = (media.color_primaries, media.color_transfer, media.color_space, media.color_range)
+    return [
+        media.codec,
+        media.pixel_format,
+        qc.bit_depth(media.pixel_format),
+        qc.chroma(media.pixel_format),
+        *(tag or NOT_STATED for tag in tags),
+    ]
 
 
 def _write_deliverables(book: Workbook, batch: Batch) -> None:
@@ -310,13 +341,13 @@ _LANDED = ("done", "exists")
 """A deliverable that is on disk and passed: written this run, or already complete."""
 
 
-def _landed(row: ShotRow) -> bool:
+def _landed(row: ShotRow, waived: set[str]) -> bool:
     """Whether this row delivered everything it planned.
 
     Skipped, blocked, failed and cancelled rows did not, and a tracker line for any of
     them would add a shot to the production's sheet that is not in the delivery.
     """
-    if row.skipped or row.errors() or not row.deliverables:
+    if row.skipped or planner.holding_errors(row, row.turnover_id in waived) or not row.deliverables:
         return False
     return all(item.status in _LANDED for item in row.deliverables)
 
@@ -347,15 +378,15 @@ def _main_plate(rows: list[ShotRow]) -> ShotRow | None:
     return min(plates, key=lambda row: row.identity.index if row.identity else "", default=None)
 
 
-def tracker_row(shot_code: str, rows: list[ShotRow]) -> list[str]:
+def tracker_row(shot_code: str, rows: list[ShotRow], stringout: str = "") -> list[str]:
     """One shot code as the studio's 39 columns, with the thirty that are not ours empty.
 
     **One line per shot code** (user, 2026-09-23), as the studio's own sheet has always
     been: a shot's `pl01`, `cp01` and reference stills are one line, described by its
     main plate. `rows` are the shot's rows that landed.
 
-    The stringout column is left empty because Ben produces and exports that file and
-    the tool does nothing with it at all (user, 2026-09-22, closing OQ-41).
+    The stringout column names the tool's stringout of the shot's turnover, when one was
+    written (OQ-38, reopened 2026-09-25). It was empty while Ben's was the only one.
     """
     plate = _main_plate(rows)
     reference = _delivered(plate, "ref_mp4", "HD") if plate is not None else None
@@ -370,16 +401,19 @@ def tracker_row(shot_code: str, rows: list[ShotRow]) -> list[str]:
     cells[7] = _plate_marks(plate)
     cells[8] = TRACKER_FPS
     cells[9] = _TICK if audio is not None else ""
+    cells[34] = stringout
     return cells
 
 
 def tracker_rows(batch: Batch) -> list[list[str]]:
     """One line per shot code that delivered anything, in the order the batch lists them."""
     shots: dict[str, list[ShotRow]] = {}
+    waived = planner.bypassed_turnovers(batch)
     for row in batch.rows:
-        if row.shot_code and _landed(row):
+        if row.shot_code and _landed(row, waived):
             shots.setdefault(row.shot_code, []).append(row)
-    return [tracker_row(code, rows) for code, rows in shots.items()]
+    written = {t.turnover_id: t.stringout.name for t in batch.turnovers if t.stringout is not None}
+    return [tracker_row(code, rows, written.get(rows[0].turnover_id, "")) for code, rows in shots.items()]
 
 
 def write_shot_tracker(batch: Batch, path: Path) -> Path:

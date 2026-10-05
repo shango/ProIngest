@@ -15,9 +15,11 @@ from __future__ import annotations
 import tomllib
 from pathlib import Path
 
+import pytest
+
 from build import bundle
 from proingest import __version__
-from proingest.core import ffmpeg
+from proingest.core import ffmpeg, stringout
 
 DARWIN = bundle.MACOS
 LINUX = "linux"
@@ -64,6 +66,14 @@ class TestDatas:
         """`ui/app.py` treats a missing theme as survivable on purpose, so nothing at
         run time would report its absence: it would simply ship looking wrong."""
         assert str(bundle.REPO_ROOT / "proingest" / "ui" / "theme.qss") in self.sources(LINUX)
+
+    @pytest.mark.parametrize("platform", [LINUX, DARWIN])
+    def test_the_burn_in_font_and_its_licence_ship_everywhere(self, platform: str) -> None:
+        """`core/stringout.py` reads it by path; without it every stringout is QC-142."""
+        wanted = {str(bundle.REPO_ROOT / bundle.FONTS_DIR / name) for name in bundle.FONT_FILES}
+        assert wanted <= set(self.sources(platform))
+        assert all(Path(source).is_file() for source in wanted)
+        assert stringout.FONT == bundle.REPO_ROOT / bundle.FONTS_DIR / "OpenSans-Regular.ttf"
 
     def test_opentimelineio_is_not_bundled(self) -> None:
         """Gone 2026-09-23: `clf.read_final_edl` reads the EDL, and nothing imports otio."""

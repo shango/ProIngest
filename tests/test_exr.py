@@ -14,10 +14,8 @@ import OpenEXR
 import pytest
 
 from proingest.core import clf, color, exr, frames
-from proingest.core.models import CDL
+from proingest.core.models import GradeLook
 from tests.fixtures import media as fixtures
-
-SOP_TEXT = "*ASC_SOP (1.020000 0.990000 1.010000)(0.001000 -0.002000 0.000000)(0.980000 1.000000 1.020000)"
 
 FPS = 24.0
 ONE_HOUR = frames.timecode_to_frames("01:00:00:00", FPS)
@@ -123,17 +121,15 @@ class TestWrittenMetadata:
     def test_the_origin_of_the_encoding_is_named_beside_it(self, tmp_path: Path) -> None:
         """How a wrong encoding is traced back to whoever wrote it (M4.6.5)."""
         path = tmp_path / "frame.exr"
-        shot_color = clf.ShotColor(
-            source_encoding="BMDFilm WideGamut Gen5", source_encoding_origin="container tag"
-        )
+        shot_color = clf.ShotColor(source_encoding="BMDFilm WideGamut Gen5", source_encoding_origin="AMF")
         exr.write_frame(path, image(), shot_color=shot_color)
         with OpenEXR.File(str(path)) as handle:
-            assert handle.header()[exr.SOURCE_ENCODING_ORIGIN_ATTRIBUTE] == "container tag"
+            assert handle.header()[exr.SOURCE_ENCODING_ORIGIN_ATTRIBUTE] == "AMF"
 
     def test_an_origin_with_no_encoding_beside_it_is_not_written(self, tmp_path: Path) -> None:
         """A source for a name the header does not state would say nothing at all."""
         path = tmp_path / "frame.exr"
-        shot_color = clf.ShotColor(source_encoding=None, source_encoding_origin="clip metadata")
+        shot_color = clf.ShotColor(source_encoding=None, source_encoding_origin="AMF")
         exr.write_frame(path, image(), shot_color=shot_color)
         with OpenEXR.File(str(path)) as handle:
             assert exr.SOURCE_ENCODING_ORIGIN_ATTRIBUTE not in handle.header()
@@ -174,14 +170,13 @@ class TestProvenance:
 
     def shot_color(self, tmp_path: Path) -> clf.ShotColor:
         return clf.ShotColor(
-            cdl=CDL(
-                slope=(1.02, 0.99, 1.01),
-                offset=(0.001, -0.002, 0.0),
-                power=(0.98, 1.0, 1.02),
-                saturation=1.05,
-                sop_text=SOP_TEXT,
-                sat_text="*ASC_SAT 1.050000",
+            source_encoding="S-Log3 S-Gamut3.Cine",
+            source_encoding_origin="AMF",
+            looks=(
+                GradeLook("look", "ACES 1.3 Reference Gamut Compression"),
+                GradeLook("clf", str(tmp_path / "C4261_1_ClipGraph_CorrectorNode_1.clf")),
             ),
+            amf="Tool_Test2_turnover097_DailiesRequest_C4261_1_2026-09-28_180306Z.amf",
         )
 
     def written(self, tmp_path: Path) -> dict[str, object]:
@@ -190,25 +185,21 @@ class TestProvenance:
         with OpenEXR.File(str(path)) as handle:
             return dict(handle.header())
 
-    def test_the_cdl_goes_in_as_numbers(self, tmp_path: Path) -> None:
-        header = self.written(tmp_path)
-        slope, offset, power, saturation, _, _, _ = exr.CDL_ATTRIBUTES
-        assert np.allclose(np.asarray(header[slope]), (1.02, 0.99, 1.01), atol=1e-6)
-        assert np.allclose(np.asarray(header[offset]), (0.001, -0.002, 0.0), atol=1e-6)
-        assert np.allclose(np.asarray(header[power]), (0.98, 1.0, 1.02), atol=1e-6)
-        assert header[saturation] == pytest.approx(1.05)
+    def test_the_amf_it_came_from_is_named(self, tmp_path: Path) -> None:
+        assert self.written(tmp_path)[exr.AMF_ATTRIBUTE] == self.shot_color(tmp_path).amf
 
-    def test_the_cdl_also_goes_in_verbatim(self, tmp_path: Path) -> None:
-        """The original lines, because that is what another facility's tool reads."""
-        header = self.written(tmp_path)
-        _, _, _, _, sop, sat, _ = exr.CDL_ATTRIBUTES
-        assert str(header[sop]).startswith("*ASC_SOP (1.020000")
-        assert header[sat] == "*ASC_SAT 1.050000"
+    def test_the_looks_are_named_in_order_clfs_by_file_name(self, tmp_path: Path) -> None:
+        """What a human compares against the AMF: no paths from this machine."""
+        assert self.written(tmp_path)[exr.LOOKS_ATTRIBUTE] == (
+            "ACES 1.3 Reference Gamut Compression; C4261_1_ClipGraph_CorrectorNode_1.clf"
+        )
 
-    def test_the_header_says_the_cdl_was_applied_and_where(self, tmp_path: Path) -> None:
-        """There are no per-shot grade files, so the CDL is always what was applied."""
-        assert self.written(tmp_path)[exr.CDL_ATTRIBUTES[-1]] == exr.CDL_NOTE_APPLIED
-        assert color.WORKING_SPACE in exr.CDL_NOTE_APPLIED
+    def test_a_plate_with_no_look_carries_no_looks_attribute(self, tmp_path: Path) -> None:
+        path = tmp_path / "frame.exr"
+        exr.write_frame(path, image(), shot_color=clf.ShotColor(source_encoding="ACEScct"))
+        with OpenEXR.File(str(path)) as handle:
+            header = handle.header()
+        assert exr.LOOKS_ATTRIBUTE not in header and exr.AMF_ATTRIBUTE not in header
 
     def test_a_frame_carries_its_own_timecode(self, tmp_path: Path) -> None:
         path = tmp_path / "frame.exr"

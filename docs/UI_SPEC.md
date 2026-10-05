@@ -1,8 +1,11 @@
 # UI Spec
 
-PySide6 6.7+. Dark theme in the spirit of DaVinci Resolve: near-black panels, thin 1px separators, muted grey text, one accent color for selection and primary actions, amber for warnings, red for errors, green for done. No gradients, no drop shadows on panels, no rounded cards. Density is professional, not spacious.
+PySide6 6.7+. Dark theme in the spirit of DaVinci Resolve: near-black panels, thin 1px separators, muted grey text, one accent color for selection and primary actions, amber for warnings, red for errors; done is the accent too, the colour of the progress bar (2026-10-05). No gradients, no drop shadows on panels, no rounded cards. Density is professional, not spacious.
 
 ## 1. Layout
+
+**The version is always in view** (user, 2026-09-29): in the window title (`ProIngest 0.5.17`, whatever the build is)
+and as a permanent label at the right of the status bar, which no status message replaces.
 
 ```
 +------------------------------------------------------------------+
@@ -55,10 +58,11 @@ What M5.11 settled, beyond the wording:
   fundamental to the most specific, because "no batch is open" is a truer answer than "a scan is
   going" and only one is shown.
 - **One enabled button carries a note too, and it is the case the feature was asked for.** A
-  batch whose EDL carries no CDL runs, is refused by QC-008 and writes nothing,
+  batch no AMF grades runs, is refused by QC-008 and writes nothing,
   which is correct and reads as a dead button. Run says so before it is pressed. It is the plain
-  question - has any turnover's EDL been read at scan - rather than a second implementation of
-  QC-008, which needs pre-flight and the disk.
+  question - has any row been matched to an AMF at scan (2026-09-28; it asked whether any EDL had
+  been read while the grade was the EDL's CDL) - rather than a second implementation of QC-008,
+  which needs pre-flight and the disk.
 - **A line may not exceed `toolbar_help.MAX_LINE` characters**, and a test holds every line of
   every tooltip in every state under it. Qt word-wraps a tooltip **only** when the text looks
   like rich text, so plain text is drawn on one line however long it is: the first draft had a
@@ -68,7 +72,7 @@ What M5.11 settled, beyond the wording:
 
 ## 2. Shot list columns
 
-Frozen left: status dot, Shot Code (editable), Elem.
+Frozen left: status dot, Shot Code (editable), Elem. **A new shot code on a delivered shot puts it back for the next Run**, as Re-scan does (user, 2026-09-25): the files on disk carry the old code, so the Run writes the shot under the new one, at v01 in a shot folder that has none. **So does a trim** (In or Out) on a delivered shot, at the next version.
 Scrolling: Source file, Res, FPS, In (editable), Out (editable), Duration, Max Avail, Audio (icon: none / one / many), Version, Progress, Notes (editable, free text; kept in the batch and the QC log. The studio tracker has no Notes column, 2026-09-23).
 
 - **The In/Out display toggle in the batch bar has three states, not two: `Frames`, `Source TC`, `Record TC`.** It sets what the In and Out cells show as their primary value for the whole list, and it sets how a typed timecode is interpreted (source or record) when either TC state is selected.
@@ -87,7 +91,7 @@ Scrolling: Source file, Res, FPS, In (editable), Out (editable), Duration, Max A
 | error (blocked) | red | faint red |
 | skipped by user | hollow | dimmed text |
 | rendering | accent, animated | none |
-| done | green | none |
+| done (every deliverable written) | accent blue, the progress bar's colour (user, 2026-10-05); ahead of warning and error, which ran before the render | none |
 | failed render | red | faint red |
 
 Hovering the dot or the row shows a tooltip listing rule IDs and messages. Clicking the dot focuses the Issues dock on that row.
@@ -136,7 +140,7 @@ The second tab of the same dock, built in M5.8.2 against PRD FR-13. Table: time,
 - **"Selected row only" is FR-13's filter by row.** Only a line a render worker stamped carries a shot, so it hides what the window itself logged too: it answers "what happened to this shot", not "what happened while this shot was selected". It is unavailable with no selection and with a selection spanning two shots, and a selection going away unticks it rather than leaving a tick that filters nothing.
 - **The panel is bounded and the file is not.** It keeps the last `MAX_LINES`; the complete record is the rotating file in `~/Library/Logs/ProIngest` (PACKAGING.md). A hidden line ages out with the rest, so a filter can never be the thing that makes the window grow.
 - **It follows the tail only when it is already at the tail.** Somebody who has scrolled up is reading something.
-- **Save Logs as CSV...**, at the right of the filter bar and in the File menu (2026-09-23), writes **every kept log file**, not the panel's tail, to one CSV the editor can send for diagnostics: columns Time, Level, Source, Message, File, a traceback kept inside its record's Message. It opens with ABOUT rows naming the ProIngest version, the platform, Python, the ffmpeg build and the batch, so the file says where it came from. Always enabled: it is the one action that has to work when nothing else does.
+- **Save Logs as CSV...**, at the right of the filter bar and in the File menu (2026-09-23), writes **every kept log file**, not the panel's tail, to one CSV the editor can send for diagnostics: columns Time, Level, Source, Message, File, a traceback kept inside its record's Message. It opens with ABOUT rows naming the ProIngest version, the platform, Python, the ffmpeg build and the batch, so the file says where it came from. Always enabled: it is the one action that has to work when nothing else does. **It holds the QC results** (user, 2026-09-28): every result the Issues dock shows is logged by `qc.log_results`, one line each at its own severity (info as INFO, warning as WARNING, error as ERROR), as `<when>: <where>: <rule ID> <message>`, a must-fix marked `(blocks the run)` and an error on a skipped row `(row skipped)`, then a `QC summary` line with the counts, at ERROR when anything blocks. They are logged after a scan, on opening a batch, after Settings Apply, when a Run is refused, after a run, after Export, and when the logs are saved, so the file always ends with what the dock showed at that moment. Also logged for whoever supports the tool: each session's start with its version, platform, Python and log level; every problem dialog, at ERROR; a run's start and its closing banner; and any uncaught exception with its traceback, which a Finder-launched app otherwise prints to a stderr nobody sees. The Settings log level still decides what is written: at Warning, the info results and the ffmpeg command lines are not.
 
 ## 6.2 Deliverables tab
 
@@ -222,11 +226,31 @@ no message for it, so a line claiming it would be the tool guessing at its own s
 one is a new `render.ProgressState` and a publish in `render_job`, and it can be built when
 the wait is long enough for anyone to notice it.
 
-## 8. Stringout burn-ins: dropped
+## 8. Stringout burn-ins
 
-**The tool no longer builds a stringout** (PRD FR-9, decided 2026-09-11), so there are no
-burn-ins to specify. The colour session exports a reference QT with the look and burn-ins
-already on it.
+**The tool builds the stringout** (PRD FR-9, OQ-38, built 2026-09-25); Ben does not export one
+(user, 2026-09-29). It is built at the end of a Run for every turnover the Run delivered to, and
+on demand from **Build Stringout** on a turnover heading's right-click menu.
+
+The burn-ins copy Ben's frame, `burn-ins.png`, measured at 1920x1080: Open Sans 42 px, white, no
+shadow (bundled in `proingest/resources/fonts`). **Each sits on a black rectangle at 30% opacity,
+8 px past the text on every side** (user, 2026-10-05; `ffmpeg.BURN_IN_BOX`, `BURN_IN_PADDING`),
+the insets' labels too. The rectangle is as tall as the font's line, not the text's glyphs
+(drawtext `y_align=font`), so the three along the bottom match; that puts the text about 12 px
+lower inside it than the measured y.
+
+- **Top centre**, y 11: the stringout's name.
+- **Bottom left**, x 184: `Frame: <n>`, the delivered frame number, `1001 + (cut In - delivered
+  In) + n`; held still on a freeze.
+- **Bottom centre**: `Primary Effect: <Scene>`, from the CSV's `Scene` column.
+- **Bottom right**: `SHOT_elem` (`MELT0001_pl01`).
+
+**Picture in picture on a plate** (`stringout.INSET_CORNERS`) (user, 2026-09-29): over each `pl` event, the shot's **cp top left** and **wit top right**, each 480x270 flush in its corner (Resolve's zoom 0.25 at X -720/+720, Y 405). The first cp and the first wit of the shot in EDL order, from their **delivered HD references**, each playing from its own cut In at the plate's first frame, and **gone** when it runs out or at the plate's Out, whichever is first. No cp or wit, or none delivered: no inset in that corner. The top centre name sits between them (x 499 to 1411 on turnover097). Each inset carries its own element (`cp01`, `wit01`) burned in bottom left inside it, Open Sans 32 px against the frame's 42 (user, 2026-09-29), and it goes when the inset does.
+
+**Any held frame plays for one second** (user, 2026-09-29): a reference still (a chart, ball or size ref, which is one frame of a video), a frame hold (`M2` at 0) or any one frame cut, held for 24 frames whatever the EDL gives it (**except a held HDRI clip, which keeps the EDL's length**, user 2026-09-30), so the stringout runs longer than the EDL by that much. Taken from the source, such a frame is **coloured through its AMF** (input transform, CLF nodes, output transform) as Resolve shows it; a still's delivered EXR stays ungraded. An event with no known source is black for the same second.
+
+The bottom line sits at y 892. No source timecode is burned in. White text with no box is hard
+to read on a bright frame; that matches Ben's template and is not yet decided (PROGRESS).
 
 The section number is kept rather than renumbered, because every other section is referenced
 by number from the PRD, from `QC_RULES.md` and from `PROGRESS.md`, and renumbering would
@@ -244,7 +268,7 @@ Built in M5.7.2. What that settled, beyond the layout:
 - **A section with nothing behind it yet is listed and disabled**, and its page says what it is waiting on. Same rule as the toolbar in section 1. **Every section is live as of M5.12**; the rule stays because it is how the page was built and how the next section will arrive.
 - **Advanced went live in M5.8.3**: the log level, the ffmpeg override, and a read-only line naming the log file. Both editable values are process wide rather than per batch, both take effect the moment they are applied, and both reach a render's worker processes when the next run starts them - a worker is told at its initialiser (`core/render.execute`), so a change made mid-run applies from the run after. The ffmpeg override takes the folder or the binary, and **a path that is not there is an error rather than a fallback**: an override quietly ignored is a render done with the wrong build of ffmpeg.
 - **Output went live in M5.12**, last, because both its values are applied inside a render's worker processes and had to be able to get there first. They travel on the channel Advanced built, at the worker's initialiser, so a change reaches the next run rather than one already going. Reference quality is the x264 rate factor, bounded 0 to 51 by what the encoder accepts; the preset stays at `slow` and is not editable. EXR compression level is the DWAA level. **Both are pinned by the spec** (`COLOR_AND_FORMAT.md` section 3: CRF 18, DWAA 45) and the page opens on those values, read from `core/ffmpeg.py` and `core/exr.py` rather than typed in a second time: moving either is a decision about a delivery rather than a preference, and each field's help says what the spec is so the person moving it knows what they are leaving.
-- **The Colour section carries no source encoding value and no mode** (2026-09-12): the encoding is a per clip fact. The ACES config, the output transform and the input transform table are shown **read only**, read from `core/color.py` rather than copied, because they are pinned by spec (OQ-29) and an override has nowhere to travel to yet. The EDL is not chosen here either: it is the one in the turnover folder, read at every scan (OQ-74), and the turnover records which file it read (`Turnover.color_session_edl`).
+- **The Colour section carries no source encoding value and no mode** (2026-09-12): the encoding is a per clip fact. **Since 2026-09-28 it is three read-only lines**: the ACES config (`core/color.BUILTIN_CONFIG`), **Colour**, reading `each clip's AMF and its CLFs, applied in ACES2065-1`, and **Output transform**, reading `each clip's AMF`. The working space and the input transform table it used to show are gone with the CDL, because the AMF names what each clip is and what was done to it, and the config resolves every ID in it. Read only because the config is pinned by spec (OQ-29) and there is no colour setting to make. The EDL is not chosen here either: it is the one in the turnover folder, read at every scan (OQ-74), and the turnover records which file it read (`Turnover.color_session_edl`).
 
 ## 10. Empty and first-run states
 
@@ -254,6 +278,11 @@ Built in M5.7.2. What that settled, beyond the layout:
   toolbar read as the tool waiting for nothing. Cancelling the chooser lands on the next state.
 - Batch with no turnovers: "Add a turnover folder to begin", with an Add Turnover button under
   it that follows the toolbar action.
+- **Turnover folders can be dropped on the window, several at once** (user, 2026-09-25), while a
+  batch is open and nothing is scanning or running. Each folder holding an EDL and a metadata
+  CSV is added and all of them scan together; anything else dropped, and a folder already in the
+  batch, is skipped, and one message lists what was skipped and why. Add Turnover, by contrast,
+  adds whatever folder is picked and lets QC-001 say what is missing.
 - After Scan with zero rows: "No clips found in timeline" plus a link to the Issues dock. The
   same button stays under it.
 
@@ -336,12 +365,13 @@ it is hidden rather than shown empty.
 | Frame rate | the project rate, 24, asserted rather than read and labelled "Timeline rate"; the rate the file is conformed to when it differs; the rate stated by the media; and an explicit disagreement note when they differ. QC-026 is the rule |
 | Range | record In/Out, source In/Out in frames and timecode, turnover snapshot In/Out, current In/Out, duration, max available out, and whether the editor has moved it off the snapshot (QC-035) |
 | Audio | path, sample rate, channels, bit depth, duration in samples and in frames, and the sync difference against the video range (QC-043) |
-| Colour | source encoding as the shooter wrote it (`Gamma Notes` + `Color Space Notes`), which carrier named it, and the CDL from the row's EDL event. **Added 2026-09-12 with M5.6**, corrected 2026-09-21 when per-shot grade files were removed: the encoding is shown verbatim because the string is what has to be corrected when it is wrong |
+| Colour | the source encoding and which carrier named it. **Since 2026-09-28** the encoding is the config colour space the clip's AMF input transform resolved to, the carrier is `AMF`, and three more lines follow: **AMF** (its file name), **Looks** (in the order applied, config looks by name and CLFs by file name, or `none`) and **Viewed on** (the AMF's view and display, which the references are rendered for) |
 | Turnover | number, date, shooter, folder, EDL, metadata CSV, timeline start. Shown alone when a turnover group header is the selection |
 | QC | count by severity with the rule IDs, each clicking through to that row in the Issues dock. **Built across the whole selection rather than merged field by field**, unlike every other section: two rows with different problems agree on nothing, so a merge would reduce this to "mixed", which is the one answer that helps nobody |
 
 There is **no Side files section** since 2026-09-22: HDRI and camData carry no `Shot Type`, so
-the tool reads neither and the pane has nothing to show for them.
+the tool reads neither and the pane has nothing to show for them. An HDRI row with `Shot Type`
+`HDRI` (2026-09-28) is skipped at scan, with the reason `HDRI: delivered by the shooters` and QC-080.
 
 ### 12.3 Empty and edge states
 
@@ -380,7 +410,7 @@ OQ-25.
 | root | chosen where | what it means |
 |---|---|---|
 | Source root | toolbar, `Add Turnover` | The folder turnovers are added from. The chooser opens here, and the turnover folder the editor picks beneath it is what gets scanned and indexed |
-| Delivery root | batch bar, click the path | Where `<show>/<shot>/` is written, and where the tracker and QC spreadsheets land. **Drawn amber while there is none** (2026-09-17): it is the one thing Run stops to ask about, so it reads as unfinished before then |
+| Delivery root | batch bar, click the path | Where `<show>/<shot>/` is written, and where the tracker and QC spreadsheets land. **Drawn amber while there is none** (2026-09-17): it is the one thing Run stops to ask about, so it reads as unfinished before then. **Defaults to the first turnover's parent** (user, 2026-09-25): adding a turnover to a batch with no delivery root sets it one folder up from the turnover, beside it rather than inside it, and the editor can still change it here |
 
 - Both are remembered **per batch**, so reopening a `.pibatch` restores them and a second batch
   on another drive does not disturb the first.
@@ -409,12 +439,18 @@ four formats (section 5).
 
 ## 15. Scan, re-scan and a moved turnover (2026-09-23)
 
-**Ingest Colour Session is gone** (review 2026-09-23, chunk E). The cut and the grade are read at
-scan from the EDL in the turnover folder, and a correction reaches the batch the way D8 says: the
-editor drops the fixed EDL, CSV or clip into the folder and re-scans.
+**Ingest Colour Session is gone** (review 2026-09-23, chunk E). The cut is read at scan from the
+EDL in the turnover folder and, since 2026-09-28, the grade from each event's AMF and its CLFs
+beside it. A correction reaches the batch the way D8 says: the editor drops the fixed EDL, CSV,
+AMF, CLF or clip into the folder and re-scans.
 
 - **Scan re-scans every turnover in the batch.** Right-clicking a turnover's header offers
   **Re-scan** for that one turnover and **New Folder Location...** for one that has moved (D16).
+- **Accept As Is (Ignore QC)**, a checkbox on the same menu (user, 2026-09-28), lets a turnover
+  run whatever its QC says: its errors stay on the rows and in the Issues dock, the heading shows
+  QC-074, and neither the Run nor a row is held back by an error a render gets right. An error
+  that would write a wrong file still holds its row (QC_RULES QC-074 lists which). Saved in the
+  batch and kept across Re-scan; unticking it puts the errors back in charge.
 - **What the editor did is carried over by File Name** (`scan.carry_over`), in CSV order, so a
   clip used twice pairs first with first: a trim the editor made, the shot code correction, the
   skip and its reason, the notes, and the delivered state. A trim never made follows the new EDL.
@@ -424,12 +460,29 @@ editor drops the fixed EDL, CSV or clip into the folder and re-scans.
 - **A moved turnover says so on its header when the batch is opened** (QC-069, an error that
   holds it back), and New Folder Location re-scans it from where it went.
 
-## 15b. A shot's right-click (D11, D12)
+## 15b. Re-scan, on a shot or a turnover (D11, D12)
 
-- **Reset**, on a shot with a failed output: the editor has fixed the cause, and what failed
-  runs again at the same version on the next Run. Greyed when nothing failed.
-- **Re-run**, on a shot that has been planned: the next Run renders it again, whole, at the
-  next version. A complete shot is otherwise left alone (QC-061).
+**One right-click entry, Re-scan, on a shot and on a turnover heading** (user, 2026-09-25). It
+replaced Reset and Re-run. The editor swaps a file in the folder with the batch still open, then
+Re-scans: a shot for a replaced clip, the heading for a replaced EDL or CSV.
+
+- It reads the turnover again, keeping the editor's trims, skips and notes (D8), so every rule
+  checks what is in the folder now. A new warning or must-fix shows on the row, and a must-fix
+  stops the next Run as any other does.
+- It puts the shot, or on a heading every shot in the turnover, back for the next Run: its
+  progress bar and count empty and it stops reading as done or failed at once. A shot that was
+  delivered before comes out at the next version, v02 after v01; one never run is simply
+  rendered by the next Run. Other shots keep their delivered state.
+- The toolbar's Scan reads every turnover again without putting any shot back.
+- **Cancel Re-run** (user, 2026-09-25) appears on a shot that is marked for the next Run, and on a
+  heading with any such shot. It withdraws the mark and the shot reads as the last run left it:
+  done again, or waiting on a failed output. It touches no file, and the Re-scan's QC results
+  stay. **Refused, with the reason, for a shot whose delivered files no longer carry its name**
+  (a new shot code, or a new `Shot Type` from the CSV), or **whose range was trimmed since it was
+  planned** (`ShotRow.delivered_range`): it would read as delivered under a name, or at a range,
+  it never was. Put it back first.
+- A complete shot is otherwise left alone by Run (QC-061), and a shot with a failed output
+  waits for a Re-scan rather than being retried blindly.
 
 ## 15a. Locks (D15)
 

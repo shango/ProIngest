@@ -1,31 +1,23 @@
-"""Ben's final EDL: the conform, and the CDL on each event, which is the grade.
+"""Ben's final EDL, which is the cut, and a shot's colour chain from its AMF.
 
-COLOR_AND_FORMAT section 1. Colour is decided before the tool runs. Ben's session exports
-an updated final EDL, and this module is where it is read: the conform, the approved
-In/Out, and the **ASC CDL on each event, which is the grade** (decided 2026-09-18,
-OQ-46). `core/color.py` supplies the legs either side of it, into ACEScct and out to
-ACEScg, and this module supplies the middle.
+COLOR_AND_FORMAT section 1. Colour is decided before the tool runs. Since 2026-09-28
+(user) Ben's session hands over the final EDL, which is **the cut** (the approved In/Out
+of every event), and one AMF per event with the CLFs it names, which is **the colour**
+(`core/amf.py`). The EDL's `*ASC_SOP` lines, if any, are no longer read. This module keeps
+its name: it is still where the session's cut is read, and `ShotColor` is where a shot's
+chain is put together.
 
-**There are no per-shot grade files** (user, 2026-09-22). The CDL on the event is the
-whole grade, and nothing beside the EDL is read: no `.cube`, no `.clf`, anywhere. What
-went with them is QC-019, QC-039 and the probe that asked whether a cube had a display
-rendering baked into it. The module keeps its name because it is still the module that
-reads the session.
-
-**The EDL is parsed here rather than through `core/timeline.py`.** That module reads the
-shooters' timeline through otio, which is the right tool for a conform and the wrong one
-here: otio's CMX3600 adapter hands back the CDL as numbers and drops the event id and the
-verbatim `*ASC_SOP` / `*ASC_SAT` lines, and a delivered EXR is specified to carry that
-original text (COLOR_AND_FORMAT, EXR metadata). An event line is a fixed format, so
-reading it directly costs less than reconstructing what the adapter threw away, and
+**The EDL is parsed here rather than through `core/timeline.py`.** An event line is a
+fixed format, so reading it directly costs less than reconstructing what otio's CMX3600
+adapter throws away (the event id, which is also how an AMF is matched to its event), and
 timecode still goes through `frames.timecode_to_frames`, which refuses drop-frame.
 
 **An event belongs to the row whose file's timecode contains its source range** (OQ-30,
-answered 2026-09-23 by Ben's real EDL, which carries no `FROM CLIP NAME` and reels every
-event `AX`). Where an event does name its clip, the name has to agree. Every failure here
-looks entirely plausible on screen: a row paired with a neighbour's event takes the wrong
-approved In/Out and the wrong grade. Nothing guesses at the nearest candidate, and a match
-that could go two ways is reported rather than chosen (QC-066, QC-067).
+answered 2026-09-23 by Ben's real EDL). Where an event does name its clip, the name has to
+agree. Every failure here looks entirely plausible on screen: a row paired with a
+neighbour's event takes the wrong approved In/Out and the wrong AMF. Nothing guesses at the
+nearest candidate, and a match that could go two ways is reported rather than chosen
+(QC-066, QC-067).
 """
 
 from __future__ import annotations
@@ -39,8 +31,8 @@ import PyOpenColorIO as ocio
 
 from proingest.core import color, frames, naming
 from proingest.core.models import (
-    CDL,
     FrameRate,
+    GradeLook,
     InOut,
     MediaInfo,
     ShotRow,
@@ -51,7 +43,7 @@ log = logging.getLogger(__name__)
 
 
 class ColorSessionError(RuntimeError):
-    """The colour session package cannot be read. Reported as QC-008."""
+    """The final EDL cannot be read. Reported as QC-002."""
 
 
 class ClfError(RuntimeError):
@@ -75,7 +67,6 @@ class ConformEvent:
     source_out: int
     record_in: int
     record_out: int
-    cdl: CDL | None = None
     speed: float | None = None
     """The M2 speed in frames a second, or None for an event with no motion effect."""
 
@@ -123,71 +114,64 @@ class ShotColor:
     A render job is self contained (`planner.DeliverableJob`), so what a worker needs to
     know about colour travels on it. That rules out holding an `ocio` object: it does not
     pickle, and a transform built in the parent could not cross a spawn boundary anyway.
-    What crosses is a colour space name and the CDL, which are both plain data.
+    What crosses is names and paths, which are plain data.
 
-    The default is a shot with no grade and no encoding resolved for it, which is the
-    honest starting point rather than a usable chain: every chain starts at the encoding
-    the clip's metadata names, and a shot with no grade renders through that leg alone.
+    The default is a shot with nothing resolved, which is the honest starting point rather
+    than a usable chain: every chain starts at the encoding the clip's AMF names.
     """
 
     source_encoding: str | None = None
-    """The colour space the input transform starts at, resolved from what the clip named.
-
-    None where the clip's metadata named no encoding, or named one the input transform
-    table could not resolve (QC-046, QC-047). Nothing renders without it: the grade is
-    applied in ACEScct and this is what gets the clip there.
-    """
+    """The colour space the AMF's input transform converts from, or None (QC-046, QC-047).
+    Nothing renders without it."""
 
     source_encoding_origin: SourceEncodingOrigin | None = None
-    """Which carrier named it, carried so the delivered EXR header can say.
+    """Which carrier named it, carried so the delivered EXR header can say."""
 
-    It describes the row's written name rather than the colour space above it, which is
-    what the resolution was performed on. Set even where `source_encoding` is None, since
-    a name that resolved to nothing still came from somewhere; `exr.provenance` writes it
-    only beside an encoding, because an origin with nothing to originate says nothing.
-    """
+    looks: tuple[GradeLook, ...] = ()
+    """The AMF's looks in order: the Reference Gamut Compress, then the CLF nodes."""
 
-    cdl: CDL | None = None
+    amf: str = ""
+    """The AMF's file name, for the delivered EXR header."""
+
+    display: str | None = None
+    view: str | None = None
+    """What the AMF's output transform resolved to: where a reference is viewed."""
 
     def plate_transforms(self) -> list[ocio.Transform]:
-        """The plate branch: into ACEScct, the CDL, out to ACEScg. One leg with no grade.
+        """The plate branch: into ACES2065-1, the looks in order, out to ACEScg.
 
-        **The grade means something only in ACEScct** (OQ-46, decided 2026-09-18). It is
-        the primaries of node one in a session whose timeline is ACEScct, so the tool gets
-        the clip there from the encoding its metadata names and carries the result on to
-        ACEScg. Either leg applied in a different space is a plausible looking wrong image
-        rather than an error, which is why this returns the transforms a chain contains
-        rather than leaving the rule to a caller. COLOR_AND_FORMAT section 1 states the
-        same thing as a table.
+        One leg when there is no look, which is the same pixels in one transform.
         """
         if self.source_encoding is None:
             raise ClfError(
-                f"no source encoding: nothing turns these pixels into {color.WORKING_SPACE} "
-                f"for the grade, or into {color.PLATE_SPACE}. QC-046 and QC-047 report this "
-                "before a render"
+                f"no source encoding: nothing turns these pixels into {color.ACES} "
+                f"or {color.PLATE_SPACE}. QC-046 and QC-047 report this before a render"
             )
-        if self.cdl is None:
+        if not self.looks:
             return [color.input_transform(self.source_encoding)]
-        return [color.to_working(self.source_encoding), color.cdl_transform(self.cdl), color.from_working()]
+        legs: list[ocio.Transform] = [color.to_aces(self.source_encoding)]
+        for look in self.looks:
+            legs.append(
+                color.look_transform(look.name)
+                if look.kind == "look"
+                else color.clf_transform(Path(look.name))
+            )
+        legs.append(color.to_plate())
+        return legs
 
     def view_transforms(self) -> list[ocio.Transform]:
-        """The view branch: the plate branch, then the ACES output transform to sRGB.
+        """The view branch: the plate branch, then the AMF's output transform.
 
         The two branches share everything up to linear ACEScg, which is why this is the
         plate chain plus one leg rather than a chain of its own.
         """
-        return [*self.plate_transforms(), color.output_transform()]
+        if self.display is None or self.view is None:
+            raise ClfError("no output transform: the clip's AMF names none the config has (QC-079)")
+        return [*self.plate_transforms(), color.output_transform(self.display, self.view)]
 
 
 def resolved_encoding(row: ShotRow) -> str | None:
-    """The colour space this row's clip named, or None when nothing resolves to one.
-
-    One definition because two paths build a `ShotColor`: with a colour session and
-    without one. None covers both a clip that named no encoding (QC-046) and one whose
-    name the input transform table could not resolve (QC-047); the chain treats them
-    identically, since neither gives it anything to convert with, and the rules are
-    where the difference is reported rather than here.
-    """
+    """The colour space this row's AMF named, or None when it names none the config has."""
     if row.source_encoding is None:
         return None
     try:
@@ -197,13 +181,8 @@ def resolved_encoding(row: ShotRow) -> str | None:
 
 
 def has_grade(row: ShotRow) -> bool:
-    """Whether the session left this row a grade: a CDL on its event.
-
-    One definition, because the ingest report, QC-008, QC-009 and QC-048 all ask it and
-    the answer has to be the same one the chain gives. Since 2026-09-22 that is the CDL
-    and nothing else, there being no per-shot grade files.
-    """
-    return row.cdl is not None
+    """Whether the colourist left this row a grade: a CLF in its AMF. QC-009 asks."""
+    return row.grade is not None and row.grade.graded
 
 
 DEFAULT_SHOT_COLOR = ShotColor()
@@ -268,15 +247,17 @@ def load_session(
 def shot_color(row: ShotRow) -> ShotColor:
     """What this row's deliverables are rendered through, read off the row alone.
 
-    One definition, and the only one since the session is ingested rather than carried:
-    a planned row and a reopened batch resolve their colour the same way, from the four
-    fields ingest filled in. A row nothing was ingested for carries no grade, which
-    renders through the input transform alone and is QC-009.
+    A planned row and a reopened batch resolve their colour the same way, from what the
+    scan put on the row out of its AMF.
     """
+    grade = row.grade
     return ShotColor(
         source_encoding=resolved_encoding(row),
         source_encoding_origin=row.source_encoding_origin,
-        cdl=row.cdl,
+        looks=grade.looks if grade is not None else (),
+        amf=grade.amf.name if grade is not None else "",
+        display=grade.display if grade is not None else None,
+        view=grade.view if grade is not None else None,
     )
 
 
@@ -311,7 +292,7 @@ def read_final_edl(path: Path, rate: FrameRate) -> list[ConformEvent]:
         if head is not None:
             if _same_event_audio(pending, head):
                 # A `V` line then an `A` line under one event number is one cut; the
-                # clip name and the CDL that follow belong to the picture.
+                # clip name that follows belongs to the picture.
                 continue
             if pending is not None:
                 events.extend(pending.build(path, rate))
@@ -332,11 +313,8 @@ _EVENT_HEAD = re.compile(
 )
 _TIMECODE = re.compile(r"\d{1,2}:\d{2}:\d{2}[:;]\d{2}")
 _FROM_CLIP = re.compile(r"^\*\s*FROM CLIP NAME:\s*(?P<name>.+?)\s*$", re.IGNORECASE)
-_ASC_SOP = re.compile(r"^\*\s*ASC_SOP\b", re.IGNORECASE)
-_ASC_SAT = re.compile(r"^\*\s*ASC_SAT\s+(?P<value>\S+)", re.IGNORECASE)
 _MOTION = re.compile(r"^M2\s+\S+\s+(?P<speed>-?\d+(?:\.\d+)?)\s+")
 """A motion effect: `M2   AX   000.0   00:00:40:10`, reel, speed in frames a second, entry."""
-_TRIPLE = re.compile(r"\(\s*(?P<a>\S+)\s+(?P<b>\S+)\s+(?P<c>\S+)\s*\)")
 
 
 def _same_event_audio(pending: _Event | None, head: re.Match[str]) -> bool:
@@ -355,8 +333,6 @@ class _Event:
     def __init__(self, head: re.Match[str]) -> None:
         self.head = head
         self.clip_name = ""
-        self.sop_text = ""
-        self.sat_text = ""
         self.speed: float | None = None
 
     def comment(self, line: str) -> None:
@@ -366,10 +342,6 @@ class _Event:
             self.speed = float(motion["speed"])
         elif from_clip is not None:
             self.clip_name = from_clip["name"]
-        elif _ASC_SOP.match(line):
-            self.sop_text = line.strip()
-        elif _ASC_SAT.match(line):
-            self.sat_text = line.strip()
 
     def build(self, path: Path, rate: FrameRate) -> list[ConformEvent]:
         """The event, or nothing for a zero-length one: the outgoing side of a dissolve
@@ -394,39 +366,7 @@ class _Event:
                 source_out=source_out - 1,
                 record_in=record_in,
                 record_out=record_out - 1,
-                cdl=_parse_cdl(self.sop_text, self.sat_text),
                 speed=self.speed,
                 freeze=self.speed == 0,
             )
         ]
-
-
-def _parse_cdl(sop_text: str, sat_text: str) -> CDL | None:
-    """The CDL off an event's comment lines, or None when it carries neither.
-
-    A partial CDL is None rather than a default: slope 1 offset 0 power 1 is a real
-    grade that says do nothing, so standing in for a missing line would record a
-    neutral grade the colourist never wrote.
-    """
-    if not sop_text or not sat_text:
-        return None
-    triples = list(_TRIPLE.finditer(sop_text))
-    saturation = _ASC_SAT.match(sat_text)
-    if len(triples) != 3 or saturation is None:
-        return None
-    try:
-        slope, offset, power = (_triple(match) for match in triples)
-        return CDL(
-            slope=slope,
-            offset=offset,
-            power=power,
-            saturation=float(saturation["value"]),
-            sop_text=sop_text,
-            sat_text=sat_text,
-        )
-    except ValueError:
-        return None
-
-
-def _triple(match: re.Match[str]) -> tuple[float, float, float]:
-    return float(match["a"]), float(match["b"]), float(match["c"])

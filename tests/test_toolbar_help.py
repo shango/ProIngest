@@ -21,7 +21,7 @@ from PySide6.QtWidgets import QApplication
 from proingest.core.models import Batch
 from proingest.ui import toolbar_help as help_
 from proingest.ui.toolbar_help import ToolbarState, note, tooltip
-from tests.fixtures.batches import batch, row
+from tests.fixtures.batches import batch, ingested, row
 from tests.test_ui_shell import DrivenWindow
 
 KEYS = tuple(help_.WHAT_IT_DOES)
@@ -200,8 +200,7 @@ class TestTheWindowSaysTheRightOne:
         assert window.action_run.toolTip().endswith(help_.NO_SESSION)
 
     def test_an_ingested_session_takes_the_warning_off(self, window: DrivenWindow, tmp_path: Path) -> None:
-        window.set_batch(batch(row()))
-        window.batch.turnovers[0].color_session_edl = tmp_path / "final.edl"
+        window.set_batch(ingested(batch(row()), tmp_path))
         window.update_state()
         expected = f"{help_.WHAT_IT_DOES[help_.RUN]}  {native(window.action_run)}"
         assert window.action_run.toolTip() == expected

@@ -42,15 +42,12 @@ Severity = Literal["error", "warning", "info"]
 Scope = Literal["batch", "turnover", "row", "deliverable"]
 DeliverableStatus = Literal["planned", "rendering", "done", "failed", "exists", "skipped"]
 
-SourceEncodingOrigin = Literal["clip metadata", "container tag"]
+SourceEncodingOrigin = Literal["AMF"]
 """Which carrier named a row's source encoding. COLOR_AND_FORMAT, EXR metadata.
 
-The two the scan reads, in the order it reads them (OQ-44). It is written into the
-delivered EXR header and the QC log because the encoding is the fact that matters and
-the origin is how a wrong one is traced back to whoever wrote it: a name from the clip
-metadata was typed into the session, one from a container tag travelled in the file and
-may predate it. An override typed by an editor would be a third value rather than a second
-mechanism; nothing sets one today.
+Since 2026-09-28 (user) there is one: the clip's AMF, exported from the colour session,
+whose input transform ID the pinned config resolves. It is still written into the EXR
+header, because the origin is how a wrong encoding is traced back to where it was set.
 """
 
 
@@ -322,51 +319,75 @@ class InOut:
         return cls(in_frame=int(data["in_frame"]), out_frame=int(data["out_frame"]))
 
 
+LookKind = Literal["look", "clf"]
+
+
 @dataclass(frozen=True)
-class CDL:
-    """One event's ASC CDL, as numbers and as the lines it was written on.
+class GradeLook:
+    """One look of a clip's grade, in the order the AMF applies it.
 
-    Both forms are delivered. The numbers go into the EXR header as attributes, and the
-    text goes in verbatim because it is what another facility's tool reads and what a
-    human compares against the session. Neither is ever applied: the CLF is.
-
-    It lives here rather than in `core/clf.py`, where it was written, because since the
-    colour session is ingested onto the rows it has to survive a save: a batch reopened
-    a month later writes the same EXR header without the EDL still being on the disk.
+    `look` is a look the pinned config defines (the Reference Gamut Compress); `clf` is a
+    CLF file beside the AMF, by full path, one corrector node of the colourist's grade.
     """
 
-    slope: tuple[float, float, float]
-    offset: tuple[float, float, float]
-    power: tuple[float, float, float]
-    saturation: float
-    sop_text: str
-    sat_text: str
+    kind: LookKind
+    name: str
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"kind": self.kind, "name": self.name}
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> GradeLook:
+        return cls(kind=data["kind"], name=str(data["name"]))
+
+
+@dataclass(frozen=True)
+class Grade:
+    """What a clip's AMF says about its colour, resolved at scan (user, 2026-09-28).
+
+    On the row rather than read again at render so that a reopened batch renders and
+    records what was scanned. The input transform resolves onto `ShotRow.source_encoding`;
+    this carries the rest: the looks in order, the display and view a reference is viewed
+    through, and where it all came from.
+    """
+
+    amf: Path
+    input_transform: str = ""
+    """The AMF's input transform ID, verbatim, so QC-047 can quote one the config lacks."""
+
+    looks: tuple[GradeLook, ...] = ()
+    display: str | None = None
+    view: str | None = None
+    """What the AMF's output transform resolves to, None when the config lists no such ID."""
+
+    preset: str = ""
+    """The Resolve export preset: `Dailies Request`, `VFX Request`, or empty."""
+
+    @property
+    def graded(self) -> bool:
+        """Whether the colourist left this clip a grade: at least one CLF."""
+        return any(look.kind == "clf" for look in self.looks)
 
     def to_dict(self) -> dict[str, Any]:
         return {
-            "slope": list(self.slope),
-            "offset": list(self.offset),
-            "power": list(self.power),
-            "saturation": self.saturation,
-            "sop_text": self.sop_text,
-            "sat_text": self.sat_text,
+            "amf": str(self.amf),
+            "input_transform": self.input_transform,
+            "looks": [look.to_dict() for look in self.looks],
+            "display": self.display,
+            "view": self.view,
+            "preset": self.preset,
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> CDL:
+    def from_dict(cls, data: dict[str, Any]) -> Grade:
         return cls(
-            slope=_triple(data["slope"]),
-            offset=_triple(data["offset"]),
-            power=_triple(data["power"]),
-            saturation=float(data["saturation"]),
-            sop_text=str(data["sop_text"]),
-            sat_text=str(data["sat_text"]),
+            amf=Path(data["amf"]),
+            input_transform=str(data.get("input_transform", "")),
+            looks=tuple(GradeLook.from_dict(item) for item in data.get("looks", [])),
+            display=data.get("display"),
+            view=data.get("view"),
+            preset=str(data.get("preset", "")),
         )
-
-
-def _triple(values: Any) -> tuple[float, float, float]:
-    a, b, c = values
-    return (float(a), float(b), float(c))
 
 
 @dataclass
@@ -485,16 +506,17 @@ class ShotRow:
     nothing approved, which is the state a batch with no colour session is in anyway.
     """
 
-    cdl: CDL | None = None
-    """The CDL on this row's conform event, recorded and never applied.
+    grade: Grade | None = None
+    """This clip's colour from its AMF, or None when no AMF matched it (QC-075).
 
-    It reaches the EXR header as the readable version of the grade (COLOR_AND_FORMAT,
-    EXR metadata). On the row rather than fetched from the EDL at render time so that a
-    reopened batch writes the same header without the session package still being on the
-    disk. It is the whole of the grade: there are no per-shot grade files (2026-09-22).
+    Additive; a batch saved before 2026-09-28 carried a CDL here instead, which is not
+    read: its turnovers are re-scanned to pick up their AMFs.
     """
 
     notes: str = ""
+    scene: str = ""
+    """The CSV's `Scene`, which the stringout burns in as the Primary Effect (2026-09-25).
+    Additive, so the schema version does not move."""
     skipped: bool = False
     skip_reason: str | None = None
     freeze: bool = False
@@ -508,6 +530,11 @@ class ShotRow:
     A row whose deliverables all landed is skipped by the next Run; this is the one way to
     render it anyway. Consumed by the planner, which clears it once the row is planned.
     Additive, so the schema version does not move."""
+
+    delivered_range: InOut | None = None
+    """The range the deliverables were planned at, so Cancel Re-run can tell a trim made
+    since from the range on disk (user, 2026-09-25). Set by the planner. Additive: an
+    older batch has none, and then nothing is compared."""
 
     deliverables: list[Deliverable] = field(default_factory=list)
     qc: list[QCResult] = field(default_factory=list)
@@ -587,11 +614,13 @@ class ShotRow:
             "source_encoding": self.source_encoding,
             "source_encoding_origin": self.source_encoding_origin,
             "approved": self.approved.to_dict() if self.approved else None,
-            "cdl": self.cdl.to_dict() if self.cdl else None,
+            "grade": self.grade.to_dict() if self.grade else None,
             "notes": self.notes,
+            "scene": self.scene,
             "skipped": self.skipped,
             "skip_reason": self.skip_reason,
             "rerun": self.rerun,
+            "delivered_range": self.delivered_range.to_dict() if self.delivered_range else None,
             "freeze": self.freeze,
             "deliverables": [item.to_dict() for item in self.deliverables],
             "qc": [result.to_dict() for result in self.qc],
@@ -619,11 +648,13 @@ class ShotRow:
             source_encoding=data.get("source_encoding"),
             source_encoding_origin=data.get("source_encoding_origin"),
             approved=InOut.from_dict(data["approved"]) if data.get("approved") else None,
-            cdl=CDL.from_dict(data["cdl"]) if data.get("cdl") else None,
+            grade=Grade.from_dict(data["grade"]) if data.get("grade") else None,
             notes=str(data.get("notes", "")),
+            scene=str(data.get("scene", "")),
             skipped=bool(data.get("skipped", False)),
             skip_reason=data.get("skip_reason"),
             rerun=bool(data.get("rerun", False)),
+            delivered_range=InOut.from_dict(data["delivered_range"]) if data.get("delivered_range") else None,
             freeze=bool(data.get("freeze", False)),
             deliverables=[Deliverable.from_dict(item) for item in data.get("deliverables", [])],
             qc=[QCResult.from_dict(item) for item in data.get("qc", [])],
@@ -653,15 +684,15 @@ class Turnover:
     """One turnover folder and the fields that identify it.
 
     Number, date and shooter are prefilled from the folder name when it matches the
-    `turnover###_MM_DD_YYYY_name` pattern, and entered by hand otherwise (QC-005). They
-    name the turnover in the window and the headless listing; nothing builds a filename
-    out of them any more, because the tool no longer delivers the stringout (2026-09-22).
+    `turnover###_MM_DD_YY_name` pattern (a four digit year too), and entered by
+    hand otherwise (QC-005). They name the turnover in the window and the headless listing,
+    and the stringout's name (OQ-38).
     """
 
     turnover_id: str
     folder: Path
     edl_path: Path | None = None
-    """Ben's EDL, the carrier of the approved cut and the CDL (OQ-74)."""
+    """Ben's EDL, the carrier of the approved cut (OQ-74). Colour is in the AMFs beside it."""
 
     csv_path: Path | None = None
     """Ben's metadata CSV, the carrier of identity and encoding.
@@ -691,10 +722,10 @@ class Turnover:
     roots: it is a record of what this work was rendered from, not a preference, so
     reopening a `.pibatch` restores it and a second batch does not disturb it.
 
-    It is the location only. What the session said is on the rows, in `approved`, `cdl`
-    and the CDL, so a batch reopened after the session has been archived still
-    renders the grade it was ingested with. Additive, so the schema version does not
-    move and a batch saved before this has ingested nothing.
+    It is the location only. What the session said is on the rows, in `approved` and
+    `grade`, so a batch reopened after the session has been archived still renders the
+    cut it was scanned with; the CLF files themselves must still be on the disk.
+    Additive, so the schema version does not move.
     """
 
     ale_path: Path | None = None
@@ -708,6 +739,10 @@ class Turnover:
     shooter: str = ""
     qc: list[QCResult] = field(default_factory=list)
 
+    stringout: Deliverable | None = None
+    """The tool's stringout of this turnover's EDL, once written (OQ-38, 2026-09-25).
+    Additive, so the schema version does not move."""
+
     edl_digest: str = ""
     csv_digest: str = ""
     """xxhash64 of the EDL and the CSV as they were scanned, empty before 2026-09-23.
@@ -716,6 +751,12 @@ class Turnover:
     trims and skips carry over by File Name, and a changed EDL or CSV is the one case
     where that deserves a second look. Additive, so the schema version does not move.
     """
+
+    qc_bypassed: bool = False
+    """The editor accepted this turnover as it is (user, 2026-09-28): its errors are still
+    reported but neither refuse the Run nor hold its rows back, and every row that can
+    physically render does (`qc.must_fix`, `planner.plannable_identity`). QC-074 says so
+    on the turnover. Additive, so the schema version does not move."""
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -734,6 +775,8 @@ class Turnover:
             "qc": [result.to_dict() for result in self.qc],
             "edl_digest": self.edl_digest,
             "csv_digest": self.csv_digest,
+            "stringout": self.stringout.to_dict() if self.stringout else None,
+            "qc_bypassed": self.qc_bypassed,
         }
 
     @classmethod
@@ -754,6 +797,8 @@ class Turnover:
             qc=[QCResult.from_dict(item) for item in data.get("qc", [])],
             edl_digest=str(data.get("edl_digest", "")),
             csv_digest=str(data.get("csv_digest", "")),
+            stringout=Deliverable.from_dict(data["stringout"]) if data.get("stringout") else None,
+            qc_bypassed=bool(data.get("qc_bypassed", False)),
         )
 
 

@@ -85,7 +85,9 @@ class RowState(Enum):
     warning is skipped, and a row whose render failed is failed even though it also has
     an error rule about it. The order below is the order they are tested in, and it runs
     from "the editor decided this" through "the machine is busy" to "nobody has done
-    anything to it yet".
+    anything to it yet". One exception: `row_state` asks for done before the rules, so a
+    delivered row's dot matches its full bar (user, 2026-10-05); the turnover header still
+    takes the worst by this order.
     """
 
     SKIPPED = "skipped"
@@ -103,11 +105,12 @@ DOT_COLORS = {
     RowState.FAILED: QColor("#cf5a52"),
     RowState.ERROR: QColor("#cf5a52"),
     RowState.WARNING: QColor("#cf9a3a"),
-    RowState.DONE: QColor("#58a97a"),
+    RowState.DONE: QColor("#4d8fd6"),
     RowState.OK: QColor("#868d9a"),
 }
 """One colour per state, the palette `ui/theme.qss` states at the top. A stylesheet
-cannot see a model, so the dot and the tint are painted from here."""
+cannot see a model, so the dot and the tint are painted from here. Done is the accent,
+as rendering is, so the dot is the colour of the row's progress bar (user, 2026-10-05)."""
 
 HOLLOW_STATES = frozenset({RowState.SKIPPED})
 """Drawn as an outline rather than filled: the row is deliberately not being delivered."""
@@ -207,17 +210,18 @@ def row_state(row: ShotRow) -> RowState:
     """Which of section 3's states this row is in, by the precedence above."""
     if row.skipped:
         return RowState.SKIPPED
-    statuses = {item.status for item in row.deliverables}
+    # A row put back by Re-scan is judged afresh, not by what the last run left it as.
+    statuses = set() if row.rerun else {item.status for item in row.deliverables}
     if "rendering" in statuses:
         return RowState.RENDERING
     if "failed" in statuses:
         return RowState.FAILED
+    if statuses and statuses <= DELIVERED:
+        return RowState.DONE
     if row.errors():
         return RowState.ERROR
     if row.warnings():
         return RowState.WARNING
-    if statuses and statuses <= DELIVERED:
-        return RowState.DONE
     return RowState.OK
 
 
@@ -283,8 +287,12 @@ def _item_fraction(item: Deliverable, run: RunProgress | None) -> float:
 
 
 def _progress(row: ShotRow, run: RunProgress | None = None) -> str:
-    """Done out of planned, the job count section 7 asks for beside the bar."""
-    if not row.deliverables:
+    """Done out of planned, the job count section 7 asks for beside the bar.
+
+    Empty for a row Re-scan put back for the next Run, like one never rendered, so it stops reading as
+    finished the moment it is asked for again (user, 2026-09-25).
+    """
+    if not row.deliverables or row.rerun:
         return ""
     done = sum(1 for item in row.deliverables if _delivered(item, run))
     return f"{done}/{len(row.deliverables)}"
@@ -297,7 +305,7 @@ def _progress_fraction(row: ShotRow, run: RunProgress | None = None) -> float:
     it is read for is "is this row moving", not how many frames a reference has next to
     a plate.
     """
-    if not row.deliverables:
+    if not row.deliverables or row.rerun:
         return 0.0
     return sum(_item_fraction(item, run) for item in row.deliverables) / len(row.deliverables)
 
@@ -703,22 +711,31 @@ class ShotListModel(QAbstractItemModel):
             self._committed(row, index)
         return changed
 
-    def reset_row(self, index: ModelIndex) -> bool:
-        """Right-click Reset: the failed outputs run again at the same version (D11)."""
-        row = self.row_at(index)
-        if row is None or self._locked or not qc.reset_row(row):
-            return False
-        self._committed(row, index)
-        return True
+    def mark_for_rerun(self, rows: list[ShotRow]) -> None:
+        """Re-scan's other half: the next Run renders these rows again (user, 2026-09-25).
 
-    def rerun_row(self, index: ModelIndex) -> bool:
-        """Right-click Re-run: the next Run renders this row again at the next version (D12)."""
-        row = self.row_at(index)
-        if row is None or self._locked or row.rerun or not row.deliverables:
-            return False
-        row.rerun = True
-        self._committed(row, index)
-        return True
+        Only a row something was planned for is marked; one never run is rendered by the
+        next Run anyway, at v01. The planner consumes the mark and picks the version from
+        the delivery folder, so a shot delivered before comes out at the next one.
+        """
+        if self._locked:
+            return
+        for row in rows:
+            if row.deliverables and not row.rerun:
+                row.rerun = True
+                self._committed(row, self.index_for_row(row))
+
+    def withdraw_rerun(self, rows: list[ShotRow]) -> None:
+        """Cancel Re-run: these rows go back to what the last run left them as.
+
+        The caller has asked `qc.cancel_rerun_refusal` first; this only drops the mark.
+        """
+        if self._locked:
+            return
+        for row in rows:
+            if row.rerun:
+                row.rerun = False
+                self._committed(row, self.index_for_row(row))
 
     def set_skipped(self, index: ModelIndex, skipped: bool, reason: str | None = None) -> bool:
         """Ctrl+K (section 4). The reason is asked for by the view, which owns the prompt.
@@ -741,11 +758,17 @@ class ShotListModel(QAbstractItemModel):
         Emptying it puts the parsed code back rather than leaving the row nameless: the
         override is a correction of what the CSV's `Shot` gave, and withdrawing a
         correction means the original stands.
+
+        A shot already delivered goes back for the next Run, as Re-scan puts it (user,
+        2026-09-25): the files on disk carry the old code, so the next Run writes the
+        shot under the new one, at whatever version that shot's folder allows.
         """
         override = text.strip() or None
         if override == row.shot_code_override:
             return False
         row.shot_code_override = override
+        if row.deliverables:
+            row.rerun = True
         return True
 
     def _set_notes(self, row: ShotRow, text: str) -> bool:
@@ -774,6 +797,9 @@ class ShotListModel(QAbstractItemModel):
         if moved == current:
             return False
         row.current = moved
+        # A trim on a delivered shot re-renders it, as a new shot code does (user, 2026-09-25).
+        if row.deliverables:
+            row.rerun = True
         return True
 
     def _committed(self, row: ShotRow, index: ModelIndex) -> None:

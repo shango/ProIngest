@@ -132,10 +132,10 @@ def format_rate(rate: FrameRate) -> str:
 
 
 def format_date(turnover: Turnover) -> str:
-    """`02_23_2026`, the form the folder name carries (QC-005), or empty when unparsed."""
+    """`02_23_26`, the form the folder name carries (QC-005), or empty when unparsed."""
     if turnover.month is None or turnover.day is None or turnover.year is None:
         return ""
-    return f"{turnover.month:02d}_{turnover.day:02d}_{turnover.year}"
+    return f"{turnover.month:02d}_{turnover.day:02d}_{turnover.year % 100:02d}"
 
 
 def _plural(count: int, noun: str) -> str:
@@ -285,17 +285,24 @@ def _range_fields(row: ShotRow, batch: Batch, turnover: Turnover | None) -> list
 
 
 def _colour_fields(row: ShotRow) -> list[Field]:
-    """The source encoding, where it came from, and the CLF (M4.6, M4.5).
+    """The source encoding, where it came from, the AMF and its looks (2026-09-28).
 
-    Three facts the list has no column for and the QC log does. The encoding is the
-    string the shooter wrote rather than a colour space name, which is why it is shown
-    verbatim: what has to be corrected when it is wrong is the string.
+    Facts the list has no column for. The encoding is the colour space the AMF's input
+    transform resolved to; the looks are in the order they are applied, CLFs by file
+    name, so they can be read against the AMF itself.
     """
     fields: list[Field] = []
     if row.source_encoding:
         fields.append(Field("Source encoding", row.source_encoding))
         if row.source_encoding_origin:
             fields.append(Field("Named by", row.source_encoding_origin))
+    grade = row.grade
+    if grade is not None:
+        fields.append(Field("AMF", grade.amf.name))
+        looks = "; ".join(look.name if look.kind == "look" else Path(look.name).name for look in grade.looks)
+        fields.append(Field("Looks", looks or "none"))
+        if grade.display and grade.view:
+            fields.append(Field("Viewed on", f"{grade.view} on {grade.display}"))
     return fields
 
 

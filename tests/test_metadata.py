@@ -16,7 +16,7 @@ import pytest
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication
 
-from proingest.core.models import AudioInfo, FrameRate, InOut, MediaInfo, QCResult
+from proingest.core.models import AudioInfo, FrameRate, Grade, GradeLook, InOut, MediaInfo, QCResult
 from proingest.ui.metadata import (
     MIXED,
     NO_SELECTION,
@@ -133,11 +133,32 @@ class TestWhatOneRowSays:
         arrived with M4.6 and have no column in the list either."""
         graded = row(
             source_encoding="Sony S-Log3/S-Gamut3.Cine",
-            source_encoding_origin="clip metadata",
+            source_encoding_origin="AMF",
         )
         sections = describe([graded], batch(graded))
         assert value(sections, "Colour", "Source encoding") == "Sony S-Log3/S-Gamut3.Cine"
-        assert value(sections, "Colour", "Named by") == "clip metadata"
+        assert value(sections, "Colour", "Named by") == "AMF"
+
+    def test_the_colour_section_names_the_amf_and_its_looks(self) -> None:
+        """What the AMF put on the row (2026-09-28), readable against the AMF itself."""
+        graded = row(source_encoding="S-Log3 S-Gamut3.Cine", source_encoding_origin="AMF")
+        graded.grade = Grade(
+            amf=Path("/t/C4261.amf"),
+            looks=(
+                GradeLook("look", "ACES 1.3 Reference Gamut Compression"),
+                GradeLook("clf", "/t/C4261_1_ClipGraph_CorrectorNode_1.clf"),
+            ),
+            display="Gamma 2.2 Rec.709 - Display",
+            view="ACES 2.0 - SDR 100 nits (Rec.709)",
+        )
+        sections = describe([graded], batch(graded))
+        assert value(sections, "Colour", "AMF") == "C4261.amf"
+        assert value(sections, "Colour", "Looks") == (
+            "ACES 1.3 Reference Gamut Compression; C4261_1_ClipGraph_CorrectorNode_1.clf"
+        )
+        assert value(sections, "Colour", "Viewed on") == (
+            "ACES 2.0 - SDR 100 nits (Rec.709) on Gamma 2.2 Rec.709 - Display"
+        )
 
     def test_a_row_with_no_colour_facts_has_no_colour_section(self) -> None:
         bare = row(source_encoding=None)
@@ -210,7 +231,7 @@ class TestTheEdgeStates:
         held = turnover(number=1, month=2, day=23, year=2026, shooter="danielluckett")
         sections = describe_turnover(held, RATE_24)
         assert titles(sections) == ["Turnover"]
-        assert value(sections, "Turnover", "Date") == "02_23_2026"
+        assert value(sections, "Turnover", "Date") == "02_23_26"
         assert value(sections, "Turnover", "Shooter") == "danielluckett"
 
     def test_the_timeline_start_is_read_at_the_project_rate(self) -> None:

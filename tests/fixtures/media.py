@@ -21,6 +21,7 @@ import OpenEXR
 
 from proingest.core import qc
 from proingest.core.models import FrameRate, MediaInfo
+from tests.fixtures import color as color_fixtures
 
 SMALL = (64, 36)
 """Default test resolution: 16:9, tiny, still exercises every code path."""
@@ -290,17 +291,11 @@ def media_info_with_tags(tags: dict[str, str]) -> MediaInfo:
     )
 
 
-SOURCE_ENCODING = "ACEScct"
-"""What the fixture turnover's clips say they are encoded in, in their own metadata.
-
-A real clip names this and the scan reads it (M4.6.4, OQ-44). ACEScct because that is
-what these tests rendered through before the encoding became a per clip fact.
-"""
+SOURCE_ENCODING = color_fixtures.SOURCE_ENCODING
+"""What the fixture turnover's clips are encoded in, as each clip's AMF names it."""
 
 
-def make_meta_csv(
-    path: Path, rows: list[tuple[str, str, str]], encoding: str | None = SOURCE_ENCODING
-) -> Path:
+def make_meta_csv(path: Path, rows: list[tuple[str, str, str]]) -> Path:
     """Ben's metadata CSV, in the shape the real one has.
 
     `rows` is (File Name, Shot, Shot Type). UTF-16 with a BOM and **`Shot Type` twice**,
@@ -308,9 +303,8 @@ def make_meta_csv(
     custom field of the same name at column 44: a fixture without the collision would
     not exercise the reader that exists to arbitrate it (QC-065).
     """
-    gamma, space = encoding.split(" ", 1) if encoding and " " in encoding else (encoding or "", "")
-    header = ["File Name", "Shot", "Shot Type", "Gamma Notes", "Color Space Notes", "Shot Code", "Shot Type"]
-    lines = [header] + [[name, shot, kind, gamma, space, shot, kind] for name, shot, kind in rows]
+    header = ["File Name", "Shot", "Shot Type", "Shot Code", "Shot Type"]
+    lines = [header] + [[name, shot, kind, shot, kind] for name, shot, kind in rows]
     text = "\r\n".join(",".join(f'"{cell}"' for cell in line) for line in lines) + "\r\n"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(text.encode("utf-16"))
@@ -323,10 +317,9 @@ def make_final_edl(
     duration: int = 240,
     source_start: int = 86400,
     record_start: int = 86400,
-    with_cdl: bool = True,
     reel: str = "MELT0001",
 ) -> Path:
-    """Ben's final EDL: one event per clip, with the CDL that is the grade.
+    """Ben's final EDL: one event per clip, which is the cut.
 
     Laid end to end in record order, which is what a stringout timeline looks like.
     `clips` are `FROM CLIP NAME` values, matched to a row by stem (`clf.event_for`); an
@@ -342,12 +335,6 @@ def make_final_edl(
         )
         if clip:
             lines.append(f"* FROM CLIP NAME: {clip}")
-        if with_cdl:
-            lines += [
-                "*ASC_SOP (1.020000 0.990000 1.010000)"
-                "(0.001000 -0.002000 0.000000)(0.980000 1.000000 1.020000)",
-                "*ASC_SAT 1.050000",
-            ]
         record += duration
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("\n".join(lines) + "\n")
@@ -365,8 +352,10 @@ def make_turnover(
     frames: int = 8,
     source_encoding: str | None = SOURCE_ENCODING,
     shot_types: list[str] | None = None,
+    graded: bool = True,
 ) -> Path:
-    """A handover folder as Ben leaves it: the media, his EDL and his metadata CSV.
+    """A handover folder as Ben leaves it: the media, his EDL, his metadata CSV, and one AMF
+    per event naming `source_encoding` (none when None) with a CLF when `graded`.
 
     One EXR sequence and one wav per shot, named for the shot the way consolidated media
     is not - the fixture keeps the old names because the media search is by filename and
@@ -383,7 +372,11 @@ def make_turnover(
         kind = shot_types[index - 1] if shot_types else "pl01"
         rows.append((name, shot, kind))
         clips.append(name)
-    make_meta_csv(root / "metadata.csv", rows, source_encoding)
+        grade = [color_fixtures.make_clf(root / f"{name}_{index - 1}_ClipGraph_CorrectorNode_1.clf").name]
+        color_fixtures.make_amf(
+            root, index, name, source_encoding=source_encoding, clfs=grade if graded else None
+        )
+    make_meta_csv(root / "metadata.csv", rows)
     make_final_edl(root / "FINAL_v01.edl", clips, duration=frames, source_start=86400)
     return root
 

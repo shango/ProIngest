@@ -374,14 +374,33 @@ class TestEncodeCommand:
         assert command[command.index("-pix_fmt") + 1] == "yuv420p"
         assert command[command.index("-movflags") + 1] == "+faststart"
 
-    def test_the_output_is_tagged_bt709_with_an_srgb_transfer(self) -> None:
-        """Section 1: both colour branches land here, so the tags never vary."""
+    def test_the_output_is_tagged_bt709_with_an_srgb_transfer_by_default(self) -> None:
         command = ffmpeg.encode_command(
             "plate.mov", Path("out.mp4.part"), 0, 3, is_sequence=False, rate="24/1"
         )
         assert command[command.index("-color_primaries") + 1] == "bt709"
         assert command[command.index("-colorspace") + 1] == "bt709"
         assert command[command.index("-color_trc") + 1] == "iec61966-2-1"
+
+    @pytest.mark.parametrize(
+        ("display", "transfer"),
+        [("Gamma 2.2 Rec.709 - Display", "gamma22"), ("Rec.1886 Rec.709 - Display", "bt709")],
+    )
+    def test_the_transfer_follows_the_amf_s_display(self, display: str, transfer: str) -> None:
+        """Since 2026-09-28 the display comes from the AMF, and the label has to agree."""
+        command = ffmpeg.encode_command(
+            "plate.mov", Path("out.mp4.part"), 0, 3, is_sequence=False, rate="24/1", display=display
+        )
+        assert command[command.index("-color_trc") + 1] == transfer
+
+    def test_a_display_a_reference_cannot_be_labelled_for_is_refused(self) -> None:
+        with pytest.raises(ffmpeg.FFmpegError, match="P3"):
+            ffmpeg.reference_tags("Display P3 - Display")
+
+    def test_every_labelled_display_is_one_the_config_has(self) -> None:
+        from proingest.core import color
+
+        assert set(ffmpeg.REFERENCE_TRANSFERS) <= set(color.config().getDisplays())
 
     def test_the_lut_runs_after_the_scale(self) -> None:
         """Section 1: the downscale runs on the log values, which are bounded 0..1.
@@ -400,12 +419,13 @@ class TestEncodeCommand:
             lut=Path("/tmp/lut/MELT0001_ref_HD_v01.cube"),
         )
         filters = command[command.index("-vf") + 1].split(",")
-        assert filters[-5:] == [
+        assert filters[-6:] == [
             "scale=1920:1080:flags=lanczos:in_color_matrix=bt709:in_range=limited",
             "format=gbrpf32le",
             "lut3d=/tmp/lut/MELT0001_ref_HD_v01.cube:interp=tetrahedral",
             "scale=out_color_matrix=bt709:out_range=limited",
             "format=yuv420p",
+            "setparams=color_primaries=bt709:color_trc=iec61966-2-1:colorspace=bt709:range=tv",
         ]
 
     def test_the_lut_is_applied_tetrahedrally(self) -> None:
@@ -425,7 +445,8 @@ class TestEncodeCommand:
         )
         assert command[command.index("-vf") + 1] == (
             "scale=in_color_matrix=bt709:in_range=limited,format=gbrpf32le,"
-            "scale=out_color_matrix=bt709:out_range=limited,format=yuv420p"
+            "scale=out_color_matrix=bt709:out_range=limited,format=yuv420p,"
+            "setparams=color_primaries=bt709:color_trc=iec61966-2-1:colorspace=bt709:range=tv"
         )
 
     def test_a_canvas_letterboxes_after_the_conversion(self) -> None:
@@ -441,7 +462,8 @@ class TestEncodeCommand:
             canvas=(3840, 2160),
         )
         assert command[command.index("-vf") + 1].endswith(
-            "format=yuv420p,pad=3840:2160:trunc((ow-iw)/4)*2:trunc((oh-ih)/4)*2:black"
+            "format=yuv420p,setparams=color_primaries=bt709:color_trc=iec61966-2-1:colorspace=bt709:range=tv,"
+            "pad=3840:2160:trunc((ow-iw)/4)*2:trunc((oh-ih)/4)*2:black"
         )
 
     def test_a_pure_red_reference_measures_bt709(self, tmp_path: Path) -> None:
@@ -623,3 +645,11 @@ class TestAvailableDecoders:
 
     def test_it_does_not_list_encoder_only_names(self) -> None:
         assert "libx264" not in ffmpeg.available_decoders()
+
+
+class TestTheBurnInBox:
+    def test_every_burn_in_sits_on_a_faint_black_box_the_font_s_height(self) -> None:
+        """30% opacity, a little padding (user, 2026-10-05); one height whatever the glyphs."""
+        drawn = ffmpeg.drawtext_filter(Path("t.txt"), Path("f.ttf"), 42, "0", "0")
+        assert ":box=1:boxcolor=black@0.3:boxborderw=8" in drawn
+        assert ":y_align=font" in drawn

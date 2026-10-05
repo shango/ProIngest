@@ -106,14 +106,12 @@ class DeliverableJob:
     """The media's own matrix and range tags, which the decode states explicitly (D17)."""
 
     source_start_frame: int = 0
-    """First frame index of the media: the first sequence number, or 0 for a container."""
+    """First frame index of the media: the first sequence number, or 0 for a container.
 
-    source_start_timecode: int | None = None
-    """Start timecode of `source_start_frame`, or None when the media states none (QC-028).
-
-    These three are the last things a worker would otherwise have to reprobe. A job is
-    self contained on purpose, and reprobing in the worker would also mean the render
-    could disagree with the scan about the source.
+    These are the last things a worker would otherwise have to reprobe. A job is self
+    contained on purpose, and reprobing in the worker would also mean the render could
+    disagree with the scan about the source. The start timecode used to be one of them;
+    since deliverables carry their own frame numbers as timecode (2026-09-25) it is not.
     """
 
     shot_color: clf.ShotColor = clf.DEFAULT_SHOT_COLOR
@@ -177,13 +175,11 @@ class DeliverableJob:
             raise ValueError(f"{self.name} has no frame range")
         return frames.source_frame_for(self.in_frame, output_frame)
 
-    def timecode_for(self, output_frame: int) -> int | None:
-        """The source timecode an output frame carries, or None when there is none."""
-        if self.source_start_timecode is None:
-            return None
-        return frames.timecode_frames_for(
-            self.source_frame(output_frame), self.source_start_frame, self.source_start_timecode
-        )
+    def timecode_for(self, output_frame: int) -> int:
+        """The timecode an output frame carries, in frames: its own number, so frame 1001 is
+        `00:00:41:17` at 24. The camera's timecode stays behind (user, 2026-09-25); the
+        tool still reads it to match the EDL, and the QC log still reports it."""
+        return output_frame
 
     def output_frames(self) -> range:
         """The output frame numbers this job writes, 1001 first."""
@@ -247,14 +243,55 @@ def effective_identity(row: ShotRow, show_pattern: str = naming.DEFAULT_SHOW_PAT
     return replace(row.identity, shot_code=row.shot_code_override)
 
 
-def plannable_identity(row: ShotRow, show_pattern: str = naming.DEFAULT_SHOW_PATTERN) -> ShotIdentity | None:
+QC_BYPASSABLE = frozenset({"QC-023", "QC-033", "QC-034", "QC-071"})
+"""The errors Accept As Is (QC-074) renders past, because each was traced through the
+planner and the renderer to a correct file of what is there (2026-09-28): letterboxed for
+QC-023, the cut as trimmed for QC-033 and QC-034, and QC-071's rows match by timecode or
+carry their own error. QC-008 and QC-009 left it the same day, when colour moved to the
+AMF: QC-009 became info, and QC-008 means no AMF anywhere, so no input transform.
+
+**An allowlist, so a rule nobody has traced holds its row back.** The rest either render
+a plausible wrong file with no error (QC-011 two rows into one set of files, QC-026 and
+QC-027 the wrong frames, QC-066 and QC-067 the whole clip ungraded, QC-073 the retime
+lost, QC-032 an empty file that passes) or fail part way through as QC-100 (QC-022,
+QC-029, QC-031, QC-042, QC-046, QC-047, QC-069). Holding a row back does not block the
+batch; the saved log says which rows and why (`qc.log_results`).
+"""
+
+
+def holding_errors(row: ShotRow, bypassed: bool = False) -> list[QCResult]:
+    """The errors that keep this row from rendering: all of them, or on a turnover
+    accepted as it is, those outside `QC_BYPASSABLE`."""
+    return [result for result in row.errors() if not (bypassed and result.rule_id in QC_BYPASSABLE)]
+
+
+def bypassed_turnovers(batch: Batch) -> set[str]:
+    """The turnover IDs accepted as they are (QC-074)."""
+    return {turnover.turnover_id for turnover in batch.turnovers if turnover.qc_bypassed}
+
+
+def held_turnovers(batch: Batch) -> set[str]:
+    """Bypassed turnovers whose own error the bypass cannot render past, QC-069's missing
+    folder being the one with rows: every row of them is held back."""
+    return {
+        turnover.turnover_id
+        for turnover in batch.turnovers
+        if turnover.qc_bypassed
+        and any(result.severity == "error" and result.rule_id not in QC_BYPASSABLE for result in turnover.qc)
+    }
+
+
+def plannable_identity(
+    row: ShotRow, show_pattern: str = naming.DEFAULT_SHOW_PATTERN, bypassed: bool = False
+) -> ShotIdentity | None:
     """The identity to plan this row under, or None when the row owes nothing.
 
     A row is not planned when the editor skipped it, when it carries an error, which
     FR-6 says blocks the row but not the batch, or when it has no media and no chosen
-    range, because then there is nothing to read.
+    range, because then there is nothing to read. On a turnover accepted as it is
+    (`bypassed`), only the errors outside `QC_BYPASSABLE` hold it back.
     """
-    if row.skipped or row.errors() or row.media is None or row.current is None:
+    if row.skipped or holding_errors(row, bypassed) or row.media is None or row.current is None:
         return None
     return effective_identity(row, show_pattern)
 
@@ -276,9 +313,10 @@ def plan_row(
     version: int,
     show_pattern: str = naming.DEFAULT_SHOW_PATTERN,
     shot_color: clf.ShotColor = clf.DEFAULT_SHOT_COLOR,
+    bypassed: bool = False,
 ) -> RowPlan:
     """The deliverables one row owes at `version`. Pure: it touches no filesystem."""
-    identity = plannable_identity(row, show_pattern)
+    identity = plannable_identity(row, show_pattern, bypassed)
     media, current = row.media, row.current
     if identity is None or media is None or current is None:
         return RowPlan()
@@ -321,13 +359,11 @@ def plan_batch(
     run rather than when a batch is opened: the state recorded against a row belongs to
     the version that produced it, not to the one about to be written.
 
-    **The colour session is not a parameter here.** It is ingested onto the rows before
-    a run (`clf.ingest`, PRD section 6 step 4), so every row already carries the CLF, the
-    CDL and the approved In/Out it was matched with and planning reads them off the model
-    like every other field. A batch nothing has been ingested into plans ungraded: the
-    deliverables are the same files in the same places, and the difference is whether the
-    CLF is in them. QC-008 is what refuses a **run** in that state, and every must-fix
-    refuses the whole run before planning is asked (`qc.must_fix`, D8).
+    **The colour session is not a parameter here.** The scan put it on the rows: the
+    approved In/Out off the EDL and the grade off each event's AMF, so planning reads them
+    off the model like every other field. QC-008 is what refuses a **run** with no AMF at
+    all, and every must-fix refuses the whole run before planning is asked
+    (`qc.must_fix`, D8).
     """
     root = delivery_root or batch.delivery_root
     if root is None:
@@ -335,24 +371,26 @@ def plan_batch(
 
     versions: dict[str, int] = {}
     jobs: list[DeliverableJob] = []
+    bypassed, held = bypassed_turnovers(batch), held_turnovers(batch)
     for row in batch.rows:
-        identity = plannable_identity(row, show_pattern)
+        waived = row.turnover_id in bypassed
+        identity = None if row.turnover_id in held else plannable_identity(row, show_pattern, waived)
         if identity is None:
             _record(row, RowPlan())
             continue
 
         state = _prior_state(row)
         if state == "failed":
-            # Waiting for the editor to fix the cause and Reset the row (D11). What landed
+            # Waiting for the editor to fix the cause and Re-scan the row (D11). What landed
             # stays recorded and QC-150 already names the output that did not.
             continue
         if state == "complete":
             _keep(row, _complete(row))
             continue
         if state == "pending":
-            # A stopped run, or a Reset: the rest of the row at the version it has (D11).
+            # A stopped run: the rest of the row at the version it has (D11).
             version = row.deliverables[0].version
-            plan = plan_row(row, root, version, show_pattern, clf.shot_color(row))
+            plan = plan_row(row, root, version, show_pattern, clf.shot_color(row), waived)
             waiting = {item.path for item in row.deliverables if item.status not in LANDED}
             plan.jobs = [job for job in plan.jobs if job.destination in waiting]
             _resume(row, plan)
@@ -365,7 +403,7 @@ def plan_batch(
         version = versions[code]
         row.rerun = False
 
-        plan = plan_row(row, root, version, show_pattern, clf.shot_color(row))
+        plan = plan_row(row, root, version, show_pattern, clf.shot_color(row), waived)
         if version > 1:
             plan.qc.append(
                 QCResult(
@@ -389,10 +427,11 @@ PriorState = Literal["new", "complete", "pending", "failed"]
 def _prior_state(row: ShotRow) -> PriorState:
     """What the last run left this row as, which decides what the next one does (D11, D12).
 
-    **new**: nothing planned yet, or the editor asked for a Re-run: plan it whole at the
-    next version. **complete**: everything landed and is still there: skip it. **failed**:
-    a check failed: wait for the editor's Reset. **pending**: some of it never ran, from a
-    stopped run or a Reset: finish it at the same version.
+    **new**: nothing planned yet, or the editor Re-scanned it (user, 2026-09-25): plan it
+    whole at the next version the delivery folder allows. **complete**: everything landed
+    and is still there: skip it. **failed**: a check failed: wait for the editor's
+    Re-scan. **pending**: some of it never ran, from a stopped run: finish it at the same
+    version.
 
     One stat per landed deliverable, so a file deleted since is rendered again rather
     than reported as delivered.
@@ -418,7 +457,7 @@ def _complete(row: ShotRow) -> RowPlan:
                 "QC-061",
                 "info",
                 "row",
-                f"complete at v{version:02d}, so this run leaves it alone; right-click Re-run "
+                f"complete at v{version:02d}, so this run leaves it alone; right-click Re-scan "
                 f"to write v{version + 1:02d}",
             )
         ]
@@ -441,6 +480,7 @@ def _resume(row: ShotRow, plan: RowPlan) -> None:
 def _record(row: ShotRow, plan: RowPlan) -> None:
     """Attach a plan to its row, replacing the results this module owns."""
     row.deliverables = [job.to_deliverable() for job in plan.jobs]
+    row.delivered_range = row.current if plan.jobs else None
     row.qc = [result for result in row.qc if result.rule_id not in OWNED_RULES]
     row.qc.extend(plan.qc)
 
@@ -470,7 +510,6 @@ def _picture_job(shot: _Shot, kind: JobKind, res: Resolution) -> DeliverableJob:
         source_color_space=shot.media.color_space,
         source_color_range=shot.media.color_range,
         source_start_frame=shot.media.start_frame,
-        source_start_timecode=shot.media.start_timecode,
         shot_color=shot.color,
         hold_frames=_hold_frames(shot) if kind == "ref_mp4" else 0,
     )
@@ -549,8 +588,9 @@ def _aux_plan(shot: _Shot) -> RowPlan:
                 source_is_sequence=shot.media.is_sequence,
                 source_size=shot.media.resolution,
                 rate=shot.media.rate,
+                source_color_space=shot.media.color_space,
+                source_color_range=shot.media.color_range,
                 source_start_frame=shot.media.start_frame,
-                source_start_timecode=shot.media.start_timecode,
                 shot_color=clf.ShotColor(
                     source_encoding=shot.color.source_encoding,
                     source_encoding_origin=shot.color.source_encoding_origin,

@@ -7,6 +7,8 @@ for a folder built from them, then the theme, then the window.
 
 from __future__ import annotations
 
+import logging
+import platform
 from pathlib import Path
 
 from PySide6.QtWidgets import QApplication
@@ -53,6 +55,16 @@ def run(argv: list[str] | None = None) -> int:
     """
     app = build_application(argv)
     logsetup.configure(paths.log_dir())
+    logsetup.install_exception_hooks()
     window = MainWindow(paths.settings_path())
+    # After the window, which applies the Settings log level: one log file spans every
+    # build run that day, so each session says which build wrote the lines after it.
+    logging.getLogger("proingest").info(
+        "ProIngest %s started on %s, Python %s, log level %s",
+        __version__,
+        platform.platform(),
+        platform.python_version(),
+        logsetup.name_of(logging.getLogger().getEffectiveLevel()),
+    )
     window.show()
     return app.exec()

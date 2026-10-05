@@ -10,16 +10,18 @@ from __future__ import annotations
 from pathlib import Path
 
 from proingest.core.models import (
-    CDL,
     Batch,
     Deliverable,
     FrameRate,
+    Grade,
+    GradeLook,
     InOut,
     MediaInfo,
     QCResult,
     ShotRow,
     Turnover,
 )
+from tests.fixtures import color as color_fixtures
 from tests.fixtures.names import identity_of
 
 RATE_24 = FrameRate(24)
@@ -138,14 +140,14 @@ def batch(
 def ingested(built: Batch, tmp_path: Path) -> Batch:
     """Give a batch the colour session a run needs, in place. QC-008 refuses one without.
 
-    A CDL per row, because that is the whole of the grade since 2026-09-22 and QC-009
-    checks for it; the EDL is a location and nothing reads it after an ingest, so it is
-    a path rather than a file. `clf.ingest` is what does this from a real EDL - this is
-    the same end state, built for the tests that are about the window rather than the
-    session.
+    A grade per row off a written CLF, because the scan puts one there from each event's
+    AMF and the render reads the file; the AMF itself is a path nothing reads again after
+    a scan. The same end state `scan` reaches from a real folder, built for the tests
+    that are about the window rather than the session.
     """
     session = tmp_path / "session"
     session.mkdir(parents=True, exist_ok=True)
+    node = color_fixtures.make_clf(session / "MELT_ClipGraph_CorrectorNode_1.clf")
     for turnover_ in built.turnovers:
         turnover_.color_session_edl = session / "MELT_FINAL_v01.edl"
         # A real folder, because a run's pre-flight holds back a turnover whose folder
@@ -155,17 +157,13 @@ def ingested(built: Batch, tmp_path: Path) -> Batch:
     for row_ in built.rows:
         if row_.shot_code is None:
             continue
-        row_.cdl = CDL(
-            slope=(1.02, 0.99, 1.01),
-            offset=(0.001, -0.002, 0.0),
-            power=(0.98, 1.0, 1.02),
-            saturation=1.05,
-            sop_text=(
-                "*ASC_SOP (1.020000 0.990000 1.010000)"
-                "(0.001000 -0.002000 0.000000)(0.980000 1.000000 1.020000)"
-            ),
-            sat_text="*ASC_SAT 1.050000",
+        row_.grade = Grade(
+            amf=session / f"{row_.clip_name}.amf",
+            looks=(GradeLook("clf", str(node)),),
+            display=color_fixtures.DISPLAY,
+            view=color_fixtures.VIEW,
         )
+        row_.source_encoding_origin = "AMF"
         if row_.current is not None:
             row_.approved = row_.current
     return built

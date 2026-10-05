@@ -205,7 +205,7 @@ def _run(
         return 2
 
     if not planned:
-        print("nothing to render: every shot is complete, skipped or waiting for a Reset")
+        print("nothing to render: every shot is complete, skipped or waiting for a Re-scan")
         return 0
 
     for job in planned:
@@ -383,11 +383,11 @@ def _print_batch(batch: Batch) -> None:
 
 def _turnover_label(turnover: Turnover) -> str:
     """Prefer the parsed turnover fields; fall back to the folder when QC-005 fired."""
-    if turnover.number is None:
+    if turnover.number is None or turnover.year is None:
         return str(turnover.folder)
     return (
         f"turnover{turnover.number:03d}  "
-        f"{turnover.month:02d}_{turnover.day:02d}_{turnover.year:04d}  {turnover.shooter}"
+        f"{turnover.month:02d}_{turnover.day:02d}_{turnover.year % 100:02d}  {turnover.shooter}"
     )
 
 

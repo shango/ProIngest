@@ -27,8 +27,8 @@ CLF, and so does this module: the plate branch builds one OCIO processor per job
 applies it to every frame on its way to an EXR, and the view branch bakes the same chain
 plus the ACES output transform into a `.cube` that ffmpeg applies as it encodes. Neither
 branch decides anything about colour. What to apply arrives on the job as a
-`clf.ShotColor`, which is a colour space name and the CDL, because that is what
-survives the pickle into a worker process.
+`clf.ShotColor`, which is a colour space name, the AMF's looks as names and CLF paths,
+and a display and view, because that is what survives the pickle into a worker process.
 """
 
 from __future__ import annotations
@@ -376,6 +376,7 @@ def _render_reference(job: DeliverableJob, deliverable: Deliverable) -> None:
             color_range=job.source_color_range,
             canvas=job.target_size if job.fitted_size != job.target_size else None,
             hold=job.hold_frames,
+            display=job.shot_color.display or ffmpeg.DEFAULT_DISPLAY,
         )
     if not job.temp.is_file():
         raise RenderError(f"{job.name}: the encode reported success and wrote nothing")
@@ -443,11 +444,14 @@ def _audio_tempo(job: DeliverableJob) -> float:
 
 
 def _start_timecode(job: DeliverableJob) -> str | None:
-    """The reference's own timecode: the In frame's, which is what the EXRs carry too."""
-    if job.rate is None or job.in_frame is None or job.source_start_timecode is None:
+    """The reference's own timecode: its first frame's number, 1001, as the EXRs carry.
+
+    So a reference starts at `00:00:41:17` at 24, and Resolve reads its first frame as
+    frame 1001, whatever the camera said (user, 2026-09-25).
+    """
+    if job.rate is None:
         return None
-    first = frames.timecode_frames_for(job.in_frame, job.source_start_frame, job.source_start_timecode)
-    return frames.frames_to_timecode(first, job.rate.as_float())
+    return frames.frames_to_timecode(job.timecode_for(naming.FIRST_OUTPUT_FRAME), job.rate.as_float())
 
 
 # --- Audio and byte copies. ---
