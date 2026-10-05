@@ -47,6 +47,10 @@ chunk 7 of `docs/TO_A_WORKING_BUILD.md`, in the order that wastes least.
 - [ ] **The version in view (2026-09-29, 0.5.17).** Open the app: the title bar reads `ProIngest 0.5.17`
       and so does the right end of the status bar, and the status bar one still reads it after a Scan
       and a Save. Say whether the title also shows in full screen (macOS hides the title bar there).
+- [ ] **The AMF's CDL as the grade (2026-10-06, 0.5.23).** Run turnover134 once Ben's fixes are
+      in. Open `SECA0009_pl01_ref_HD_v01.mp4` beside Ben's own Resolve playback of the same frame:
+      the brightness and colour should match. The tool applies the CDL in ACEScg, unclamped, as
+      the AMF states; CI proves the maths, only Ben's screen says it is what Resolve does.
 - [ ] **Expiry (2026-10-05, 0.5.23).** With the Mac's
       date set a month past the dmg's build day (System Settings > General > Date & Time, turn off
       "Set automatically"), launch: the "Update ProIngest" modal shows, and New, Open and a Finder

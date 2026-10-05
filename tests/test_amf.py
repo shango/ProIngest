@@ -59,7 +59,25 @@ CLF_LOOK = (
 )
 
 
+CDL_LOOK = (
+    '<aces:lookTransform applied="false" xmlns:cdl="urn:ASC:CDL:v1.01"><aces:cdlWorkingSpace>'
+    f"<aces:toCdlWorkingSpace><aces:transformId>{URN}CSC.Academy.ACES_to_ACEScg.a2.v1</aces:transformId>"
+    "</aces:toCdlWorkingSpace></aces:cdlWorkingSpace>"
+    "<cdl:ASC_SOP><cdl:Slope>1.90655 1.79367 1.83671</cdl:Slope><cdl:Offset>0 0 0</cdl:Offset>"
+    "<cdl:Power>1 1 1</cdl:Power></cdl:ASC_SOP><cdl:ASC_SAT><cdl:Saturation>1</cdl:Saturation></cdl:ASC_SAT>"
+    "</aces:lookTransform>"
+)
+"""Turnover134's grade, as Resolve wrote it inside each AMF with no CLF (2026-10-05)."""
+
+
 class TestReading:
+    def test_an_embedded_cdl_is_read_with_its_working_space(self, tmp_path: Path) -> None:
+        (_, look) = amf.read(written(tmp_path, looks=CDL_LOOK)).looks
+        assert look.cdl is not None and not look.unsupported
+        assert look.cdl.slope == (1.90655, 1.79367, 1.83671)
+        assert (look.cdl.offset, look.cdl.power, look.cdl.saturation) == ((0, 0, 0), (1, 1, 1), 1.0)
+        assert look.cdl.working.endswith("CSC.Academy.ACES_to_ACEScg.a2.v1")
+
     def test_what_turnover097_s_amf_says(self, tmp_path: Path) -> None:
         read = amf.read(written(tmp_path, looks=CLF_LOOK))
         assert (read.index, read.preset, read.clip_file) == (1, "Dailies Request", "C4261.MP4")

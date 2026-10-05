@@ -18,6 +18,19 @@ since 2026-09-28 (user). What is left is the Mac: `docs/MAC_SESSION.md`, from "T
 order" down, and Ben's 4.886 slope. Entries are newest first; anything older than 2026-09-22
 describes the tool before the review and is history.
 
+**2026-10-06, the AMF's CDL is the grade when there is no CLF; proxy folders ignored, 0.5.23
+(user).** "Prefer CLF with CDL as backup only if CLF is missing, and a warning for Ben on the item.
+Non blocking." `amf.AmfCdl` reads `cdl:ASC_SOP`/`ASC_SAT` and `toCdlWorkingSpace`; `scan._grade_of`
+uses it only when the AMF names no CLF, as a `GradeLook("cdl", <working space>, <10 numbers>)`
+applied by `color.cdl_transform` (ACES2065-1 to the working space, CDL unclamped, back), with
+**QC-082** (warning, "Fix in Resolve - ") on the row. A CLF present wins and the CDL is QC-077.
+"Fix in Resolve - " now leads warnings of the listed rules too, never info. Then "If the tool sees
+a folder named proxy it should be ignored": `media.IGNORED_FOLDERS`, any case, any depth.
+**Verified**: tests; turnover134's real folder, `Proxy/` in place, scans with no QC-013 and only the
+two proxy-conformed mirror balls blocked; re-rendered with the CDL, `SECA0009_pl01_ref_HD` is about
+a stop brighter and warmer than the ungraded run (frame looked at). Whether it matches Resolve's own
+render is a MAC_SESSION line. Ben's turnover134 page updated (CLF item added, Proxy item removed).
+
 **2026-10-06, turnover134 and turnover135 run headless; two fixes and "Fix in Resolve", 0.5.23
 (user).** "Run these headless end to end... let me know what's missing... check for any bugs in
 the run that might be producing false results." **Fixed**: (1) the AMF to EDL event pairing

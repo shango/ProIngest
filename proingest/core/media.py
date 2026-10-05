@@ -166,6 +166,16 @@ class DirectoryIndex:
         ]
 
 
+IGNORED_FOLDERS = frozenset({"proxy"})
+"""Folder names whose contents are never media for a turnover, in any case and at any depth
+(user, 2026-10-06). Turnover134 carried a `Proxy/` of HD copies named exactly as the camera
+clips, which made every one of them ambiguous (QC-013)."""
+
+
+def _in_ignored_folder(relative: Path) -> bool:
+    return any(part.casefold() in IGNORED_FOLDERS for part in relative.parts[:-1])
+
+
 def index_directory(root: Path) -> DirectoryIndex:
     """Walk `root` once and group image sequences.
 
@@ -174,7 +184,7 @@ def index_directory(root: Path) -> DirectoryIndex:
     index = DirectoryIndex(root=root)
     entries: list[FileEntry] = []
     for path in sorted(root.rglob("*")):
-        if not path.is_file():
+        if _in_ignored_folder(path.relative_to(root)) or not path.is_file():
             continue
         stat = path.stat()
         entries.append(FileEntry(path=path, size=stat.st_size, mtime=stat.st_mtime))

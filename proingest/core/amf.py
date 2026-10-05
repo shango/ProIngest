@@ -56,8 +56,20 @@ class AmfError(RuntimeError):
 
 
 @dataclass(frozen=True)
+class AmfCdl:
+    """An ASC CDL written inside the AMF, and the working space it is applied in."""
+
+    slope: tuple[float, float, float]
+    offset: tuple[float, float, float]
+    power: tuple[float, float, float]
+    saturation: float
+    working: str
+    """`toCdlWorkingSpace`'s transform ID, empty when the AMF states none."""
+
+
+@dataclass(frozen=True)
 class AmfLook:
-    """One `lookTransform`, in pipeline order. Exactly one of the three is set."""
+    """One `lookTransform`, in pipeline order. Exactly one of the four is set."""
 
     transform_id: str = ""
     """A look named by ID, which the config resolves: the Reference Gamut Compress."""
@@ -65,8 +77,11 @@ class AmfLook:
     file: str = ""
     """A CLF beside the AMF, by file name: one corrector node of the grade."""
 
+    cdl: AmfCdl | None = None
+    """An embedded CDL: the grade only when the AMF names no CLF (QC-082, user 2026-10-05)."""
+
     unsupported: str = ""
-    """What the look was when it is neither, such as an embedded CDL. Ignored, QC-077."""
+    """What the look was when it is none of these. Ignored, QC-077."""
 
     md5: str = ""
     """The checksum the AMF records for `file`, empty when it records none."""
@@ -171,8 +186,30 @@ def _look(item: ET.Element) -> AmfLook:
     file = _text(item, "file")
     if file:
         return AmfLook(file=file, md5=_text(item, "hash").lower(), applied=applied)
+    cdl = _cdl(item)
+    if cdl is not None:
+        return AmfLook(cdl=cdl, applied=applied)
     inner = [_local(child.tag) for child in item]
     return AmfLook(unsupported=", ".join(inner) or "an empty look", applied=applied)
+
+
+def _cdl(item: ET.Element) -> AmfCdl | None:
+    """`cdl:ASC_SOP` and `cdl:ASC_SAT` under the look, as Resolve writes them, or None."""
+    sop = _child(item, "ASC_SOP")
+    if sop is None:
+        return None
+    try:
+        slope, offset, power = (_three(_text(sop, name)) for name in ("Slope", "Offset", "Power"))
+        saturation = float(_text(_child(item, "ASC_SAT"), "Saturation") or 1)
+    except ValueError:
+        return None
+    working = _text(_child(_child(item, "cdlWorkingSpace"), "toCdlWorkingSpace"), "transformId")
+    return AmfCdl(slope, offset, power, saturation, working)
+
+
+def _three(text: str) -> tuple[float, float, float]:
+    first, second, third = (float(value) for value in text.split())
+    return first, second, third
 
 
 def _local(tag: str) -> str:

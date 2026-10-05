@@ -946,7 +946,7 @@ def check_color_chain(row: ShotRow) -> list[QCResult]:
                 f"no look: rendered through the input transform alone, {encoding} to {color.PLATE_SPACE}",
             )
         ]
-    names = ", ".join(look.name if look.kind == "look" else Path(look.name).name for look in looks)
+    names = ", ".join(look.label for look in looks)
     return [
         QCResult(
             "QC-048",

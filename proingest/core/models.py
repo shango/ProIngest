@@ -121,17 +121,19 @@ RESOLVE_FIX_RULES = frozenset(
         "QC-075",  # the clip's AMF is missing or names another clip
         "QC-076",  # a CLF the AMF names is missing or changed
         "QC-079",  # the AMF's output transform is not one the config knows
+        "QC-082",  # the grade came as a CDL in the AMF rather than a CLF
     }
 )
-"""Errors fixed in Resolve: in Ben's timeline, metadata, or the EDL, CSV, AMF and CLF
-exports, rather than in the turnover folder or on the Settings page (docs/QC_RULES.md)."""
+"""Errors and warnings fixed in Resolve: in Ben's timeline, metadata, or the EDL, CSV, AMF
+and CLF exports, rather than in the turnover folder or on the Settings page
+(docs/QC_RULES.md). Info lines never say it: nothing needs fixing."""
 
 
 @dataclass(frozen=True)
 class QCResult:
     """One rule outcome. `rule_id` is the stable ID from docs/QC_RULES.md.
 
-    An error whose fix is in Ben's Resolve session leads with `FIX_IN_RESOLVE` (user,
+    An error or warning whose fix is in Ben's Resolve session leads with `FIX_IN_RESOLVE` (user,
     2026-10-05), so the editor knows at a glance where it gets fixed.
     """
 
@@ -142,7 +144,7 @@ class QCResult:
 
     def __post_init__(self) -> None:
         if (
-            self.severity == "error"
+            self.severity != "info"
             and self.rule_id in RESOLVE_FIX_RULES
             and not self.message.startswith(FIX_IN_RESOLVE)
         ):
@@ -358,7 +360,7 @@ class InOut:
         return cls(in_frame=int(data["in_frame"]), out_frame=int(data["out_frame"]))
 
 
-LookKind = Literal["look", "clf"]
+LookKind = Literal["look", "clf", "cdl"]
 
 
 @dataclass(frozen=True)
@@ -366,18 +368,38 @@ class GradeLook:
     """One look of a clip's grade, in the order the AMF applies it.
 
     `look` is a look the pinned config defines (the Reference Gamut Compress); `clf` is a
-    CLF file beside the AMF, by full path, one corrector node of the colourist's grade.
+    CLF file beside the AMF, by full path, one corrector node of the colourist's grade;
+    `cdl` is the CDL written inside the AMF, used only when it names no CLF (QC-082), its
+    numbers in `cdl` and the colour space it is applied in as `name`.
     """
 
     kind: LookKind
     name: str
+    cdl: tuple[float, ...] = ()
+    """Slope, offset and power (three each), then saturation: ten numbers, for `cdl` only."""
+
+    @property
+    def label(self) -> str:
+        """How the look is named to a person: the look, the CLF's file name, or the CDL."""
+        if self.kind == "clf":
+            return Path(self.name).name
+        if self.kind == "cdl":
+            return f"the AMF's CDL in {self.name}"
+        return self.name
 
     def to_dict(self) -> dict[str, Any]:
-        return {"kind": self.kind, "name": self.name}
+        data: dict[str, Any] = {"kind": self.kind, "name": self.name}
+        if self.cdl:
+            data["cdl"] = list(self.cdl)
+        return data
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> GradeLook:
-        return cls(kind=data["kind"], name=str(data["name"]))
+        return cls(
+            kind=data["kind"],
+            name=str(data["name"]),
+            cdl=tuple(float(value) for value in data.get("cdl", [])),
+        )
 
 
 @dataclass(frozen=True)
@@ -404,8 +426,8 @@ class Grade:
 
     @property
     def graded(self) -> bool:
-        """Whether the colourist left this clip a grade: at least one CLF."""
-        return any(look.kind == "clf" for look in self.looks)
+        """Whether the colourist left this clip a grade: a CLF, or the AMF's CDL in its place."""
+        return any(look.kind in ("clf", "cdl") for look in self.looks)
 
     def to_dict(self) -> dict[str, Any]:
         return {

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
@@ -10,6 +11,7 @@ from proingest.core import qc, scan
 from proingest.core.models import Batch, Deliverable, InOut, ShotRow, Turnover
 from tests.fixtures import color as color_fixtures
 from tests.fixtures import media as fixtures
+from tests.test_amf import CDL_LOOK
 
 GOOD_FOLDER = "turnover001_02_23_2026_danielluckett"
 
@@ -595,6 +597,37 @@ class TestTheAmf:
         assert len(rows) == 2
         for row in rows:
             assert "QC-075" not in rules(row) and row.grade is not None, row.clip_name
+
+    def cdl_instead_of_clf(self, folder: Path, keep_clf: bool = False) -> None:
+        """Turnover134's AMFs: the grade as a CDL inside the AMF, and (unless kept) no CLF."""
+        path = self.amf(folder)
+        text = path.read_text()
+        if not keep_clf:
+            text = re.sub(
+                r'<aces:lookTransform applied="false"><aces:file>[^<]*</aces:file></aces:lookTransform>',
+                "",
+                text,
+            )
+        text = text.replace("<aces:outputTransform", CDL_LOOK + "<aces:outputTransform", 1)
+        path.write_text(text)
+
+    def test_with_no_clf_the_amfs_cdl_is_the_grade_and_a_warning(self, tmp_path: Path) -> None:
+        folder = self.folder(tmp_path)
+        self.cdl_instead_of_clf(folder)
+        _, row = self.scanned(folder)
+        assert row.grade is not None and row.grade.graded
+        assert [look.kind for look in row.grade.looks] == ["look", "cdl"]
+        assert row.grade.looks[1].cdl[:3] == (1.90655, 1.79367, 1.83671)
+        (warning,) = [r for r in row.qc if r.rule_id == "QC-082"]
+        assert warning.severity == "warning" and warning.message.startswith("Fix in Resolve - ")
+        assert not row.errors()
+
+    def test_a_clf_wins_over_the_cdl(self, tmp_path: Path) -> None:
+        folder = self.folder(tmp_path)
+        self.cdl_instead_of_clf(folder, keep_clf=True)
+        _, row = self.scanned(folder)
+        assert row.grade is not None and [look.kind for look in row.grade.looks] == ["look", "clf"]
+        assert "QC-082" not in rules(row) and "QC-077" in rules(row)
 
     def test_an_unreadable_amf_is_reported_on_the_turnover(self, tmp_path: Path) -> None:
         folder = self.folder(tmp_path)

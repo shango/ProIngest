@@ -156,11 +156,12 @@ class ShotColor:
             return [color.input_transform(self.source_encoding)]
         legs: list[ocio.Transform] = [color.to_aces(self.source_encoding)]
         for look in self.looks:
-            legs.append(
-                color.look_transform(look.name)
-                if look.kind == "look"
-                else color.clf_transform(Path(look.name))
-            )
+            if look.kind == "look":
+                legs.append(color.look_transform(look.name))
+            elif look.kind == "cdl":
+                legs.append(color.cdl_transform(look.cdl, look.name))
+            else:
+                legs.append(color.clf_transform(Path(look.name)))
         legs.append(color.to_plate())
         return legs
 

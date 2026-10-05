@@ -825,6 +825,7 @@ def _grade_of(found: amf.Amf, folder: Path) -> tuple[Grade, list[QCResult]]:
     """
     findings: list[QCResult] = []
     looks: list[GradeLook] = []
+    names_a_clf = any(look.file and not look.applied for look in found.looks)
     for look in found.looks:
         if look.applied:
             continue
@@ -844,6 +845,8 @@ def _grade_of(found: amf.Amf, folder: Path) -> tuple[Grade, list[QCResult]]:
                 )
             else:
                 looks.append(GradeLook("clf", str(folder / look.file)))
+        elif look.cdl is not None:
+            findings.append(_cdl_finding(found, look.cdl, looks, names_a_clf))
         else:
             findings.append(
                 _ignored(found, f"a look that is not a transform ID or a CLF ({look.unsupported})")
@@ -883,6 +886,27 @@ def _grade_of(found: amf.Amf, folder: Path) -> tuple[Grade, list[QCResult]]:
         preset=found.preset,
     )
     return grade, findings
+
+
+def _cdl_finding(found: amf.Amf, cdl: amf.AmfCdl, looks: list[GradeLook], names_a_clf: bool) -> QCResult:
+    """The CLF is the grade; the AMF's own CDL stands in only when it names none (user,
+    2026-10-05), applied in the working space it states, and the row says so (QC-082)."""
+    if names_a_clf:
+        return _ignored(found, "its CDL, since a CLF carries the grade,")
+    working = amf.colour_space_for(cdl.working) if cdl.working else None
+    if working is None:
+        return _ignored(
+            found, f"a CDL in a working space {color.BUILTIN_CONFIG} lacks ({cdl.working or 'none stated'})"
+        )
+    looks.append(GradeLook("cdl", working, (*cdl.slope, *cdl.offset, *cdl.power, cdl.saturation)))
+    numbers = " ".join(f"{value:g}" for value in cdl.slope)
+    return QCResult(
+        "QC-082",
+        "warning",
+        "row",
+        f"{found.path.name}: no CLF carries this clip's grade, so the CDL inside the AMF is used "
+        f"(slope {numbers}, in {working}); export the grade with its CLF",
+    )
 
 
 def _ignored(found: amf.Amf, what: str) -> QCResult:

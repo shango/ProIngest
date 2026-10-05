@@ -60,6 +60,22 @@ class TestSequenceGrouping:
         assert index.sequences == [] and index.singles == []
 
 
+class TestAProxyFolder:
+    """User, 2026-10-06: a folder named proxy is never searched for media."""
+
+    @pytest.mark.parametrize("folder", ["Proxy", "proxy", "PROXY", "Proxy/sub"])
+    def test_its_files_are_not_media(self, tmp_path: Path, folder: str) -> None:
+        (tmp_path / "C003.mov").write_bytes(b"x")
+        (tmp_path / folder).mkdir(parents=True)
+        (tmp_path / folder / "C003.mov").write_bytes(b"x")
+        matches = media.index_directory(tmp_path).media_matching("C003")
+        assert [item.path for item in matches] == [tmp_path / "C003.mov"]  # type: ignore[union-attr]
+
+    def test_a_file_called_proxy_is_still_media(self, tmp_path: Path) -> None:
+        (tmp_path / "proxy.mov").write_bytes(b"x")
+        assert media.index_directory(tmp_path).media_matching("proxy")
+
+
 class TestSequenceProperties:
     def test_contiguous_sequence_has_no_gaps(self, tmp_path: Path) -> None:
         fixtures.make_exr_sequence(tmp_path, count=5)
