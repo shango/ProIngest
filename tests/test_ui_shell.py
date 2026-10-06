@@ -1548,6 +1548,24 @@ class TestRunningABatch:
         # spreadsheets, and says so (OQ-38, 2026-09-25).
         assert said[-1] in (WRITING_REPORTS, BUILDING_STRINGOUT)
 
+    def test_a_run_that_delivered_makes_the_user_folders(self, window: DrivenWindow, tmp_path: Path) -> None:
+        window.set_batch(ingested(batch(row(), delivery_root=tmp_path), tmp_path))
+        started = stub_runner(window)
+        window.action_run.trigger()
+        finish_run(window, done(started[0]), False)
+
+        assert (tmp_path / "User_Generated").is_dir() and (tmp_path / "User_Uploads").is_dir()
+
+    def test_a_run_that_delivered_nothing_makes_no_user_folders(
+        self, window: DrivenWindow, tmp_path: Path
+    ) -> None:
+        window.set_batch(ingested(batch(row(), delivery_root=tmp_path), tmp_path))
+        started = stub_runner(window)
+        window.action_run.trigger()
+        finish_run(window, done(started[0], "failed"), False)
+
+        assert not (tmp_path / "User_Generated").exists()
+
     def test_a_run_that_never_starts_takes_the_strip_away_again(
         self, window: DrivenWindow, tmp_path: Path
     ) -> None:

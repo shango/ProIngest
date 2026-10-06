@@ -111,6 +111,9 @@ writes it straight after a scan, before anything is rendered.
 `fixit_report_...html`, and opens it in your browser: what Ben needs to change in Resolve or in
 the turnover folder, in plain words, with every clip it applies to. Send him the file.
 
+At the top of the delivery root a run also makes two empty folders, `User_Generated` and
+`User_Uploads`, for your own files. The tool never looks inside them.
+
 Every deliverable is checked before it takes its final name. One that fails is deleted and its
 shot is marked failed, naming the file and the check, in the Issues tab; fix the cause,
 right-click the shot, **Reset**, and Run again. A shot that is complete is left alone by the next

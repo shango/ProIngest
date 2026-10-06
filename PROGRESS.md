@@ -8,8 +8,8 @@ commit.
 
 ## 1. Resume here
 
-**State at 2026-10-06, version 0.5.24 on branch `app/expiry`, PR #18 open, CI run 37425657638 green** (0.5.24: the Fix-it
-report, one error per cause, a lone EXR read as one frame, AMFs falling back to the clip they name) (`HANDOFF.md` is the short version, with the session's open items); 0.5.22 is on `main` (PR #17 merged as `70e1160` at the user's request, after its CI
+**State at 2026-10-06, version 0.5.25 merged to `main` with PR #18** (0.5.25: `User_Generated` and `User_Uploads` at the delivery root; 0.5.24: the Fix-it
+report, one error per cause, a lone EXR read as one frame, AMFs falling back to the clip they name) (`HANDOFF.md` is the short version, with the session's open items); 0.5.22 went to `main` earlier (PR #17 merged as `70e1160` at the user's request, after its CI
 run 37276656318 built the 0.5.22 dmg). The 2026-09-23 review is built (chunks A
 to H of `docs/REVIEW_2026-09-23.md`), and so are the fixes that a second official turnover,
 Turnover121, called for (`docs/SAMPLE_TURNOVER_121.md`). Turnover199 scans with no must-fix and
@@ -17,6 +17,19 @@ renders; Turnover121, every clip 8 bit 4:2:0, runs again with a QC-020 warning o
 since 2026-09-28 (user). What is left is the Mac: `docs/MAC_SESSION.md`, from "The 0.5.0 build, in
 order" down, and Ben's 4.886 slope. Entries are newest first; anything older than 2026-09-22
 describes the tool before the review and is history.
+
+**2026-10-06, `User_Generated` and `User_Uploads` (user), 0.5.25.** "For the output folders, we need
+to add 2 empty folder for user into the output folder structure", then "delivery root is the
+spot. Ignore the specs, this was a quick decision. Do this once per turnover at the top level."
+Read as: both folders at the top of the delivery root, made when missing by any run that delivers
+a turnover (the UI's end of Run, before the stringouts; the headless `run` when anything is done).
+`naming.USER_FOLDERS` and `naming.user_dirs`, `render.make_user_folders`; a folder that cannot be
+made is logged and the run is not failed. Never read, written or removed after, never a version.
+Build Stringout alone does not make them. NAMING_SPEC section 5, the quickstart. Tests in
+`test_naming`, `test_render`, `test_cli` and `test_ui_shell`. **Merged to `main` with PR #18 at
+the user's request.** **Open with the user: the EXR stringout** (render the stringout from the
+delivered EXRs, a UI switch). Six design questions were put to them on 2026-10-06 (which events,
+stills, insets, sound, where the switch lives, the name) and are unanswered; nothing is built.
 
 **2026-10-06, the Fix-it report (user).** "Build the report export into the tool, make it a link
 above the feedback panel that appears under the shot list. Name it Fix-it report... Ben is not

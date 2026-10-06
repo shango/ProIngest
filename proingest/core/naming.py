@@ -234,6 +234,15 @@ def reports_dir(delivery_root: Path, show: str) -> Path:
     return delivery_root / show / "_reports"
 
 
+USER_FOLDERS = ("User_Generated", "User_Uploads")
+"""Two empty folders at the top of the delivery root for the user's own files (user,
+2026-10-06). The tool makes them and never reads, writes or removes anything inside."""
+
+
+def user_dirs(delivery_root: Path) -> list[Path]:
+    return [delivery_root / name for name in USER_FOLDERS]
+
+
 # --- Reading output names back, NAMING_SPEC.md section 7. Drives QC-151 and versioning. ---
 
 OutputKind = Literal[

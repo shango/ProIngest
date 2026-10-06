@@ -283,3 +283,9 @@ class TestDeliveryLayout:
 
     def test_reports_sit_beside_shots(self) -> None:
         assert naming.reports_dir(Path("/d"), "MELT") == Path("/d/MELT/_reports")
+
+    def test_the_user_folders_sit_at_the_delivery_root(self) -> None:
+        assert naming.user_dirs(Path("/d")) == [Path("/d/User_Generated"), Path("/d/User_Uploads")]
+
+    def test_the_user_folders_never_count_as_a_version(self) -> None:
+        assert naming.next_version(list(naming.USER_FOLDERS)) == 1

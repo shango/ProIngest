@@ -6,12 +6,12 @@ disagrees with `PROGRESS.md` or the docs, they are right and this file is wrong.
 
 ## State
 
-- **Version 0.5.23 on branch `app/expiry`, PR #18 open, not merged** (merge only when the user
-  asks). 0.5.22 is on `main` (PR #17, `70e1160`).
-- **CI run 37415594139 is green on all four jobs** and built the 0.5.23 dmg, handed over as:
-  `gh run download 37415594139 -R shango/ProIngest -n ProIngest-macos-arm64 -D ~/Downloads/ProIngest-0.5.23`
-  (https://github.com/shango/ProIngest/actions/runs/37415594139)
-- **1847 tests pass locally**; `ruff`, `ruff format` and `mypy --strict` are clean.
+- **Version 0.5.25, PR #18 (`app/expiry`) merged to `main` at the user's request** on
+  2026-10-06. 0.5.25 adds `User_Generated` and `User_Uploads` at the delivery root, made by any
+  run that delivers a turnover (NAMING_SPEC section 5). 0.5.24 was the Fix-it report (PROGRESS).
+- The dmg is built by the CI run of the merge on `main`; its run ID is in the reply that handed
+  it over, as `gh run download <run-id> -R shango/ProIngest -n ProIngest-macos-arm64 -D ~/Downloads/ProIngest-0.5.25`.
+- `ruff`, `ruff format` and `mypy --strict` are clean, and 1885 tests pass locally (1 skipped).
 - Nothing uncommitted except the untracked samples under Working notes. Nothing in flight.
 
 ## What 0.5.23 did (5 and 6 Oct 2026, all user requests)
@@ -57,6 +57,11 @@ after this session; republish by editing the page via its URL).
   duplicate CSV row; HDRI EXRs on the timeline; a `LOGS` folder and `.drt` in it.
 
 ## Open, with the user
+
+- **The EXR stringout** (user, 2026-10-06): an optional switch to cut the stringout from the
+  delivered EXRs. Six design questions are with the user (PROGRESS entry for 0.5.25); nothing
+  is built. The EXR path cannot be a baked cube in ffmpeg (scene linear), so it would decode in
+  Python through OCIO and pipe to ffmpeg, much slower than today's.
 
 - **Ben's answers** on both turnovers (the pages above). Re-run each when his re-exports land;
   turnover135 may show more once its AMFs exist.

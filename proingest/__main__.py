@@ -228,6 +228,8 @@ def _run(
     reporter = _ProgressPrinter()
     written = render.execute(planned, workers=jobs, on_progress=reporter)
     render.apply_results(batch, written, show_pattern)
+    if any(item.status == "done" for item in written):
+        render.make_user_folders(root)
     try:
         batchfile.backup(batch_path)
         batchfile.save(batch, batch_path)

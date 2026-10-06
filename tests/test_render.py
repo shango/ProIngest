@@ -883,6 +883,28 @@ class TestProgressMessage:
         assert render.Progress("s", "frame", 12, 10).fraction == 1.0
 
 
+class TestUserFolders:
+    def test_both_are_made_at_the_delivery_root(self, tmp_path: Path) -> None:
+        render.make_user_folders(tmp_path / "delivery")
+        assert sorted(p.name for p in (tmp_path / "delivery").iterdir()) == ["User_Generated", "User_Uploads"]
+
+    def test_what_the_user_put_in_them_is_left_alone(self, tmp_path: Path) -> None:
+        kept = tmp_path / "User_Uploads" / "notes.txt"
+        kept.parent.mkdir()
+        kept.write_text("mine")
+        render.make_user_folders(tmp_path)
+        assert kept.read_text() == "mine"
+        assert (tmp_path / "User_Generated").is_dir()
+
+    def test_one_that_cannot_be_made_is_logged_not_raised(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        (tmp_path / "User_Generated").write_text("a file in the way")
+        render.make_user_folders(tmp_path)
+        assert "User_Generated" in caplog.text
+        assert (tmp_path / "User_Uploads").is_dir()
+
+
 class TestExecute:
     def test_every_job_comes_back_in_the_order_it_was_given(self, tmp_path: Path) -> None:
         jobs = [raw_job(tmp_path / f"j{index}", count=2) for index in range(4)]

@@ -188,6 +188,7 @@ class TestRunCommand:
         assert (shot / "MELT0001_pl01_raw_HD_v01").is_dir()
         assert (shot / "MELT0001_pl01_audio_v01.wav").is_file()
         assert len(list((shot / "MELT0001_pl01_raw_4k_v01").iterdir())) == 4
+        assert (delivery / "User_Generated").is_dir() and (delivery / "User_Uploads").is_dir()
         assert "written" in out
         assert not list(shot.glob("*.part"))
 

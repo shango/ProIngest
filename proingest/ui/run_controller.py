@@ -416,6 +416,8 @@ class RunController(QObject):
     def _stringouts_then_reports(cls, batch: Batch, touched: list[Turnover], pattern: str) -> Path:
         """Off the UI thread. A stringout that fails is QC-142 on its turnover, never a raise."""
         if batch.delivery_root is not None:
+            if touched:
+                render.make_user_folders(batch.delivery_root)
             for turnover in touched:
                 stringout.build(batch, turnover, batch.delivery_root, pattern)
         return cls._write_reports(batch)
