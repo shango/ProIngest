@@ -396,8 +396,9 @@ def tracker_row(shot_code: str, rows: list[ShotRow], stringout: str = "") -> lis
     cells[2] = shot_code
     cells[3] = shot_code
     cells[4] = reference.name if reference is not None else ""
-    # HDRI and CAM Data stay the studio's columns and stay empty: neither carries a
-    # `Shot Type`, so neither is a deliverable of this tool any more (2026-09-22).
+    hdri = next((item for row in rows if (item := _delivered(row, "hdri")) is not None), None)
+    # The HDRI the tool copied (user, 2026-10-07). CAM Data stays the studio's column.
+    cells[5] = hdri.name if hdri is not None else ""
     cells[7] = _plate_marks(plate)
     cells[8] = TRACKER_FPS
     cells[9] = _TICK if audio is not None else ""

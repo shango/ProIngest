@@ -8,7 +8,7 @@ commit.
 
 ## 1. Resume here
 
-**State at 2026-10-06, version 0.5.25 merged to `main` with PR #18** (0.5.25: `User_Generated` and `User_Uploads` at the delivery root; 0.5.24: the Fix-it
+**State at 2026-10-07, version 0.5.26 on branch `hdri/prerender`** (0.5.26: the HDRI pre-render and delivery, QC-084, Accept As Is runs what it can; 0.5.25, merged to `main` with PR #18: `User_Generated` and `User_Uploads` at the delivery root; 0.5.24: the Fix-it
 report, one error per cause, a lone EXR read as one frame, AMFs falling back to the clip they name) (`HANDOFF.md` is the short version, with the session's open items); 0.5.22 went to `main` earlier (PR #17 merged as `70e1160` at the user's request, after its CI
 run 37276656318 built the 0.5.22 dmg). The 2026-09-23 review is built (chunks A
 to H of `docs/REVIEW_2026-09-23.md`), and so are the fixes that a second official turnover,
@@ -17,6 +17,47 @@ renders; Turnover121, every clip 8 bit 4:2:0, runs again with a QC-020 warning o
 since 2026-09-28 (user). What is left is the Mac: `docs/MAC_SESSION.md`, from "The 0.5.0 build, in
 order" down, and Ben's 4.886 slope. Entries are newest first; anything older than 2026-09-22
 describes the tool before the review and is history.
+
+**2026-10-07, 0.5.26: the HDRI pre-render and delivery, QC-084, Accept As Is runs what it can
+(user).** Three requests, one build.
+
+- **HDRI** (user: "HDRI on the timeline is a frame hold on an exr sequence with a basic
+  panning/translation effect that should be used in the stringout"; then the pre-render "will be
+  something like xxxx_001.mp4" beside `xxxx_001.exr`, "Still needs grading", "Use the in to out on
+  the timeline", "if it's missing, ask for the file", delivered "Just like the rest", "copy byte
+  for byte", "Ignore checks on the HDRI", and the pre-render is "sRGB Linear"; "That clip is only
+  for preview in the timeline ... The actual deliverable that artists will use is the single frame
+  exr file that you don't need to touch"). No EDL carries the pan (CMX 3600 has no transform; the
+  `.drt` predates the HDRIs). A `Shot Type` `HDRI` row now has an identity (`naming.HDRI_KIND`,
+  index from `HDRI2`), is not skipped, and delivers `<shotcode>_pl01_HDRI_<idx>_v<ver>.exr` copied
+  byte for byte (`planner._hdri_plan`, `render._copy_hdri`), versioned with its shot; the tracker's
+  HDRI column names it. No row, preflight or phase B check runs on it, and its AMF's findings are
+  dropped (`qc.is_hdri`). Scan splits the stem's matches into the EXR and a video pre-render
+  (`ShotRow.hdri_render`, additive), so the pair is not QC-013; none is **QC-083** (warning, Fix-it
+  "Fix in the turnover folder"). The stringout cuts the event from the pre-render, first frame for
+  the record length (a short one holds its last frame), graded through the HDRI's AMF with
+  `Linear Rec.709 (sRGB)` as input and a 1D shaper `x ** (1/2.4)` ahead of the cube
+  (`color.shaper_lut`, ffmpeg `lut1d`); it is no QC-143 stand-in. The Fix-it item "an HDRI on the
+  timeline is the stitched panorama image" is gone. Verified: a stringout built with the shaper in
+  the graph (ffmpeg accepts `lut1d`). **Turnover134's three HDRI EXRs carry no Shot and no Shot
+  Type in its CSV**, so they are still ignored there; nothing in the folder exercises this yet.
+  OQ-79 lists the assumptions; MAC_SESSION has the look check.
+- **QC-084** (user: "an issue with how the media was being managed in Resolve. There is not gap in
+  the timeline, let's demote that type of issue to a warning"). Turnover134's mirror balls: the
+  file's timecode puts the cut outside it, Resolve's clock (the CSV's `Start TC`, the original
+  camera clip's head) puts it on the file's first ten frames. That case is now a warning and cut by
+  Resolve's clock (`scan._outside`); QC-029 stays an error when neither clock fits and is said in
+  timecode, never as negative frame indices. Verified on turnover134: C007 and C013 are QC-084 at
+  frames 0-9. **The CSV's `Start TC` is read for this alone**: Turnover199 showed it stale while the
+  EDL followed the file, so a cut that fits by the file's own timecode is still cut by it, which
+  leaves turnover134's C003 (7 frames) and C012 (3 frames) on the file's clock. Told the user.
+  The Fix-it QC-029 advice no longer guesses "a proxy copy" (turnover134's `Proxy/` held the camera
+  originals; the earlier diagnosis to Ben was wrong).
+- **Accept As Is** (user: "the turnover should run everything it can and not hold back any other
+  clips"). The allowlist `planner.QC_BYPASSABLE` is now a denylist, `planner.QC_CANNOT_RENDER`:
+  only a row with nothing to render or no way to colour it is held (QC-012, -013, -014, -022, -029,
+  -031, -032, -042, -046, -047, -075, -076; a turnover's QC-008 or QC-069 holds every row). OQ-76
+  answered.
 
 **2026-10-06, `User_Generated` and `User_Uploads` (user), 0.5.25.** "For the output folders, we need
 to add 2 empty folder for user into the output folder structure", then "delivery root is the

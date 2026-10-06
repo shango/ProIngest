@@ -323,16 +323,13 @@ class TestReferenceStills:
         assert (plate.kind, plate.length, plate.color) == ("source", FRAMES, None)
 
 
-class TestAnHdriReferenceClip:
-    """The HDRI on the timeline is an sRGB video clip, not a frame and not an EXR (user,
-    2026-09-29). Its row delivers nothing (QC-080); its event is in the stringout, as it is."""
+class TestAnHdri:
+    """The HDRI on the timeline is a frame hold on the HDRI EXR with a pan (user, 2026-10-07).
+    Its EXR is delivered byte for byte; its event is cut from Ben's pre-render, a video under
+    the EXR's name, graded through the HDRI's AMF. No pre-render: QC-083, the EXR as it is."""
 
-    @pytest.fixture
-    def with_hdri(self, tmp_path: Path) -> Batch:
-        folder = fixtures.make_turnover(
-            tmp_path / FOLDER, shots=2, frames=FRAMES, shot_types=["pl01", "HDRI"]
-        )
-        batch = Batch(delivery_root=tmp_path / "delivery")
+    @staticmethod
+    def scanned(folder: Path, batch: Batch) -> Batch:
         settings = scan.ScanSettings(rules=fixtures.SMALL_RULES)
         turnover, rows = scan.scan_turnover(folder, "t1", settings, probe_cache=batch.probe_cache)
         batch.turnovers, batch.rows = [turnover], rows
@@ -340,29 +337,68 @@ class TestAnHdriReferenceClip:
         render.apply_results(batch, render.execute(planner.plan_batch(batch, batch.delivery_root), workers=2))
         return batch
 
-    def test_its_event_is_the_clip_itself_as_it_is(self, with_hdri: Batch) -> None:
-        hdri = with_hdri.rows[1]
-        assert hdri.skipped and qc.is_shooter_delivered(hdri) and not hdri.deliverables
-        segment = planned(with_hdri).segments[1]
-        assert (segment.kind, segment.length, segment.freeze) == ("source", FRAMES, False)
-        assert segment.color is None, "shown as it is: never through an AMF"
-        assert hdri.media is not None and segment.path == hdri.media.path
+    @pytest.fixture
+    def folder(self, tmp_path: Path) -> Path:
+        return fixtures.make_turnover(tmp_path / FOLDER, shots=2, frames=FRAMES, shot_types=["pl01", "HDRI"])
 
-    def test_held_it_keeps_the_edl_length_and_is_not_coloured(self, with_hdri: Batch) -> None:
-        """An `M2` hold on the HDRI event (turnover097's 008 and 015): the EDL's length, the
-        frame held, never coloured (user, 2026-09-30). Any other hold is one second."""
-        edl = with_hdri.turnovers[0].edl_path
+    @pytest.fixture
+    def with_hdri(self, folder: Path, tmp_path: Path) -> Batch:
+        return self.scanned(folder, Batch(delivery_root=tmp_path / "delivery"))
+
+    @pytest.fixture
+    def with_render(self, folder: Path, tmp_path: Path) -> Batch:
+        fixtures.make_mp4(folder / "media" / "MELT0002_pl01.mp4", count=FRAMES)
+        return self.scanned(folder, Batch(delivery_root=tmp_path / "delivery"))
+
+    def test_its_exr_is_delivered_byte_for_byte(self, with_hdri: Batch) -> None:
+        hdri = with_hdri.rows[1]
+        assert qc.is_hdri(hdri) and not hdri.skipped and hdri.media is not None
+        (item,) = hdri.deliverables
+        assert (item.kind, item.name, item.status) == ("hdri", "MELT0002_pl01_HDRI_01_v01.exr", "done")
+        assert item.path.read_bytes() == hdri.media.path.read_bytes()
+
+    def test_with_no_pre_render_it_asks_for_one_and_shows_the_exr_as_it_is(self, with_hdri: Batch) -> None:
+        hdri = with_hdri.rows[1]
+        assert [(q.rule_id, q.severity) for q in hdri.qc if q.rule_id == "QC-083"] == [("QC-083", "warning")]
+        segment = planned(with_hdri).segments[1]
+        assert hdri.media is not None and segment.path == hdri.media.path
+        assert segment.color is None and not segment.prerender
+
+    def test_its_event_is_cut_from_the_pre_render_and_graded(
+        self, with_render: Batch, tmp_path: Path
+    ) -> None:
+        hdri = with_render.rows[1]
+        assert hdri.hdri_render is not None and not any(q.rule_id == "QC-083" for q in hdri.qc)
+        assert hdri.media is not None and hdri.media.path.suffix == ".exr", "the stem is not ambiguous"
+        segment = planned(with_render).segments[1]
+        assert segment.prerender and segment.path == hdri.hdri_render.path
+        assert (segment.kind, segment.start, segment.length, segment.freeze) == ("source", 0, FRAMES, False)
+        assert segment.color is not None and segment.color.source_encoding == "Linear Rec.709 (sRGB)"
+        assert stringout._still_lut(segment, tmp_path / "hdri.cube") is not None, "graded, not as it is"
+
+    def test_its_pre_render_is_held_on_a_frame_hold_too(self, with_render: Batch) -> None:
+        """The EDL's event is an `M2` hold on the EXR; the pre-render plays, for the event's length."""
+        edl = with_render.turnovers[0].edl_path
         assert edl is not None
         lines = edl.read_text().splitlines()
         second = next(i for i, line in enumerate(lines) if line.startswith("002"))
         lines.insert(second + 1, "M2   AX             000.0                00:00:00:00")
         edl.write_text("\n".join(lines) + "\n")
-        segment = planned(with_hdri).segments[1]
-        assert (segment.length, segment.freeze, segment.color) == (FRAMES, True, None)
+        segment = planned(with_render).segments[1]
+        assert (segment.length, segment.freeze, segment.prerender) == (FRAMES, False, True)
 
-    def test_the_stringout_is_written_with_it(self, with_hdri: Batch) -> None:
-        assert with_hdri.delivery_root is not None
-        made = stringout.build(with_hdri, with_hdri.turnovers[0], with_hdri.delivery_root)
+    def test_the_stringout_is_written_with_it_and_it_is_no_stand_in(self, with_render: Batch) -> None:
+        assert with_render.delivery_root is not None
+        made = stringout.build(with_render, with_render.turnovers[0], with_render.delivery_root)
+        assert made is not None and made.frame_count == 2 * FRAMES
+        stand_ins = [q.message for q in with_render.turnovers[0].qc if q.rule_id == "QC-143"]
+        assert not any("MELT0002" in message for message in stand_ins)
+
+    def test_a_short_pre_render_holds_its_last_frame(self, folder: Path, tmp_path: Path) -> None:
+        fixtures.make_mp4(folder / "media" / "MELT0002_pl01.mp4", count=FRAMES - 3)
+        batch = self.scanned(folder, Batch(delivery_root=tmp_path / "delivery"))
+        assert batch.delivery_root is not None
+        made = stringout.build(batch, batch.turnovers[0], batch.delivery_root)
         assert made is not None and made.frame_count == 2 * FRAMES
 
 

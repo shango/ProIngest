@@ -57,12 +57,11 @@ says so on that header (QC-069) and will not run until you point it at the new f
 decided to deliver as it came. Its errors no longer stop Run, and the shots render as they are:
 a clip outside the length limits, or one that is not 4K. (A shot with no grade does not need
 it: that is only a note, QC-009.) The errors are still shown, the heading says
-QC-074, and the QC log and saved logs record that the turnover was accepted. A few errors still
-keep their shot back, because rendering past them would write a wrong file rather than an honest
-one: two shots with the same name, the wrong frame rate or drop-frame timecode, a clip that
-matches no EDL event or two, a retime, a clip with no AMF or a missing or changed CLF, a missing
-input colour space, or media the tool cannot find or read. The saved log names each of those as
-"not rendered". Untick it to put QC back in charge.
+QC-074, and the QC log and saved logs record that the turnover was accepted. Every shot that can
+render does, whatever its errors. Only a shot with nothing to render, or no way to colour it, stays
+back: media the tool cannot find, open or decode, a cut outside the file, missing sound, or a clip
+with no AMF, no input colour space or a missing CLF. It holds back no other shot, and the saved
+log names it as "not rendered". Untick it to put QC back in charge.
 
 **While a scan or a run is going the batch is locked.** Nothing in the list can be edited, and
 New, Open, Settings and the delivery root wait until it ends, because a change made under a run

@@ -94,8 +94,8 @@ ADVICE: dict[str, Advice] = {
         "resolve",
         "The cut uses frames the camera file does not have.",
         "The EDL asks for frames from before the file starts or after it ends. This usually means the "
-        "clip on the timeline is linked to a different file, such as a proxy copy. Please relink it to "
-        "the camera original, then export the EDL and AMFs again.",
+        "clip on the timeline is linked to a different file than the one in the folder. Please relink "
+        "it to the file in the folder, then export the EDL and AMFs again.",
         "range",
     ),
     "QC-033": Advice(
@@ -208,6 +208,14 @@ ADVICE: dict[str, Advice] = {
         "Please copy the sequence into the folder again.",
         "message",
     ),
+    "QC-083": Advice(
+        "folder",
+        "An HDRI's render is missing.",
+        "Each HDRI on the timeline needs its event rendered, with the pan, into the turnover folder "
+        "under the HDRI's name as a video (SECA0009_pl01_HDRI_01_v01.mp4 beside "
+        "SECA0009_pl01_HDRI_01_v01.exr), so the stringout can show it. Please render it into the folder.",
+        "message",
+    ),
     "QC-022": Advice(
         "folder",
         "A clip is in a format the tool cannot read.",
@@ -272,15 +280,6 @@ ADVICE: dict[str, Advice] = {
     ),
 }
 """Every rule Ben can act on, in his words. A rule not here is the editor's, or the tool's."""
-
-HDRI_IMAGE = Advice(
-    "resolve",
-    "An HDRI on the timeline is the stitched panorama image.",
-    "The timeline should carry the shooter's HDRI video clip instead, so the stringout shows it. The "
-    "stitched panorama is delivered by the shooters separately.",
-)
-"""Not a QC rule: an HDRI row (QC-080) whose clip is an EXR (memory: the HDRI on the
-timeline is the shooter's video clip, 2026-09-29)."""
 
 NO_PLATE = Advice(
     "look",
@@ -355,18 +354,16 @@ def reports(batch: Batch) -> list[TurnoverReport]:
 
 def _turnover_report(batch: Batch, turnover: Turnover) -> TurnoverReport:
     rows = [row for row in batch.rows if row.turnover_id == turnover.turnover_id]
-    delivered = [row for row in rows if not qc.is_shooter_delivered(row)]
+    # What "every clip" and "no plate" count: an HDRI is neither a clip of a shot nor its plate.
+    delivered = [row for row in rows if not qc.is_hdri(row)]
     items: dict[str, Item] = {}
     any_amf_finding = any(r.rule_id == "QC-075" for row in rows for r in row.qc)
     for result in turnover.qc:
         if result.rule_id not in ADVICE or (result.rule_id == "QC-008" and any_amf_finding):
             continue  # not Ben's, or QC-075 already lists the same clips one by one
         _add(items, result.rule_id, ADVICE[result.rule_id], result, _turnover_clips(result, delivered))
-    for row in rows:
-        if qc.is_shooter_delivered(row) and row.clip_name.lower().endswith(".exr"):
-            _add(items, "HDRI", HDRI_IMAGE, None, [Clip(name=row.clip_name)])
     blocked = 0
-    for row in delivered:
+    for row in rows:
         row_blocks = False
         for result in row.qc:
             if result.rule_id in ADVICE:

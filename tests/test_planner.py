@@ -308,7 +308,8 @@ class TestShotCodeCorrection:
 
 
 class TestAcceptAsIs:
-    """A turnover accepted as it is renders past the errors that give a correct file only."""
+    """A turnover accepted as it is renders every clip it can (user, 2026-10-07): only an
+    error that leaves nothing to render, or no way to colour it, holds a row back."""
 
     def batch(
         self, *rows: ShotRow, bypassed: bool = True, turnover_qc: list[QCResult] | None = None
@@ -321,17 +322,31 @@ class TestAcceptAsIs:
         assert planner.plan_batch(self.batch(short), tmp_path)
         assert not planner.plan_batch(self.batch(short, bypassed=False), tmp_path)
 
-    @pytest.mark.parametrize("rule_id", ["QC-011", "QC-026", "QC-046", "QC-066", "QC-999"])
-    def test_an_error_that_would_write_a_wrong_file_still_holds_the_row(
+    @pytest.mark.parametrize("rule_id", ["QC-011", "QC-026", "QC-066", "QC-073", "QC-999"])
+    def test_any_error_that_leaves_something_to_render_is_rendered_past(
         self, rule_id: str, tmp_path: Path
     ) -> None:
-        """QC-999 stands for a rule nobody has traced: an allowlist holds it back."""
-        wrong = row(qc=[QCResult(rule_id, "error", "row", "wrong")])
-        assert planner.plan_batch(self.batch(wrong), tmp_path) == []
+        """QC-999 stands for a rule nobody has listed: it renders too."""
+        flagged = row(qc=[QCResult(rule_id, "error", "row", "flagged")])
+        assert planner.plan_batch(self.batch(flagged), tmp_path)
+        assert not planner.plan_batch(self.batch(flagged, bypassed=False), tmp_path)
+
+    @pytest.mark.parametrize("rule_id", ["QC-029", "QC-046", "QC-075"])
+    def test_an_error_with_nothing_to_render_still_holds_the_row(self, rule_id: str, tmp_path: Path) -> None:
+        held = row(qc=[QCResult(rule_id, "error", "row", "nothing to render")])
+        assert planner.plan_batch(self.batch(held), tmp_path) == []
 
     def test_one_held_error_holds_the_row_even_beside_a_waived_one(self, tmp_path: Path) -> None:
-        both = row(qc=[QCResult("QC-033", "error", "row", "short"), QCResult("QC-027", "error", "row", "df")])
+        both = row(
+            qc=[QCResult("QC-033", "error", "row", "short"), QCResult("QC-046", "error", "row", "no IDT")]
+        )
         assert planner.plan_batch(self.batch(both), tmp_path) == []
+
+    def test_one_held_row_holds_back_no_other(self, tmp_path: Path) -> None:
+        held = row(clip_name="MELT0002_pl01", qc=[QCResult("QC-046", "error", "row", "no IDT")])
+        assert {job.shot_code for job in planner.plan_batch(self.batch(row(), held), tmp_path)} == {
+            "MELT0001"
+        }
 
     def test_a_missing_turnover_folder_holds_every_row(self, tmp_path: Path) -> None:
         moved = [QCResult("QC-069", "error", "turnover", "the folder is gone")]
@@ -339,7 +354,7 @@ class TestAcceptAsIs:
 
     def test_no_amf_anywhere_is_not_waived(self, tmp_path: Path) -> None:
         """QC-008 left the list on 2026-09-28: no AMF means no input transform at all."""
-        assert "QC-008" not in planner.QC_BYPASSABLE and "QC-009" not in planner.QC_BYPASSABLE
+        assert "QC-008" in planner.QC_CANNOT_RENDER and "QC-009" not in planner.QC_CANNOT_RENDER
         missing = [QCResult("QC-008", "error", "turnover", "no AMF")]
         assert planner.plan_batch(self.batch(row(), turnover_qc=missing), tmp_path) == []
 

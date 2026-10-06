@@ -61,13 +61,15 @@ Shot Type   ^(?P<kind>[A-Za-z]+)(?P<index>\d{1,2})?$   kind, casefolded, one of
 | wit | witness cam | raw 4k, raw HD, ref 4k, ref HD |
 | re | recon plate | raw 4k, raw HD, ref 4k, ref HD |
 | aux still | reference still, keyed to the shot code | single 4k exr, converted and never graded |
+| HDRI | the HDRI, `Shot Type` `HDRI` (QC-080) | the EXR, **copied byte for byte** and never checked (user, 2026-10-07) |
 
-**Nothing else is a deliverable** (2026-09-22). HDRI, camData, BTS stills and the lens grid carry
+**Nothing else is a deliverable** (2026-09-22). camData, BTS stills and the lens grid carry
 no `Shot Type`, which is the whole of the tool's scope, so the tool neither
 reads, copies nor renames any of them; they are Ben's or they are manual. **The stringout is the
 exception**: one per turnover, built by the tool from Ben's final EDL (PRD FR-9, since 2026-09-25). `BTS` and `lensgrid` are
-not types either: a `Shot Type` of either is unrecognised and QC-010 (D5). Noted because the studio's own sheet marks **HDRI and Camera Data as Required**, so they
-still have to reach the vendor; they reach it without passing through this tool.
+not types either: a `Shot Type` of either is unrecognised and QC-010 (D5). Noted because the studio's own sheet marks **Camera Data as Required**, so it still has to
+reach the vendor; it reaches it without passing through this tool. (So is HDRI, which the tool
+delivers since 2026-10-07.)
 
 ## 3. Output filename templates
 
@@ -79,10 +81,11 @@ Tokens: `{shotcode}` `{elem}` `{kind}` `{res}` `{ver}` `{frame}` `{aux}` `{auxid
 | raw exr folder | `{shotcode}_{elem}_raw_{res}_v{ver}` | `MELT0001_pl01_raw_4k_v01` |
 | ref mp4 | `{shotcode}_{elem}_ref_{res}_v{ver}.mp4` | `MELT0001_pl01_ref_HD_v01.mp4` |
 | audio | `{shotcode}_{elem}_audio_v{ver}.wav` | `MELT0001_pl01_audio_v01.wav` |
+| HDRI exr | `{shotcode}_pl01_HDRI_{idx}_v{ver}.exr` | `SECA0009_pl01_HDRI_01_v01.exr`. As the tracker writes it (`BACH0002_pl01_HDRI_01_v01.exr`); the shooters' spec drops the index. `naming.hdri_exr` (2026-10-07) |
 | aux still exr | `{shotcode}_{aux}_{auxidx}_4k_v{ver}.exr` | `MELT0001_colorChart_01_4k_v01.exr`. **No element segment** (shooters' spec, 2026-09-21): a reference still is keyed to the shot code |
 | stringout mp4 | `turnover{num:03}_{MM}_{DD}_{YY}_{shooter}_SO_v{ver}.mp4`, in `<show>/_reports/` | `turnover121_09_23_26_danielluckett_SO_v01.mp4`. Dated as the turnover folder, not the render; month, day and year are always two digits each (user, 2026-10-05; a folder's four digit year is written as its last two). A stringout written earlier with a four digit year still counts as a version. `naming.stringout_stem` (2026-09-25) |
 
-The HDRI, camData, BTS and lens grid templates were removed on 2026-09-22 with the deliverables (section 2). The stringout's was removed then too and came back with the stringout on 2026-09-25.
+The camData, BTS and lens grid templates were removed on 2026-09-22 (the HDRI's came back on 2026-10-07) with the deliverables (section 2). The stringout's was removed then too and came back with the stringout on 2026-09-25.
 
 `{res}` is `4k` or `HD` exactly. `{ver}` is two digits. `{frame}` is four digits starting at 1001.
 
@@ -109,7 +112,7 @@ the sheet does not go looking for the rule behind one of them.
 - Version is per shot per run. Before rendering a shot, list existing `v??` for any of its deliverables in the destination; new version = max + 1, or 01 if none.
 - "Per shot" means per shot folder, so the scope of that listing is the whole `<delivery_root>/<show>/<shotcode>/` directory and every element of the shot in the run shares the result. A shot whose `cp01` was delivered at v01 therefore starts its `pl01` at v02. Element versions can skip numbers; a shot's deliverables never disagree.
 - All deliverables for that shot in this run get the same version, even if only one of them was missing. Partial version sets are confusing downstream.
-- Reference stills follow the same version as the shot in that run. **There are no side-file copies to version** (2026-09-22): HDRI, camData, BTS and the lens grid are not tool deliverables.
+- Reference stills follow the same version as the shot in that run. An HDRI's copy is versioned with its shot too (2026-10-07). **There are no other side-file copies to version** (2026-09-22): camData, BTS and the lens grid are not tool deliverables.
 - A `.part` file or folder is never counted as an existing version.
 
 ## 5. Delivery folder layout (proposed default, editable template in Settings, OQ-1)
@@ -126,6 +129,7 @@ the sheet does not go looking for the rule behind one of them.
       <shotcode>_<elem>_ref_HD_v01.mp4
       <shotcode>_<elem>_audio_v01.wav
       <shotcode>_colorChart_01_4k_v01.exr     (keyed to the shot code, not an element)
+      <shotcode>_pl01_HDRI_01_v01.exr         (the HDRI, copied as it is)
     _reports/
       shot_tracker_<batchname>_<date>.xlsx      (<date> is YYYYMMDD, so name order is date order)
       qc_ingest_log_<batchname>_<date>.xlsx
@@ -165,6 +169,7 @@ One anchored pattern per kind, tried in order. They are mutually exclusive becau
 | raw exr folder | `^<sc>_raw_(?P<res>4k\|HD)_v(?P<ver>\d{2})$` |
 | ref mp4 | `^<sc>_ref_(?P<res>4k\|HD)_v(?P<ver>\d{2})\.mp4$` |
 | audio | `^<sc>_audio_v(?P<ver>\d{2})\.wav$` |
+| HDRI exr | `^<shotcode>_pl01_(?P<aux>HDRI)_(?P<auxidx>\d{2})_v(?P<ver>\d{2})\.exr$` |
 | aux still exr | `^<shotcode>_(?P<aux>colorChart\|mirrorBall\|greyBall\|sizeRef)_(?P<auxidx>\d{2})_4k_v(?P<ver>\d{2})\.exr$` |
 
 The `show` prefix pattern is the same configurable value as section 1, so a Settings change applies to both directions at once.

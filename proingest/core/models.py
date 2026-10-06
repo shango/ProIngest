@@ -525,6 +525,15 @@ class ShotRow:
     identity: ShotIdentity | None = None
     shot_code_override: str | None = None
     media: MediaInfo | None = None
+    resolve_start_tc: str = ""
+    """The CSV's `Start TC`: where Resolve has the clip start, which the EDL counts from.
+    Used when the file's own timecode puts the cut outside it (QC-084). Additive."""
+
+    hdri_render: MediaInfo | None = None
+    """An HDRI's pre-render: its timeline event with the pan, rendered by Ben into the
+    turnover folder under the HDRI's name as a video (user, 2026-10-07). What the stringout
+    shows; QC-083 when it is missing. Additive, so the schema version does not move."""
+
     record_in: int = 0
     record_out: int = 0
     snapshot: InOut | None = None
@@ -665,6 +674,8 @@ class ShotRow:
             "identity": _identity_to_dict(self.identity),
             "shot_code_override": self.shot_code_override,
             "media": self.media.to_dict() if self.media else None,
+            "resolve_start_tc": self.resolve_start_tc,
+            "hdri_render": self.hdri_render.to_dict() if self.hdri_render else None,
             "record_in": self.record_in,
             "record_out": self.record_out,
             "snapshot": self.snapshot.to_dict() if self.snapshot else None,
@@ -699,6 +710,8 @@ class ShotRow:
             identity=_identity_from_dict(data.get("identity")),
             shot_code_override=data.get("shot_code_override"),
             media=MediaInfo.from_dict(media) if media else None,
+            resolve_start_tc=str(data.get("resolve_start_tc", "")),
+            hdri_render=MediaInfo.from_dict(data["hdri_render"]) if data.get("hdri_render") else None,
             record_in=int(data.get("record_in", 0)),
             record_out=int(data.get("record_out", 0)),
             snapshot=InOut.from_dict(snapshot) if snapshot else None,

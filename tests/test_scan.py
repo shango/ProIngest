@@ -723,12 +723,21 @@ class TestTheAmf:
         assert [(r.rule_id, r.severity) for r in row.qc if r.rule_id == "QC-009"] == [("QC-009", "info")]
         assert not qc.must_fix(batch)
 
-    def test_an_hdri_row_is_skipped_as_the_shooters_and_blocks_nothing(self, tmp_path: Path) -> None:
+    def test_an_hdri_row_is_delivered_and_blocks_nothing(self, tmp_path: Path) -> None:
+        """User, 2026-10-07: its EXR is copied as it is; no pre-render beside it is QC-083."""
         folder = fixtures.make_turnover(tmp_path / GOOD_FOLDER, shots=1, frames=4, shot_types=["HDRI"])
         turnover, row = self.scanned(folder)
-        assert row.skipped and row.skip_reason == "HDRI: delivered by the shooters"
-        assert "QC-080" in rules(row)
+        assert not row.skipped and row.identity is not None and row.identity.is_hdri
+        assert {"QC-080", "QC-083"} <= set(rules(row)) and not row.errors()
         assert not qc.must_fix(Batch(delivery_root=tmp_path, turnovers=[turnover], rows=[row]))
+
+    def test_an_hdri_and_its_pre_render_are_not_ambiguous(self, tmp_path: Path) -> None:
+        folder = fixtures.make_turnover(tmp_path / GOOD_FOLDER, shots=1, frames=4, shot_types=["HDRI"])
+        fixtures.make_mp4(folder / "media" / "MELT0001_pl01.mp4", count=4)
+        _, row = self.scanned(folder)
+        assert row.media is not None and row.media.path.suffix == ".exr"
+        assert row.hdri_render is not None and row.hdri_render.path.suffix == ".mp4"
+        assert "QC-013" not in rules(row) and "QC-083" not in rules(row)
 
     def test_an_hdri_with_no_amf_is_not_an_error(self, tmp_path: Path) -> None:
         """Turnover135 (2026-10-05): QC-075 on each HDRI, which is never graded (QC-080)."""
@@ -736,3 +745,38 @@ class TestTheAmf:
         self.amf(folder).unlink()
         _, row = self.scanned(folder)
         assert "QC-080" in rules(row) and not row.errors()
+
+
+class TestACutOutsideItsFile:
+    """QC-029 and QC-084 (user, 2026-10-07): a cut the file's own timecode puts outside it is
+    read by Resolve's clock, the CSV's `Start TC`, when that puts it inside (a warning), and
+    is an error said in timecode otherwise."""
+
+    def folder(self, tmp_path: Path, start_tc: str | None) -> Path:
+        folder = fixtures.make_turnover(tmp_path / GOOD_FOLDER, shots=1, frames=4)
+        edl = folder / "FINAL_v01.edl"
+        edl.write_text(edl.read_text().replace("01:00:00:00 01:00:00:04 ", "00:59:50:00 00:59:50:04 ", 1))
+        if start_tc is not None:
+            csv = folder / "metadata.csv"
+            lines = csv.read_bytes().decode("utf-16").splitlines()
+            lines = [f'{lines[0]},"Start TC"'] + [f'{line},"{start_tc}"' for line in lines[1:]]
+            csv.write_bytes(("\r\n".join(lines) + "\r\n").encode("utf-16"))
+        return folder
+
+    def scanned(self, folder: Path) -> ShotRow:
+        _, rows = scan.scan_turnover(folder, "t1", scan.ScanSettings(rules=fixtures.SMALL_RULES))
+        return rows[0]
+
+    def test_resolve_s_clock_puts_it_inside_so_it_is_a_warning_and_cut_by_it(self, tmp_path: Path) -> None:
+        row = self.scanned(self.folder(tmp_path, "00:59:50:00"))
+        assert row.media is not None
+        assert "QC-084" in rules(row) and "QC-029" not in rules(row) and not row.errors()
+        assert row.current == InOut(row.media.start_frame, row.media.start_frame + 3)
+        (said,) = [result.message for result in row.qc if result.rule_id == "QC-084"]
+        assert "00:59:50:00 to 00:59:50:03" in said and "01:00:00:00 to 01:00:00:03" in said
+
+    def test_with_no_clock_that_fits_it_is_an_error_in_timecode(self, tmp_path: Path) -> None:
+        row = self.scanned(self.folder(tmp_path, None))
+        (said,) = [result for result in row.qc if result.rule_id == "QC-029"]
+        assert said.severity == "error"
+        assert "00:59:50:00 to 00:59:50:03" in said.message and "frames" not in said.message

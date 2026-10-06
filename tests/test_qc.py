@@ -957,7 +957,7 @@ class TestLogResults:
         plate = row()
         plate.qc = [
             QCResult("QC-033", "error", "row", "too short"),
-            QCResult("QC-011", "error", "row", "twice"),
+            QCResult("QC-046", "error", "row", "no input transform"),
         ]
         turnover = Turnover("t1", tmp_path / "T")
         qc.set_qc_bypassed(turnover, True)
@@ -966,8 +966,8 @@ class TestLogResults:
         assert lines[0][0] == "WARNING" and "QC-074" in lines[0][1]
         assert lines[1][1].endswith("QC-033 too short (bypassed: rendered as it is)")
         assert lines[2][1].endswith(
-            "QC-011 Fix in Resolve - twice (bypassed, but not rendered: "
-            "Accept As Is cannot render past this, so the row is held back)"
+            "QC-046 Fix in Resolve - no input transform (bypassed, but not rendered: "
+            "there is nothing to render past this, so the row is held back)"
         )
         assert lines[-1] == (
             "INFO",

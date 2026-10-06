@@ -284,6 +284,23 @@ class TestDeliveryLayout:
     def test_reports_sit_beside_shots(self) -> None:
         assert naming.reports_dir(Path("/d"), "MELT") == Path("/d/MELT/_reports")
 
+    def test_an_hdri_is_named_as_the_tracker_names_it_and_reads_back(self) -> None:
+        hdri = naming.ShotIdentity("SECA0009", naming.HDRI_KIND, "01")
+        name = naming.hdri_exr(hdri, 2)
+        assert name == "SECA0009_pl01_HDRI_01_v02.exr"
+        parsed = naming.parse_output_name(name)
+        assert parsed is not None and (parsed.kind, parsed.version, parsed.shot_code) == (
+            "hdri",
+            2,
+            "SECA0009",
+        )
+        assert naming.shot_label(hdri) == "SECA0009_pl01_HDRI_01"
+        assert naming.next_version([name]) == 3
+
+    def test_an_hdri_has_no_element_stem(self) -> None:
+        with pytest.raises(ValueError):
+            _ = naming.ShotIdentity("SECA0009", naming.HDRI_KIND, "01").stem
+
     def test_the_user_folders_sit_at_the_delivery_root(self) -> None:
         assert naming.user_dirs(Path("/d")) == [Path("/d/User_Generated"), Path("/d/User_Uploads")]
 

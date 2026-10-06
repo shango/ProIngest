@@ -166,16 +166,23 @@ class TestColumnsNotRead:
 
 
 class TestHdri:
-    """Delivered by the shooters by hand; the tool delivers nothing for it (user, 2026-09-28)."""
+    """Its EXR is copied as it is and no check runs on it (user, 2026-10-07)."""
 
-    @pytest.mark.parametrize("written", ["HDRI", "hdri", "HDRI01"])
-    def test_an_hdri_row_is_kept_marked_and_carries_only_info(self, tmp_path: Path, written: str) -> None:
+    @pytest.mark.parametrize(("written", "index"), [("HDRI", "01"), ("hdri", "01"), ("HDRI2", "02")])
+    def test_an_hdri_row_is_marked_and_carries_only_info(
+        self, tmp_path: Path, written: str, index: str
+    ) -> None:
         result = read(
             tmp_path, ["File Name", "Shot", "Shot Type"], [["DALU0012_pl01_02_HDRI.exr", "TEST0013", written]]
         )
         (row,) = result.rows
-        assert row.shooter_delivered and row.kind is None
+        assert row.hdri and (row.kind, row.index) == ("HDRI", index)
         assert [(q.rule_id, q.severity) for q in row.qc] == [("QC-080", "info")]
+
+    def test_one_with_no_shot_code_has_no_kind_to_deliver(self, tmp_path: Path) -> None:
+        result = read(tmp_path, ["File Name", "Shot", "Shot Type"], [["x.exr", "", "HDRI"]])
+        (row,) = result.rows
+        assert row.hdri and row.kind is None
 
     def test_a_type_merely_containing_hdri_is_still_qc_010(self, tmp_path: Path) -> None:
         result = read(tmp_path, ["File Name", "Shot", "Shot Type"], [["x.exr", "TEST0013", "HDRIref"]])
@@ -198,9 +205,11 @@ class TestFileShape:
 
     def test_nothing_reads_a_duration_a_frame_count_or_a_path(self) -> None:
         """The real file's `Frames` and `Clip Directory` describe the originals, so the
-        reader must not expose them at all: a caller cannot misuse what it cannot reach."""
+        reader must not expose them at all: a caller cannot misuse what it cannot reach.
+        `Start TC` is the one exception, read only when the file's own timecode puts the
+        EDL's cut outside it (QC-084, user 2026-10-07)."""
         fields = set(metacsv.MetaRow.__dataclass_fields__)
-        assert not fields & {"frames", "duration", "clip_directory", "start_tc", "end_tc", "path"}
+        assert not fields & {"frames", "duration", "clip_directory", "end_tc", "path"}
 
 
 class TestFind:

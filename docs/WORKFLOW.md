@@ -27,7 +27,7 @@ behind it is `COLOR_AND_FORMAT.md` section 1 and `PRD.md`.
 | 5 | **Fill in the clip metadata**: the shot code in `Shot` and what the clip is in `Shot Type` (`pl`, `cp`, or a reference type - see the table below). `Gamma Notes` and `Color Space Notes` are **no longer read** (2026-09-28): the encoding reaches the tool in Ben's AMFs. | the metadata that every deliverable's name depends on |
 | 6 | **Media Management > Copy with trim, consolidating, not transcoding.** | one file per timeline clip: camera filename kept, camera timecode kept, handles both sides, nothing recompressed. Resolve also writes a `.drt` beside the media as a by-product, which **nothing downstream uses** |
 | 7 | Hand the consolidated timeline **and the metadata** to Ben. | the turnover folder, plus the metadata export (see the note below) |
-| 8 | Put the per-shot extras in the turnover. | HDRI, camData, BTS, lens grid folder. **None of these is a tool deliverable** (2026-09-22): they carry no `Shot Type`, so the tool ignores them and they are delivered by hand. **An HDRI that is on the timeline with `Shot Type` `HDRI`** (turnover097) is the shooters' to deliver too: the tool keeps the row, skips it at scan, and shows its clip in the stringout only (QC-080, user 2026-09-28) |
+| 8 | Put the per-shot extras in the turnover. | HDRI, camData, BTS, lens grid folder. **None of these is a tool deliverable** (2026-09-22): they carry no `Shot Type`, so the tool ignores them and they are delivered by hand. **An HDRI that is on the timeline with `Shot Type` `HDRI`** is a frame hold on the HDRI EXR with a pan: the tool delivers the EXR byte for byte, and the stringout shows Ben's pre-render of the event, a video under the EXR's name (QC-080, QC-083, user 2026-10-07) |
 
 > **The metadata has to reach Ben, and how is worth pinning down.** The user's position
 > (2026-09-21) is that it travels with the consolidated clips or in the CSV. In `Turnover199` it
@@ -131,7 +131,7 @@ writes is either a deliverable named from the spec or a report about one.
 | `sizeRef` | `sizeRef_01` | reference still | one 4k EXR, converted, never graded |
 | `BTS` | - | behind the scenes, phone stills | **nothing** (user, 2026-09-22) |
 | `lensgrid` | - | lens distortion chart | **nothing. Ben delivers it** (user, 2026-09-22) |
-| `HDRI` | - | HDRI, on the timeline | **nothing. The shooters deliver it**; the row is skipped at scan and its clip shows only in the stringout (QC-080, user 2026-09-28) |
+| `HDRI` | `pl01_HDRI_01` | HDRI, on the timeline as a frame hold with a pan | **the EXR, copied byte for byte, never checked**; the stringout shows the pre-render Ben puts beside it (`xxxx_001.mp4` beside `xxxx_001.exr`, QC-083) (QC-080, user 2026-10-07) |
 | *anything else, or blank* | - | - | **nothing. The clip is ignored** |
 
 The first nine rows are the tool's entire output. `BTS` and `lensgrid` stay in the vocabulary

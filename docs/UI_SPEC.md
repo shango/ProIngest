@@ -186,8 +186,8 @@ he needs to change, in plain words, with no rule IDs (`core/fixit.py`). Per turn
 **Fix in Resolve**, **Fix in the turnover folder** and **Worth a look**, those that stop delivery
 first. Each item is one rule's sentence (`fixit.ADVICE`) with every clip it applies to listed once
 under it, "Every clip in this turnover (N)" when that is all of them, and what is particular to a
-clip beside it (how far a cut misses its file, which side lacks handles). Two items are not rules:
-an HDRI row whose clip is the stitched EXR, and a shot with reference clips and no plate (the
+clip beside it (how far a cut misses its file, which side lacks handles). One item is not a rule:
+a shot with reference clips and no plate (the
 check that would have caught turnover134's mirror ball typed SECA0001). The editor's own findings
 (In/Out edits, the delivery root, a run) are not Ben's and are left out. Built from the results
 the Issues dock shows; nothing re-runs. The page is self-contained, light or dark with the
@@ -278,7 +278,7 @@ lower inside it than the measured y.
 
 **Picture in picture on a plate** (`stringout.INSET_CORNERS`) (user, 2026-09-29): over each `pl` event, the shot's **cp top left** and **wit top right**, each 480x270 flush in its corner (Resolve's zoom 0.25 at X -720/+720, Y 405). The first cp and the first wit of the shot in EDL order, from their **delivered HD references**, each playing from its own cut In at the plate's first frame, and **gone** when it runs out or at the plate's Out, whichever is first. No cp or wit, or none delivered: no inset in that corner. The top centre name sits between them (x 499 to 1411 on turnover097). Each inset carries its own element (`cp01`, `wit01`) burned in bottom left inside it, Open Sans 32 px against the frame's 42 (user, 2026-09-29), and it goes when the inset does.
 
-**Any held frame plays for one second** (user, 2026-09-29): a reference still (a chart, ball or size ref, which is one frame of a video), a frame hold (`M2` at 0) or any one frame cut, held for 24 frames whatever the EDL gives it (**except a held HDRI clip, which keeps the EDL's length**, user 2026-09-30), so the stringout runs longer than the EDL by that much. Taken from the source, such a frame is **coloured through its AMF** (input transform, CLF nodes, output transform) as Resolve shows it; a still's delivered EXR stays ungraded. An event with no known source is black for the same second.
+**Any held frame plays for one second** (user, 2026-09-29): a reference still (a chart, ball or size ref, which is one frame of a video), a frame hold (`M2` at 0) or any one frame cut, held for 24 frames whatever the EDL gives it (**except an HDRI, which keeps the EDL's length** and plays its pre-render, user 2026-10-07), so the stringout runs longer than the EDL by that much. Taken from the source, such a frame is **coloured through its AMF** (input transform, CLF nodes, output transform) as Resolve shows it; a still's delivered EXR stays ungraded. An event with no known source is black for the same second.
 
 The bottom line sits at y 892. No source timecode is burned in. White text with no box is hard
 to read on a bright frame; that matches Ben's template and is not yet decided (PROGRESS).
@@ -402,7 +402,7 @@ it is hidden rather than shown empty.
 
 There is **no Side files section** since 2026-09-22: HDRI and camData carry no `Shot Type`, so
 the tool reads neither and the pane has nothing to show for them. An HDRI row with `Shot Type`
-`HDRI` (2026-09-28) is skipped at scan, with the reason `HDRI: delivered by the shooters` and QC-080.
+`HDRI` delivers its EXR byte for byte and carries QC-080 (user, 2026-10-07).
 
 ### 12.3 Empty and edge states
 
@@ -479,8 +479,9 @@ AMF, CLF or clip into the folder and re-scans.
   **Re-scan** for that one turnover and **New Folder Location...** for one that has moved (D16).
 - **Accept As Is (Ignore QC)**, a checkbox on the same menu (user, 2026-09-28), lets a turnover
   run whatever its QC says: its errors stay on the rows and in the Issues dock, the heading shows
-  QC-074, and neither the Run nor a row is held back by an error a render gets right. An error
-  that would write a wrong file still holds its row (QC_RULES QC-074 lists which). Saved in the
+  QC-074, and every clip that can render does, errors and all (user, 2026-10-07). Only a clip
+  with nothing to render or no way to colour it is held back, and it holds back no other
+  (QC_RULES QC-074 lists which). Saved in the
   batch and kept across Re-scan; unticking it puts the errors back in charge.
 - **What the editor did is carried over by File Name** (`scan.carry_over`), in CSV order, so a
   clip used twice pairs first with first: a trim the editor made, the shot code correction, the

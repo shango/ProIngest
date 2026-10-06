@@ -36,7 +36,7 @@ TEMP_SUFFIX = ".part"
 RESOLUTIONS: dict[Resolution, tuple[int, int]] = {"4k": (3840, 2160), "HD": (1920, 1080)}
 """Exact target sizes, docs/COLOR_AND_FORMAT.md section 4. Never derived from the source."""
 
-JobKind = Literal["raw_dir", "ref_mp4", "audio", "aux_still"]
+JobKind = Literal["raw_dir", "ref_mp4", "audio", "aux_still", "hdri"]
 
 PICTURE_DELIVERABLES: tuple[tuple[JobKind, Resolution], ...] = (
     ("raw_dir", "4k"),
@@ -243,26 +243,39 @@ def effective_identity(row: ShotRow, show_pattern: str = naming.DEFAULT_SHOW_PAT
     return replace(row.identity, shot_code=row.shot_code_override)
 
 
-QC_BYPASSABLE = frozenset({"QC-023", "QC-033", "QC-034", "QC-071"})
-"""The errors Accept As Is (QC-074) renders past, because each was traced through the
-planner and the renderer to a correct file of what is there (2026-09-28): letterboxed for
-QC-023, the cut as trimmed for QC-033 and QC-034, and QC-071's rows match by timecode or
-carry their own error. QC-008 and QC-009 left it the same day, when colour moved to the
-AMF: QC-009 became info, and QC-008 means no AMF anywhere, so no input transform.
+QC_CANNOT_RENDER = frozenset(
+    {
+        "QC-008",  # no AMF anywhere: no input transform for any clip
+        "QC-012",  # no file
+        "QC-013",  # two files, and no knowing which
+        "QC-014",  # the file will not open
+        "QC-022",  # the codec will not decode
+        "QC-029",  # the cut is outside the file
+        "QC-031",  # the edited In or Out is outside the file
+        "QC-032",  # In after Out
+        "QC-042",  # the sound to deliver is missing
+        "QC-046",  # the AMF names no input transform
+        "QC-047",  # the input transform is not one the config has
+        "QC-069",  # the turnover's folder is gone
+        "QC-075",  # no AMF matched, so no input transform
+        "QC-076",  # a CLF the AMF names is missing or changed
+    }
+)
+"""The errors Accept As Is (QC-074) cannot render past, because there is nothing to render
+or no way to colour it. **Everything else on an accepted turnover renders** (user,
+2026-10-07: "the turnover should run everything it can and not hold back any other clips"),
+errors and all, and every error is still reported. Before that day it was the reverse: an
+allowlist of four errors rendered past and every other error held its row (OQ-76).
 
-**An allowlist, so a rule nobody has traced holds its row back.** The rest either render
-a plausible wrong file with no error (QC-011 two rows into one set of files, QC-026 and
-QC-027 the wrong frames, QC-066 and QC-067 the whole clip ungraded, QC-073 the retime
-lost, QC-032 an empty file that passes) or fail part way through as QC-100 (QC-022,
-QC-029, QC-031, QC-042, QC-046, QC-047, QC-069). Holding a row back does not block the
-batch; the saved log says which rows and why (`qc.log_results`).
+A row or turnover held here does not block the batch; the saved log says which rows and why
+(`qc.log_results`).
 """
 
 
 def holding_errors(row: ShotRow, bypassed: bool = False) -> list[QCResult]:
     """The errors that keep this row from rendering: all of them, or on a turnover
-    accepted as it is, those outside `QC_BYPASSABLE`."""
-    return [result for result in row.errors() if not (bypassed and result.rule_id in QC_BYPASSABLE)]
+    accepted as it is, only those `QC_CANNOT_RENDER` names."""
+    return [result for result in row.errors() if not bypassed or result.rule_id in QC_CANNOT_RENDER]
 
 
 def bypassed_turnovers(batch: Batch) -> set[str]:
@@ -271,13 +284,13 @@ def bypassed_turnovers(batch: Batch) -> set[str]:
 
 
 def held_turnovers(batch: Batch) -> set[str]:
-    """Bypassed turnovers whose own error the bypass cannot render past, QC-069's missing
-    folder being the one with rows: every row of them is held back."""
+    """Bypassed turnovers whose own error leaves nothing to render, QC-069's missing folder
+    and QC-008's missing AMFs: every row of them is held back."""
     return {
         turnover.turnover_id
         for turnover in batch.turnovers
         if turnover.qc_bypassed
-        and any(result.severity == "error" and result.rule_id not in QC_BYPASSABLE for result in turnover.qc)
+        and any(result.severity == "error" and result.rule_id in QC_CANNOT_RENDER for result in turnover.qc)
     }
 
 
@@ -289,7 +302,7 @@ def plannable_identity(
     A row is not planned when the editor skipped it, when it carries an error, which
     FR-6 says blocks the row but not the batch, or when it has no media and no chosen
     range, because then there is nothing to read. On a turnover accepted as it is
-    (`bypassed`), only the errors outside `QC_BYPASSABLE` hold it back.
+    (`bypassed`), only the errors `QC_CANNOT_RENDER` names hold it back.
     """
     if row.skipped or holding_errors(row, bypassed) or row.media is None or row.current is None:
         return None
@@ -333,6 +346,8 @@ def plan_row(
     )
     if identity.is_still:
         plan = _aux_plan(shot)
+    elif identity.is_hdri:
+        plan = _hdri_plan(shot)
     else:
         plan = RowPlan(jobs=[_picture_job(shot, kind, res) for kind, res in TYPE_TABLE[identity.kind]])
         audio = _audio_job(shot)
@@ -562,6 +577,23 @@ def _audio_job(shot: _Shot) -> DeliverableJob | None:
         rate=shot.media.rate,
         source_rate=shot.media.stated_rate or shot.media.rate,
         source_start_frame=shot.media.start_frame,
+    )
+
+
+def _hdri_plan(shot: _Shot) -> RowPlan:
+    """An HDRI delivers its EXR, copied byte for byte (user, 2026-10-07). A copy has no
+    frame range and no colour."""
+    return RowPlan(
+        jobs=[
+            DeliverableJob(
+                kind="hdri",
+                source=shot.media.path,
+                destination=shot.directory / naming.hdri_exr(shot.identity, shot.version),
+                version=shot.version,
+                shot_code=shot.identity.shot_code,
+                elem=naming.HDRI_ELEMENT,
+            )
+        ]
     )
 
 

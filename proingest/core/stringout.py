@@ -17,9 +17,12 @@ ffmpeg. The user's decisions, all in OQ-38:
   HDRI, which keeps the EDL's length** (user, 2026-09-30). Taken from the
   source, it is **coloured through its AMF** (input transform, CLF nodes, output transform)
   the way Resolve shows it; a still's delivered EXR stays ungraded.
-- **An HDRI on the timeline is a video clip** (user, 2026-09-29): the sRGB version of what the
-  shooter captured, later stitched into an EXR HDRI the tool never touches. Its row delivers
-  nothing (QC-080) and its event is cut from the clip itself, **shown as it is**, never coloured.
+- **An HDRI on the timeline is a frame hold on the HDRI EXR with a pan** (user, 2026-10-07),
+  which no EDL carries. Ben renders the event, pan included, beside the EXR under its name as
+  a video (`xxxx_001.mp4` beside `xxxx_001.exr`), in sRGB Linear and ungraded. **The event
+  is cut from that pre-render**, from its first frame for the event's length, and **coloured
+  through the HDRI's AMF**, its own encoding taking the input transform's place. With no
+  pre-render (QC-083) the EXR is held for the event's length, shown as it is.
 - **Only a plate has sound**; every other segment carries silence of the same length.
 - **A plate carries its shot's cp top left and wit top right** (user, 2026-09-29), each at
   quarter size flush in its corner (Resolve's zoom 0.25 at X -720/+720, Y 405 on 1920x1080).
@@ -134,6 +137,10 @@ class Segment:
     insets: tuple[PictureInPicture, ...] = ()
     """A plate's cp and wit, laid over it (`INSET_CORNERS`)."""
 
+    prerender: bool = False
+    """An HDRI's pre-render (QC-083): linear, so its cube goes behind a shaper, and the
+    event it stands for, so it is no stand-in (QC-143)."""
+
 
 @dataclass
 class Plan:
@@ -245,6 +252,9 @@ def _segment(
 ) -> Segment:
     length = frames.duration(event.record_in, event.record_out)
     claimed = [row for row in rows if event in session.candidates(row)]
+    hdri = next((row for row in claimed if qc.is_hdri(row) and row.hdri_render is not None), None)
+    if hdri is not None:
+        return _prerender(event, hdri, length, show_pattern)
     known = next((row for row in claimed if row.media is not None), None)
     cut = _cut(event, known.media) if known is not None and known.media is not None else None
     if known is None or cut is None:
@@ -264,7 +274,7 @@ def _segment(
     label = naming.shot_label(identity) if identity is not None else Path(row.clip_name).stem
     held = _held(event, cut, identity)
     # A held HDRI keeps the EDL's length (user, 2026-09-30); every other held frame is a second.
-    shown = STILL_LENGTH if held and not qc.is_shooter_delivered(row) else length
+    shown = STILL_LENGTH if held and not qc.is_hdri(row) else length
     if delivering is not None and delivering.delivered_range is not None:
         offset = cut.in_frame - delivering.delivered_range.in_frame
         return Segment(
@@ -293,8 +303,29 @@ def _segment(
         start=cut.in_frame,
         media=known.media,
         identity=identity,
-        # An HDRI is the shooter's sRGB reference video, shown as it is (QC-080).
-        color=clf.shot_color(row) if held and not qc.is_shooter_delivered(row) else None,
+        # An HDRI with no pre-render is its EXR held, shown as it is (QC-083).
+        color=clf.shot_color(row) if held and not qc.is_hdri(row) else None,
+    )
+
+
+def _prerender(event: clf.ConformEvent, row: ShotRow, length: int, show_pattern: str) -> Segment:
+    """An HDRI's event, cut from Ben's pre-render of it: from its first frame for the
+    event's length (user, 2026-10-07), through the HDRI's grade."""
+    render = row.hdri_render
+    assert render is not None
+    identity = effective_identity(row, show_pattern)
+    return Segment(
+        kind="source",
+        length=length,
+        event_id=event.event_id,
+        label=naming.shot_label(identity) if identity is not None else Path(row.clip_name).stem,
+        effect=row.scene,
+        path=render.path,
+        start=render.start_frame,
+        media=render,
+        identity=identity,
+        color=replace(clf.shot_color(row), source_encoding=color.HDRI_RENDER_ENCODING),
+        prerender=True,
     )
 
 
@@ -356,7 +387,11 @@ def build(
         turnover.qc.append(QCResult("QC-142", "error", "turnover", f"the stringout was not written: {exc}"))
         return None
     turnover.stringout = deliverable
-    stand_ins = [f"{s.event_id} ({s.label})" for s in made.segments if s.kind != "reference" and not s.gap]
+    stand_ins = [
+        f"{s.event_id} ({s.label})"
+        for s in made.segments
+        if s.kind != "reference" and not s.gap and not s.prerender
+    ]
     if stand_ins:
         turnover.qc.append(
             QCResult(
@@ -437,19 +472,27 @@ def _encode(made: Plan, segment: Segment, parts: Path, index: int) -> Path:
     elif segment.kind == "source" and segment.path is not None and segment.media is not None:
         source = segment.media
         fitted = _fit(source.resolution)
+        last = segment.start + (0 if segment.freeze else segment.length - 1)
+        if segment.prerender:
+            # A pre-render a frame or two short holds its last frame rather than failing the join.
+            last = min(last, source.max_available_out)
+        held = segment.freeze or last - segment.start + 1 < segment.length
+        lut = _still_lut(segment, parts / f"{index:04d}{LUT_SUFFIX}")
+        shaper = parts / f"{index:04d}_shaper{LUT_SUFFIX}"
         command = ffmpeg.encode_command(
             media.printf_pattern_for(segment.path) if source.is_sequence else str(segment.path),
             destination,
             segment.start,
-            segment.start + (0 if segment.freeze else segment.length - 1),
+            last,
             is_sequence=source.is_sequence,
             rate=RATE,
             target_size=fitted if fitted != source.resolution else None,
             color_space=source.color_space,
             color_range=source.color_range,
-            lut=_still_lut(segment, parts / f"{index:04d}{LUT_SUFFIX}"),
+            lut=lut,
+            shaper=color.shaper_lut(shaper) if lut is not None and segment.prerender else None,
             canvas=SIZE if fitted != SIZE else None,
-            hold=segment.length if segment.freeze else 0,
+            hold=segment.length if held else 0,
             overlay=overlay,
             silence=True,
             audio_format=ffmpeg.STRINGOUT_AUDIO,
@@ -471,7 +514,7 @@ def _still_lut(segment: Segment, destination: Path) -> Path | None:
     if segment.color is None:
         return None
     try:
-        return color.view_lut(destination, *segment.color.view_transforms())
+        return color.view_lut(destination, *segment.color.view_transforms(), shaped=segment.prerender)
     except (clf.ClfError, color.ColorError, ocio.Exception, OSError) as exc:
         log.warning("event %s (%s) is ungraded on the stringout: %s", segment.event_id, segment.label, exc)
         return None

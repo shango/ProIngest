@@ -36,6 +36,16 @@ everywhere (OQ-72). Accepting both costs one row and writing `cp` keeps one spel
 in the delivered names.
 """
 
+HDRI_KIND = "HDRI"
+"""An HDRI's `Shot Type`. Not in `CLIP_TYPES`: `core/metacsv.py` reads it on its own (QC-080).
+
+The tool delivers the HDRI EXR byte for byte, and the stringout shows Ben's pre-render of
+its timeline event (user, 2026-10-07)."""
+
+HDRI_ELEMENT = "pl01"
+"""Every HDRI is named under the plate: `[SHOTCODE]_pl01_HDRI_v01.exr` in the shooters'
+spec, `BACH0002_pl01_HDRI_01_v01.exr` in the tracker."""
+
 _SHOT_TYPE_INDEX = {name.casefold(): name for name in CLIP_TYPES}
 _SHOT_TYPE_PATTERN = re.compile(r"^(?P<kind>[A-Za-z]+)(?P<index>\d{1,2})?$")
 
@@ -84,6 +94,11 @@ class ShotIdentity:
         return self.kind in AUX_NAMES
 
     @property
+    def is_hdri(self) -> bool:
+        """An HDRI: its EXR is delivered as it is, keyed to the shot's plate."""
+        return self.kind == HDRI_KIND
+
+    @property
     def elem(self) -> str:
         """`pl01`, what a plate's deliverables are named for."""
         return f"{self.kind}{self.index}"
@@ -99,6 +114,8 @@ class ShotIdentity:
         """
         if self.is_still:
             raise ValueError(f"{self.shot_code} {self.kind} is a reference still and has no element stem")
+        if self.is_hdri:
+            raise ValueError(f"{self.shot_code} {self.kind} is an HDRI and has no element stem")
         return f"{self.shot_code}_{self.elem}"
 
 
@@ -180,6 +197,18 @@ def aux_still_exr(identity: ShotIdentity, version: int) -> str:
     return f"{identity.shot_code}_{identity.kind}_{identity.index}_4k_{_ver(version)}.exr"
 
 
+def hdri_exr(identity: ShotIdentity, version: int) -> str:
+    """`SECA0009_pl01_HDRI_01_v01.exr`: the HDRI, copied byte for byte (user, 2026-10-07)."""
+    if not identity.is_hdri:
+        raise ValueError(f"an HDRI must have kind {HDRI_KIND!r}, got {identity.kind!r}")
+    return f"{hdri_label(identity)}_{_ver(version)}.exr"
+
+
+def hdri_label(identity: ShotIdentity) -> str:
+    """`SECA0009_pl01_HDRI_01`: the HDRI's name without its version."""
+    return f"{identity.shot_code}_{HDRI_ELEMENT}_{HDRI_KIND}_{identity.index}"
+
+
 # --- The turnover stringout, NAMING_SPEC.md section 5 (OQ-38, reopened 2026-09-25). ---
 
 STRINGOUT_SUFFIX = ".mp4"
@@ -220,6 +249,8 @@ def shot_label(identity: ShotIdentity) -> str:
     `SECA0002_colorChart_01`, the way its own file names it."""
     if identity.is_still:
         return f"{identity.shot_code}_{identity.kind}_{identity.index}"
+    if identity.is_hdri:
+        return hdri_label(identity)
     return identity.stem
 
 
@@ -251,6 +282,7 @@ OutputKind = Literal[
     "ref_mp4",
     "audio",
     "aux_still",
+    "hdri",
 ]
 
 
@@ -281,6 +313,7 @@ def _output_patterns(show_pattern: str) -> list[tuple[OutputKind, re.Pattern[str
         ("ref_mp4", re.compile(rf"^{sc}_ref_{res}_{v}\.mp4$")),
         ("audio", re.compile(rf"^{sc}_audio_{v}\.wav$")),
         ("aux_still", re.compile(rf"^{shot}_(?P<aux>{_AUX})_(?P<auxidx>\d{{2}})_4k_{v}\.exr$")),
+        ("hdri", re.compile(rf"^{shot}_{HDRI_ELEMENT}_(?P<aux>{HDRI_KIND})_(?P<auxidx>\d{{2}})_{v}\.exr$")),
     ]
 
 

@@ -36,7 +36,7 @@ from proingest.core.models import (
     ShotRow,
     Turnover,
 )
-from proingest.core.planner import QC_BYPASSABLE, DeliverableJob, effective_identity
+from proingest.core.planner import QC_CANNOT_RENDER, DeliverableJob, effective_identity
 
 log = logging.getLogger(__name__)
 
@@ -155,7 +155,7 @@ def is_picture_row(row: ShotRow) -> bool:
     (`planner._aux_plan`), so the range, duration, handle and timecode rules do not
     apply to it.
     """
-    return row.identity is not None and not row.identity.is_still
+    return row.identity is not None and not row.identity.is_still and not row.identity.is_hdri
 
 
 def delivers_aux_still(row: ShotRow) -> bool:
@@ -761,9 +761,9 @@ def check_duplicate_name(row: ShotRow, counts: dict[str, int]) -> list[QCResult]
 # --- registry ---------------------------------------------------------------------
 
 
-def is_shooter_delivered(row: ShotRow) -> bool:
-    """An HDRI row (QC-080): the tool delivers nothing for it, so no row rule has anything
-    to say about it. Its source fps or range said as errors was noise (user, 2026-09-29)."""
+def is_hdri(row: ShotRow) -> bool:
+    """An HDRI row (QC-080): its EXR is copied as it is and no row rule runs on it
+    (user, 2026-10-07). Its source fps or range said as errors was noise (2026-09-29)."""
     return any(result.rule_id == "QC-080" for result in row.qc)
 
 
@@ -774,7 +774,7 @@ def run_row_rules(
     name_counts: dict[str, int] | None = None,
 ) -> list[QCResult]:
     """Every row rule that is a pure function of the model, in rule ID order."""
-    if is_shooter_delivered(row):
+    if is_hdri(row):
         return []
     results: list[QCResult] = []
     results.extend(check_duplicate_name(row, name_counts or {}))
@@ -1095,9 +1095,9 @@ def _bypass_note(bypassed: bool, result: QCResult, held: str) -> str:
     """What Accept As Is did with an error, for its log line; empty when it did nothing."""
     if not bypassed or result.severity != "error" or _phase_b(result):
         return ""
-    if result.rule_id in QC_BYPASSABLE:
+    if result.rule_id not in QC_CANNOT_RENDER:
         return "bypassed: rendered as it is"
-    return f"bypassed, but not rendered: Accept As Is cannot render past this, so {held} is held back"
+    return f"bypassed, but not rendered: there is nothing to render past this, so {held} is held back"
 
 
 QC_BYPASSED = "QC-074"
@@ -1118,9 +1118,10 @@ def set_qc_bypassed(turnover: Turnover, bypassed: bool) -> None:
                 QC_BYPASSED,
                 "warning",
                 "turnover",
-                "QC is bypassed by the editor: its errors do not block the run. Rows whose only "
-                f"errors are {', '.join(sorted(QC_BYPASSABLE))} render as they are; any other error "
-                "still holds its row back, because rendering past it writes a wrong file",
+                "QC is bypassed by the editor: its errors do not block the run, and every clip that "
+                "can render does, errors and all. Only a clip with nothing to render or no way to "
+                "colour it is held back (a missing, unreadable or undecodable file, a cut outside "
+                "it, or no input transform)",
             )
         )
 
@@ -1138,7 +1139,7 @@ def log_results(batch: Batch, when: str) -> None:
     2026-09-28). The order is the dock's, and a result that is must-fix says it blocks
     the run, so the lines answer the same question `must_fix` does. On a turnover
     accepted as it is (QC-074), an error says whether it was rendered past or still holds
-    its row back (`planner.QC_BYPASSABLE`). A closing line counts them, at ERROR when
+    its row back (`planner.QC_CANNOT_RENDER`). A closing line counts them, at ERROR when
     anything blocks.
     """
     blocking = {id(result) for _, result in must_fix(batch)}
@@ -1246,6 +1247,8 @@ def preflight(batch: Batch, decoders: frozenset[str] | None = None) -> None:
             graded.add(turnover.turnover_id)
     for row in batch.rows:
         row.qc = [result for result in row.qc if result.rule_id not in OWNED_PREFLIGHT_RULES]
+        if is_hdri(row):
+            continue  # copied as it is, with no checks (user, 2026-10-07)
         row.qc.extend(check_source_codec(row, decoders))
         row.qc.extend(check_clf(row, row.turnover_id in graded))
         row.qc.extend(check_color_chain(row))
@@ -1311,6 +1314,7 @@ def run_phase_b(job: DeliverableJob, deliverable: Deliverable) -> list[QCResult]
     verifier = {
         "raw_dir": _verify_sequence,
         "aux_still": _verify_still,
+        "hdri": _no_checks,
         "ref_mp4": _verify_reference,
         "audio": _verify_audio,
     }.get(job.kind)
@@ -1319,6 +1323,11 @@ def run_phase_b(job: DeliverableJob, deliverable: Deliverable) -> list[QCResult]
     if not job.destination.exists():
         return [_failure(RENDER_FAILED, f"{job.name}: nothing was written to {job.destination}")]
     return verifier(job, deliverable)
+
+
+def _no_checks(job: DeliverableJob, deliverable: Deliverable) -> list[QCResult]:
+    """An HDRI is copied as it is, and no check runs on it (user, 2026-10-07)."""
+    return []
 
 
 # --- QC-101 to QC-107: a delivered EXR sequence -----------------------------------
@@ -1739,6 +1748,7 @@ of them belongs here.
 DELIVERABLE_RULES_BY_KIND: dict[str, tuple[str, ...]] = {
     "raw_dir": ("QC-101", "QC-102", "QC-103", "QC-104", "QC-105", "QC-106", "QC-107"),
     "aux_still": ("QC-103", "QC-104", "QC-105", "QC-106"),
+    "hdri": (),
     "ref_mp4": ("QC-110", "QC-111", "QC-112", "QC-113", "QC-114", "QC-115"),
     "audio": ("QC-120", "QC-121"),
 }
@@ -1832,7 +1842,7 @@ def _identity_fault(parsed: naming.ParsedOutput | None, identity: naming.ShotIde
         return None
     if parsed.shot_code != identity.shot_code:
         return f"reads as {parsed.shot_code}, but the row is {identity.shot_code}"
-    if identity.is_still:
+    if identity.is_still or identity.is_hdri:
         if (parsed.aux, parsed.aux_index) != (identity.kind, identity.index):
             said, row_is = f"{parsed.aux} {parsed.aux_index}", f"{identity.kind} {identity.index}"
             return f"reads as {said}, but the row is {row_is}"

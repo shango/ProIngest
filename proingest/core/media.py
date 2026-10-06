@@ -25,6 +25,8 @@ MEDIA_EXTENSIONS = frozenset(
     {".exr", ".dpx", ".mov", ".mp4", ".mxf", ".tif", ".tiff", ".png", ".jpg", ".jpeg"}
 )
 AUDIO_EXTENSIONS = frozenset({".wav", ".aif", ".aiff"})
+VIDEO_EXTENSIONS = frozenset({".mov", ".mp4", ".mxf"})
+"""Containers a clip can be. An HDRI's pre-render is one of these beside its EXR."""
 
 
 @dataclass(frozen=True)

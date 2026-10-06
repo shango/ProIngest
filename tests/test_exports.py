@@ -308,7 +308,7 @@ class TestShotTracker:
         assert values[2] == "MELT0001"
         assert values[3] == "MELT0001"
         assert values[4] == "MELT0001_pl01_ref_HD_v01.mp4"
-        assert values[5] is None, "HDRI is the studio's column and no longer ours to fill"
+        assert values[5] == "MELT0001_pl01_HDRI_v01.exr", "the HDRI the tool copied (user, 2026-10-07)"
         assert values[6] is None, "CAM Data likewise"
         assert values[8] == "24"
         assert values[9] == "✓"

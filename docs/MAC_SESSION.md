@@ -55,6 +55,12 @@ chunk 7 of `docs/TO_A_WORKING_BUILD.md`, in the order that wastes least.
       in. Open `SECA0009_pl01_ref_HD_v01.mp4` beside Ben's own Resolve playback of the same frame:
       the brightness and colour should match. The tool applies the CDL in ACEScg, unclamped, as
       the AMF states; CI proves the maths, only Ben's screen says it is what Resolve does.
+- [ ] **The HDRI pre-render (2026-10-07, 0.5.26).** Once Ben renders an HDRI's timeline event
+      into a turnover as a video under the EXR's name, build the stringout and compare the HDRI
+      event with his Resolve playback of it: same pan, same brightness and colour, no banding in
+      the shadows. The tool reads the render as sRGB Linear and applies the HDRI's AMF; only his
+      screen says that matches Resolve. Check the delivered `..._pl01_HDRI_01_v01.exr` is the
+      same size as the EXR in the turnover.
 - [ ] **Expiry (2026-10-05, 0.5.23).** With the Mac's
       date set a month past the dmg's build day (System Settings > General > Date & Time, turn off
       "Set automatically"), launch: the "Update ProIngest" modal shows, and New, Open and a Finder

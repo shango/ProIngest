@@ -26,7 +26,7 @@ import re
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
-from proingest.core import ale, amf, clf, color, ffmpeg, metacsv, naming, qc
+from proingest.core import ale, amf, clf, color, ffmpeg, frames, metacsv, naming, qc
 from proingest.core import media as media_module
 from proingest.core.models import (
     Batch,
@@ -262,20 +262,71 @@ def _build_row(
     """One CSV row into one shot row: identity, media and encoding. The EDL comes after,
     across every row at once (`_conform_all`), because a match is only unambiguous when no
     other row claims the same event."""
-    row = ShotRow(turnover_id=turnover_id, clip_name=entry.file_name)
+    row = ShotRow(turnover_id=turnover_id, clip_name=entry.file_name, resolve_start_tc=entry.start_tc)
     row.qc.extend(entry.qc)
     if entry.kind is not None and entry.index is not None and not row.errors():
         row.identity = naming.ShotIdentity(shot_code=entry.shot, kind=entry.kind, index=entry.index)
 
-    item = _resolve_media(entry.file_name, index, row)
-    if item is not None:
-        _probe_into(row, item, cache, settings.project_rate)
+    if entry.hdri:
+        _resolve_hdri(entry.file_name, index, row, cache, settings.project_rate)
+    else:
+        item = _resolve_media(entry.file_name, index, row)
+        if item is not None:
+            _probe_into(row, item, cache, settings.project_rate)
 
     row.scene = entry.scene
-    if entry.shooter_delivered:
-        # Kept, skipped, so the stringout still shows the clip in its place (QC-080).
-        row.skipped, row.skip_reason = True, "HDRI: delivered by the shooters"
     return row
+
+
+def _resolve_hdri(
+    file_name: str,
+    index: media_module.DirectoryIndex,
+    row: ShotRow,
+    cache: dict[str, MediaInfo],
+    timeline_rate: FrameRate,
+) -> None:
+    """An HDRI's EXR, which is delivered, and its pre-render, which the stringout shows.
+
+    The two share a name and differ by extension (`xxxx_001.exr` and `xxxx_001.mp4`, user
+    2026-10-07), so the one stem resolves to both rather than being ambiguous (QC-013).
+    """
+    matches = index.media_matching(Path(file_name).stem)
+    renders = [item for item in matches if _suffix(item) in media_module.VIDEO_EXTENSIONS]
+    images = [item for item in matches if item not in renders]
+    if len(images) == 1:
+        _probe_into(row, images[0], cache, timeline_rate)
+    else:
+        _resolve_media(file_name, _only(index, images), row)  # says QC-012 or QC-013
+    if len(renders) == 1:
+        try:
+            row.hdri_render = media_module.probe_cached(renders[0], cache, fallback_rate=timeline_rate)
+        except (ffmpeg.FFprobeError, ffmpeg.FFmpegNotFound) as exc:
+            row.qc.append(QCResult("QC-014", "error", "row", f"media unreadable: {exc}"))
+        return
+    stem = Path(file_name).stem
+    why = "two or more files are" if renders else "no file is"
+    row.qc.append(
+        QCResult(
+            "QC-083",
+            "warning",
+            "row",
+            f"{why} the pre-render of HDRI {file_name} (a video named {stem}, such as {stem}.mp4), "
+            "so the stringout shows the HDRI held still",
+        )
+    )
+
+
+def _suffix(item: media_module.Sequence | media_module.FileEntry) -> str:
+    return item.ext if isinstance(item, media_module.Sequence) else item.suffix
+
+
+def _only(
+    index: media_module.DirectoryIndex, items: list[media_module.Sequence | media_module.FileEntry]
+) -> media_module.DirectoryIndex:
+    """The index narrowed to `items`, so `_resolve_media` reports them as it would any clip."""
+    singles = [item for item in items if isinstance(item, media_module.FileEntry)]
+    sequences = [item for item in items if isinstance(item, media_module.Sequence)]
+    return media_module.DirectoryIndex(root=index.root, sequences=sequences, singles=singles)
 
 
 def read_session(
@@ -537,29 +588,66 @@ def _conform(row: ShotRow, event: clf.ConformEvent, grades: _Grades) -> None:
     """The approved cut off this row's one EDL event, and the colour off that event's AMF."""
 
     row.record_in, row.record_out = event.record_in, event.record_out
-    # An HDRI is shown as it is and never graded (QC-080), so a missing AMF says nothing.
-    # Nor does it for a file that is not there (QC-012): its AMF is checked once it is.
-    if not qc.is_shooter_delivered(row) and row.media is not None:
+    # A file that is not there (QC-012) has its AMF checked once it is.
+    if row.media is not None:
+        before = len(row.qc)
         grades.attach(row, event)
+        if qc.is_hdri(row):
+            # Its grade colours the pre-render on the stringout; no check runs on an HDRI
+            # (user, 2026-10-07), so what is wrong with its AMF goes unsaid.
+            del row.qc[before:]
     approved = clf.approved_in_out(event, row.media) if row.media else None
     if approved is None:
         _whole_media(row)
         return
+    media = row.media
+    if media is not None and not qc.is_hdri(row) and not _fits(approved, media):
+        approved = _outside(row, event, media, approved)
     row.approved = approved
     row.snapshot = approved
     row.current = approved
-    if row.media is not None and (
-        approved.in_frame < row.media.start_frame or approved.out_frame > row.media.max_available_out
-    ):
-        row.qc.append(
-            QCResult(
-                "QC-029",
-                "error",
-                "row",
-                f"the EDL references frames {approved.in_frame}-{approved.out_frame} but the media "
-                f"holds {row.media.start_frame}-{row.media.max_available_out}",
+
+
+def _fits(cut: InOut, media: MediaInfo) -> bool:
+    return media.start_frame <= cut.in_frame and cut.out_frame <= media.max_available_out
+
+
+def _outside(row: ShotRow, event: clf.ConformEvent, media: MediaInfo, cut: InOut) -> InOut:
+    """A cut the file's own timecode puts outside it. Read by Resolve's clock instead, the
+    CSV's `Start TC`, when that puts it inside: Resolve's media management can leave a file
+    whose timecode is not the one Resolve shows for it (turnover134's mirror balls), and
+    the EDL counts from Resolve's (QC-084, a warning, user 2026-10-07). Otherwise QC-029."""
+    rate = (media.stated_rate or media.rate).as_float()
+    said = media.start_timecode or 0
+    own, edl = _span(said, media.frame_count, rate), _span(event.source_in, event.duration, rate)
+    resolve = _resolve_start(row, rate)
+    if resolve is not None and resolve != said:
+        moved = clf.approved_in_out(event, replace(media, start_timecode=resolve))
+        if moved is not None and _fits(moved, media):
+            row.qc.append(
+                QCResult(
+                    "QC-084",
+                    "warning",
+                    "row",
+                    f"the EDL cuts {edl}; {row.clip_name}'s own timecode runs {own}, but Resolve starts "
+                    f"it at {row.resolve_start_tc} (the CSV's Start TC), so the cut is read by Resolve's",
+                )
             )
-        )
+            return moved
+    row.qc.append(QCResult("QC-029", "error", "row", f"the EDL cuts {edl}, but {row.clip_name} runs {own}"))
+    return cut
+
+
+def _span(first: int, count: int, rate: float) -> str:
+    """`15:13:40:00 to 15:13:40:09`: frames as Resolve shows them, never as a file index."""
+    return f"{frames.frames_to_timecode(first, rate)} to {frames.frames_to_timecode(first + count - 1, rate)}"
+
+
+def _resolve_start(row: ShotRow, rate: float) -> int | None:
+    try:
+        return frames.timecode_to_frames(row.resolve_start_tc, rate) if row.resolve_start_tc else None
+    except ValueError:
+        return None
 
 
 def _whole_media(row: ShotRow) -> None:

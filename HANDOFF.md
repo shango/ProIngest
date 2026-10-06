@@ -1,4 +1,4 @@
-# Handoff, 6 October 2026
+# Handoff, 7 October 2026
 
 **This is a short pointer, not the record.** `PROGRESS.md` section 1 holds the record: one entry
 per change, newest first, each saying what was built and how it was verified. If this file
@@ -6,13 +6,33 @@ disagrees with `PROGRESS.md` or the docs, they are right and this file is wrong.
 
 ## State
 
-- **Version 0.5.25, PR #18 (`app/expiry`) merged to `main` at the user's request** on
-  2026-10-06. 0.5.25 adds `User_Generated` and `User_Uploads` at the delivery root, made by any
-  run that delivers a turnover (NAMING_SPEC section 5). 0.5.24 was the Fix-it report (PROGRESS).
-- The dmg is built by the CI run of the merge on `main`; its run ID is in the reply that handed
-  it over, as `gh run download <run-id> -R shango/ProIngest -n ProIngest-macos-arm64 -D ~/Downloads/ProIngest-0.5.25`.
-- `ruff`, `ruff format` and `mypy --strict` are clean, and 1885 tests pass locally (1 skipped).
-- Nothing uncommitted except the untracked samples under Working notes. Nothing in flight.
+- **Version 0.5.26 on branch `hdri/prerender`, PR open, not merged** (merge only when the user
+  asks). 0.5.25 is on `main` (PR #18).
+- The dmg is built by the PR's CI run; its run ID is in the reply that handed it over, as
+  `gh run download <run-id> -R shango/ProIngest -n ProIngest-macos-arm64 -D ~/Downloads/ProIngest-0.5.26`.
+- `ruff`, `ruff format` and `mypy --strict` are clean and the full suite passes locally.
+
+## What 0.5.26 did (7 Oct 2026, all user requests)
+
+- **HDRI**: the timeline HDRI is a frame hold on the HDRI EXR with a pan. Its EXR is delivered
+  byte for byte as `<shotcode>_pl01_HDRI_<idx>_v<ver>.exr`, no checks; the stringout cuts the event
+  from Ben's pre-render beside it (`xxxx_001.mp4`), sRGB Linear, graded through the HDRI's AMF with
+  a 1D shaper. No pre-render is QC-083. Memory: hdri-is-a-video-clip (rewritten).
+- **QC-084**: a cut outside the file by its own timecode but inside by Resolve's (the CSV's
+  `Start TC`) is a warning and cut by Resolve's; QC-029 is said in timecode.
+- **Accept As Is** renders every clip that can render (`planner.QC_CANNOT_RENDER`).
+
+## Open, with the user (0.5.26)
+
+- **Turnover134's HDRI EXRs have no Shot or Shot Type in the CSV**, so nothing delivers them
+  until Ben types them `HDRI` with the shot code; no pre-render exists in any sample yet.
+- **C003 and C012 of turnover134** are cut by the file's own timecode, 7 and 3 frames off
+  Resolve's; the user said this was fixed on the Resolve side. A guard warning for a CSV/file
+  timecode disagreement was offered and not answered.
+- **"you don't need to touch" the HDRI EXR** was read as "copy it, never alter it". If it meant
+  "do not deliver it", `planner._hdri_plan` is the one place to stop it.
+- **The record correction**: Ben's turnover page still says the mirror balls were linked to the
+  proxies; that was wrong (offered, not answered).
 
 ## What 0.5.23 did (5 and 6 Oct 2026, all user requests)
 

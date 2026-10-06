@@ -655,6 +655,11 @@ def lut_filter(cube: Path) -> str:
     return f"lut3d={_filter_path(cube)}:interp={LUT_INTERPOLATION}"
 
 
+def shaper_filter(cube: Path) -> str:
+    """The 1D shaper a linear source goes through before its cube (`color.shaper_lut`)."""
+    return f"lut1d={_filter_path(cube)}:interp=linear"
+
+
 def encode_command(
     source: str,
     destination: Path,
@@ -669,6 +674,7 @@ def encode_command(
     ffmpeg: Path | None = None,
     crf: int | None = None,
     audio_tempo: float = 1.0,
+    shaper: Path | None = None,
     timecode: str | None = None,
     color_space: str = "",
     color_range: str = "",
@@ -759,6 +765,8 @@ def encode_command(
         command += ["-f", "lavfi", "-i", SILENCE]
 
     filters.append(to_rgb(target_size, color_space, color_range, LUT_PIXEL_FORMAT))
+    if shaper is not None:
+        filters.append(shaper_filter(shaper))
     if lut is not None:
         filters.append(lut_filter(lut))
     filters += [REFERENCE_TO_YUV, reference_label(display)]

@@ -111,6 +111,8 @@ def render_job(
             _render_audio(job, deliverable)
         elif job.kind == "ref_mp4":
             _render_reference(job, deliverable)
+        elif job.kind == "hdri":
+            _copy_hdri(job, deliverable)
         else:
             raise RenderError(f"no renderer for a {job.kind} job")
     except ffmpeg.FFmpegError as exc:
@@ -166,6 +168,13 @@ def _discard(temp: Path) -> None:
 def _record_file(deliverable: Deliverable, path: Path) -> None:
     deliverable.checksum = file_digest(path)
     deliverable.size = path.stat().st_size
+
+
+def _copy_hdri(job: DeliverableJob, deliverable: Deliverable) -> None:
+    """The HDRI as it is, byte for byte, to the temp the envelope renames (user, 2026-10-07)."""
+    shutil.copyfile(job.source, job.temp)
+    _record_file(deliverable, job.temp)
+    deliverable.frame_count = 1
 
 
 # --- Raw EXR delivery. COLOR_AND_FORMAT sections 3 and 7. ---

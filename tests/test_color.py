@@ -270,6 +270,19 @@ class TestViewLut:
         assert lines[1 + 33] == "0.000000 0.031250 0.000000"
         assert lines[1 + 33 * 33] == "0.000000 0.000000 0.031250"
 
+    def test_a_shaped_cube_is_sampled_where_its_shaper_leaves_a_linear_source(self, tmp_path: Path) -> None:
+        """An HDRI's pre-render is linear (user, 2026-10-07): the cube's second sample is
+        `(1/32) ** 2.4`, not 1/32, so the shadows get samples of their own."""
+        cube = color.view_lut(tmp_path / "shaped.cube", size=33, shaped=True)
+        red = float(cube.read_text().splitlines()[2].split()[0])
+        assert red == pytest.approx((1 / 32) ** color.SHAPER_GAMMA, abs=1e-6)
+
+    def test_the_shaper_undoes_the_cube_s_sampling(self, tmp_path: Path) -> None:
+        lines = color.shaper_lut(tmp_path / "shaper.cube", size=5).read_text().splitlines()
+        assert lines[0] == "LUT_1D_SIZE 5"
+        value = float(lines[2].split()[0])
+        assert value**color.SHAPER_GAMMA == pytest.approx(0.25, abs=1e-5)
+
     def test_it_reads_back_as_the_chain_it_baked(self, tmp_path: Path) -> None:
         """Written by us and read by OpenColorIO, which is the convention ffmpeg shares."""
         cube = color.view_lut(tmp_path / "MELT0001_view.cube", *self.chain())

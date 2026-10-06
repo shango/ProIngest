@@ -81,9 +81,13 @@ source encoding  ->  ACES2065-1  ->  the AMF's looks, in order  ->  linear ACESc
   and it renders through its input transform and the Reference Gamut Compress alone.
 - **No AMF in the turnover grades any clip** is QC-008, because then nothing names an input
   transform.
-- **An HDRI row** (`Shot Type` `HDRI`) is delivered by the shooters by hand: the tool skips it at
-  scan and shows its clip in the stringout only (QC-080). Turnover097's HDRI AMFs name no input
-  transform.
+- **An HDRI row** (`Shot Type` `HDRI`) delivers its EXR byte for byte, with no colour applied and
+  no check run (QC-080, user 2026-10-07). Its AMF is read only for the grade the stringout gives
+  its pre-render: Ben renders the event, pan included, in **sRGB Linear**, ungraded, so the
+  stringout reads it as `Linear Rec.709 (sRGB)` in place of an input transform (turnover097's and
+  turnover134's HDRI AMFs name none), then the AMF's CLF and output transform. A linear source
+  gets a 1D shaper (`x ** (1/2.4)`) ahead of its 33 point cube, which would otherwise put one
+  sample in the darkest 3% (`color.shaper_lut`, ffmpeg `lut1d`).
 
 **What a grade may contain** (user, 2026-09-28): **primaries plus simple sky secondaries**, in as
 many corrector nodes as the shot needs. Anything a CLF or an AMF look cannot carry - a look ID the
@@ -765,7 +769,8 @@ look very nearly right.
 | ref mp4 4k | 3840x2160, H.264 High, yuv420p, CRF 18 (x264 `-preset slow`) or `h264_videotoolbox` when hardware encoding is enabled, keyint 24, `-movflags +faststart`, AAC 192k if audio associated. **Only a plate's reference carries sound** (2026-09-23): a cp or el is delivered silent even when its own file has a track |
 | ref mp4 HD | same, 1920x1080 |
 | audio | PCM 16 bit, same sample rate and channel count, no resampling. Cut to the delivered range and sped up with the picture (1.001 for a 24000/1001 source, D2 of `docs/REVIEW_2026-09-23.md`), padded with silence where the range runs past the recorded sound. Only a row with no range is delivered as-is: a wav source byte for byte, audio in a container extracted whole. QC-044 if the source was not 16 bit |
-| HDRI, stills, camData | **not delivered by the tool** (2026-09-22). An HDRI row on the timeline is skipped at scan and shown in the stringout only (QC-080, 2026-09-28) |
+| HDRI | **copied byte for byte** (QC-080, user 2026-10-07); the stringout shows its pre-render, graded (QC-083) |
+| BTS stills, camData | **not delivered by the tool** (2026-09-22) |
 | lens grid | not written in v01; moved and renamed by hand (OQ-20) |
 
 **Two of those numbers are editable as of M5.12** and only two: the EXR compression level and
