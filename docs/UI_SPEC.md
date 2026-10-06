@@ -261,7 +261,9 @@ the wait is long enough for anyone to notice it.
 
 **The tool builds the stringout** (PRD FR-9, OQ-38, built 2026-09-25); Ben does not export one
 (user, 2026-09-29). It is built at the end of a Run for every turnover the Run delivered to, and
-on demand from **Build Stringout** on a turnover heading's right-click menu.
+on demand from **Build Stringout** on a turnover heading's right-click menu. **It is cut from the
+delivered EXRs** (user, 2026-10-07; no switch): the HD sequences and the stills' EXRs, seen
+through each clip's output transform, with an HDRI's pre-render the one exception (PRD FR-9).
 
 The burn-ins copy Ben's frame, `burn-ins.png`, measured at 1920x1080: Open Sans 42 px, white, no
 shadow (bundled in `proingest/resources/fonts`). **Each sits on a black rectangle at 30% opacity,

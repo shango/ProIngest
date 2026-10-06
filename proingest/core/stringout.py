@@ -4,10 +4,17 @@ OQ-38, reopened 2026-09-25: Ben renders one in Resolve and the tool renders one 
 ffmpeg. The user's decisions, all in OQ-38:
 
 - **The cut is the final saved EDL in the turnover**, event for event, gaps included.
-- **Each event is cut from its delivered HD reference** when there is one, so the pixels
-  are the vendor's references exactly and there is no second colour path to drift.
-- **An event with no reference** (a still, a skipped or failed shot, a clip the CSV gives
-  no `Shot Type`) is **the ungraded source**, and black when not even that is known.
+- **Each event is cut from its delivered EXRs** (user, 2026-10-07): the HD EXR sequence, or
+  a reference still's 4k EXR, so the stringout shows what the vendor works from. Each is read
+  with OpenEXR, put through its clip's output transform alone (a plate's grade is already in
+  it; a still is shown ungraded, as delivered) and fitted to HD into a lossless intermediate
+  the segment is cut from. The HD EXR's frame 1001 is the HD reference's first frame, so
+  every offset is the same either way. **The one exception is an HDRI**, cut from its
+  pre-render (below). ffmpeg's own EXR decoder is not used: it left the last rows of a
+  small DWAA frame black (measured on ffmpeg 6.1.1, 2026-10-07).
+- **An event with no delivered EXR** falls back to its HD reference, then **the ungraded
+  source** (a skipped or failed shot, a clip the CSV gives no `Shot Type`), and black when
+  not even that is known.
 - **Burn-ins copy Ben's frame** (`burn-ins.png`): the stringout's own name top centre,
   `Frame:` bottom left, `Primary Effect:` (the CSV's `Scene`) bottom centre, and the
   shot and element bottom right. White, Open Sans, no box. No camera timecode: the
@@ -23,11 +30,12 @@ ffmpeg. The user's decisions, all in OQ-38:
   is cut from that pre-render**, from its first frame for the event's length, and **coloured
   through the HDRI's AMF**, its own encoding taking the input transform's place. With no
   pre-render (QC-083) the EXR is held for the event's length, shown as it is.
-- **Only a plate has sound**; every other segment carries silence of the same length.
+- **Only a plate has sound**, from its delivered wav; every other segment carries silence of
+  the same length.
 - **A plate carries its shot's cp top left and wit top right** (user, 2026-09-29), each at
   quarter size flush in its corner (Resolve's zoom 0.25 at X -720/+720, Y 405 on 1920x1080).
-  The first cp and the first wit of the shot in EDL order, from their delivered HD
-  references, playing from their own cut In at the plate's first frame. Each is gone when
+  The first cp and the first wit of the shot in EDL order, from their delivered EXRs (or HD
+  references), playing from their own cut In at the plate's first frame. Each is gone when
   it runs out or at the plate's Out, whichever is first. No delivered reference, no inset.
   Each carries its own element (`cp01`) a little smaller, bottom left inside it.
 
@@ -45,9 +53,12 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Literal
 
+import numpy as np
+import numpy.typing as npt
 import PyOpenColorIO as ocio
 
-from proingest.core import clf, color, ffmpeg, frames, media, naming, qc, scan
+from proingest.core import clf, color, ffmpeg, frames, media, naming, qc, resize, scan
+from proingest.core import exr as exr_module
 from proingest.core.models import Batch, Deliverable, InOut, MediaInfo, QCResult, ShotRow, Turnover
 from proingest.core.planner import effective_identity
 
@@ -95,11 +106,22 @@ class StringoutError(RuntimeError):
 
 
 @dataclass(frozen=True)
+class ExrView:
+    """A delivered EXR, a sequence's folder or a still's file, and the output transform it is
+    seen through: its clip's AMF display and view. Made into a picture at render time."""
+
+    source: Path
+    display: str
+    view: str
+
+
+@dataclass(frozen=True)
 class PictureInPicture:
     """An inset over a plate and the element it is (`cp01`), burned in on it."""
 
     picture: ffmpeg.Inset
     label: str
+    exr: ExrView | None = None
 
 
 @dataclass(frozen=True)
@@ -136,6 +158,12 @@ class Segment:
 
     insets: tuple[PictureInPicture, ...] = ()
     """A plate's cp and wit, laid over it (`INSET_CORNERS`)."""
+
+    exr: ExrView | None = None
+    """The delivered EXR this segment is cut from; `path` becomes its picture at render."""
+
+    wav: Path | None = None
+    """A plate's delivered sound, from the frame the delivery starts on."""
 
     prerender: bool = False
     """An HDRI's pre-render (QC-083): linear, so its cube goes behind a shaper, and the
@@ -236,7 +264,7 @@ def _inset(source: Segment | None, length: int, corner: tuple[int, int]) -> Pict
         return None
     frames_held = 1 if source.freeze else source.length
     picture = ffmpeg.Inset(source.path, source.start, min(frames_held, length), *corner, INSET_SIZE)
-    return PictureInPicture(picture, source.identity.elem)
+    return PictureInPicture(picture, source.identity.elem, source.exr)
 
 
 def _next_version(folder: Path, number: int, month: int, day: int, year: int, shooter: str) -> int:
@@ -268,13 +296,33 @@ def _segment(
             label=name,
         )
 
-    delivering = next((row for row in claimed if _reference(row, cut) is not None), None)
+    exr = next((row for row in claimed if _exr(row, cut) is not None), None)
+    delivering = exr or next((row for row in claimed if _reference(row, cut) is not None), None)
     row = delivering or next((row for row in claimed if row.approved == cut), known)
     identity = effective_identity(row, show_pattern)
     label = naming.shot_label(identity) if identity is not None else Path(row.clip_name).stem
     held = _held(event, cut, identity)
     # A held HDRI keeps the EDL's length (user, 2026-09-30); every other held frame is a second.
     shown = STILL_LENGTH if held and not qc.is_hdri(row) else length
+    if exr is not None and exr.delivered_range is not None:
+        view = _exr(exr, cut)
+        assert view is not None
+        still = identity is not None and identity.is_still
+        offset = 0 if still else cut.in_frame - exr.delivered_range.in_frame
+        return Segment(
+            kind="reference",
+            length=shown,
+            event_id=event.event_id,
+            first_frame=naming.FIRST_OUTPUT_FRAME + offset,
+            freeze=held,
+            label=label,
+            effect=exr.scene,
+            path=view.source,
+            start=offset,
+            identity=identity,
+            exr=view,
+            wav=_landed(exr, "audio") if qc.is_plate(exr) else None,
+        )
     if delivering is not None and delivering.delivered_range is not None:
         offset = cut.in_frame - delivering.delivered_range.in_frame
         return Segment(
@@ -350,6 +398,35 @@ def _held(event: clf.ConformEvent, cut: InOut, identity: naming.ShotIdentity | N
     return event.freeze or cut.duration == 1 or (identity is not None and identity.is_still)
 
 
+def _exr(row: ShotRow, cut: InOut) -> ExrView | None:
+    """The row's delivered EXR and the output transform it is seen through: its HD sequence
+    when that holds the cut, or a still's one frame. None without a display and view to see
+    it through, which leaves the event to its reference."""
+    shot = clf.shot_color(row)
+    if row.skipped or row.identity is None or row.delivered_range is None or not (shot.display and shot.view):
+        return None
+    if row.identity.is_still:
+        path = _landed(row, "aux_still")
+    else:
+        held = row.delivered_range
+        inside = held.in_frame <= cut.in_frame and cut.out_frame <= held.out_frame
+        path = _landed(row, "raw_dir", "HD") if inside else None
+    return ExrView(path, shot.display, shot.view) if path is not None else None
+
+
+def _landed(row: ShotRow, kind: str, res: str | None = None) -> Path | None:
+    """A deliverable of the row that landed and is still there."""
+    for item in row.deliverables:
+        if (
+            item.kind == kind
+            and (res is None or item.res == res)
+            and item.status in ("done", "exists")
+            and item.path.exists()
+        ):
+            return item.path
+    return None
+
+
 def _reference(row: ShotRow, cut: InOut) -> Path | None:
     """The row's HD reference, when it landed, is still there, and holds the cut."""
     if row.skipped or row.identity is None or row.delivered_range is None:
@@ -388,9 +465,7 @@ def build(
         return None
     turnover.stringout = deliverable
     stand_ins = [
-        f"{s.event_id} ({s.label})"
-        for s in made.segments
-        if s.kind != "reference" and not s.gap and not s.prerender
+        f"{s.event_id} ({s.label})" for s in made.segments if s.exr is None and not s.gap and not s.prerender
     ]
     if stand_ins:
         turnover.qc.append(
@@ -398,9 +473,9 @@ def build(
                 "QC-143",
                 "info",
                 "turnover",
-                f"{deliverable.name}: events {', '.join(stand_ins)} have no delivered reference and "
-                f"are cut from the source (a held frame through its AMF's colour, anything else "
-                f"ungraded), or black where no source is known",
+                f"{deliverable.name}: events {', '.join(stand_ins)} have no delivered EXR and are "
+                f"cut from their HD reference, or the source (a held frame through its AMF's "
+                f"colour, anything else ungraded), or black where no source is known",
             )
         )
     return deliverable
@@ -415,7 +490,9 @@ def render(made: Plan) -> Deliverable:
     shutil.rmtree(parts, ignore_errors=True)
     parts.mkdir()
     try:
-        encoded = [_encode(made, segment, parts, index) for index, segment in enumerate(made.segments)]
+        views: dict[ExrView, Path] = {}
+        seen = [_seen(segment, views, parts) for segment in made.segments]
+        encoded = [_encode(made, segment, parts, index) for index, segment in enumerate(seen)]
         listing = parts / "segments.txt"
         listing.write_text("".join(f"file '{_quoted(path)}'\n" for path in encoded), encoding="utf-8")
         _run(ffmpeg.concat_command(listing, temp, made.timecode), temp.name)
@@ -437,6 +514,40 @@ def render(made: Plan) -> Deliverable:
     )
 
 
+def _seen(segment: Segment, views: dict[ExrView, Path], parts: Path) -> Segment:
+    """The segment cut from its EXRs' pictures, each made once however often it is used."""
+    insets = tuple(
+        replace(inset, picture=replace(inset.picture, path=_picture(inset.exr, views, parts)))
+        if inset.exr is not None
+        else inset
+        for inset in segment.insets
+    )
+    path = _picture(segment.exr, views, parts) if segment.exr is not None else segment.path
+    return replace(segment, path=path, insets=insets)
+
+
+def _picture(exr: ExrView, views: dict[ExrView, Path], parts: Path) -> Path:
+    """The EXR seen through its output transform and fitted to HD, as a lossless file."""
+    if exr not in views:
+        destination = parts / f"view{len(views):03d}.mkv"
+        files = sorted(exr.source.glob("*.exr")) if exr.source.is_dir() else [exr.source]
+        cpu = color.processor(color.output_transform(exr.display, exr.view))
+        ffmpeg.write_frames((_shown(path, cpu) for path in files), SIZE, destination, RATE)
+        views[exr] = destination
+    return views[exr]
+
+
+def _shown(path: Path, cpu: ocio.CPUProcessor) -> npt.NDArray[np.float32]:
+    """One delivered EXR frame as display values 0..1 on the HD canvas."""
+    pixels = np.ascontiguousarray(exr_module.read_pixels(path)[..., :3], dtype=np.float32)
+    height, width = pixels.shape[:2]
+    if (width, height) != SIZE:
+        fitted = resize.fit_inside((width, height), SIZE)
+        pixels = np.ascontiguousarray(resize.lanczos_resize(pixels, *fitted), dtype=np.float32)
+    color.apply(pixels, cpu)
+    return resize.letterbox(np.clip(pixels, 0.0, 1.0), SIZE)
+
+
 def _quoted(path: Path) -> str:
     """A path inside the concat list's single quotes."""
     return str(path).replace("'", "'\\''")
@@ -447,7 +558,7 @@ def _encode(made: Plan, segment: Segment, parts: Path, index: int) -> Path:
     overlay = _burn_ins(made.stem, segment, parts / f"{index:04d}")
     if segment.kind == "reference" and segment.path is not None:
         size, has_audio = _probe(segment.path)
-        sound = segment.audio and has_audio
+        sound = segment.wav is not None or (segment.audio and has_audio)
         fitted = _fit(size)
         command = ffmpeg.encode_command(
             str(segment.path),
@@ -456,7 +567,7 @@ def _encode(made: Plan, segment: Segment, parts: Path, index: int) -> Path:
             segment.start + (0 if segment.freeze else segment.length - 1),
             is_sequence=False,
             rate=RATE,
-            audio=segment.path if sound else None,
+            audio=(segment.wav or segment.path) if sound else None,
             audio_skip=segment.start / 24 if sound else 0.0,
             target_size=fitted if fitted != size else None,
             color_space="bt709",

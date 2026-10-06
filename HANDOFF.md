@@ -6,11 +6,19 @@ disagrees with `PROGRESS.md` or the docs, they are right and this file is wrong.
 
 ## State
 
-- **Version 0.5.26 on branch `hdri/prerender`, PR open, not merged** (merge only when the user
-  asks). 0.5.25 is on `main` (PR #18).
+- **Version 0.5.27 on branch `hdri/prerender`, PR #19 open, not merged** (merge only when the
+  user asks). 0.5.25 is on `main` (PR #18). 0.5.26 was built in CI run 37543703620.
 - The dmg is built by the PR's CI run; its run ID is in the reply that handed it over, as
-  `gh run download <run-id> -R shango/ProIngest -n ProIngest-macos-arm64 -D ~/Downloads/ProIngest-0.5.26`.
+  `gh run download <run-id> -R shango/ProIngest -n ProIngest-macos-arm64 -D ~/Downloads/ProIngest-0.5.27`.
 - `ruff`, `ruff format` and `mypy --strict` are clean and the full suite passes locally.
+
+## What 0.5.27 did (7 Oct 2026, user)
+
+- **The stringout is cut from the delivered EXRs** (no switch), an HDRI from its pre-render.
+  Each EXR goes through its clip's output transform into a lossless intermediate; plate sound
+  from the wav; stills show ungraded. OQ-80.
+- **Ben's page corrected** (version 2): no proxy relink, turnover134 blocks nothing, HDRI
+  pre-renders asked for.
 
 ## What 0.5.26 did (7 Oct 2026, all user requests)
 
@@ -31,8 +39,6 @@ disagrees with `PROGRESS.md` or the docs, they are right and this file is wrong.
   timecode disagreement was offered and not answered.
 - **"you don't need to touch" the HDRI EXR** was read as "copy it, never alter it". If it meant
   "do not deliver it", `planner._hdri_plan` is the one place to stop it.
-- **The record correction**: Ben's turnover page still says the mirror balls were linked to the
-  proxies; that was wrong (offered, not answered).
 
 ## What 0.5.23 did (5 and 6 Oct 2026, all user requests)
 

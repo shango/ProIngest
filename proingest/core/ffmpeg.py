@@ -22,7 +22,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
-from collections.abc import Generator, Sequence
+from collections.abc import Generator, Iterable, Sequence
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -455,6 +455,57 @@ def decode_frames(
                 process.kill()
             stdout.close()
             process.wait()
+
+
+VIEW_CODEC = ["-c:v", "ffv1", "-pix_fmt", "gbrp16le"]
+"""A display referred picture the stringout cuts from: lossless 16 bit RGB, read once more
+by the segment encode and then deleted, so size does not matter and a second lossy pass
+would."""
+
+
+def write_frames(
+    frames_in: Iterable[npt.NDArray[np.float32]],
+    size: tuple[int, int],
+    destination: Path,
+    rate: str,
+    ffmpeg: Path | None = None,
+    timeout: int = DECODE_TIMEOUT,
+) -> int:
+    """Write `(h, w, 3)` float32 RGB frames, already display referred and 0..1, to a
+    lossless file at `destination` (`.mkv`). Returns the frames written.
+
+    The pipe's other direction from `decode_frames`: planes go in G, B, R order. Raises
+    FFmpegError when ffmpeg fails, and always leaves the process dead.
+    """
+    tool = ffmpeg or resolve_tool("ffmpeg")
+    width, height = size
+    command = [
+        str(tool), "-hide_banner", "-loglevel", "error", "-y",
+        "-f", "rawvideo", "-pix_fmt", "gbrpf32le", "-s", f"{width}x{height}", "-r", rate, "-i", "-",
+        *VIEW_CODEC, "-f", "matroska", str(destination),
+    ]  # fmt: skip
+    log.info("running: %s", shlex.join(command))
+    written = 0
+    with tempfile.TemporaryFile() as errors:
+        process = subprocess.Popen(command, stdin=subprocess.PIPE, stderr=errors)
+        stdin = process.stdin
+        assert stdin is not None
+        try:
+            for frame in frames_in:
+                planes = np.stack((frame[..., 1], frame[..., 2], frame[..., 0])).astype(_RAW_DTYPE)
+                stdin.write(planes.tobytes())
+                written += 1
+            stdin.close()
+            if process.wait(timeout) != 0:
+                raise FFmpegError(f"writing {destination.name} failed: {_stderr_tail(errors)}")
+        except BrokenPipeError as exc:
+            process.wait(timeout)
+            raise FFmpegError(f"writing {destination.name} failed: {_stderr_tail(errors)}") from exc
+        finally:
+            if process.poll() is None:
+                process.kill()
+            process.wait()
+    return written
 
 
 # --- Extracting audio out of a container. COLOR_AND_FORMAT section 3. ---

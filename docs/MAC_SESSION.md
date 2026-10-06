@@ -55,7 +55,11 @@ chunk 7 of `docs/TO_A_WORKING_BUILD.md`, in the order that wastes least.
       in. Open `SECA0009_pl01_ref_HD_v01.mp4` beside Ben's own Resolve playback of the same frame:
       the brightness and colour should match. The tool applies the CDL in ACEScg, unclamped, as
       the AMF states; CI proves the maths, only Ben's screen says it is what Resolve does.
-- [ ] **The HDRI pre-render (2026-10-07, 0.5.26).** Once Ben renders an HDRI's timeline event
+- [ ] **The stringout from the EXRs (2026-10-07, 0.5.27).** Run a turnover and open its
+      stringout beside a plate's HD reference mp4: the same picture, brightness and colour, and
+      the plate's sound in sync. A colour chart now shows ungraded, as its delivered EXR is.
+      CI proves it builds; only the eye says the two colour paths agree.
+- [ ] **The HDRI pre-render (2026-10-07, 0.5.26). Once Ben renders an HDRI's timeline event
       into a turnover as a video under the EXR's name, build the stringout and compare the HDRI
       event with his Resolve playback of it: same pan, same brightness and colour, no banding in
       the shadows. The tool reads the render as sRGB Linear and applies the HDRI's AMF; only his

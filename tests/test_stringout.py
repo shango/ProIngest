@@ -10,8 +10,8 @@ from pathlib import Path
 
 import pytest
 
-from proingest.core import clf, ffmpeg, naming, planner, qc, render, scan, stringout
-from proingest.core.models import Batch, FrameRate, InOut, MediaInfo
+from proingest.core import clf, color, ffmpeg, naming, planner, qc, render, scan, stringout
+from proingest.core.models import Batch, Deliverable, FrameRate, InOut, MediaInfo
 from tests.fixtures import media as fixtures
 
 FOLDER = "turnover007_09_23_26_testshooter"
@@ -67,14 +67,43 @@ class TestNaming:
 
 
 class TestPlan:
-    def test_every_event_is_cut_from_its_delivered_reference(self, batch: Batch) -> None:
+    def test_every_event_is_cut_from_its_delivered_exrs(self, batch: Batch) -> None:
+        """User, 2026-10-07: the stringout is from the EXRs, the HD sequence of each plate."""
         made = planned(batch)
         assert [s.kind for s in made.segments] == ["reference", "reference"]
         assert [s.label for s in made.segments] == ["MELT0001_pl01", "MELT0002_pl01"]
         assert all(s.first_frame == 1001 and s.start == 0 and s.length == FRAMES for s in made.segments)
-        assert all(s.audio for s in made.segments), "plates carry their sound"
+        assert all(s.exr is not None and s.exr.source.name.endswith("_raw_HD_v01") for s in made.segments)
+        assert all(s.wav is not None and s.wav.suffix == ".wav" for s in made.segments), "plates carry sound"
         assert made.stem == f"{FOLDER}_SO_v01" and made.total == 2 * FRAMES
         assert made.timecode == "01:00:00:00", "the EDL's record start"
+
+    def test_with_no_hd_exr_the_reference_stands_in(self, batch: Batch) -> None:
+        for item in batch.rows[1].deliverables:
+            if item.kind == "raw_dir" and item.res == "HD":
+                item.status = "failed"
+        plate = planned(batch).segments[1]
+        assert plate.exr is None and plate.path is not None and plate.path.name.endswith("_ref_HD_v01.mp4")
+        assert plate.audio and plate.wav is None, "its sound comes with the reference"
+
+    def test_a_still_is_cut_from_its_delivered_exr(self, batch: Batch) -> None:
+        """A reference still's one 4k EXR, shown as delivered, held for a second."""
+        row = batch.rows[1]
+        row.identity = naming.ShotIdentity("MELT0002", "colorChart", "01")
+        frame = next(item.path for item in row.deliverables if item.kind == "raw_dir" and item.res == "HD")
+        still = sorted(frame.glob("*.exr"))[0]
+        row.deliverables = [Deliverable("aux_still", still.name, still, 1, "4k", status="done")]
+        segment = planned(batch).segments[1]
+        assert segment.exr is not None and segment.exr.source == still
+        assert (segment.start, segment.freeze, segment.length) == (0, True, stringout.STILL_LENGTH)
+
+    def test_an_exr_is_seen_through_its_output_transform_on_the_hd_canvas(self, batch: Batch) -> None:
+        segment = planned(batch).segments[0]
+        assert segment.exr is not None
+        first = sorted(segment.exr.source.glob("*.exr"))[0]
+        cpu = color.processor(color.output_transform(segment.exr.display, segment.exr.view))
+        shown = stringout._shown(first, cpu)
+        assert shown.shape == (1080, 1920, 3) and float(shown.min()) >= 0.0 and float(shown.max()) <= 1.0
 
     def test_a_skipped_shot_is_the_ungraded_source(self, batch: Batch) -> None:
         batch.rows[1].skipped = True
@@ -203,7 +232,7 @@ class TestInsets:
         assert clean.path is not None
         assert plate.insets == (
             stringout.PictureInPicture(
-                ffmpeg.Inset(clean.path, 0, FRAMES, 0, 0, stringout.INSET_SIZE), "cp01"
+                ffmpeg.Inset(clean.path, 0, FRAMES, 0, 0, stringout.INSET_SIZE), "cp01", clean.exr
             ),
         )
         assert clean.insets == (), "only a plate carries insets"

@@ -8,7 +8,7 @@ commit.
 
 ## 1. Resume here
 
-**State at 2026-10-07, version 0.5.26 on branch `hdri/prerender`** (0.5.26: the HDRI pre-render and delivery, QC-084, Accept As Is runs what it can; 0.5.25, merged to `main` with PR #18: `User_Generated` and `User_Uploads` at the delivery root; 0.5.24: the Fix-it
+**State at 2026-10-07, version 0.5.27 on branch `hdri/prerender`, PR #19 open** (0.5.27: the stringout from the EXRs; 0.5.26: the HDRI pre-render and delivery, QC-084, Accept As Is runs what it can; 0.5.25, merged to `main` with PR #18: `User_Generated` and `User_Uploads` at the delivery root; 0.5.24: the Fix-it
 report, one error per cause, a lone EXR read as one frame, AMFs falling back to the clip they name) (`HANDOFF.md` is the short version, with the session's open items); 0.5.22 went to `main` earlier (PR #17 merged as `70e1160` at the user's request, after its CI
 run 37276656318 built the 0.5.22 dmg). The 2026-09-23 review is built (chunks A
 to H of `docs/REVIEW_2026-09-23.md`), and so are the fixes that a second official turnover,
@@ -17,6 +17,21 @@ renders; Turnover121, every clip 8 bit 4:2:0, runs again with a QC-020 warning o
 since 2026-09-28 (user). What is left is the Mac: `docs/MAC_SESSION.md`, from "The 0.5.0 build, in
 order" down, and Ben's 4.886 slope. Entries are newest first; anything older than 2026-09-22
 describes the tool before the review and is history.
+
+**2026-10-07, 0.5.27: the stringout from the EXRs (user).** "No switch, strigout is from exr
+sources, except for the clip on the timeline labeled hdri." Each event is cut from its row's
+delivered HD EXR sequence (a still from its 4k EXR), seen through the clip's AMF output transform
+alone; the cp and wit insets likewise; plate sound from the delivered wav. No EXR: the HD
+reference, then the source, then black, as before (QC-143 says which). Each EXR is read with
+OpenEXR, transformed in OCIO, fitted to HD and written once per stringout to a lossless ffv1
+intermediate (`stringout._picture`, `ffmpeg.write_frames`); the segment encode, insets and join
+are unchanged. ffmpeg's own EXR decoder was measured and not used: on a 64x36 DWAA frame it failed
+the last block and left four rows black (ffmpeg 6.1.1), though a 1080 row frame decoded within
+0.15% of OpenEXR. A still now shows ungraded, as delivered. OQ-80 lists the assumptions,
+MAC_SESSION the look check. Verified: the stringout tests build real stringouts through the new
+path. **Also 2026-10-07**: Ben's page (https://claude.ai/artifact/DFshCWhWiGYsEuH35NPAy3,
+version 2) now says the mirror balls were never linked to the proxies, turnover134 blocks
+nothing, and asks for the HDRI pre-renders; the older per-turnover page for 134 was not touched.
 
 **2026-10-07, 0.5.26: the HDRI pre-render and delivery, QC-084, Accept As Is runs what it can
 (user).** Three requests, one build.
