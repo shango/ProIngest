@@ -18,6 +18,15 @@ since 2026-09-28 (user). What is left is the Mac: `docs/MAC_SESSION.md`, from "T
 order" down, and Ben's 4.886 slope. Entries are newest first; anything older than 2026-09-22
 describes the tool before the review and is history.
 
+**2026-10-06, one cause, one error (user).** "Please merge these types of errors. Too much
+noise." QC-046 is silent when no AMF matched and QC-075 or QC-012 is already the row's error; a row
+whose file is missing (QC-012) is not matched to an AMF at all (`scan._conform`), so it is checked
+on the scan that finds the file; QC-031 is silent while the In/Out is still the EDL's cut and
+QC-029 has said so. Every one of those rows is still held back by the error that remains.
+**Verified**: tests; turnover135 scans with 18 errors, was 39 (one per clip with no AMF, one per
+missing still); turnover134 with 2, was 4 (QC-029 alone on each proxy-conformed mirror ball).
+QC_RULES and the summary CSV say so.
+
 **2026-10-06, turnover135 run headless again; a lone EXR probes as one frame, AMFs fall back to
 the clip they name (user).** "Run a headless test on turnover 135... what Ben needs to fix and
 what tool errors or bugs you found and fixed." Folder unchanged since the morning run. **Fixed**:

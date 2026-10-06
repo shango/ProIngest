@@ -389,9 +389,12 @@ def check_range(row: ShotRow) -> list[QCResult]:
 
     QC-029 says the same thing about the range the turnover arrived with. These two
     are about the range the editor has chosen since, so both can be true at once and
-    each names a different culprit.
+    each names a different culprit. **Silent while the cut is still the EDL's and QC-029
+    has said so** (user, 2026-10-06: "Too much noise"): then they are one fact.
     """
     if row.media is None or row.current is None:
+        return []
+    if row.current == row.approved and any(result.rule_id == "QC-029" for result in row.qc):
         return []
     if row.current.in_frame > row.current.out_frame:
         return [
@@ -678,6 +681,10 @@ def check_aux_still(row: ShotRow) -> list[QCResult]:
     ]
 
 
+_NO_AMF_CAUSES = frozenset({"QC-012", "QC-075"})
+"""The errors that already say why a row has no AMF, so QC-046 does not say it again."""
+
+
 def check_source_encoding(row: ShotRow) -> list[QCResult]:
     """QC-046 and QC-047: the clip's AMF names no input transform, or one the config lacks.
 
@@ -685,9 +692,15 @@ def check_source_encoding(row: ShotRow) -> list[QCResult]:
     aux still: the input transform is what gets the clip into ACES, so a missing one
     renders nothing. Info on a row that delivers nothing. Since 2026-09-28 the only
     carrier is the AMF (`scan._Grades`), whose own problems are QC-075.
+
+    **Silent with no AMF when QC-075 or QC-012 already says why** (user, 2026-10-06: "Too
+    much noise"): no AMF matched, or no file to match, is one cause and one error, and
+    that error holds the row back on its own.
     """
     blocking = is_picture_row(row) or delivers_aux_still(row)
     grade = row.grade
+    if grade is None and any(result.rule_id in _NO_AMF_CAUSES for result in row.errors()):
+        return []
     if row.source_encoding is not None:
         try:
             color.resolve_encoding(row.source_encoding)

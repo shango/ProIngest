@@ -572,7 +572,7 @@ class TestTheAmf:
         folder = self.folder(tmp_path)
         self.amf(folder).unlink()
         _, row = self.scanned(folder)
-        assert "QC-075" in rules(row) and "QC-046" in rules(row)
+        assert "QC-075" in rules(row) and "QC-046" not in rules(row), "one cause, one error"
         assert row.grade is None and row.source_encoding is None
 
     def test_an_amf_naming_another_file_is_qc_075_not_a_match(self, tmp_path: Path) -> None:
@@ -597,6 +597,17 @@ class TestTheAmf:
         assert len(rows) == 2
         for row in rows:
             assert "QC-075" not in rules(row) and row.grade is not None, row.clip_name
+
+    def test_a_missing_file_is_only_qc_012(self, tmp_path: Path) -> None:
+        """Turnover135's SECA0012 stills (user, 2026-10-06): QC-012, QC-075 and QC-046 for
+        one missing file. The AMF is checked on the scan that finds the file."""
+        folder = self.folder(tmp_path)
+        self.amf(folder).unlink()
+        for path in folder.rglob("MELT0001_pl01*.exr"):
+            path.unlink()
+        _, row = self.scanned(folder)
+        assert row.media is None
+        assert [r.rule_id for r in row.errors()] == ["QC-012"]
 
     def test_an_amf_numbered_for_another_event_still_grades_the_clip_it_names(self, tmp_path: Path) -> None:
         """Turnover135 (2026-10-06): its one AMF, exported on its own, is numbered 0 and

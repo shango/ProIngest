@@ -538,7 +538,8 @@ def _conform(row: ShotRow, event: clf.ConformEvent, grades: _Grades) -> None:
 
     row.record_in, row.record_out = event.record_in, event.record_out
     # An HDRI is shown as it is and never graded (QC-080), so a missing AMF says nothing.
-    if not qc.is_shooter_delivered(row):
+    # Nor does it for a file that is not there (QC-012): its AMF is checked once it is.
+    if not qc.is_shooter_delivered(row) and row.media is not None:
         grades.attach(row, event)
     approved = clf.approved_in_out(event, row.media) if row.media else None
     if approved is None:
