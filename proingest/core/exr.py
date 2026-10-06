@@ -255,9 +255,7 @@ def provenance(shot_color: clf.ShotColor) -> dict[str, Any]:
     if shot_color.amf:
         header[AMF_ATTRIBUTE] = shot_color.amf
     if shot_color.looks:
-        header[LOOKS_ATTRIBUTE] = "; ".join(
-            look.name if look.kind == "look" else Path(look.name).name for look in shot_color.looks
-        )
+        header[LOOKS_ATTRIBUTE] = "; ".join(look.label for look in shot_color.looks)
     return header
 
 

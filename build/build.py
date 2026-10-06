@@ -20,6 +20,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from datetime import date
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -63,7 +64,7 @@ def executable_path(platform: str = sys.platform) -> Path:
 
 
 def dmg_path(version: str) -> Path:
-    """`ProIngest-0.5.22.dmg`. The version is in the filename so two builds cannot be
+    """`ProIngest-0.5.25.dmg`. The version is in the filename so two builds cannot be
     confused for each other on a machine that has downloaded both."""
     return DIST_DIR / f"{bundle.APP_NAME}-{version}.dmg"
 
@@ -106,6 +107,13 @@ def check_ffmpeg(platform: str = sys.platform) -> None:
             f"{', '.join(missing)} missing from {bundle.FFMPEG_DIR}. "
             "Run `python build/fetch_ffmpeg.py` first."
         )
+
+
+def stamp_release(today: date | None = None) -> Path:
+    """Write the build's date for `core/expiry.py`: this build expires a month after it."""
+    path = REPO_ROOT / bundle.RELEASE_FILE
+    path.write_text((today or date.today()).isoformat() + "\n", encoding="utf-8")
+    return path
 
 
 def run_pyinstaller(clean: bool) -> None:
@@ -194,6 +202,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.clean:
             shutil.rmtree(WORK_DIR, ignore_errors=True)
             shutil.rmtree(DIST_DIR, ignore_errors=True)
+        print(f"release date stamped: {stamp_release().read_text(encoding='utf-8').strip()}")
         run_pyinstaller(args.clean)
         image = None
         if sys.platform == bundle.MACOS and not args.no_dmg:

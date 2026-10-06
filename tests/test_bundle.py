@@ -13,13 +13,14 @@ is `build/smoke_test.py`'s job, which the packaging CI job runs against a real b
 from __future__ import annotations
 
 import tomllib
+from datetime import date
 from pathlib import Path
 
 import pytest
 
-from build import bundle
+from build import build, bundle
 from proingest import __version__
-from proingest.core import ffmpeg, stringout
+from proingest.core import expiry, ffmpeg, stringout
 
 DARWIN = bundle.MACOS
 LINUX = "linux"
@@ -74,6 +75,19 @@ class TestDatas:
         assert wanted <= set(self.sources(platform))
         assert all(Path(source).is_file() for source in wanted)
         assert stringout.FONT == bundle.REPO_ROOT / bundle.FONTS_DIR / "OpenSans-Regular.ttf"
+
+    def test_the_release_date_ships_where_expiry_reads_it(self) -> None:
+        """Listed even before a build writes it, so PyInstaller fails a build that forgot."""
+        assert (str(bundle.REPO_ROOT / bundle.RELEASE_FILE), str(bundle.RELEASE_FILE.parent)) in bundle.datas(
+            LINUX
+        )
+        assert bundle.REPO_ROOT / bundle.RELEASE_FILE == expiry.RELEASE_FILE
+
+    def test_a_build_stamps_its_own_date(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(build, "REPO_ROOT", tmp_path)
+        (tmp_path / bundle.RELEASE_FILE).parent.mkdir(parents=True)
+        written = build.stamp_release(date(2026, 10, 5))
+        assert expiry.read_stamp(written) == expiry.Expiry(date(2026, 10, 5))
 
     def test_opentimelineio_is_not_bundled(self) -> None:
         """Gone 2026-09-23: `clf.read_final_edl` reads the EDL, and nothing imports otio."""

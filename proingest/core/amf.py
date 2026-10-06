@@ -17,9 +17,12 @@ table here to go stale. An ID the config does not list resolves to None, and the
 that reads it says so (QC-047 for an input, QC-077 for a look, QC-079 for an output).
 
 **Which event an AMF belongs to is in its file name**: Resolve's export appends the
-timeline item's index, which in turnover097 is the EDL event number less one for all
-fifteen files (verified 2026-09-28). The AMF carries no timecode, so that index is the
-only thing that tells two uses of one clip apart; the clip it names is checked as well.
+timeline item's index, the event's place among the EDL's video events from 0
+(`clf.ConformEvent.position`). In turnover097 that was the event number less one for all
+fifteen files (verified 2026-09-28), but only because it had no audio-only events:
+turnover134's EDL numbers three of its own (002, 010, 018) and its 21 AMFs count video
+clips only (verified 2026-10-05). The AMF carries no timecode, so that index is the only
+thing that tells two uses of one clip apart; the clip it names is checked as well.
 
 Parsed with `xml.etree`, matching on local names, because the namespace carries the AMF
 version and a v1 file names its elements the same way.
@@ -39,7 +42,7 @@ SUFFIX = ".amf"
 
 _INDEX = re.compile(r"_(\d+)_\d{4}-\d{2}-\d{2}_\d{6}Z$")
 """The timeline index Resolve writes before the export's timestamp:
-`..._C4261_1_2026-09-28_180306Z.amf` is index 1, event 002."""
+`..._C4261_1_2026-09-28_180306Z.amf` is index 1, the second video event."""
 
 _PRESET = re.compile(r",\s*([^,]*Request)\s*,", re.IGNORECASE)
 """The export preset in `amfInfo/description`: `Tool Test2, turnover097, Dailies Request,
@@ -53,8 +56,20 @@ class AmfError(RuntimeError):
 
 
 @dataclass(frozen=True)
+class AmfCdl:
+    """An ASC CDL written inside the AMF, and the working space it is applied in."""
+
+    slope: tuple[float, float, float]
+    offset: tuple[float, float, float]
+    power: tuple[float, float, float]
+    saturation: float
+    working: str
+    """`toCdlWorkingSpace`'s transform ID, empty when the AMF states none."""
+
+
+@dataclass(frozen=True)
 class AmfLook:
-    """One `lookTransform`, in pipeline order. Exactly one of the three is set."""
+    """One `lookTransform`, in pipeline order. Exactly one of the four is set."""
 
     transform_id: str = ""
     """A look named by ID, which the config resolves: the Reference Gamut Compress."""
@@ -62,8 +77,11 @@ class AmfLook:
     file: str = ""
     """A CLF beside the AMF, by file name: one corrector node of the grade."""
 
+    cdl: AmfCdl | None = None
+    """An embedded CDL: the grade only when the AMF names no CLF (QC-082, user 2026-10-05)."""
+
     unsupported: str = ""
-    """What the look was when it is neither, such as an embedded CDL. Ignored, QC-077."""
+    """What the look was when it is none of these. Ignored, QC-077."""
 
     md5: str = ""
     """The checksum the AMF records for `file`, empty when it records none."""
@@ -93,11 +111,6 @@ class Amf:
     input_applied: bool
     looks: tuple[AmfLook, ...]
     output_transform: str
-
-    @property
-    def event_id(self) -> str | None:
-        """The EDL event this AMF grades, as the EDL writes it (`001`)."""
-        return None if self.index is None else f"{self.index + 1:03d}"
 
     def names(self, file_name: str) -> bool:
         """Whether this AMF is about `file_name`, compared without case.
@@ -173,8 +186,30 @@ def _look(item: ET.Element) -> AmfLook:
     file = _text(item, "file")
     if file:
         return AmfLook(file=file, md5=_text(item, "hash").lower(), applied=applied)
+    cdl = _cdl(item)
+    if cdl is not None:
+        return AmfLook(cdl=cdl, applied=applied)
     inner = [_local(child.tag) for child in item]
     return AmfLook(unsupported=", ".join(inner) or "an empty look", applied=applied)
+
+
+def _cdl(item: ET.Element) -> AmfCdl | None:
+    """`cdl:ASC_SOP` and `cdl:ASC_SAT` under the look, as Resolve writes them, or None."""
+    sop = _child(item, "ASC_SOP")
+    if sop is None:
+        return None
+    try:
+        slope, offset, power = (_three(_text(sop, name)) for name in ("Slope", "Offset", "Power"))
+        saturation = float(_text(_child(item, "ASC_SAT"), "Saturation") or 1)
+    except ValueError:
+        return None
+    working = _text(_child(_child(item, "cdlWorkingSpace"), "toCdlWorkingSpace"), "transformId")
+    return AmfCdl(slope, offset, power, saturation, working)
+
+
+def _three(text: str) -> tuple[float, float, float]:
+    first, second, third = (float(value) for value in text.split())
+    return first, second, third
 
 
 def _local(tag: str) -> str:

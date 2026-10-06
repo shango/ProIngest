@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
@@ -10,6 +11,7 @@ from proingest.core import qc, scan
 from proingest.core.models import Batch, Deliverable, InOut, ShotRow, Turnover
 from tests.fixtures import color as color_fixtures
 from tests.fixtures import media as fixtures
+from tests.test_amf import CDL_LOOK
 
 GOOD_FOLDER = "turnover001_02_23_2026_danielluckett"
 
@@ -570,7 +572,7 @@ class TestTheAmf:
         folder = self.folder(tmp_path)
         self.amf(folder).unlink()
         _, row = self.scanned(folder)
-        assert "QC-075" in rules(row) and "QC-046" in rules(row)
+        assert "QC-075" in rules(row) and "QC-046" not in rules(row), "one cause, one error"
         assert row.grade is None and row.source_encoding is None
 
     def test_an_amf_naming_another_file_is_qc_075_not_a_match(self, tmp_path: Path) -> None:
@@ -579,6 +581,77 @@ class TestTheAmf:
         path.write_text(path.read_text().replace("<aces:file>MELT0001_pl01<", "<aces:file>MELT0009_pl01<"))
         _, row = self.scanned(folder)
         assert "QC-075" in rules(row) and row.grade is None
+
+    def test_an_audio_only_event_does_not_shift_the_amfs(self, tmp_path: Path) -> None:
+        """Turnover134 (2026-10-05): its EDL numbers audio-only events of its own and every
+        AMF after the first was paired with the event before its clip (QC-075 on each)."""
+        folder = fixtures.make_turnover(tmp_path / GOOD_FOLDER, shots=2, frames=4)
+        edl = folder / "FINAL_v01.edl"
+        lines = edl.read_text().splitlines()
+        second = next(i for i, line in enumerate(lines) if line.startswith("002 "))
+        audio = lines[second - 2].replace("001 ", "002 ").replace(" V ", " A ")
+        lines[second] = lines[second].replace("002 ", "003 ", 1)
+        lines[second:second] = [audio, ""]
+        edl.write_text("\n".join(lines) + "\n")
+        _, rows = scan.scan_turnover(folder, "t1", scan.ScanSettings(rules=fixtures.SMALL_RULES))
+        assert len(rows) == 2
+        for row in rows:
+            assert "QC-075" not in rules(row) and row.grade is not None, row.clip_name
+
+    def test_a_missing_file_is_only_qc_012(self, tmp_path: Path) -> None:
+        """Turnover135's SECA0012 stills (user, 2026-10-06): QC-012, QC-075 and QC-046 for
+        one missing file. The AMF is checked on the scan that finds the file."""
+        folder = self.folder(tmp_path)
+        self.amf(folder).unlink()
+        for path in folder.rglob("MELT0001_pl01*.exr"):
+            path.unlink()
+        _, row = self.scanned(folder)
+        assert row.media is None
+        assert [r.rule_id for r in row.errors()] == ["QC-012"]
+
+    def test_an_amf_numbered_for_another_event_still_grades_the_clip_it_names(self, tmp_path: Path) -> None:
+        """Turnover135 (2026-10-06): its one AMF, exported on its own, is numbered 0 and
+        names the sixth clip. It was reported against the first clip as the wrong AMF."""
+        folder = fixtures.make_turnover(tmp_path / GOOD_FOLDER, shots=2, frames=4)
+        first, second = sorted(folder.glob("*.amf"), key=lambda path: path.name.rsplit("_", 3)[1])
+        first.unlink()
+        second.rename(folder / second.name.replace("_1_2026", "_0_2026"))
+        _, rows = scan.scan_turnover(folder, "t1", scan.ScanSettings(rules=fixtures.SMALL_RULES))
+        graded = [row for row in rows if row.grade is not None]
+        (lost,) = [row for row in rows if row.grade is None]
+        assert len(graded) == 1 and graded[0].clip_name != lost.clip_name
+        assert "QC-075" in rules(lost) and "QC-075" not in rules(graded[0])
+
+    def cdl_instead_of_clf(self, folder: Path, keep_clf: bool = False) -> None:
+        """Turnover134's AMFs: the grade as a CDL inside the AMF, and (unless kept) no CLF."""
+        path = self.amf(folder)
+        text = path.read_text()
+        if not keep_clf:
+            text = re.sub(
+                r'<aces:lookTransform applied="false"><aces:file>[^<]*</aces:file></aces:lookTransform>',
+                "",
+                text,
+            )
+        text = text.replace("<aces:outputTransform", CDL_LOOK + "<aces:outputTransform", 1)
+        path.write_text(text)
+
+    def test_with_no_clf_the_amfs_cdl_is_the_grade_and_a_warning(self, tmp_path: Path) -> None:
+        folder = self.folder(tmp_path)
+        self.cdl_instead_of_clf(folder)
+        _, row = self.scanned(folder)
+        assert row.grade is not None and row.grade.graded
+        assert [look.kind for look in row.grade.looks] == ["look", "cdl"]
+        assert row.grade.looks[1].cdl[:3] == (1.90655, 1.79367, 1.83671)
+        (warning,) = [r for r in row.qc if r.rule_id == "QC-082"]
+        assert warning.severity == "warning" and warning.message.startswith("Fix in Resolve - ")
+        assert not row.errors()
+
+    def test_a_clf_wins_over_the_cdl(self, tmp_path: Path) -> None:
+        folder = self.folder(tmp_path)
+        self.cdl_instead_of_clf(folder, keep_clf=True)
+        _, row = self.scanned(folder)
+        assert row.grade is not None and [look.kind for look in row.grade.looks] == ["look", "clf"]
+        assert "QC-082" not in rules(row) and "QC-077" in rules(row)
 
     def test_an_unreadable_amf_is_reported_on_the_turnover(self, tmp_path: Path) -> None:
         folder = self.folder(tmp_path)
@@ -656,3 +729,10 @@ class TestTheAmf:
         assert row.skipped and row.skip_reason == "HDRI: delivered by the shooters"
         assert "QC-080" in rules(row)
         assert not qc.must_fix(Batch(delivery_root=tmp_path, turnovers=[turnover], rows=[row]))
+
+    def test_an_hdri_with_no_amf_is_not_an_error(self, tmp_path: Path) -> None:
+        """Turnover135 (2026-10-05): QC-075 on each HDRI, which is never graded (QC-080)."""
+        folder = fixtures.make_turnover(tmp_path / GOOD_FOLDER, shots=1, frames=4, shot_types=["HDRI"])
+        self.amf(folder).unlink()
+        _, row = self.scanned(folder)
+        assert "QC-080" in rules(row) and not row.errors()

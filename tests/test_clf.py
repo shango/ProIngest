@@ -252,6 +252,24 @@ class TestEdlLayouts:
         assert [event.event_id for event in events] == ["001", "002"]
         assert events[0].clip_name == "MELT0001_pl01.mov"
 
+    def test_an_audio_only_event_takes_a_number_but_no_place(self, tmp_path: Path) -> None:
+        """Turnover134 (2026-10-05): `002 AX A` between two pictures. Resolve's AMF index
+        counts video clips only, so the picture after it is the second, not the third."""
+        text = FINAL_EDL.replace(
+            "002  MELT0002 V     C       ",
+            "002  MELT0001 A     C        01:00:00:08 01:00:09:08 01:00:00:00 01:00:09:00\n"
+            "* FROM CLIP NAME: MELT0001_pl01.mov\n\n"
+            "003  MELT0002 V     C       ",
+        )
+        events = clf.read_final_edl(edl(tmp_path, text), RATE_24)
+        assert [(event.event_id, event.position) for event in events] == [("001", 0), ("003", 1)]
+
+    def test_the_outgoing_side_of_a_dissolve_takes_no_place(self, tmp_path: Path) -> None:
+        text = FINAL_EDL.replace("02:00:00:00 02:00:04:00 01:00:09:00", "02:00:00:00 02:00:00:00 01:00:09:00")
+        text += "003  MELT0003 V     C        03:00:00:00 03:00:01:00 01:00:13:00 01:00:14:00\n"
+        events = clf.read_final_edl(edl(tmp_path, text), RATE_24)
+        assert [(event.event_id, event.position) for event in events] == [("001", 0), ("003", 1)]
+
     def test_a_zero_length_event_conforms_nothing(self, tmp_path: Path) -> None:
         """The outgoing side of a dissolve is written as a cut covering no frames."""
         text = FINAL_EDL.replace("02:00:00:00 02:00:04:00", "02:00:00:00 02:00:00:00")

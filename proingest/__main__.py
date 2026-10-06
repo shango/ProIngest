@@ -16,10 +16,13 @@ from pathlib import Path
 from typing import Any
 
 from proingest import __version__
-from proingest.core import batchfile, clf, exports, logsetup, naming, planner, qc, render, scan
+from proingest.core import batchfile, clf, expiry, exports, logsetup, naming, planner, qc, render, scan
 from proingest.core.models import DEFAULT_WORKERS, Batch, Deliverable, ShotRow, Turnover
 
 COLUMNS = ("STATUS", "SHOT", "ELEM", "SOURCE", "RES", "FPS", "IN", "OUT", "DUR", "MAX", "AUDIO")
+
+EXPIRED_EXIT = 3
+"""A packaged build a calendar month past its release refuses every subcommand (`core/expiry.py`)."""
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -72,6 +75,11 @@ def main(argv: list[str] | None = None) -> int:
     # Console only: the log file lives in a folder `ui/paths.py` asks Qt for, and the
     # subcommands are the headless half that must not import PySide6 to print a table.
     logsetup.configure(level=logging.INFO if args.verbose else logging.WARNING)
+
+    refused = expiry.refusal() if args.command else None
+    if refused is not None:
+        print(refused, file=sys.stderr)
+        return EXPIRED_EXIT
 
     if args.command == "scan":
         return _scan(args.folders, args.save, args.name, args.rules, args.show_pattern)
@@ -220,6 +228,8 @@ def _run(
     reporter = _ProgressPrinter()
     written = render.execute(planned, workers=jobs, on_progress=reporter)
     render.apply_results(batch, written, show_pattern)
+    if any(item.status == "done" for item in written):
+        render.make_user_folders(root)
     try:
         batchfile.backup(batch_path)
         batchfile.save(batch, batch_path)

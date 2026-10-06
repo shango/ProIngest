@@ -24,7 +24,7 @@ from __future__ import annotations
 import logging
 import platform
 from base64 import b64decode, b64encode
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 
 from PySide6.QtCore import QByteArray, QMimeData, Qt, QUrl
@@ -40,6 +40,7 @@ from PySide6.QtWidgets import (
     QDialog,
     QDockWidget,
     QFileDialog,
+    QHBoxLayout,
     QLabel,
     QMainWindow,
     QMessageBox,
@@ -53,7 +54,7 @@ from PySide6.QtWidgets import (
 )
 
 from proingest import __version__
-from proingest.core import batchfile, exports, logsetup, qc, scan
+from proingest.core import batchfile, expiry, exports, fixit, logsetup, qc, scan
 from proingest.core import settings as core_settings
 from proingest.core.models import (
     DEFAULT_BATCH_NAME,
@@ -91,6 +92,10 @@ NO_ROWS_TEXT = "No clips found in timeline"
 Issues dock beside it, because a timeline that produced no rows always said why there."""
 
 ISSUES_LINK = "See the Issues dock"
+
+FIXIT_TEXT = "Fix-it report"
+"""The link above the Details dock (user, 2026-10-06): what Ben needs to fix, as a page
+opened in the browser and filed beside the two spreadsheets (`core/fixit.py`)."""
 
 BATCH_FILTER = "ProIngest batch (*.pibatch)"
 
@@ -146,6 +151,8 @@ class MainWindow(QMainWindow):
         self.resize(*DEFAULT_SIZE)
         # Turnover folders dragged in from Finder, several at once (add_turnovers).
         self.setAcceptDrops(True)
+        # Read once: the stamp is inside the bundle and cannot change while it runs.
+        self._expiry = expiry.current()
 
         self._build_actions()
         self._build_central()
@@ -178,13 +185,13 @@ class MainWindow(QMainWindow):
         self.action_scan = self._action("Scan")
         self.action_scan.triggered.connect(self.rescan_all)
         self.action_run = self._action("Run", QKeySequence("Ctrl+R"))
-        self.action_run.triggered.connect(lambda: self.run.start())
+        self.action_run.triggered.connect(self.start_run)
         self.action_stop = self._action("Stop", QKeySequence("Ctrl+."))
         self.action_stop.triggered.connect(lambda: self.run.stop())
         self.action_toggle_skip = self._action("Skip Shot", QKeySequence("Ctrl+K"))
         self.action_toggle_skip.triggered.connect(lambda: self.shot_list.toggle_skip())
         self.action_export = self._action("Export")
-        self.action_export.triggered.connect(lambda: self.run.export_reports())
+        self.action_export.triggered.connect(self.export_reports)
         self.action_cycle_display = self._action("Cycle In/Out display", QKeySequence("Ctrl+T"))
         self.action_cycle_display.triggered.connect(self._cycle_display_mode)
         self.action_find = self._action("Find", QKeySequence.StandardKey.Find)
@@ -348,6 +355,7 @@ class MainWindow(QMainWindow):
         batch_layout.addWidget(self.batch_bar)
         batch_layout.addWidget(self.run_strip)
         batch_layout.addWidget(self.list_pages)
+        batch_layout.addWidget(self._fixit_bar(batch_page))
 
         self.pages = QStackedWidget(self)
         self.pages.addWidget(self._empty_state())
@@ -414,7 +422,7 @@ class MainWindow(QMainWindow):
         delivery was checked against is a record of that work, so changing the defaults
         next month must not silently re-judge a batch that shipped last week.
         """
-        if self._busy() or not self._may_abandon_current():
+        if self._expired() or self._busy() or not self._may_abandon_current():
             return
         batch = Batch()
         if self._settings.rules:
@@ -427,7 +435,7 @@ class MainWindow(QMainWindow):
 
     def open_batch(self) -> None:
         """Read a `.pibatch`, back it up, and check that its two roots are still there."""
-        if self._busy() or not self._may_abandon_current():
+        if self._expired() or self._busy() or not self._may_abandon_current():
             return
         path = self.ask_open_path()
         if path is None:
@@ -589,7 +597,7 @@ class MainWindow(QMainWindow):
         2026-09-25), so deliverables and reports land beside the turnover rather than in
         whatever folder Run's chooser happened to open on, which was the turnover itself.
         """
-        if not self._batch_open or self._busy():
+        if not self._batch_open or self._busy() or self._expired():
             return
         folder = self.ask_folder("Add Turnover", self.batch.source_root)
         if folder is None:
@@ -607,7 +615,7 @@ class MainWindow(QMainWindow):
         drop is a handful of things picked in Finder and a stray file among them is not a
         turnover anyone meant to add. What was skipped is said once, after the rest start.
         """
-        if not self._batch_open or self._busy():
+        if not self._batch_open or self._busy() or self._expired():
             return
         present = {turnover.folder for turnover in self.batch.turnovers}
         added: list[Path] = []
@@ -658,7 +666,7 @@ class MainWindow(QMainWindow):
         skips, notes, shot code corrections, delivered state - is carried over by File
         Name (`scan.carry_over`), and QC-070 says so when the EDL or CSV changed.
         """
-        if not self._batch_open or self._busy() or not turnovers:
+        if not self._batch_open or self._busy() or not turnovers or self._expired():
             return
         for turnover in turnovers:
             self._rescanning[turnover.turnover_id] = (
@@ -687,14 +695,92 @@ class MainWindow(QMainWindow):
         its media together, and the probe cache makes the unchanged clips free. Only the
         rows asked for are marked; the others keep their delivered state (`carry_over`).
         """
-        if not self._batch_open or self._busy():
+        if not self._batch_open or self._busy() or self._expired():
             return
         self.shot_model.mark_for_rerun(rows)
         self.rescan([turnover])
 
     def build_stringout(self, turnover: Turnover) -> None:
         """A heading's Build Stringout, which the run controller does off this thread."""
-        self.run.build_stringout(turnover)
+        if not self._expired():
+            self.run.build_stringout(turnover)
+
+    def start_run(self) -> None:
+        if not self._expired():
+            self.run.start()
+
+    def _fixit_bar(self, parent: QWidget) -> QWidget:
+        """The strip between the shot list and the Details dock that carries the link."""
+        bar = QWidget(parent)
+        bar.setObjectName("fixit_bar")
+        layout = QHBoxLayout(bar)
+        layout.setContentsMargins(12, 4, 12, 4)
+        self.fixit_link = QLabel(f'<a href="#fixit" style="color: #4d8fd6;">{FIXIT_TEXT}</a>', bar)
+        self.fixit_link.setObjectName("fixit_link")
+        self.fixit_link.setEnabled(False)  # until a batch with rows is open (`update_state`)
+        self.fixit_link.setToolTip("What Ben needs to fix, as a page for the browser that can be sent on")
+        self.fixit_link.linkActivated.connect(lambda _link: self.open_fixit_report())
+        layout.addWidget(self.fixit_link)
+        layout.addStretch(1)
+        return bar
+
+    def open_fixit_report(self) -> None:
+        """Write the Fix-it report beside the spreadsheets, then open it in the browser.
+
+        From the QC results as the Issues dock shows them, so no rule re-runs and it is
+        quick enough for the UI thread: it reads the batch and writes one small file.
+        """
+        if not self._batch_open or self.scanner.busy or self._expired():
+            return
+        batch = self.batch
+        if batch.delivery_root is None:
+            self.choose_delivery_root()
+            if batch.delivery_root is None:
+                return
+        try:
+            path = fixit.write(batch, fixit.report_path(batch, batch.delivery_root))
+        except (OSError, ValueError) as exc:
+            self.report_problem("Fix-it report not written", str(exc))
+            return
+        log.info("Fix-it report written to %s", path)
+        self.open_in_browser(path)
+
+    def open_in_browser(self, path: Path) -> None:
+        """The default browser, for an HTML file. Its own method so a test can answer it."""
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(path)))
+
+    def export_reports(self) -> None:
+        if not self._expired():
+            self.run.export_reports()
+
+    # --- expiry -----------------------------------------------------------------------
+
+    def _expired(self) -> bool:
+        """Refuse work once this build is a calendar month old (user, 2026-10-05), and say why.
+
+        Asked at the moment of each action rather than once at launch, so a window left
+        open over the date stops too. Save, Stop, Settings and Save Logs stay, so nothing
+        already done is lost.
+        """
+        if self._expiry is None or not self._expiry.expired(date.today()):
+            return False
+        self.report_expired(self._expiry.expired_message())
+        return True
+
+    def check_expiry(self) -> None:
+        """At launch: the refusal straight away, or the last week's warning on the status bar."""
+        if not self._expired():
+            self._refresh_expiry_warning()
+
+    def _refresh_expiry_warning(self) -> None:
+        today = date.today()
+        warning = self._expiry is not None and self._expiry.warning(today)
+        self.expiry_warning.setText(self._expiry.warning_message(today) if self._expiry and warning else "")
+        self.expiry_warning.setVisible(warning)
+
+    def report_expired(self, text: str) -> None:
+        """Its own method so a test can see the refusal without a modal stopping it."""
+        QMessageBox.critical(self, "Update ProIngest", text)
 
     def cancel_rerun(self, rows: list[ShotRow]) -> None:
         """Cancel Re-run, refusing a shot whose files no longer carry its name (user, 2026-09-25)."""
@@ -829,7 +915,9 @@ class MainWindow(QMainWindow):
         self.batch_bar.delivery_root.setEnabled(not busy)
         self.action_run.setEnabled(open_batch and not busy and bool(self.batch.rows))
         self.action_export.setEnabled(open_batch and not busy and bool(self.batch.rows))
+        self.fixit_link.setEnabled(open_batch and not scanning and bool(self.batch.rows))
         self.action_stop.setEnabled(self.run.stoppable)
+        self._refresh_expiry_warning()
         self._refresh_tooltips(open_batch=open_batch, scanning=scanning, running=running)
 
         if not open_batch:
@@ -1154,6 +1242,11 @@ class MainWindow(QMainWindow):
         version = QLabel(f"{WINDOW_TITLE} {__version__}", self)
         version.setObjectName("status_version")
         self.statusBar().addPermanentWidget(version)
+        # Permanent too: the last week before this build expires (user, 2026-10-05).
+        self.expiry_warning = QLabel(self)
+        self.expiry_warning.setObjectName("status_expiry")
+        self.expiry_warning.setVisible(False)
+        self.statusBar().addPermanentWidget(self.expiry_warning)
 
     # --- what the window remembers ---------------------------------------------------
 

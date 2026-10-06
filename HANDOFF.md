@@ -1,4 +1,4 @@
-# Handoff, 5 October 2026
+# Handoff, 6 October 2026
 
 **This is a short pointer, not the record.** `PROGRESS.md` section 1 holds the record: one entry
 per change, newest first, each saying what was built and how it was verified. If this file
@@ -6,20 +6,81 @@ disagrees with `PROGRESS.md` or the docs, they are right and this file is wrong.
 
 ## State
 
-- **Version 0.5.22 is on `main`**: PR #17 (`qc/source-fidelity`) merged as `70e1160` on 5 Oct
-  2026 at the user's request. New work starts on a new branch.
-- **CI run 37276656318 is green on all four jobs** and built the 0.5.22 dmg, handed over as:
-  `gh run download 37276656318 -R shango/ProIngest -n ProIngest-macos-arm64 -D ~/Downloads/ProIngest-0.5.22`
-  (https://github.com/shango/ProIngest/actions/runs/37276656318)
-- **1817 tests pass**; `ruff`, `ruff format` and `mypy --strict` are clean.
-- Nothing uncommitted except the untracked samples listed under Working notes.
-- **Session wrapped up 30 Sep 2026 at the user's request.** Nothing is in flight. Start with "Open,
-  with the user" below, HDRI first.
+- **Version 0.5.25, PR #18 (`app/expiry`) merged to `main` at the user's request** on
+  2026-10-06. 0.5.25 adds `User_Generated` and `User_Uploads` at the delivery root, made by any
+  run that delivers a turnover (NAMING_SPEC section 5). 0.5.24 was the Fix-it report (PROGRESS).
+- The dmg is built by the CI run of the merge on `main`; its run ID is in the reply that handed
+  it over, as `gh run download <run-id> -R shango/ProIngest -n ProIngest-macos-arm64 -D ~/Downloads/ProIngest-0.5.25`.
+- `ruff`, `ruff format` and `mypy --strict` are clean, and 1885 tests pass locally (1 skipped).
+- Nothing uncommitted except the untracked samples under Working notes. Nothing in flight.
+
+## What 0.5.23 did (5 and 6 Oct 2026, all user requests)
+
+- **Build expiry**: a packaged build refuses New, Open, Add Turnover, drops, Scan, Run, Export and
+  Build Stringout one calendar month after its build day, with an "Update ProIngest" modal; the
+  last 7 days warn on the status bar; headless subcommands exit 3. Save, Stop, Settings, Save Logs
+  stay. Source runs never expire. `core/expiry.py`, `build/build.py` stamps
+  `proingest/resources/release.txt` (untracked). PACKAGING "Expiry", OQ-78.
+- **Status dots are QC levels again**: the 0.5.22 "dot matches the progress bar" change was
+  wrong (user) and is reverted exactly. Memory: status-dots-are-qc-levels.
+- **AMF pairing fixed**: Resolve numbers AMFs by video clip; turnover134's EDL numbers its
+  audio-only events too, which shifted every later AMF one clip off (34 false errors). Keyed on
+  `clf.ConformEvent.position` now.
+- **The AMF's CDL is the grade when the AMF names no CLF** (user: "prefer CLF with CDL as backup
+  only if CLF is missing, and a warning for Ben on the item. Non blocking."): applied in the AMF's
+  `toCdlWorkingSpace` (ACEScg), unclamped, `color.cdl_transform`, with **QC-082** (warning). A CLF
+  present wins and the CDL is QC-077. Not yet compared with Resolve's own render (MAC_SESSION).
+- **"Fix in Resolve - "** leads every error and warning of the rules in
+  `models.RESOLVE_FIX_RULES` (set in `QCResult.__post_init__`); never info. QC_RULES lists them.
+- **Folders named `proxy`** (any case, any depth) are never searched for media
+  (`media.IGNORED_FOLDERS`).
+- **No QC-075 on an HDRI row** (never graded).
+
+## Turnover134 and turnover135 (untracked, in the repo root)
+
+Run headless on 2026-10-06. **Ben's list**, both turnovers on one page (private, the user shares
+it): https://claude.ai/artifact/DFshCWhWiGYsEuH35NPAy3. The earlier per-turnover pages,
+turnover134 https://claude.ai/artifact/GX82xM9xvaZnjzoWFBkUaL and turnover135
+https://claude.ai/artifact/9Bynj3M6E2t23n2WB5PtDZ, still exist (source: the scratchpad's `ben/make.py`, gone
+after this session; republish by editing the page via its URL).
+
+- **Turnover134** scans with only two must-fix: the SECA0009 and SECA0010 mirror balls
+  (`A001_09291513_C007`, `A001_09291529_C013`) were conformed against the `Proxy/` copies, whose
+  timecode differs, so the EDL cuts fall before the real files (QC-029, "Fix in Resolve").
+  With those two skipped, all 37 deliverables render, graded by the AMF CDL. Also for Ben:
+  `A001_09291546_C022` is typed SECA0001 (should be SECA0011); the stitched HDRI EXRs sit on the
+  timeline with no Shot Type; grades came as CDL with no CLF (QC-082); stray `.drt`, NDA pdf and
+  distortion grid in the folder.
+- **Turnover135 cannot run**: one AMF (for a SECA0012 size-ref EXR from another export) where 18
+  clips need one; the timeline's four SECA0012 reference stills are `..._raw_4k_v01.exr` files not
+  in the folder (size ref matches camera clip C028 by timecode; C029, C032, C033 unconfirmed); a
+  duplicate CSV row; HDRI EXRs on the timeline; a `LOGS` folder and `.drt` in it.
+
+## Open, with the user
+
+- **The EXR stringout** (user, 2026-10-06): an optional switch to cut the stringout from the
+  delivered EXRs. Six design questions are with the user (PROGRESS entry for 0.5.25); nothing
+  is built. The EXR path cannot be a baked cube in ffmpeg (scene linear), so it would decode in
+  Python through OCIO and pipe to ffmpeg, much slower than today's.
+
+- **Ben's answers** on both turnovers (the pages above). Re-run each when his re-exports land;
+  turnover135 may show more once its AMFs exist.
+- **The CDL fallback against Resolve**: compare a graded reference with Ben's own playback
+  (MAC_SESSION line). Unclamped CDL in ACEScg is assumed to be what Resolve does.
+- **"Fix in Resolve" rule list** was chosen by Claude (17 rules plus QC-082); the user may adjust.
+- **`docs/COLOR_INPUTS_TURNOVER121.md`** went into PR #18 by mistake (swept in by a `git add`);
+  the user said nothing either way and it was left in. The PR description says so.
+- **Log CSV Level column**: the user reported it said INFO for blocking errors; the file supplied
+  (`ProIngest-logs-20261005-1301.csv`, untracked) does not show that. Asked what they saw; no reply.
+- **Mac checks** in `docs/MAC_SESSION.md`: expiry (0.5.23), the CDL grade (0.5.23), burn-in
+  boxes (0.5.22), and the older ones.
 
 ## What 0.5.22 did (5 Oct 2026, user)
 
-- Turnover dates are `MM_DD_YY`: QC-081 retired, the stringout name written with a two digit
-  year. Burn-ins sit on a 30% black box. A done row's dot is the progress bar's blue.
+- Turnover dates are `MM_DD_YY` (QC-081 retired; the stringout name has a two digit year).
+  Burn-ins sit on a 30% black box, 8 px padding, one font line high.
+- `MM_DD_YY` is for turnover-dated names only (folder, stringout); reports and logs keep
+  `YYYYMMDD` (memory: two-digit-dates-scope).
 
 ## What 0.5.12 to 0.5.21 did (29 Sep 2026, all user decisions)
 
@@ -46,24 +107,8 @@ disagrees with `PROGRESS.md` or the docs, they are right and this file is wrong.
   other held frame stays one second.
 - **Docs, no code: Ben exports no stringout.** The tool builds it. Every doc says so now.
 
-## Turnover097, the spec sample
 
-`turnover097_09_28_26_danielluckett/collected files` (untracked): EDL + UTF-16 CSV + one AMF per
-EDL event + CLF grade nodes. **A turnover is only those four: the CMX 3600 EDL, the CSV, one AMF
-per clip and the CLFs** (user); the stray `.otio` and `.drt` in the folder are not part of it and
-are never read or cited. It scans with **no must-fix** and runs in full (30 jobs, about 20
-minutes here). The latest stringout, 1262 frames with the insets, held stills and both HDRI events playing, is
-`turnover097_09_28_26_danielluckett/turnover097_09_28_2026_danielluckett_SO_v01_pip.mp4`; the
-first run's logs are in `C:\Users\shann\Downloads\ProIngest-turnover097\`. The handover folder is
-named `collected files`, so number, date and shooter are typed in (QC-005).
-
-**Colour decisions (2026-09-28), final:** colour comes from each event's AMF and its CLFs only; the
-EDL is the cut and the CSV is identity (File Name, Shot, Shot Type); references follow the AMF's
-output transform (here Gamma 2.2 Rec.709, labelled `bt470m`); a clip with no CLF is info (QC-009);
-HDRI rows are the shooters' to deliver (QC-080). Verified facts: the AMF index in its filename is
-the EDL event number less one (15 of 15); the pinned config maps every URN the AMFs use.
-
-## Open, with the user
+### Older, still open
 
 - **HDRI, waiting on Ben** (user, 2026-09-29; this kept being lost, so read it first): a clip typed
   `HDRI` is expected to be an **sRGB reference MP4** of what the shooter captured, later stitched
@@ -101,9 +146,12 @@ the EDL event number less one (15 of 15); the pinned config maps every URN the A
   pushes to `main`; a branch's pushes run only once a PR is open for it.
 - **`gh pr edit` fails** on a Projects (classic) GraphQL error; use
   `gh api -X PATCH repos/shango/ProIngest/pulls/<n> -f title=... -f body=...`.
-- **Untracked, never `git add -A`**: the turnover folders, the reference EXR, `burn-ins.png`,
-  and `docs/COLOR_INPUTS_TURNOVER121.md` (the user to decide).
-- **A full turnover097 run** is a short script: scan `collected files`, type in 97, 9, 28, 2026,
+- **Untracked, never `git add -A` or `git add docs`**: the turnover folders, the reference EXR,
+  `burn-ins.png`, the log CSV. Stage files by name.
+- **Headless runs**: `python -m proingest scan <folder> --save x.pibatch`, then `run x.pibatch
+  --delivery-root <scratch>`; the run refuses while any must-fix stands, so skip rows in a copy of
+  the batch (`batchfile.load`, set `skipped`, `batchfile.save`) to exercise the rest.
+- **A full turnover097 run** (that folder is no longer in the repo) is a short script: scan `collected files`, type in 97, 9, 28, 2026,
   `danielluckett`, `qc.preflight`, `render.execute(planner.plan_batch(...), workers=4)`,
   `render.apply_results`, `stringout.build`. Put it under an `if __name__ == "__main__":` guard
   (the worker pool spawns). To rebuild only the stringout, point each row's `deliverables` at the

@@ -74,6 +74,11 @@ class ConformEvent:
     """An M2 at speed 0: the event holds `source_in` for its whole length, so it uses one
     source frame and `source_out` is where the EDL would have run to, not a frame it shows."""
 
+    position: int = 0
+    """Its place among the EDL's video events, from 0: Resolve's timeline index, which is
+    what an AMF's file name carries (`amf.Amf.index`). Not the event number less one: an
+    audio-only event takes a number of its own (turnover134, 2026-10-05)."""
+
     def retimed(self, rate: FrameRate) -> bool:
         """A motion effect other than a freeze or normal speed: a retime or a reversal,
         which the tool does not render (OQ-63, QC-073)."""
@@ -151,11 +156,12 @@ class ShotColor:
             return [color.input_transform(self.source_encoding)]
         legs: list[ocio.Transform] = [color.to_aces(self.source_encoding)]
         for look in self.looks:
-            legs.append(
-                color.look_transform(look.name)
-                if look.kind == "look"
-                else color.clf_transform(Path(look.name))
-            )
+            if look.kind == "look":
+                legs.append(color.look_transform(look.name))
+            elif look.kind == "cdl":
+                legs.append(color.cdl_transform(look.cdl, look.name))
+            else:
+                legs.append(color.clf_transform(Path(look.name)))
         legs.append(color.to_plate())
         return legs
 
@@ -295,17 +301,24 @@ def read_final_edl(path: Path, rate: FrameRate) -> list[ConformEvent]:
                 # clip name that follows belongs to the picture.
                 continue
             if pending is not None:
-                events.extend(pending.build(path, rate))
+                _place(events, pending.build(path, rate))
             pending = _Event(head) if _is_video(head["channel"]) else None
             continue
         if pending is not None:
             pending.comment(line)
     if pending is not None:
-        events.extend(pending.build(path, rate))
+        _place(events, pending.build(path, rate))
 
     if not events:
         raise ColorSessionError(f"{path} carries no video events")
     return events
+
+
+def _place(events: list[ConformEvent], built: list[ConformEvent]) -> None:
+    """Append, numbering each by its place among the video events kept so far. A
+    zero-length event is the outgoing side of a dissolve, part of the clip before it, so
+    it takes no place."""
+    events.extend(replace(event, position=len(events) + offset) for offset, event in enumerate(built))
 
 
 _EVENT_HEAD = re.compile(

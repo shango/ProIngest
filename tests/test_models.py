@@ -339,3 +339,19 @@ class TestBatch:
         data["schema_version"] = 99
         with pytest.raises(ValueError, match="schema version"):
             Batch.from_dict(data)
+
+
+class TestFixInResolve:
+    """User, 2026-10-05: an error fixed in Resolve says so first."""
+
+    def test_a_resolve_error_leads_with_it(self) -> None:
+        result = QCResult("QC-075", "error", "row", "no AMF in the folder grades it")
+        assert result.message == "Fix in Resolve - no AMF in the folder grades it"
+
+    def test_only_errors_and_only_resolve_rules(self) -> None:
+        assert QCResult("QC-046", "info", "row", "x").message == "x"
+        assert QCResult("QC-013", "error", "row", "x").message == "x"
+
+    def test_a_saved_batch_does_not_say_it_twice(self) -> None:
+        result = QCResult("QC-029", "error", "row", "out of range")
+        assert QCResult.from_dict(result.to_dict()) == result

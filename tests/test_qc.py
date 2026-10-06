@@ -391,6 +391,17 @@ class TestRange:
     def test_in_before_the_media_is_qc_031(self) -> None:
         assert ids(qc.check_range(row(current=InOut(1, 1248)))) == ["QC-031"]
 
+    def test_silent_while_the_cut_is_still_the_edls_and_qc_029_says_so(self) -> None:
+        """Turnover134's mirror balls (user, 2026-10-06, "too much noise"): QC-029 and QC-031
+        for one cut. Once the editor moves it, QC-031 speaks for the new range."""
+        cut = InOut(1, 1248)
+        late = row(current=cut)
+        late.approved = cut
+        late.qc.append(QCResult("QC-029", "error", "row", "x"))
+        assert qc.check_range(late) == []
+        late.current = InOut(2, 1248)
+        assert ids(qc.check_range(late)) == ["QC-031"]
+
     def test_in_after_out_is_qc_032(self) -> None:
         """Reported alone: an inverted range makes every other range answer nonsense."""
         results = qc.check_range(row(current=InOut(1248, 1009)))
@@ -568,6 +579,14 @@ class TestSourceEncodingRule:
         assert ids(results) == ["QC-046"]
         assert results[0].severity == "error"
         assert "no AMF" in results[0].message
+
+    @pytest.mark.parametrize("cause", ["QC-075", "QC-012"])
+    def test_silent_where_the_missing_amf_or_file_is_already_the_error(self, cause: str) -> None:
+        """Turnover135 (user, 2026-10-06, "too much noise"): one cause, one error. QC-075 or
+        QC-012 already holds the row back, so QC-046 saying it again was noise."""
+        plate = row(source_encoding=None)
+        plate.qc.append(QCResult(cause, "error", "row", "x"))
+        assert qc.check_source_encoding(plate) == []
 
     def test_an_amf_with_no_input_transform_names_itself(self) -> None:
         plate = row(source_encoding=None)
@@ -947,7 +966,7 @@ class TestLogResults:
         assert lines[0][0] == "WARNING" and "QC-074" in lines[0][1]
         assert lines[1][1].endswith("QC-033 too short (bypassed: rendered as it is)")
         assert lines[2][1].endswith(
-            "QC-011 twice (bypassed, but not rendered: "
+            "QC-011 Fix in Resolve - twice (bypassed, but not rendered: "
             "Accept As Is cannot render past this, so the row is held back)"
         )
         assert lines[-1] == (
@@ -967,7 +986,7 @@ class TestLogResults:
         batch.qc = [QCResult("QC-063", "warning", "batch", "not much room left")]
         assert [message for _, message in self.logged(caplog, batch)][:3] == [
             "after the scan: batch: QC-063 not much room left",
-            "after the scan: T: QC-008 no colour session (blocks the run)",
+            "after the scan: T: QC-008 Fix in Resolve - no colour session (blocks the run)",
             "after the scan: T / MELT0001 (MELT0001_pl01) / r.mp4: QC-100 ffmpeg failed",
         ]
 

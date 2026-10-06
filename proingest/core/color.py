@@ -130,6 +130,21 @@ def look_transform(name: str) -> ocio.LookTransform:
     return ocio.LookTransform(src=ACES, dst=ACES, looks=name)
 
 
+def cdl_transform(numbers: tuple[float, ...], working: str) -> ocio.GroupTransform:
+    """The AMF's own CDL, applied in `working` (ACEScg in Resolve's export): ACES2065-1 in
+    and out like a CLF. Unclamped, because linear values above 1 are picture, not error."""
+    slope, offset, power, sat = numbers[0:3], numbers[3:6], numbers[6:9], numbers[9]
+    cdl = ocio.CDLTransform(slope=slope, offset=offset, power=power, sat=sat)
+    cdl.setStyle(ocio.CDLStyle.CDL_NO_CLAMP)
+    return ocio.GroupTransform(
+        [
+            ocio.ColorSpaceTransform(src=ACES, dst=working),
+            cdl,
+            ocio.ColorSpaceTransform(src=working, dst=ACES),
+        ]
+    )
+
+
 def clf_transform(path: Path) -> ocio.FileTransform:
     """One of the colourist's CLFs, as it is: ACES2065-1 in and out (Resolve's export)."""
     return ocio.FileTransform(src=str(path), interpolation=INTERPOLATION)

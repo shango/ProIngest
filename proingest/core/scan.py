@@ -537,7 +537,10 @@ def _conform(row: ShotRow, event: clf.ConformEvent, grades: _Grades) -> None:
     """The approved cut off this row's one EDL event, and the colour off that event's AMF."""
 
     row.record_in, row.record_out = event.record_in, event.record_out
-    grades.attach(row, event)
+    # An HDRI is shown as it is and never graded (QC-080), so a missing AMF says nothing.
+    # Nor does it for a file that is not there (QC-012): its AMF is checked once it is.
+    if not qc.is_shooter_delivered(row) and row.media is not None:
+        grades.attach(row, event)
     approved = clf.approved_in_out(event, row.media) if row.media else None
     if approved is None:
         _whole_media(row)
@@ -743,15 +746,17 @@ def carry_over(old: Turnover, old_rows: list[ShotRow], new: Turnover, new_rows: 
 
 @dataclass
 class _Grades:
-    """The turnover's AMFs by the EDL event each grades (`core/amf.py`), read once.
+    """The turnover's AMFs by the timeline index each grades (`core/amf.py`), read once.
 
     An AMF that will not parse, or whose name carries no timeline index, is reported on
     the turnover and matches nothing; two AMFs claiming one event are reported on that
-    event's row rather than chosen between.
+    event's row rather than chosen between. When no AMF at an event's index names its
+    clip, the one AMF that does grades it instead: turnover135's only AMF,
+    exported on its own, is numbered 0 and names the sixth clip (2026-10-06).
     """
 
     folder: Path
-    by_event: dict[str, list[amf.Amf]] = field(default_factory=dict)
+    by_index: dict[int, list[amf.Amf]] = field(default_factory=dict)
     qc: list[QCResult] = field(default_factory=list)
 
     @classmethod
@@ -763,7 +768,7 @@ class _Grades:
             except amf.AmfError as exc:
                 grades.qc.append(QCResult("QC-075", "error", "turnover", str(exc)))
                 continue
-            if found.event_id is None:
+            if found.index is None:
                 grades.qc.append(
                     QCResult(
                         "QC-075",
@@ -774,12 +779,15 @@ class _Grades:
                     )
                 )
                 continue
-            grades.by_event.setdefault(found.event_id, []).append(found)
+            grades.by_index.setdefault(found.index, []).append(found)
         return grades
 
     def attach(self, row: ShotRow, event: clf.ConformEvent) -> None:
         """This row's grade from its event's AMF, and what is wrong with it on the row."""
-        found = self.by_event.get(event.event_id, [])
+        found = self.by_index.get(event.position, [])
+        if not any(item.names(row.clip_name) for item in found):
+            named = [item for items in self.by_index.values() for item in items if item.names(row.clip_name)]
+            found = named if len(named) == 1 else found
         if len(found) != 1:
             names = ", ".join(item.path.name for item in found)
             why = f"two or more AMFs claim it ({names})" if found else "no AMF in the folder grades it"
@@ -800,8 +808,8 @@ class _Grades:
                     "QC-075",
                     "error",
                     "row",
-                    f"{match.path.name} grades EDL event {event.event_id} but names {match.clip_file}, "
-                    f"not {row.clip_name}",
+                    f"{match.path.name} grades video clip {event.position + 1} of the EDL (event "
+                    f"{event.event_id}) but names {match.clip_file}, not {row.clip_name}",
                 )
             )
             return
@@ -823,6 +831,7 @@ def _grade_of(found: amf.Amf, folder: Path) -> tuple[Grade, list[QCResult]]:
     """
     findings: list[QCResult] = []
     looks: list[GradeLook] = []
+    names_a_clf = any(look.file and not look.applied for look in found.looks)
     for look in found.looks:
         if look.applied:
             continue
@@ -842,6 +851,8 @@ def _grade_of(found: amf.Amf, folder: Path) -> tuple[Grade, list[QCResult]]:
                 )
             else:
                 looks.append(GradeLook("clf", str(folder / look.file)))
+        elif look.cdl is not None:
+            findings.append(_cdl_finding(found, look.cdl, looks, names_a_clf))
         else:
             findings.append(
                 _ignored(found, f"a look that is not a transform ID or a CLF ({look.unsupported})")
@@ -881,6 +892,27 @@ def _grade_of(found: amf.Amf, folder: Path) -> tuple[Grade, list[QCResult]]:
         preset=found.preset,
     )
     return grade, findings
+
+
+def _cdl_finding(found: amf.Amf, cdl: amf.AmfCdl, looks: list[GradeLook], names_a_clf: bool) -> QCResult:
+    """The CLF is the grade; the AMF's own CDL stands in only when it names none (user,
+    2026-10-05), applied in the working space it states, and the row says so (QC-082)."""
+    if names_a_clf:
+        return _ignored(found, "its CDL, since a CLF carries the grade,")
+    working = amf.colour_space_for(cdl.working) if cdl.working else None
+    if working is None:
+        return _ignored(
+            found, f"a CDL in a working space {color.BUILTIN_CONFIG} lacks ({cdl.working or 'none stated'})"
+        )
+    looks.append(GradeLook("cdl", working, (*cdl.slope, *cdl.offset, *cdl.power, cdl.saturation)))
+    numbers = " ".join(f"{value:g}" for value in cdl.slope)
+    return QCResult(
+        "QC-082",
+        "warning",
+        "row",
+        f"{found.path.name}: no CLF carries this clip's grade, so the CDL inside the AMF is used "
+        f"(slope {numbers}, in {working}); export the grade with its CLF",
+    )
 
 
 def _ignored(found: amf.Amf, what: str) -> QCResult:

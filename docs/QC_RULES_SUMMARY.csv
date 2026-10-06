@@ -21,7 +21,7 @@ QC-027,A: scan and pre-flight,row,Error,Must fix,"Yes, unless the row is skipped
 QC-028,A: scan and pre-flight,row,Warning,Info tier,No,Row coloured amber and logged; the run goes ahead,Source has no embedded timecode
 QC-029,A: scan and pre-flight,row,Error,Must fix,"Yes, unless the row is skipped","Stops the whole run; fix and re-scan, or skip the row",EDL event's source range does not fit inside the media
 QC-030,A: scan and pre-flight,row,Warning,Info tier,No,Row coloured amber and logged; the run goes ahead,Fewer than the expected handle frames beyond In or Out
-QC-031,A: scan and pre-flight,row,Error,Must fix,"Yes, unless the row is skipped","Stops the whole run; fix and re-scan, or skip the row",In or Out outside the source range after editing
+QC-031,A: scan and pre-flight,row,Error,Must fix,"Yes, unless the row is skipped","Stops the whole run; fix and re-scan, or skip the row",In or Out outside the source range after editing; silent while the cut is still the EDL's and QC-029 says so
 QC-032,A: scan and pre-flight,row,Error,Must fix,"Yes, unless the row is skipped","Stops the whole run; fix and re-scan, or skip the row",In greater than Out
 QC-033,A: scan and pre-flight,row,Error,Must fix,"Yes, unless the row is skipped","Stops the whole run; trim inside the limit, change the limit in Settings, or skip the row",Plate (pl) duration below minimum (default 120 frames); no other Shot Type has a limit
 QC-034,A: scan and pre-flight,row,Error,Must fix,"Yes, unless the row is skipped","Stops the whole run; trim inside the limit, change the limit in Settings, or skip the row",Plate (pl) duration above maximum (default 240 frames); no other Shot Type has a limit
@@ -33,7 +33,7 @@ QC-042,A: scan and pre-flight,row,Error,Must fix,"Yes, unless the row is skipped
 QC-043,A: scan and pre-flight,row,Warning,Info tier,No,Row coloured amber and logged; the run goes ahead,Audio length differs from the In/Out range by more than one frame
 QC-044,A: scan and pre-flight,row,Warning,Info tier,No,Row coloured amber and logged; the run goes ahead,Audio not 16 bit PCM (will be extracted as 16 bit)
 QC-045,A: scan and pre-flight,row,Warning,Info tier,No,Row coloured amber and logged; the run goes ahead,Current In/Out differ from the approved In/Out on the EDL (an editor trim)
-QC-046,A: scan and pre-flight,row,Error on a row the tool renders; Info on a row that delivers nothing,Must fix / Info tier,"Yes on a rendered row, unless skipped",Error stops the run,"The clip's AMF has no input transform, or no AMF matched the row"
+QC-046,A: scan and pre-flight,row,Error on a row the tool renders; Info on a row that delivers nothing,Must fix / Info tier,"Yes on a rendered row, unless skipped",Error stops the run,"The clip's AMF has no input transform, or no AMF matched the row; silent when QC-075 or QC-012 already says why"
 QC-047,A: scan and pre-flight,row,Error on a row the tool renders; Warning on a row that delivers nothing,Must fix / Info tier,"Yes on a rendered row, unless skipped",Error stops the run,The AMF's input transform ID is not one the pinned config lists
 QC-048,A: scan and pre-flight,row,Info,Info tier,No,Logged only,"Records the colour chain the row renders through: source encoding to ACES2065-1, each AMF look, then ACEScg"
 QC-055,A: scan and pre-flight,row,Warning,Info tier,No,Row coloured amber and logged; the run goes ahead,Aux still is cut as more than one frame; the In frame is used
@@ -54,11 +54,12 @@ QC-073,A: scan and pre-flight,row,Error,Must fix,"Yes, unless the row is skipped
 QC-074,A: scan and pre-flight,turnover,Warning,Info tier,No,Logged only,Accept As Is (Ignore QC) is ticked on the turnover: its errors do not refuse the Run; rows render past QC-023/033/034/071 only
 QC-075,A: scan and pre-flight,row / turnover,Error; Warning for an AMF with no index in its name,Must fix / Info tier,"Yes, unless the row is skipped","Stops the whole run; fix and re-scan, or skip the row","The clip's AMF cannot be matched (none, two, or one naming another file), or an AMF is unreadable"
 QC-076,A: scan and pre-flight,row,Error,Must fix,"Yes, unless the row is skipped","Stops the whole run; fix and re-scan, or skip the row","A CLF the AMF names is missing, changed since export (md5), or unreadable by OCIO"
-QC-077,A: scan and pre-flight,row,Warning,Info tier,No,Row coloured amber and logged; the run goes ahead,"A look in the AMF the tool does not apply, and ignores (unknown look ID, embedded CDL, other)"
+QC-077,A: scan and pre-flight,row,Warning,Info tier,No,Row coloured amber and logged; the run goes ahead,"A look in the AMF the tool does not apply, and ignores (unknown look ID, an embedded CDL beside a CLF, other)"
 QC-078,A: scan and pre-flight,row,Info,Info tier,No,Logged only,The AMF was exported with Resolve's Dailies Request preset
 QC-079,A: scan and pre-flight,row,Error,Must fix,"Yes, unless the row is skipped","Stops the whole run; fix and re-scan, or skip the row","The AMF's output transform is not in the pinned config, or names a display a Rec.709 reference cannot be labelled for (P3, HDR)"
 QC-080,A: scan and pre-flight,row,Info,Info tier,No,Row skipped; no row rule runs on it,"Shot Type HDRI: the shooters deliver it, the tool delivers nothing; the stringout still shows its clip"
 QC-081,A: scan and pre-flight,turnover,Retired,,,,"Retired 2026-10-05: a two digit year is the expected form"
+QC-082,A: scan and pre-flight,row,Warning,Info tier,No,Row coloured amber and logged; the run goes ahead,"Fix in Resolve: the AMF names no CLF, so its embedded CDL is used as the grade"
 QC-100,B: after render,deliverable,Error,Deliverable fails,No,Nothing was written; the row waits until fixed and Re-scanned (right-click); other rows carry on,Render did not complete; reason recorded
 QC-101,B: after render,exr seq,Error,Deliverable fails,No,That deliverable is deleted and marked failed; the row waits until fixed and Re-scanned (right-click); other rows carry on,Frame count equals duration
 QC-102,B: after render,exr seq,Error,Deliverable fails,No,That deliverable is deleted and marked failed; the row waits until fixed and Re-scanned (right-click); other rows carry on,"Frames numbered 1001 to 1000 + duration, no gaps"

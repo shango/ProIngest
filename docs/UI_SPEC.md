@@ -1,11 +1,19 @@
 # UI Spec
 
-PySide6 6.7+. Dark theme in the spirit of DaVinci Resolve: near-black panels, thin 1px separators, muted grey text, one accent color for selection and primary actions, amber for warnings, red for errors; done is the accent too, the colour of the progress bar (2026-10-05). No gradients, no drop shadows on panels, no rounded cards. Density is professional, not spacious.
+PySide6 6.7+. Dark theme in the spirit of DaVinci Resolve: near-black panels, thin 1px separators, muted grey text, one accent color for selection and primary actions, amber for warnings, red for errors, green for done. No gradients, no drop shadows on panels, no rounded cards. Density is professional, not spacious.
 
 ## 1. Layout
 
 **The version is always in view** (user, 2026-09-29): in the window title (`ProIngest 0.5.17`, whatever the build is)
 and as a permanent label at the right of the status bar, which no status message replaces.
+
+**A packaged build expires a calendar month after its release** (user, 2026-10-05; `core/expiry.py`,
+PACKAGING "Expiry"). From that day New, Open, Add Turnover, a drop, Scan and Re-scan, Run, Export
+and Build Stringout are each refused with a modal, "ProIngest <version> expired on <day>, one
+month after its release. Install the next version of ProIngest to continue.", asked when the
+action is pressed, so a window left open over the date stops too; the modal also shows at launch.
+Save, Stop, Settings and Save Logs still work, so nothing done is lost. In the last seven days a
+permanent status bar label says when it expires. Running from source never expires.
 
 ```
 +------------------------------------------------------------------+
@@ -21,6 +29,8 @@ and as a permanent label at the right of the status bar, which no status message
 |     MELT0001_cp01  ...                     |                     |
 |   > turnover002  ...                       |  section 12         |
 |                                            |                     |
++------------------------------------------------------------------+
+| Fix-it report (a link, section 6.3)                              |
 +------------------------------------------------------------------+
 | Bottom dock (collapsible, tabs): Issues | Log | Deliverables (for selected row) |
 +------------------------------------------------------------------+
@@ -91,7 +101,7 @@ Scrolling: Source file, Res, FPS, In (editable), Out (editable), Duration, Max A
 | error (blocked) | red | faint red |
 | skipped by user | hollow | dimmed text |
 | rendering | accent, animated | none |
-| done (every deliverable written) | accent blue, the progress bar's colour (user, 2026-10-05); ahead of warning and error, which ran before the render | none |
+| done | green | none |
 | failed render | red | faint red |
 
 Hovering the dot or the row shows a tooltip listing rule IDs and messages. Clicking the dot focuses the Issues dock on that row.
@@ -161,6 +171,27 @@ pane: a deliverable is written by a run and by nothing else.
   when the run ends, and the row's own bar is the live surface.
 - **A selected shot with nothing planned says so** in one line, so an empty table under a shot
   that has never run reads as not yet rather than as broken.
+
+## 6.3 Fix-it report
+
+A link, **Fix-it report**, on a strip between the shot list and the Details dock (user,
+2026-10-06). It writes `fixit_report_<batch>_<date>.html` into `<delivery root>/<show>/_reports/`
+beside the two spreadsheets (asking for a delivery root first when there is none) and opens it in
+the default browser, not in a panel, so it is a file the editor can send on. Enabled with a batch
+that has rows, except during a scan; refused with the expiry modal once the build has expired.
+
+It is for Ben, the colourist, who knows basic editing and colour and is not a Resolve expert: what
+he needs to change, in plain words, with no rule IDs (`core/fixit.py`). Per turnover, a status
+("2 of 18 clips blocked", "Every clip blocked", "Nothing blocking"), then items grouped under
+**Fix in Resolve**, **Fix in the turnover folder** and **Worth a look**, those that stop delivery
+first. Each item is one rule's sentence (`fixit.ADVICE`) with every clip it applies to listed once
+under it, "Every clip in this turnover (N)" when that is all of them, and what is particular to a
+clip beside it (how far a cut misses its file, which side lacks handles). Two items are not rules:
+an HDRI row whose clip is the stitched EXR, and a shot with reference clips and no plate (the
+check that would have caught turnover134's mirror ball typed SECA0001). The editor's own findings
+(In/Out edits, the delivery root, a run) are not Ben's and are left out. Built from the results
+the Issues dock shows; nothing re-runs. The page is self-contained, light or dark with the
+system, and loads nothing from the network.
 
 ## 7. Run and progress
 

@@ -116,6 +116,8 @@ the sheet does not go looking for the rule behind one of them.
 
 ```
 <delivery_root>/
+  User_Generated/   (empty, the user's own; see below)
+  User_Uploads/
   <show>/
     <shotcode>/
       <shotcode>_<elem>_raw_4k_v01/   (exr frames)
@@ -127,7 +129,14 @@ the sheet does not go looking for the rule behind one of them.
     _reports/
       shot_tracker_<batchname>_<date>.xlsx      (<date> is YYYYMMDD, so name order is date order)
       qc_ingest_log_<batchname>_<date>.xlsx
+      fixit_report_<batchname>_<date>.html      (the Fix-it report for the colourist, UI_SPEC 6.3)
 ```
+
+**`User_Generated` and `User_Uploads`** (user, 2026-10-06; not in the shooters' spec) are made
+empty at the top of the delivery root by any run that delivers a turnover, when missing
+(`naming.USER_FOLDERS`, `render.make_user_folders`). The tool never reads, writes or removes
+anything inside them, and they never count as a version. One that cannot be made is logged and
+does not fail the run.
 
 ## 6. Shot code edits
 

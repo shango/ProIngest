@@ -8,7 +8,7 @@ import OpenEXR
 import pytest
 
 from proingest.__main__ import _ProgressPrinter, main
-from proingest.core import batchfile, color, exr, qc, render
+from proingest.core import batchfile, color, expiry, exr, qc, render
 from proingest.core.models import Batch, QCResult
 from tests.fixtures import media as fixtures
 
@@ -188,6 +188,7 @@ class TestRunCommand:
         assert (shot / "MELT0001_pl01_raw_HD_v01").is_dir()
         assert (shot / "MELT0001_pl01_audio_v01.wav").is_file()
         assert len(list((shot / "MELT0001_pl01_raw_4k_v01").iterdir())) == 4
+        assert (delivery / "User_Generated").is_dir() and (delivery / "User_Uploads").is_dir()
         assert "written" in out
         assert not list(shot.glob("*.part"))
 
@@ -380,3 +381,16 @@ class TestProgressPrinter:
         reporter(render.Progress("x_ref_4k_v01.mp4", "started", 0, 2))
         reporter(render.Progress("x_ref_4k_v01.mp4", "failed", 0, 2, "source vanished"))
         assert "FAILED  source vanished" in capsys.readouterr().out
+
+
+class TestAnExpiredBuild:
+    def test_every_subcommand_is_refused(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A packaged build a month past its release (user, 2026-10-05); `tests/test_expiry.py`."""
+        monkeypatch.setattr(
+            expiry, "refusal", lambda today=None: "ProIngest expired. Install the next version."
+        )
+        assert main(["scan", str(tmp_path)]) == 3
+        assert main(["qc", str(tmp_path / "b.pibatch")]) == 3
+        assert "Install the next version" in capsys.readouterr().err

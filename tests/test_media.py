@@ -60,6 +60,22 @@ class TestSequenceGrouping:
         assert index.sequences == [] and index.singles == []
 
 
+class TestAProxyFolder:
+    """User, 2026-10-06: a folder named proxy is never searched for media."""
+
+    @pytest.mark.parametrize("folder", ["Proxy", "proxy", "PROXY", "Proxy/sub"])
+    def test_its_files_are_not_media(self, tmp_path: Path, folder: str) -> None:
+        (tmp_path / "C003.mov").write_bytes(b"x")
+        (tmp_path / folder).mkdir(parents=True)
+        (tmp_path / folder / "C003.mov").write_bytes(b"x")
+        matches = media.index_directory(tmp_path).media_matching("C003")
+        assert [item.path for item in matches] == [tmp_path / "C003.mov"]  # type: ignore[union-attr]
+
+    def test_a_file_called_proxy_is_still_media(self, tmp_path: Path) -> None:
+        (tmp_path / "proxy.mov").write_bytes(b"x")
+        assert media.index_directory(tmp_path).media_matching("proxy")
+
+
 class TestSequenceProperties:
     def test_contiguous_sequence_has_no_gaps(self, tmp_path: Path) -> None:
         fixtures.make_exr_sequence(tmp_path, count=5)
@@ -180,6 +196,17 @@ class TestProbe:
         fixtures.make_exr_sequence(tmp_path / "seq", count=2)
         media.probe(media.index_directory(tmp_path / "seq").sequences[0])
         assert len(reads) == 1
+
+    def test_a_lone_exr_is_one_frame_with_its_header_rate_and_timecode(self, tmp_path: Path) -> None:
+        """Turnover135's reference stills: ffprobe read one as 0 frames at 25 fps with no
+        timecode, a false QC-026 and an EDL cut with nothing to land on (2026-10-06)."""
+        fixtures.make_exr_sequence(tmp_path, base="MELT0001_pl01_colorChart_01", count=1)
+        info = media.probe(media.index_directory(tmp_path).singles[0])
+        assert not info.is_sequence
+        assert info.frame_count == 1
+        assert info.max_available_out == 0
+        assert info.rate == RATE_24
+        assert info.start_timecode == 86400
 
     def test_exr_timecode_comes_from_the_header(self, tmp_path: Path) -> None:
         """COLOR_AND_FORMAT section 5: source TC may come from the EXR header."""

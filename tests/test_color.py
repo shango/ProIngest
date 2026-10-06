@@ -163,6 +163,23 @@ class TestTheLegsAroundTheLooks:
         assert color.clf_transform(clf).getInterpolation() == color.INTERPOLATION
 
 
+class TestTheAmfsCdl:
+    """The CDL inside an AMF, when it names no CLF (user, 2026-10-05)."""
+
+    def test_a_slope_scales_linear_light_in_its_working_space(self) -> None:
+        """A uniform slope commutes with the gamut matrices, so it is a plain gain."""
+        pixels = grey_frame(0.18)
+        numbers = (2.0, 2.0, 2.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0)
+        color.apply(pixels, color.processor(color.cdl_transform(numbers, color.PLATE_SPACE)))
+        assert pixels[0, 0, 0] == pytest.approx(0.36, abs=1e-4)
+
+    def test_it_does_not_clamp_values_above_one(self) -> None:
+        pixels = grey_frame(4.0)
+        numbers = (1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0)
+        color.apply(pixels, color.processor(color.cdl_transform(numbers, color.PLATE_SPACE)))
+        assert pixels[0, 0, 0] == pytest.approx(4.0, abs=1e-3)
+
+
 class TestProcessor:
     def test_a_chain_is_one_group(self) -> None:
         """The ungraded view branch: the input leg and the output transform together."""

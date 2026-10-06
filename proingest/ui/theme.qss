@@ -12,7 +12,7 @@
      text    #ced3db   normal text
      dim     #868d9a   secondary text
      accent  #4d8fd6   selection and primary actions
-     warn    #cf9a3a   amber, error #cf5a52  red; done is the accent, as the progress bar is
+     warn    #cf9a3a   amber, done    #58a97a  green, error #cf5a52  red
 
    Row tints and the status dot (UI_SPEC section 3) are painted by the shot list's
    delegate rather than here, because they vary per row and a stylesheet cannot see a
@@ -226,6 +226,13 @@ QLineEdit:focus {
   border-bottom: 1px solid #262a31;
   color: #ced3db;
   padding: 7px 10px;
+}
+
+/* ---- the Fix-it report link, between the list and the Details dock ---- */
+
+#fixit_bar {
+  background: #15171b;
+  border-top: 1px solid #262a31;
 }
 
 /* ---- the metadata pane (UI_SPEC section 12) ---- */

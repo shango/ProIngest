@@ -13,6 +13,7 @@ import logging
 import sys
 from collections.abc import Callable, Iterator
 from dataclasses import replace
+from datetime import date, timedelta
 from pathlib import Path
 
 import pytest
@@ -29,7 +30,7 @@ from PySide6.QtWidgets import (
 )
 
 from proingest import __version__
-from proingest.core import batchfile, logsetup, naming, qc
+from proingest.core import batchfile, expiry, logsetup, naming, qc
 from proingest.core import settings as core_settings
 from proingest.core.models import Batch, Deliverable, QCResult, Turnover
 from proingest.core.planner import DeliverableJob
@@ -43,6 +44,7 @@ from proingest.ui.log_view import SAVE_TEXT
 from proingest.ui.main_window import (
     BOTTOM_TABS,
     EMPTY_STATE_TEXT,
+    FIXIT_TEXT,
     NO_ROWS_TEXT,
     NO_TURNOVERS_TEXT,
     MainWindow,
@@ -89,6 +91,7 @@ class DrivenWindow(MainWindow):
     def __init__(self, settings_path: Path) -> None:
         super().__init__(settings_path)
         self.problems: list[tuple[str, str]] = []
+        self.expired_said: list[str] = []
         self.folder_answer: Path | None = None
         self.folders_asked: list[str] = []
         self.open_answer: Path | None = None
@@ -97,6 +100,7 @@ class DrivenWindow(MainWindow):
         self.log_answer: Path | None = None
         self.unsaved_answer = QMessageBox.StandardButton.Discard
         self.opened_folders: list[Path] = []
+        self.opened_pages: list[Path] = []
         self.settings_answer = QDialog.DialogCode.Rejected
         self.settings_edit: Callable[[SettingsDialog], None] = lambda dialog: None
         """What a person does on the Settings page before pressing Apply. The default
@@ -114,6 +118,9 @@ class DrivenWindow(MainWindow):
 
     def report_problem(self, title: str, text: str) -> None:
         self.problems.append((title, text))
+
+    def report_expired(self, text: str) -> None:
+        self.expired_said.append(text)
 
     def ask_folder(self, title: str, start: Path | None) -> Path | None:
         self.folders_asked.append(title)
@@ -134,6 +141,9 @@ class DrivenWindow(MainWindow):
 
     def open_folder(self, folder: Path) -> None:
         self.opened_folders.append(folder)
+
+    def open_in_browser(self, path: Path) -> None:
+        self.opened_pages.append(path)
 
 
 @pytest.fixture
@@ -217,6 +227,93 @@ class TestTheVersionIsAlwaysInView:
         label = window.statusBar().findChild(QLabel, "status_version")
         assert label is not None and label.text() == f"ProIngest {__version__}"
         assert not label.isHidden()
+
+
+def released_days_ago(days: int) -> expiry.Expiry:
+    return expiry.Expiry(date.today() - timedelta(days=days))
+
+
+class TestTheFixitReport:
+    """User, 2026-10-06: a link above the Details dock that opens the report in the browser."""
+
+    def test_the_link_sits_between_the_list_and_the_dock(self, window: DrivenWindow) -> None:
+        assert FIXIT_TEXT in window.fixit_link.text()
+        assert not window.fixit_link.isEnabled(), "no batch, nothing to report"
+        window.set_batch(batch(fail(row())))
+        assert window.fixit_link.isEnabled()
+
+    def test_it_is_filed_with_the_spreadsheets_and_opened(self, window: DrivenWindow, tmp_path: Path) -> None:
+        window.set_batch(batch(fail(row()), delivery_root=tmp_path))
+        window.open_fixit_report()
+        (page,) = window.opened_pages
+        assert page.parent.name == "_reports" and page.name.startswith("fixit_report_")
+        assert "Fix in the folder" in page.read_text(encoding="utf-8")
+
+    def test_with_no_delivery_root_it_asks_and_a_cancel_writes_nothing(self, window: DrivenWindow) -> None:
+        window.set_batch(batch(fail(row()), delivery_root=None))
+        window.open_fixit_report()
+        assert window.folders_asked and window.opened_pages == []
+
+    def test_an_expired_build_refuses_it(self, window: DrivenWindow, tmp_path: Path) -> None:
+        window.set_batch(batch(fail(row()), delivery_root=tmp_path))
+        window._expiry = released_days_ago(40)
+        window.open_fixit_report()
+        assert window.opened_pages == [] and len(window.expired_said) == 1
+
+
+class TestAnExpiredBuild:
+    """User, 2026-10-05: a calendar month after its release a build loads no more work."""
+
+    def test_new_and_open_are_refused_with_the_reason(self, window: DrivenWindow, tmp_path: Path) -> None:
+        window._expiry = released_days_ago(40)
+        window.new_batch()
+        window.open_answer = tmp_path / "x.pibatch"
+        window.open_batch()
+        assert not window.batch_open and window.folders_asked == []
+        assert len(window.expired_said) == 2 and "Install the next version" in window.expired_said[0]
+
+    def test_nothing_in_an_open_batch_starts_either(
+        self, window: DrivenWindow, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A window left open over the date stops too: each action asks when it is pressed."""
+        window.set_batch(batch(row()))
+        window._expiry = released_days_ago(40)
+        started: list[str] = []
+        monkeypatch.setattr(window.run, "start", lambda: started.append("run"))
+        monkeypatch.setattr(window.run, "export_reports", lambda: started.append("export"))
+        monkeypatch.setattr(window.run, "build_stringout", lambda t: started.append("stringout"))
+        monkeypatch.setattr(window, "_scan", lambda folders: started.append("scan"))
+        window.start_run()
+        window.export_reports()
+        window.build_stringout(window.batch.turnovers[0])
+        window.rescan_all()
+        window.rescan_row(window.batch.rows[0])
+        window.add_turnover()
+        window.add_turnovers([tmp_path])
+        assert started == [] and window.folders_asked == []
+        assert len(window.expired_said) == 7
+        assert not window.batch.rows[0].rerun, "refused before the row was marked"
+
+    def test_a_build_inside_its_month_works(self, window: DrivenWindow) -> None:
+        window._expiry = released_days_ago(3)
+        window.new_batch()
+        assert window.batch_open and window.folders_asked == ["Add Turnover"]
+        assert window.expired_said == []
+
+    def test_the_last_week_is_said_on_the_status_bar(self, window: DrivenWindow) -> None:
+        label = window.statusBar().findChild(QLabel, "status_expiry")
+        assert label is not None and label.isHidden(), "from source, nothing to say"
+        window._expiry = expiry.Expiry(date.today() - timedelta(days=27))
+        window.check_expiry()
+        assert not label.isHidden() and "Install the next version before then" in label.text()
+        window._expiry = released_days_ago(3)
+        window.update_state()
+        assert label.isHidden()
+
+    def test_at_launch_an_expired_build_says_so_at_once(self, window: DrivenWindow) -> None:
+        window._expiry = released_days_ago(40)
+        window.check_expiry()
+        assert len(window.expired_said) == 1
 
 
 class TestTheToolbarAndMenus:
@@ -1450,6 +1547,24 @@ class TestRunningABatch:
         # A run that delivered builds its turnover's stringout in the same step as the
         # spreadsheets, and says so (OQ-38, 2026-09-25).
         assert said[-1] in (WRITING_REPORTS, BUILDING_STRINGOUT)
+
+    def test_a_run_that_delivered_makes_the_user_folders(self, window: DrivenWindow, tmp_path: Path) -> None:
+        window.set_batch(ingested(batch(row(), delivery_root=tmp_path), tmp_path))
+        started = stub_runner(window)
+        window.action_run.trigger()
+        finish_run(window, done(started[0]), False)
+
+        assert (tmp_path / "User_Generated").is_dir() and (tmp_path / "User_Uploads").is_dir()
+
+    def test_a_run_that_delivered_nothing_makes_no_user_folders(
+        self, window: DrivenWindow, tmp_path: Path
+    ) -> None:
+        window.set_batch(ingested(batch(row(), delivery_root=tmp_path), tmp_path))
+        started = stub_runner(window)
+        window.action_run.trigger()
+        finish_run(window, done(started[0], "failed"), False)
+
+        assert not (tmp_path / "User_Generated").exists()
 
     def test_a_run_that_never_starts_takes_the_strip_away_again(
         self, window: DrivenWindow, tmp_path: Path

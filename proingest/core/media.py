@@ -166,6 +166,16 @@ class DirectoryIndex:
         ]
 
 
+IGNORED_FOLDERS = frozenset({"proxy"})
+"""Folder names whose contents are never media for a turnover, in any case and at any depth
+(user, 2026-10-06). Turnover134 carried a `Proxy/` of HD copies named exactly as the camera
+clips, which made every one of them ambiguous (QC-013)."""
+
+
+def _in_ignored_folder(relative: Path) -> bool:
+    return any(part.casefold() in IGNORED_FOLDERS for part in relative.parts[:-1])
+
+
 def index_directory(root: Path) -> DirectoryIndex:
     """Walk `root` once and group image sequences.
 
@@ -174,7 +184,7 @@ def index_directory(root: Path) -> DirectoryIndex:
     index = DirectoryIndex(root=root)
     entries: list[FileEntry] = []
     for path in sorted(root.rglob("*")):
-        if not path.is_file():
+        if _in_ignored_folder(path.relative_to(root)) or not path.is_file():
             continue
         stat = path.stat()
         entries.append(FileEntry(path=path, size=stat.st_size, mtime=stat.st_mtime))
@@ -373,11 +383,15 @@ def probe(
     tags = _tags_from(raw, stream)
     has_audio, channels, sample_rate, depth = _audio_fields(raw)
 
-    header = _exr_header(target) if isinstance(item, Sequence) else None
+    header = _exr_header(target)
     if isinstance(item, Sequence):
         # ffprobe invents 25/1 for a single frame, so it is never a source here.
         stated = _exr_stated_rate(header)
         frame_count, start_frame = item.count, item.first
+    elif header is not None:
+        # A lone EXR (a reference still) is one frame, and ffprobe says 0 frames at 25/1.
+        stated = _exr_stated_rate(header)
+        frame_count, start_frame = 1, 0
     else:
         stated = _stated_rate(stream)
         # Frame count is a property of the file, so it counts at the file's own rate.

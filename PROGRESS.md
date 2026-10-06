@@ -8,15 +8,125 @@ commit.
 
 ## 1. Resume here
 
-**State at 2026-10-05, version 0.5.22 on `main`** (`HANDOFF.md` is the short version): PR #17
-(`qc/source-fidelity`) merged as `70e1160` at the user's request, after its CI run 37276656318
-built the 0.5.22 dmg. The 2026-09-23 review is built (chunks A
+**State at 2026-10-06, version 0.5.25 merged to `main` with PR #18** (0.5.25: `User_Generated` and `User_Uploads` at the delivery root; 0.5.24: the Fix-it
+report, one error per cause, a lone EXR read as one frame, AMFs falling back to the clip they name) (`HANDOFF.md` is the short version, with the session's open items); 0.5.22 went to `main` earlier (PR #17 merged as `70e1160` at the user's request, after its CI
+run 37276656318 built the 0.5.22 dmg). The 2026-09-23 review is built (chunks A
 to H of `docs/REVIEW_2026-09-23.md`), and so are the fixes that a second official turnover,
 Turnover121, called for (`docs/SAMPLE_TURNOVER_121.md`). Turnover199 scans with no must-fix and
 renders; Turnover121, every clip 8 bit 4:2:0, runs again with a QC-020 warning on each row
 since 2026-09-28 (user). What is left is the Mac: `docs/MAC_SESSION.md`, from "The 0.5.0 build, in
 order" down, and Ben's 4.886 slope. Entries are newest first; anything older than 2026-09-22
 describes the tool before the review and is history.
+
+**2026-10-06, `User_Generated` and `User_Uploads` (user), 0.5.25.** "For the output folders, we need
+to add 2 empty folder for user into the output folder structure", then "delivery root is the
+spot. Ignore the specs, this was a quick decision. Do this once per turnover at the top level."
+Read as: both folders at the top of the delivery root, made when missing by any run that delivers
+a turnover (the UI's end of Run, before the stringouts; the headless `run` when anything is done).
+`naming.USER_FOLDERS` and `naming.user_dirs`, `render.make_user_folders`; a folder that cannot be
+made is logged and the run is not failed. Never read, written or removed after, never a version.
+Build Stringout alone does not make them. NAMING_SPEC section 5, the quickstart. Tests in
+`test_naming`, `test_render`, `test_cli` and `test_ui_shell`. **Merged to `main` with PR #18 at
+the user's request.** **Open with the user: the EXR stringout** (render the stringout from the
+delivered EXRs, a UI switch). Six design questions were put to them on 2026-10-06 (which events,
+stills, insets, sound, where the switch lives, the name) and are unanswered; nothing is built.
+
+**2026-10-06, the Fix-it report (user).** "Build the report export into the tool, make it a link
+above the feedback panel that appears under the shot list. Name it Fix-it report... Ben is not
+super technical, but he does know basic editing and color. He's also not a Resolve expert." Then
+"Can this open in a browser rather than display in another panel?": yes. `core/fixit.py` turns
+the batch's QC results into one self-contained HTML page per batch, each turnover a status and
+items under Fix in Resolve / Fix in the turnover folder / Worth a look, blocking first; each item
+is one rule's plain sentence (`fixit.ADVICE`, no rule IDs on the page) with every clip listed
+once, or "Every clip in this turnover (N)". Two items are not rules: an HDRI row whose clip is the
+stitched EXR, and a shot with reference clips but no plate (catches turnover134's C022 typed
+SECA0001). The editor's own findings are left out. The window: a `fixit_bar` strip between the
+list and the Details dock, `MainWindow.open_fixit_report` writes
+`<delivery root>/<show>/_reports/fixit_report_<batch>_<date>.html` and opens it in the default
+browser (`open_in_browser`). UI_SPEC 6.3, NAMING_SPEC 5, the quickstart guide, a MAC_SESSION line.
+**Verified**: tests (`tests/test_fixit.py`, `TestTheFixitReport`); generated from turnovers 134 and
+135 scanned together, it says what the hand-made page for Ben said, bar three judgement calls
+(which camera clips replace the SECA0012 stills, and that C022 should be SECA0011 rather than
+only that SECA0001 has no plate); screenshots of the page and of the window looked at.
+
+**2026-10-06, one cause, one error (user).** "Please merge these types of errors. Too much
+noise." QC-046 is silent when no AMF matched and QC-075 or QC-012 is already the row's error; a row
+whose file is missing (QC-012) is not matched to an AMF at all (`scan._conform`), so it is checked
+on the scan that finds the file; QC-031 is silent while the In/Out is still the EDL's cut and
+QC-029 has said so. Every one of those rows is still held back by the error that remains.
+**Verified**: tests; turnover135 scans with 18 errors, was 39 (one per clip with no AMF, one per
+missing still); turnover134 with 2, was 4 (QC-029 alone on each proxy-conformed mirror ball).
+QC_RULES and the summary CSV say so.
+
+**2026-10-06, turnover135 run headless again; a lone EXR probes as one frame, AMFs fall back to
+the clip they name (user).** "Run a headless test on turnover 135... what Ben needs to fix and
+what tool errors or bugs you found and fixed." Folder unchanged since the morning run. **Fixed**:
+(1) a lone EXR (a reference still such as `SECA0012_pl01_colorChart_01_raw_4k_v01.exr`) was probed
+by ffprobe as 0 frames at an invented 25 fps with no timecode: a false QC-026, and the EDL cut was
+never placed, so a wrong still was taken whole with no QC-029. `media.probe` now reads its EXR
+header as a sequence's first frame is read: one frame, the header's rate and `timeCode`. Verified
+by a scratch copy of the folder with an EXR in place of the chart: QC-026 gone, QC-029 now
+reported because that EXR is from another shoot. (2) `scan._Grades.attach`: when no AMF at an
+event's index names its clip, the one AMF in the folder that does grades it. Turnover135's only AMF
+is numbered 0 but names the sixth clip (the size reference still), exported on its own; the index
+pairing is kept first, so turnover134 scans exactly as before (4 errors, 51 warnings). **Render
+half**: no row can render without its AMF (QC-046 is not bypassable), so a scratch copy of the
+batch borrowed turnover134's Apple Log input transform, ungraded, and rendered the 14 camera rows
+(35 deliverables): 35 written, 0 failed, about 2 h 20 min of CPU on the WSL box; a SECA0013 plate
+frame looked at. So once its AMFs exist, nothing in the media itself should stop it. Ben's turnover135 page republished.
+
+**2026-10-06, the AMF's CDL is the grade when there is no CLF; proxy folders ignored, 0.5.23
+(user).** "Prefer CLF with CDL as backup only if CLF is missing, and a warning for Ben on the item.
+Non blocking." `amf.AmfCdl` reads `cdl:ASC_SOP`/`ASC_SAT` and `toCdlWorkingSpace`; `scan._grade_of`
+uses it only when the AMF names no CLF, as a `GradeLook("cdl", <working space>, <10 numbers>)`
+applied by `color.cdl_transform` (ACES2065-1 to the working space, CDL unclamped, back), with
+**QC-082** (warning, "Fix in Resolve - ") on the row. A CLF present wins and the CDL is QC-077.
+"Fix in Resolve - " now leads warnings of the listed rules too, never info. Then "If the tool sees
+a folder named proxy it should be ignored": `media.IGNORED_FOLDERS`, any case, any depth.
+**Verified**: tests; turnover134's real folder, `Proxy/` in place, scans with no QC-013 and only the
+two proxy-conformed mirror balls blocked; re-rendered with the CDL, `SECA0009_pl01_ref_HD` is about
+a stop brighter and warmer than the ungraded run (frame looked at). Whether it matches Resolve's own
+render is a MAC_SESSION line. Ben's turnover134 page updated (CLF item added, Proxy item removed).
+
+**2026-10-06, turnover134 and turnover135 run headless; two fixes and "Fix in Resolve", 0.5.23
+(user).** "Run these headless end to end... let me know what's missing... check for any bugs in
+the run that might be producing false results." **Fixed**: (1) the AMF to EDL event pairing
+(`amf.Amf.event_id` was the AMF index plus one, the event number). Resolve numbers AMFs by video
+clip, and turnover134's EDL numbers its audio-only events (002, 010, 018) too, so every AMF after
+the first was paired with the wrong event: 34 false QC-075/QC-046 errors. Now
+`clf.ConformEvent.position` (place among video events, a dissolve's zero-length side taking none)
+is what `scan._Grades` keys on. Verified: all 21 AMFs pair on the real folder. (2) QC-075 no longer
+fires on an HDRI row (never graded, QC-080), three false errors in turnover135. (3) **"Fix in
+Resolve - "** leads every error whose fix is in Ben's session (`models.RESOLVE_FIX_RULES`, set in
+`QCResult.__post_init__`, so every surface says it; user's mid-run request). **Turnover134 run end
+to end** on a linked copy without its `Proxy/` folder and with the two proxy-conformed mirror balls
+skipped: 37 deliverables written, all QC passed. **Not changed, raised with the user**: Ben's grade
+in turnover134 is an inline ASC CDL in each AMF (no CLF), which QC-077 ignores by the 2026-09-28
+rule, so the deliverables are ungraded with only a warning (the reference looks dim). Turnover135
+cannot run: one AMF for 18 graded clips. Ben's lists are published pages.
+
+**2026-10-05, the status dots are QC levels again, 0.5.23 (user).** "I had you change the color
+to reflect the color of the progress bars... That was wrong. The colored balls should reflect the
+error levels as before." The 0.5.22 dot change is reverted exactly (`shot_model.DOT_COLORS` done
+green, `row_state` asks the rules before done, Deliverables green, theme and UI_SPEC 3). The row's
+progress bar is blue while rendering and green when full, as before. **Verified**: the shot model
+and list tests. The same message said the saved log CSV's Level column read INFO for blocking
+errors; the file supplied (`ProIngest-logs-20261005-1301.csv`, untracked) does not show that: its
+1064 "blocks the run" lines are all `ERROR`, the QC lines' levels follow each rule's severity.
+Asked the user what they saw; nothing changed there.
+
+**2026-10-05, a build expires a calendar month after its release, 0.5.23 (user).** "Prevent user
+from loading a batch, presenting a modal saying they need to update... one month past the release
+of each new version." Answers: calendar month, block everything, text only, warn the last week.
+`core/expiry.py` (`one_month_after`, `Expiry`, `current`, `refusal`); `build/build.py` stamps
+`proingest/resources/release.txt` (untracked) with the build day and `bundle.datas` ships it. Only
+a frozen app expires. The window refuses New, Open, Add Turnover, a drop, Scan/Re-scan, Run,
+Export and Build Stringout with an "Update ProIngest" modal, asked at each press and once at
+launch; a permanent `status_expiry` label in the last 7 days. Headless subcommands of a frozen
+build exit 3. **Assumed, told the user** (OQ-78): Save, Stop, Settings, Save Logs stay; a missing
+stamp does not expire. **Verified**: tests (core, window, CLI, bundle); a real PyInstaller build
+(Linux) carries the stamp, and its binary with the stamp backdated to 2020 refuses `scan` with
+exit 3, with today's stamp runs. UI_SPEC 1, PACKAGING "Expiry", MAC_SESSION.
 
 **2026-10-05, two digit dates, burn-in boxes, blue done dots, 0.5.22 (user).** Three requests.
 (1) "For turnovers, the date should always be and should be recognized as 2 digits for month day

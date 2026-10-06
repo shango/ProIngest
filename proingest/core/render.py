@@ -732,6 +732,19 @@ def execute(
     return [results[index] for index in sorted(results)]
 
 
+def make_user_folders(delivery_root: Path) -> None:
+    """`naming.USER_FOLDERS` at the delivery root, after a run that delivered a turnover.
+
+    Left alone when there, contents and all. One that cannot be made is logged and
+    nothing more: the deliverables are already written and a run is not failed over it.
+    """
+    for folder in naming.user_dirs(delivery_root):
+        try:
+            folder.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            log.warning("could not make %s: %s", folder, exc)
+
+
 def apply_results(
     batch: Batch,
     deliverables: Sequence[Deliverable],

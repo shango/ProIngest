@@ -299,7 +299,7 @@ def _colour_fields(row: ShotRow) -> list[Field]:
     grade = row.grade
     if grade is not None:
         fields.append(Field("AMF", grade.amf.name))
-        looks = "; ".join(look.name if look.kind == "look" else Path(look.name).name for look in grade.looks)
+        looks = "; ".join(look.label for look in grade.looks)
         fields.append(Field("Looks", looks or "none"))
         if grade.display and grade.view:
             fields.append(Field("Viewed on", f"{grade.view} on {grade.display}"))
