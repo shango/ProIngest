@@ -40,6 +40,7 @@ from PySide6.QtWidgets import (
     QDialog,
     QDockWidget,
     QFileDialog,
+    QHBoxLayout,
     QLabel,
     QMainWindow,
     QMessageBox,
@@ -53,7 +54,7 @@ from PySide6.QtWidgets import (
 )
 
 from proingest import __version__
-from proingest.core import batchfile, expiry, exports, logsetup, qc, scan
+from proingest.core import batchfile, expiry, exports, fixit, logsetup, qc, scan
 from proingest.core import settings as core_settings
 from proingest.core.models import (
     DEFAULT_BATCH_NAME,
@@ -91,6 +92,10 @@ NO_ROWS_TEXT = "No clips found in timeline"
 Issues dock beside it, because a timeline that produced no rows always said why there."""
 
 ISSUES_LINK = "See the Issues dock"
+
+FIXIT_TEXT = "Fix-it report"
+"""The link above the Details dock (user, 2026-10-06): what Ben needs to fix, as a page
+opened in the browser and filed beside the two spreadsheets (`core/fixit.py`)."""
 
 BATCH_FILTER = "ProIngest batch (*.pibatch)"
 
@@ -350,6 +355,7 @@ class MainWindow(QMainWindow):
         batch_layout.addWidget(self.batch_bar)
         batch_layout.addWidget(self.run_strip)
         batch_layout.addWidget(self.list_pages)
+        batch_layout.addWidget(self._fixit_bar(batch_page))
 
         self.pages = QStackedWidget(self)
         self.pages.addWidget(self._empty_state())
@@ -703,6 +709,46 @@ class MainWindow(QMainWindow):
         if not self._expired():
             self.run.start()
 
+    def _fixit_bar(self, parent: QWidget) -> QWidget:
+        """The strip between the shot list and the Details dock that carries the link."""
+        bar = QWidget(parent)
+        bar.setObjectName("fixit_bar")
+        layout = QHBoxLayout(bar)
+        layout.setContentsMargins(12, 4, 12, 4)
+        self.fixit_link = QLabel(f'<a href="#fixit" style="color: #4d8fd6;">{FIXIT_TEXT}</a>', bar)
+        self.fixit_link.setObjectName("fixit_link")
+        self.fixit_link.setEnabled(False)  # until a batch with rows is open (`update_state`)
+        self.fixit_link.setToolTip("What Ben needs to fix, as a page for the browser that can be sent on")
+        self.fixit_link.linkActivated.connect(lambda _link: self.open_fixit_report())
+        layout.addWidget(self.fixit_link)
+        layout.addStretch(1)
+        return bar
+
+    def open_fixit_report(self) -> None:
+        """Write the Fix-it report beside the spreadsheets, then open it in the browser.
+
+        From the QC results as the Issues dock shows them, so no rule re-runs and it is
+        quick enough for the UI thread: it reads the batch and writes one small file.
+        """
+        if not self._batch_open or self.scanner.busy or self._expired():
+            return
+        batch = self.batch
+        if batch.delivery_root is None:
+            self.choose_delivery_root()
+            if batch.delivery_root is None:
+                return
+        try:
+            path = fixit.write(batch, fixit.report_path(batch, batch.delivery_root))
+        except (OSError, ValueError) as exc:
+            self.report_problem("Fix-it report not written", str(exc))
+            return
+        log.info("Fix-it report written to %s", path)
+        self.open_in_browser(path)
+
+    def open_in_browser(self, path: Path) -> None:
+        """The default browser, for an HTML file. Its own method so a test can answer it."""
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(path)))
+
     def export_reports(self) -> None:
         if not self._expired():
             self.run.export_reports()
@@ -869,6 +915,7 @@ class MainWindow(QMainWindow):
         self.batch_bar.delivery_root.setEnabled(not busy)
         self.action_run.setEnabled(open_batch and not busy and bool(self.batch.rows))
         self.action_export.setEnabled(open_batch and not busy and bool(self.batch.rows))
+        self.fixit_link.setEnabled(open_batch and not scanning and bool(self.batch.rows))
         self.action_stop.setEnabled(self.run.stoppable)
         self._refresh_expiry_warning()
         self._refresh_tooltips(open_batch=open_batch, scanning=scanning, running=running)

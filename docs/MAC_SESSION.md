@@ -47,6 +47,10 @@ chunk 7 of `docs/TO_A_WORKING_BUILD.md`, in the order that wastes least.
 - [ ] **The version in view (2026-09-29, 0.5.17).** Open the app: the title bar reads `ProIngest 0.5.17`
       and so does the right end of the status bar, and the status bar one still reads it after a Scan
       and a Save. Say whether the title also shows in full screen (macOS hides the title bar there).
+- [ ] **Fix-it report (2026-10-06).** Scan turnover135, click **Fix-it report** under the shot
+      list: the page opens in the default browser (Safari or whichever is set), not in the app,
+      and the file is in the delivery root's `_reports/`. Check it reads in both light and dark
+      mode, and that the link is greyed during a scan.
 - [ ] **The AMF's CDL as the grade (2026-10-06, 0.5.23).** Run turnover134 once Ben's fixes are
       in. Open `SECA0009_pl01_ref_HD_v01.mp4` beside Ben's own Resolve playback of the same frame:
       the brightness and colour should match. The tool applies the CDL in ACEScg, unclamped, as

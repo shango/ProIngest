@@ -30,6 +30,8 @@ permanent status bar label says when it expires. Running from source never expir
 |   > turnover002  ...                       |  section 12         |
 |                                            |                     |
 +------------------------------------------------------------------+
+| Fix-it report (a link, section 6.3)                              |
++------------------------------------------------------------------+
 | Bottom dock (collapsible, tabs): Issues | Log | Deliverables (for selected row) |
 +------------------------------------------------------------------+
 | Status bar: scan/render progress bar, jobs running, ETA, GPU on/off |
@@ -169,6 +171,27 @@ pane: a deliverable is written by a run and by nothing else.
   when the run ends, and the row's own bar is the live surface.
 - **A selected shot with nothing planned says so** in one line, so an empty table under a shot
   that has never run reads as not yet rather than as broken.
+
+## 6.3 Fix-it report
+
+A link, **Fix-it report**, on a strip between the shot list and the Details dock (user,
+2026-10-06). It writes `fixit_report_<batch>_<date>.html` into `<delivery root>/<show>/_reports/`
+beside the two spreadsheets (asking for a delivery root first when there is none) and opens it in
+the default browser, not in a panel, so it is a file the editor can send on. Enabled with a batch
+that has rows, except during a scan; refused with the expiry modal once the build has expired.
+
+It is for Ben, the colourist, who knows basic editing and colour and is not a Resolve expert: what
+he needs to change, in plain words, with no rule IDs (`core/fixit.py`). Per turnover, a status
+("2 of 18 clips blocked", "Every clip blocked", "Nothing blocking"), then items grouped under
+**Fix in Resolve**, **Fix in the turnover folder** and **Worth a look**, those that stop delivery
+first. Each item is one rule's sentence (`fixit.ADVICE`) with every clip it applies to listed once
+under it, "Every clip in this turnover (N)" when that is all of them, and what is particular to a
+clip beside it (how far a cut misses its file, which side lacks handles). Two items are not rules:
+an HDRI row whose clip is the stitched EXR, and a shot with reference clips and no plate (the
+check that would have caught turnover134's mirror ball typed SECA0001). The editor's own findings
+(In/Out edits, the delivery root, a run) are not Ben's and are left out. Built from the results
+the Issues dock shows; nothing re-runs. The page is self-contained, light or dark with the
+system, and loads nothing from the network.
 
 ## 7. Run and progress
 

@@ -44,6 +44,7 @@ from proingest.ui.log_view import SAVE_TEXT
 from proingest.ui.main_window import (
     BOTTOM_TABS,
     EMPTY_STATE_TEXT,
+    FIXIT_TEXT,
     NO_ROWS_TEXT,
     NO_TURNOVERS_TEXT,
     MainWindow,
@@ -99,6 +100,7 @@ class DrivenWindow(MainWindow):
         self.log_answer: Path | None = None
         self.unsaved_answer = QMessageBox.StandardButton.Discard
         self.opened_folders: list[Path] = []
+        self.opened_pages: list[Path] = []
         self.settings_answer = QDialog.DialogCode.Rejected
         self.settings_edit: Callable[[SettingsDialog], None] = lambda dialog: None
         """What a person does on the Settings page before pressing Apply. The default
@@ -139,6 +141,9 @@ class DrivenWindow(MainWindow):
 
     def open_folder(self, folder: Path) -> None:
         self.opened_folders.append(folder)
+
+    def open_in_browser(self, path: Path) -> None:
+        self.opened_pages.append(path)
 
 
 @pytest.fixture
@@ -226,6 +231,34 @@ class TestTheVersionIsAlwaysInView:
 
 def released_days_ago(days: int) -> expiry.Expiry:
     return expiry.Expiry(date.today() - timedelta(days=days))
+
+
+class TestTheFixitReport:
+    """User, 2026-10-06: a link above the Details dock that opens the report in the browser."""
+
+    def test_the_link_sits_between_the_list_and_the_dock(self, window: DrivenWindow) -> None:
+        assert FIXIT_TEXT in window.fixit_link.text()
+        assert not window.fixit_link.isEnabled(), "no batch, nothing to report"
+        window.set_batch(batch(fail(row())))
+        assert window.fixit_link.isEnabled()
+
+    def test_it_is_filed_with_the_spreadsheets_and_opened(self, window: DrivenWindow, tmp_path: Path) -> None:
+        window.set_batch(batch(fail(row()), delivery_root=tmp_path))
+        window.open_fixit_report()
+        (page,) = window.opened_pages
+        assert page.parent.name == "_reports" and page.name.startswith("fixit_report_")
+        assert "Fix in the folder" in page.read_text(encoding="utf-8")
+
+    def test_with_no_delivery_root_it_asks_and_a_cancel_writes_nothing(self, window: DrivenWindow) -> None:
+        window.set_batch(batch(fail(row()), delivery_root=None))
+        window.open_fixit_report()
+        assert window.folders_asked and window.opened_pages == []
+
+    def test_an_expired_build_refuses_it(self, window: DrivenWindow, tmp_path: Path) -> None:
+        window.set_batch(batch(fail(row()), delivery_root=tmp_path))
+        window._expiry = released_days_ago(40)
+        window.open_fixit_report()
+        assert window.opened_pages == [] and len(window.expired_said) == 1
 
 
 class TestAnExpiredBuild:

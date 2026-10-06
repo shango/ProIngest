@@ -127,6 +127,7 @@ the sheet does not go looking for the rule behind one of them.
     _reports/
       shot_tracker_<batchname>_<date>.xlsx      (<date> is YYYYMMDD, so name order is date order)
       qc_ingest_log_<batchname>_<date>.xlsx
+      fixit_report_<batchname>_<date>.html      (the Fix-it report for the colourist, UI_SPEC 6.3)
 ```
 
 ## 6. Shot code edits

@@ -228,6 +228,13 @@ QLineEdit:focus {
   padding: 7px 10px;
 }
 
+/* ---- the Fix-it report link, between the list and the Details dock ---- */
+
+#fixit_bar {
+  background: #15171b;
+  border-top: 1px solid #262a31;
+}
+
 /* ---- the metadata pane (UI_SPEC section 12) ---- */
 
 #metadata_pane, #metadata_scroll, #metadata_scroll > QWidget > QWidget {

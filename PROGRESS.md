@@ -18,6 +18,24 @@ since 2026-09-28 (user). What is left is the Mac: `docs/MAC_SESSION.md`, from "T
 order" down, and Ben's 4.886 slope. Entries are newest first; anything older than 2026-09-22
 describes the tool before the review and is history.
 
+**2026-10-06, the Fix-it report (user).** "Build the report export into the tool, make it a link
+above the feedback panel that appears under the shot list. Name it Fix-it report... Ben is not
+super technical, but he does know basic editing and color. He's also not a Resolve expert." Then
+"Can this open in a browser rather than display in another panel?": yes. `core/fixit.py` turns
+the batch's QC results into one self-contained HTML page per batch, each turnover a status and
+items under Fix in Resolve / Fix in the turnover folder / Worth a look, blocking first; each item
+is one rule's plain sentence (`fixit.ADVICE`, no rule IDs on the page) with every clip listed
+once, or "Every clip in this turnover (N)". Two items are not rules: an HDRI row whose clip is the
+stitched EXR, and a shot with reference clips but no plate (catches turnover134's C022 typed
+SECA0001). The editor's own findings are left out. The window: a `fixit_bar` strip between the
+list and the Details dock, `MainWindow.open_fixit_report` writes
+`<delivery root>/<show>/_reports/fixit_report_<batch>_<date>.html` and opens it in the default
+browser (`open_in_browser`). UI_SPEC 6.3, NAMING_SPEC 5, the quickstart guide, a MAC_SESSION line.
+**Verified**: tests (`tests/test_fixit.py`, `TestTheFixitReport`); generated from turnovers 134 and
+135 scanned together, it says what the hand-made page for Ben said, bar three judgement calls
+(which camera clips replace the SECA0012 stills, and that C022 should be SECA0011 rather than
+only that SECA0001 has no plate); screenshots of the page and of the window looked at.
+
 **2026-10-06, one cause, one error (user).** "Please merge these types of errors. Too much
 noise." QC-046 is silent when no AMF matched and QC-075 or QC-012 is already the row's error; a row
 whose file is missing (QC-012) is not matched to an AMF at all (`scan._conform`), so it is checked

@@ -107,6 +107,10 @@ codec, bit depth, chroma, and the colour labels the file carries - so an 8 bit 4
 labelled Rec.709 when its AMF says camera log, is visible before anyone opens it. **Export**
 writes it straight after a scan, before anything is rendered.
 
+**Fix-it report**, the link just above the Issues panel, writes a third file there,
+`fixit_report_...html`, and opens it in your browser: what Ben needs to change in Resolve or in
+the turnover folder, in plain words, with every clip it applies to. Send him the file.
+
 Every deliverable is checked before it takes its final name. One that fails is deleted and its
 shot is marked failed, naming the file and the check, in the Issues tab; fix the cause,
 right-click the shot, **Reset**, and Run again. A shot that is complete is left alone by the next
