@@ -38,9 +38,10 @@ disagrees with `PROGRESS.md` or the docs, they are right and this file is wrong.
 
 ## Turnover134 and turnover135 (untracked, in the repo root)
 
-Run headless on 2026-10-06. **Ben's lists** (private pages, the user shares them):
+Run headless on 2026-10-06. **Ben's list**, both turnovers on one page (private, the user shares
+it): https://claude.ai/artifact/DFshCWhWiGYsEuH35NPAy3. The earlier per-turnover pages,
 turnover134 https://claude.ai/artifact/GX82xM9xvaZnjzoWFBkUaL and turnover135
-https://claude.ai/artifact/9Bynj3M6E2t23n2WB5PtDZ (source: the scratchpad's `ben/make.py`, gone
+https://claude.ai/artifact/9Bynj3M6E2t23n2WB5PtDZ, still exist (source: the scratchpad's `ben/make.py`, gone
 after this session; republish by editing the page via its URL).
 
 - **Turnover134** scans with only two must-fix: the SECA0009 and SECA0010 mirror balls
