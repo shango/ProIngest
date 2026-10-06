@@ -598,6 +598,19 @@ class TestTheAmf:
         for row in rows:
             assert "QC-075" not in rules(row) and row.grade is not None, row.clip_name
 
+    def test_an_amf_numbered_for_another_event_still_grades_the_clip_it_names(self, tmp_path: Path) -> None:
+        """Turnover135 (2026-10-06): its one AMF, exported on its own, is numbered 0 and
+        names the sixth clip. It was reported against the first clip as the wrong AMF."""
+        folder = fixtures.make_turnover(tmp_path / GOOD_FOLDER, shots=2, frames=4)
+        first, second = sorted(folder.glob("*.amf"), key=lambda path: path.name.rsplit("_", 3)[1])
+        first.unlink()
+        second.rename(folder / second.name.replace("_1_2026", "_0_2026"))
+        _, rows = scan.scan_turnover(folder, "t1", scan.ScanSettings(rules=fixtures.SMALL_RULES))
+        graded = [row for row in rows if row.grade is not None]
+        (lost,) = [row for row in rows if row.grade is None]
+        assert len(graded) == 1 and graded[0].clip_name != lost.clip_name
+        assert "QC-075" in rules(lost) and "QC-075" not in rules(graded[0])
+
     def cdl_instead_of_clf(self, folder: Path, keep_clf: bool = False) -> None:
         """Turnover134's AMFs: the grade as a CDL inside the AMF, and (unless kept) no CLF."""
         path = self.amf(folder)

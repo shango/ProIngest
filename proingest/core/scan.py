@@ -749,7 +749,9 @@ class _Grades:
 
     An AMF that will not parse, or whose name carries no timeline index, is reported on
     the turnover and matches nothing; two AMFs claiming one event are reported on that
-    event's row rather than chosen between.
+    event's row rather than chosen between. When no AMF at an event's index names its
+    clip, the one AMF that does grades it instead: turnover135's only AMF,
+    exported on its own, is numbered 0 and names the sixth clip (2026-10-06).
     """
 
     folder: Path
@@ -782,6 +784,9 @@ class _Grades:
     def attach(self, row: ShotRow, event: clf.ConformEvent) -> None:
         """This row's grade from its event's AMF, and what is wrong with it on the row."""
         found = self.by_index.get(event.position, [])
+        if not any(item.names(row.clip_name) for item in found):
+            named = [item for items in self.by_index.values() for item in items if item.names(row.clip_name)]
+            found = named if len(named) == 1 else found
         if len(found) != 1:
             names = ", ".join(item.path.name for item in found)
             why = f"two or more AMFs claim it ({names})" if found else "no AMF in the folder grades it"

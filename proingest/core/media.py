@@ -383,11 +383,15 @@ def probe(
     tags = _tags_from(raw, stream)
     has_audio, channels, sample_rate, depth = _audio_fields(raw)
 
-    header = _exr_header(target) if isinstance(item, Sequence) else None
+    header = _exr_header(target)
     if isinstance(item, Sequence):
         # ffprobe invents 25/1 for a single frame, so it is never a source here.
         stated = _exr_stated_rate(header)
         frame_count, start_frame = item.count, item.first
+    elif header is not None:
+        # A lone EXR (a reference still) is one frame, and ffprobe says 0 frames at 25/1.
+        stated = _exr_stated_rate(header)
+        frame_count, start_frame = 1, 0
     else:
         stated = _stated_rate(stream)
         # Frame count is a property of the file, so it counts at the file's own rate.

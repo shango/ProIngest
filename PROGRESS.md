@@ -18,6 +18,23 @@ since 2026-09-28 (user). What is left is the Mac: `docs/MAC_SESSION.md`, from "T
 order" down, and Ben's 4.886 slope. Entries are newest first; anything older than 2026-09-22
 describes the tool before the review and is history.
 
+**2026-10-06, turnover135 run headless again; a lone EXR probes as one frame, AMFs fall back to
+the clip they name (user).** "Run a headless test on turnover 135... what Ben needs to fix and
+what tool errors or bugs you found and fixed." Folder unchanged since the morning run. **Fixed**:
+(1) a lone EXR (a reference still such as `SECA0012_pl01_colorChart_01_raw_4k_v01.exr`) was probed
+by ffprobe as 0 frames at an invented 25 fps with no timecode: a false QC-026, and the EDL cut was
+never placed, so a wrong still was taken whole with no QC-029. `media.probe` now reads its EXR
+header as a sequence's first frame is read: one frame, the header's rate and `timeCode`. Verified
+by a scratch copy of the folder with an EXR in place of the chart: QC-026 gone, QC-029 now
+reported because that EXR is from another shoot. (2) `scan._Grades.attach`: when no AMF at an
+event's index names its clip, the one AMF in the folder that does grades it. Turnover135's only AMF
+is numbered 0 but names the sixth clip (the size reference still), exported on its own; the index
+pairing is kept first, so turnover134 scans exactly as before (4 errors, 51 warnings). **Render
+half**: no row can render without its AMF (QC-046 is not bypassable), so a scratch copy of the
+batch borrowed turnover134's Apple Log input transform, ungraded, and rendered the 14 camera rows
+(35 deliverables): 35 written, 0 failed, about 2 h 20 min of CPU on the WSL box; a SECA0013 plate
+frame looked at. So once its AMFs exist, nothing in the media itself should stop it. Ben's turnover135 page republished.
+
 **2026-10-06, the AMF's CDL is the grade when there is no CLF; proxy folders ignored, 0.5.23
 (user).** "Prefer CLF with CDL as backup only if CLF is missing, and a warning for Ben on the item.
 Non blocking." `amf.AmfCdl` reads `cdl:ASC_SOP`/`ASC_SAT` and `toCdlWorkingSpace`; `scan._grade_of`
