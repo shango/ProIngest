@@ -9,9 +9,9 @@ disagrees with `PROGRESS.md` or the docs, they are right and this file is wrong.
 - **Version 0.5.23 on branch `app/expiry`**: a packaged build expires a calendar month after
   it was built (`core/expiry.py`, PACKAGING "Expiry"). 0.5.22 is on `main` (PR #17 merged as
   `70e1160` on 5 Oct 2026 at the user's request).
-- **CI run 37276656318 is green on all four jobs** and built the 0.5.22 dmg, handed over as:
-  `gh run download 37276656318 -R shango/ProIngest -n ProIngest-macos-arm64 -D ~/Downloads/ProIngest-0.5.22`
-  (https://github.com/shango/ProIngest/actions/runs/37276656318)
+- **PR #18 open, CI run 37415594139 green on all four jobs**, built the 0.5.23 dmg, handed over as:
+  `gh run download 37415594139 -R shango/ProIngest -n ProIngest-macos-arm64 -D ~/Downloads/ProIngest-0.5.23`
+  (https://github.com/shango/ProIngest/actions/runs/37415594139)
 - **1837 tests pass**; `ruff`, `ruff format` and `mypy --strict` are clean.
 - Nothing uncommitted except the untracked samples listed under Working notes.
 - **Session wrapped up 30 Sep 2026 at the user's request.** Nothing is in flight. Start with "Open,
