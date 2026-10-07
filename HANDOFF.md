@@ -1,4 +1,4 @@
-# Handoff, 7 October 2026
+# Handoff, 7 October 2026 (end of session)
 
 **Start here after a cleared context.** This is the short version. `PROGRESS.md` section 1 is the
 record: one entry per change, newest first, each with the user's words and how it was verified.
@@ -9,109 +9,129 @@ Then read `docs/WORKFLOW.md`, and `CLAUDE.md` for the ground rules.
 
 - **Version 0.5.33 on branch `hdri/prerender`, PR #19 open, not merged.** Merge only when the
   user asks. `main` has 0.5.25 (PR #18, merged 2026-10-06 at the user's request).
-- PR #19 holds 0.5.26 to 0.5.33, each built by CI on the PR. The latest run:
-  `gh run list -R shango/ProIngest --branch hdri/prerender --limit 1`. Hand a build over as
-  `gh run download <run-id> -R shango/ProIngest -n ProIngest-macos-arm64 -D ~/Downloads/ProIngest-<version>`
-  plus the artifact's web link (`gh api repos/shango/ProIngest/actions/runs/<run-id>/artifacts`),
-  and download it into `~/Downloads/ProIngest-<version>/` too (the user asked for that).
+- **0.5.33's CI run, 37681910675, was still building when this was written.** First thing: check
+  it (`gh run view 37681910675 -R shango/ProIngest --json conclusion,jobs`). If green, confirm the
+  dmg is `ProIngest-0.5.33.dmg` in the package job log, download it with
+  `gh run download 37681910675 -R shango/ProIngest -n ProIngest-macos-arm64 -D ~/Downloads/ProIngest-0.5.33`
+  and give the user that command. 0.5.32's run (37672405424) was green and is already in
+  `~/Downloads/ProIngest-0.5.32/`.
 - 1930 tests pass locally (1 skipped); `ruff`, `ruff format` and `mypy --strict` are clean.
-- Nothing uncommitted except the untracked samples listed under Working notes. Nothing in flight.
+- Nothing uncommitted except the untracked samples listed under Working notes.
+
+## The QC model now (0.5.33, user, 2026-10-07)
+
+The user's rule: "nothing prevents rendering an entire batch or turnover. Individual shots can get
+blocked ... missing media, or the amf, cfl or an appropriate cdl are missing so the tool cant
+recreate the colors." `docs/QC_RULES.md`'s opening section is the authority; in short:
+
+- **An `error` on a row holds that one shot** (`planner.holding_errors`) until it is fixed and
+  re-scanned; every other shot renders. The errors left: no file, two files, unreadable or
+  undecodable (QC-012, 013, 014, 022); no name (010, 011, 065); no EDL event or two (066, 067); an
+  edited In/Out that cannot be (031, 032); a grade it cannot rebuild (046 = no AMF *and* no CSV
+  `Input Color Space`, 047, 075 = two AMFs on one clip, 076 = a CLF missing or changed). A moved
+  turnover folder holds its rows (QC-069, `planner.held_turnovers`).
+- **Only a batch error stops a run**, with the popup "The run cannot start": delivery root not
+  writable or too little space (QC-062, 063; `qc.must_fix`).
+- **Ungraded is not a problem**: no AMF, or an AMF with no CLF and no CDL, renders through the
+  input transform alone. With no AMF the input is the CSV's `Input Color Space` (`Apple Log` in
+  134 and 135), the references use `color.DEFAULT_VIEW`, and QC-009 says "Clip ungraded in Resolve
+  project".
+- **The cut is the EDL's at face value**: the file's own timecode, then the CSV's `Start TC`,
+  silently (QC-084 retired); if neither fits, the frames the file has, with a QC-029 info note.
+- **Warnings now**: QC-023, 026, 027, 033/034 ("Plate was N frames on the timeline"), 042, 073, 079.
+  **Info now**: QC-021, 055. **Gone**: Accept As Is (QC-074), QC-008, the Allow other resolutions
+  setting (old batches still load).
+- **The QC log has an Issues sheet**: every finding in words, with its Effect (stopped the run,
+  held this shot back, rendered). The Fix-it report leaves info out.
 
 ## What this session built (6 and 7 Oct 2026, all user requests)
 
 | version | what |
 |---|---|
-| 0.5.25 | `User_Generated` and `User_Uploads`, empty, at the delivery root after any run that delivers (`render.make_user_folders`) |
-| 0.5.26 | **HDRI**: a frame hold on the HDRI EXR with a pan. The EXR is delivered byte for byte as `<shot>_pl01_HDRI_<idx>_v<ver>.exr`, no checks (`qc.is_hdri`, QC-080). The stringout plays Ben's pre-render, a video under the EXR's stem beside it, read as sRGB Linear and graded through the HDRI's AMF with a 1D shaper; missing is **QC-083**. **QC-084**: a cut outside the file by its own timecode but inside by Resolve's (the CSV's `Start TC`) is a warning and cut by Resolve's clock; QC-029 is said in timecode. **Accept As Is** renders every clip that can (`planner.QC_CANNOT_RENDER`) |
-| 0.5.27 | **The stringout is cut from the delivered EXRs** (no switch): each EXR read with OpenEXR, through OCIO, into a lossless ffv1 intermediate (`stringout._picture`, `ffmpeg.write_frames`); insets too; plate sound from the wav. ffmpeg's own DWAA decoder is avoided (it blacked out rows). OQ-80 |
-| 0.5.28 | **Everything in the stringout is graded**: a reference clip's EXR gets its clip's looks; source fallbacks graded through their AMF; an HDRI with no pre-render is its EXR held, graded |
-| 0.5.29 | **Reference clips play** (charts, balls, size refs are videos): their event plays its cut at full speed from the source, graded. Only a freeze or a one frame cut is held. Delivery is still one 4k EXR frame |
-| 0.5.30 | **Take on the burn-in**: `SECA0009_pl01 Take 02` bottom right when the CSV's `Take` is above 1 (OQ-81) |
-| 0.5.31 | **Every Fix-it line names its shot**: no "Every clip in this turnover (N)" shortcut; a clip whose identity did not read is named from the CSV's Shot and Shot Type |
-| 0.5.32 | **Style frames** (`Shot Type` `styleFrame`, QC-085): a pre-graded PNG or JPG held as it is on the stringout for its EDL length, never delivered, burned in `SECA0009 styleFrame` with no counter. **The stringout line** under each turnover: a bar while it builds, a ball green when built, red for QC-142 or a black event (**QC-144**, split from QC-143). OQ-82 |
-| 0.5.33 | **The QC overhaul**: nothing stops a batch or turnover; an error holds only its own shot (missing media, a grade it cannot rebuild, no name, no cut); only the delivery root stops a run (popup). Accept As Is gone. No AMF = ungraded from the CSV's Input Color Space, "Clip ungraded in Resolve project". The cut at face value (QC-084 retired, QC-029 info). Most errors now warnings; the QC log's new Issues sheet lists every finding in words. OQ-83 |
+| 0.5.25 | `User_Generated` and `User_Uploads`, empty, at the delivery root after any run that delivers |
+| 0.5.26 | **HDRI**: the EXR delivered byte for byte as `<shot>_pl01_HDRI_<idx>_v<ver>.exr`, no checks (QC-080); the stringout plays Ben's pre-render beside it (sRGB Linear, graded through the HDRI's AMF); missing is QC-083 |
+| 0.5.27 | **The stringout is cut from the delivered EXRs** (OpenEXR, OCIO, a lossless ffv1 intermediate); ffmpeg's DWAA decoder avoided. OQ-80 |
+| 0.5.28 | **Everything in the stringout is graded** |
+| 0.5.29 | **Reference clips play** in the stringout from the source; delivery is still one 4k EXR frame |
+| 0.5.30 | **Take on the burn-in** when the CSV's `Take` is above 1 (OQ-81) |
+| 0.5.31 | **Every Fix-it line names its shot** |
+| 0.5.32 | **Style frames** (`Shot Type` `styleFrame`, QC-085): a pre-graded PNG or JPG held as it is for its EDL length, never delivered, `SECA0009 styleFrame`, no counter. **The stringout line** under each turnover: bar while building, ball green when built, red for QC-142 or a black event (QC-144). OQ-82 |
+| 0.5.33 | **The QC overhaul** (above). OQ-83 |
 
-Also: **Ben's page** for turnovers 134 and 135 (https://claude.ai/artifact/DFshCWhWiGYsEuH35NPAy3,
-version 2, private, the user shares it) now says the mirror balls were never linked to the proxies
-(the earlier diagnosis was wrong: `Proxy/` holds the camera originals and the cause was Resolve's
-media management timecode), turnover134 blocks nothing, and asks for the HDRI pre-renders. The
-older per-turnover pages (134: https://claude.ai/artifact/GX82xM9xvaZnjzoWFBkUaL, 135:
-https://claude.ai/artifact/9Bynj3M6E2t23n2WB5PtDZ) were not updated and still carry the proxy
-wording.
+## Verified on the samples (0.5.33)
+
+- **Turnover134** scans with nothing held; its mirror balls are cut by Resolve's clock with
+  nothing said.
+- **Turnover135, which could not run before, now plans 38 jobs.** Only its four SECA0012
+  reference stills are held (QC-012: they are `..._raw_4k_v01.exr` files from another export, not
+  in the folder). Its six camera plates and clean plates render ungraded from Apple Log;
+  `SECA0013_pl01_ref_HD_v01.mp4` was rendered through that path (240 frames, phase B clean) and a
+  frame looked right for ungraded Apple Log.
 
 ## Open, with the user (newest first)
 
-- **The QC overhaul's assumptions (OQ-83)**: no-AMF clips read as the CSV's Input Color Space,
-  references through ACES 2.0 SDR Rec.709 Gamma 2.2, QC-063 (disk space) also stops the run, QC-021
-  and QC-055 made info. Not asked; told the user.
-
+- **OQ-83's assumptions, made without asking** (the user has not reacted yet): no-AMF clips read
+  as the CSV's `Input Color Space`; their references through ACES 2.0 SDR Rec.709 on Gamma 2.2;
+  low disk space (QC-063) stops the run like an unwritable root; QC-021 and QC-055 made info; the
+  media is still probed to decode it; plate length (QC-033/034) is a warning, so those rows show
+  amber.
 - **Style frames are untested on real media**: no turnover in the repo has one. Ask for the
-  first export that does, and check it against OQ-82's assumptions (EDL length kept, no OCIO).
-
-- **Ben's HDRI renders are named differently from what the tool expects.** The user's
-  screenshot of a newer turnover134 export (not in the repo) shows `SECA0009_pl01_HDRI_01_v01.exr
-  Render 1.mov` on the timeline typed HDRI, missing from the folder (QC-012), and the EXRs off the
-  cut (QC-066). The tool expects the render as `<EXR stem>.<mp4|mov|mxf>` beside the EXR, and the
-  EXR as the timeline clip typed `HDRI`. Not asked yet in so many words: ask how Ben will name and
-  place them before changing anything, and get that export into the repo root to test against.
-- **OQ-81, the take**: "only if there's more than one take" was read as a Take above 1. Told the
-  user; no reply.
+  first export that does, and check it against OQ-82 (EDL length kept, no OCIO).
+- **Ben's HDRI renders are named differently from what the tool expects.** A newer turnover134
+  export (a screenshot, not in the repo) shows `SECA0009_pl01_HDRI_01_v01.exr Render 1.mov` on the
+  timeline typed HDRI, with the EXRs off the cut. The tool expects `<EXR stem>.<mp4|mov|mxf>` beside
+  the EXR, and the EXR on the timeline typed `HDRI`. Ask how Ben will name and place them before
+  changing anything, and get that export into the repo root to test against.
+- **OQ-81, the take**: "only if there's more than one take" was read as a Take above 1. No reply.
 - **The HDRI EXR "you don't need to touch"** was read as "copy it, never alter it". If it meant
-  "do not deliver it", `planner._hdri_plan` is the one place to stop it. Told the user; no reply.
-- **QC-084 uses Resolve's clock only when the file's own fails**, because Turnover199 showed the
-  CSV `Start TC` stale while the EDL followed the file. So turnover134's C003 and C012 are cut by
-  the file's timecode, 7 and 3 frames off Resolve's. The user said this was fixed in Resolve. A
-  warning whenever the two clocks disagree was offered and not answered.
-- **Turnover134 as in the repo** scans with 0 errors (0.5.26 on). Its HDRI EXRs have no Shot or
-  Shot Type in that CSV, so they are ignored, and no sample has a pre-render yet.
-- **Turnover135 cannot run**: one AMF where 18 clips need one; the SECA0012 references on its
-  timeline are `..._raw_4k_v01.exr` files from another export, not in the folder; a duplicate CSV
-  row. Waiting on Ben's re-export.
-- **Mac checks** in `docs/MAC_SESSION.md`, newest first: the stringout from the EXRs against a
-  plate's HD reference (0.5.27), the HDRI pre-render look (0.5.26), expiry and the CDL grade
-  (0.5.23), burn-in boxes (0.5.22), and older ones.
-- **"Fix in Resolve" rule list** was chosen by Claude (`models.RESOLVE_FIX_RULES`); the user may
-  adjust it.
+  "do not deliver it", `planner._hdri_plan` is the one place to stop it. No reply.
+- **Turnover134's HDRI EXRs carry no Shot or Shot Type** in that CSV, so they are ignored; no
+  sample has an HDRI pre-render yet.
+- **Mac checks** in `docs/MAC_SESSION.md`, newest first: the QC overhaul (0.5.33), style frames
+  and the stringout line (0.5.32), the stringout from the EXRs (0.5.27), the HDRI pre-render look
+  (0.5.26), expiry and the CDL grade (0.5.23), burn-in boxes (0.5.22), and older ones.
+- **"Fix in Resolve" rule list** was chosen by Claude (`models.RESOLVE_FIX_RULES`; QC-008 and
+  QC-029 left it in 0.5.33); the user may adjust it.
 - **Log CSV Level column**: the user reported INFO on blocking errors; the supplied
   `ProIngest-logs-20261005-1301.csv` does not show that. Asked what they saw; no reply.
-- `docs/COLOR_INPUTS_TURNOVER121.md` went into PR #18 by mistake; left in, nobody objected.
+- **Ben's pages**: https://claude.ai/artifact/DFshCWhWiGYsEuH35NPAy3 (version 2, private, for
+  134 and 135) predates the QC overhaul, so it still asks Ben to fix things that no longer block
+  (turnover135's missing AMFs now just mean ungraded). Offer to update it. The older per-turnover
+  pages (134: GX82xM9xvaZnjzoWFBkUaL, 135: 9Bynj3M6E2t23n2WB5PtDZ) are stale too.
 
 ## Older, still open
 
-- **Inset assumptions, told the user**: cp top left and wit top right (their first message said
-  "left is the pl"); the label bottom left inside the inset; labels on the insets only.
-- **The name at top centre clears the insets by about 20 px** (x 499 to 1411 against 480 and
-  1440); a longer shooter name could touch them. The user said adjust later if so.
+- **Inset assumptions, told the user**: cp top left and wit top right; the label bottom left
+  inside the inset; labels on the insets only.
+- **The name at top centre clears the insets by about 20 px**; a longer shooter name could touch
+  them. The user said adjust later if so.
 - **Ben saw a "very slight shift"** between his Resolve output and the tool's. Ask which file,
   which clip and where it was viewed. A tool render against a Resolve render of the same frame
   has never been made (OQ-77 (1)).
-- Older and still open: Turnover121's 4.886 slope (with Ben); Resolve's reference EXR in the repo
-  root (five questions, none answered); Drive links in the tracker export (waiting on `xattr -l`
-  from the Mac); the CLI does not build a stringout; a source segment of a plate is silent; no text
-  shadow or box for bright frames (asked); keeping the camera timecode as hidden metadata (asked);
-  a changed ALE is not flagged on re-scan; compound clips are unread (OQ-63); non-square pixels
-  are not letterboxed correctly.
+- Older still: Turnover121's 4.886 slope (with Ben); Resolve's reference EXR in the repo root (five
+  questions, none answered); Drive links in the tracker export (waiting on `xattr -l` from the Mac);
+  the CLI does not build a stringout; a source segment of a plate is silent; no text shadow or box
+  for bright frames (asked); keeping the camera timecode as hidden metadata (asked); a changed ALE
+  is not flagged on re-scan; compound clips are unread (OQ-63); non-square pixels are not
+  letterboxed correctly.
 
 ## Working notes
 
 - **Do not update `build-track.html`.** It is retired.
 - **Every build gets its own patch version** in `pyproject.toml`, `proingest/__init__.py`,
   `build/build.py`, `docs/guide/install.md` and `uv.lock` (line 584, the `proingest` package).
-  The reply is a `gh run download` command plus the run's URL. CI runs on pull requests and on
-  pushes to `main`; a branch's pushes run only once a PR is open for it.
+  Push, let CI build (it runs on the open PR), then reply with the `gh run download` command and
+  download it into `~/Downloads/ProIngest-<version>/` too.
 - **`gh pr edit` fails** on a Projects (classic) GraphQL error; use
   `gh api -X PATCH repos/shango/ProIngest/pulls/<n> -f title=... -f body=...`.
 - **Untracked, never `git add -A` or `git add docs`**: the turnover folders, the reference EXR,
-  `burn-ins.png`, the log CSV. Stage files by name.
+  `burn-ins.png`, the log CSV. `git add -u` plus new files by name.
 - **Headless runs**: `python -m proingest scan <folder> --save x.pibatch`, then `run x.pibatch
-  --delivery-root <scratch>`; the run refuses while any must-fix stands, so skip rows in a copy of
-  the batch (`batchfile.load`, set `skipped`, `batchfile.save`) to exercise the rest.
-- **A full turnover097 run** (that folder is no longer in the repo) is a short script: scan `collected files`, type in 97, 9, 28, 2026,
-  `danielluckett`, `qc.preflight`, `render.execute(planner.plan_batch(...), workers=4)`,
-  `render.apply_results`, `stringout.build`. Put it under an `if __name__ == "__main__":` guard
-  (the worker pool spawns). To rebuild only the stringout, run `stringout.build` on the batch the run
-  saved: it reads each row's delivered HD EXR folder, wav and still EXR from `deliverables`.
-- **Memory** (`~/.claude/projects/...ProIngest/memory/`): `hdri-is-a-video-clip` was rewritten
-  on 2026-10-07 for the frame hold with a pan; read it before any HDRI work.
+  --delivery-root <scratch>`; since 0.5.33 a row error only holds that row. A scripted run
+  (`scan.scan_turnover`, `qc.apply_batch_rules`, `planner.plan_batch`, `render.execute`) must sit
+  under an `if __name__ == "__main__":` guard, because the worker pool spawns.
+- **The full suite takes about ten minutes**; run it in the background. There is no xdist.
+- **Memory** (`~/.claude/projects/...ProIngest/memory/`): read `hdri-is-a-video-clip` before any
+  HDRI work.
 - **Per-change rules:** `PROGRESS.md` entry in the same commit; a `docs/MAC_SESSION.md` line for
   anything only a Mac can confirm; no em dashes in any file.
