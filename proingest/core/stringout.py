@@ -55,8 +55,12 @@ only then takes its name.
 from __future__ import annotations
 
 import logging
+import multiprocessing
 import shutil
-from collections.abc import Callable
+import tempfile
+from collections.abc import Callable, Iterable
+from concurrent.futures import FIRST_EXCEPTION, ProcessPoolExecutor, ThreadPoolExecutor, as_completed, wait
+from concurrent.futures.process import BrokenProcessPool
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Literal
@@ -65,9 +69,18 @@ import numpy as np
 import numpy.typing as npt
 import PyOpenColorIO as ocio
 
-from proingest.core import clf, color, ffmpeg, frames, media, naming, qc, resize, scan
+from proingest.core import clf, color, ffmpeg, frames, logsetup, media, naming, qc, resize, scan
 from proingest.core import exr as exr_module
-from proingest.core.models import Batch, Deliverable, InOut, MediaInfo, QCResult, ShotRow, Turnover
+from proingest.core.models import (
+    DEFAULT_WORKERS,
+    Batch,
+    Deliverable,
+    InOut,
+    MediaInfo,
+    QCResult,
+    ShotRow,
+    Turnover,
+)
 from proingest.core.planner import effective_identity
 
 log = logging.getLogger(__name__)
@@ -516,6 +529,7 @@ def build(
     delivery_root: Path,
     show_pattern: str = naming.DEFAULT_SHOW_PATTERN,
     progress: Progress | None = None,
+    workers: int = DEFAULT_WORKERS,
 ) -> Deliverable | None:
     """Plan, render and check one turnover's stringout, and record the outcome on it.
 
@@ -525,7 +539,7 @@ def build(
     turnover.qc = [result for result in turnover.qc if result.rule_id not in STRINGOUT_RULES]
     try:
         made = plan(batch, turnover, delivery_root, show_pattern)
-        deliverable = render(made, progress)
+        deliverable = render(made, progress, workers)
     except (StringoutError, ffmpeg.FFmpegError, ffmpeg.FFprobeError, OSError) as exc:
         turnover.qc.append(QCResult("QC-142", "error", "turnover", f"the stringout was not written: {exc}"))
         return None
@@ -561,25 +575,28 @@ def build(
 
 
 Progress = Callable[[int, int], None]
-"""Frames encoded so far and the stringout's total, called from the thread building it."""
+"""Frames done so far and the total, called from the thread building it. Both count the
+frames converted from the delivered EXRs (`_make_views`) and then the frames encoded."""
 
 
-def render(made: Plan, progress: Progress | None = None) -> Deliverable:
-    """Encode every segment, join them, check the join, and give it its name."""
+def render(made: Plan, progress: Progress | None = None, workers: int = DEFAULT_WORKERS) -> Deliverable:
+    """Convert the EXRs, encode every segment, join them, check the join, and name it."""
     folder = made.destination.parent
     folder.mkdir(parents=True, exist_ok=True)
-    parts = folder / f".{made.stem}.parts"
+    # The pictures and segments on this machine's own disk, not beside the stringout: the
+    # delivery root is a Google Drive mount, and turnover135's six pictures alone were
+    # about 9 GB to write there and delete (2026-10-08). Only the joined file is written
+    # in the destination folder, under a temporary name, as every deliverable is.
+    parts = Path(tempfile.mkdtemp(prefix=f"{made.stem}.", suffix=".parts"))
     temp = made.destination.with_name(made.destination.name + ".part")
-    shutil.rmtree(parts, ignore_errors=True)
-    parts.mkdir()
     try:
-        views: dict[ExrView, Path] = {}
-        encoded, done = [], 0
-        for index, segment in enumerate(made.segments):
-            encoded.append(_encode(made, _seen(segment, views, parts), parts, index))
-            done += segment.length
-            if progress is not None:
-                progress(done, made.total)
+        wanted = _views_wanted(made, parts)
+        converted = sum(len(files) for _, files in wanted.values())
+        total = converted + made.total
+        views = _make_views(wanted, workers, lambda done: progress(done, total) if progress else None)
+        encoded = _encode_all(
+            made, views, parts, workers, lambda done: progress(converted + done, total) if progress else None
+        )
         listing = parts / "segments.txt"
         listing.write_text("".join(f"file '{_quoted(path)}'\n" for path in encoded), encoding="utf-8")
         _run(ffmpeg.concat_command(listing, temp, made.timecode), temp.name)
@@ -601,27 +618,148 @@ def render(made: Plan, progress: Progress | None = None) -> Deliverable:
     )
 
 
-def _seen(segment: Segment, views: dict[ExrView, Path], parts: Path) -> Segment:
+def _encode_all(
+    made: Plan, views: dict[ExrView, Path], parts: Path, workers: int, progress: Callable[[int], None]
+) -> list[Path]:
+    """Every segment encoded, `workers` at a time, in the timeline's order for the join.
+
+    Threads rather than processes: each segment is one ffmpeg run that the thread only
+    waits on, and the burn-in, the insets and the cube are written under the segment's
+    own index. Several at once because one ffmpeg spends much of a segment in its
+    single threaded filters (2026-10-08, turnover135: the 21 events were most of what was
+    left once the pictures were fast). Progress is reported here, on the calling thread,
+    as each finishes.
+    """
+    encoded: list[Path | None] = [None] * len(made.segments)
+    done = 0
+    with ThreadPoolExecutor(max_workers=max(1, workers)) as pool:
+        futures = {
+            pool.submit(_encode, made, _seen(segment, views), parts, index): index
+            for index, segment in enumerate(made.segments)
+        }
+        for future in as_completed(futures):
+            index = futures[future]
+            encoded[index] = future.result()
+            done += made.segments[index].length
+            progress(done)
+    return [path for path in encoded if path is not None]
+
+
+def _seen(segment: Segment, views: dict[ExrView, Path]) -> Segment:
     """The segment cut from its EXRs' pictures, each made once however often it is used."""
     insets = tuple(
-        replace(inset, picture=replace(inset.picture, path=_picture(inset.exr, views, parts)))
+        replace(inset, picture=replace(inset.picture, path=views[inset.exr]))
         if inset.exr is not None
         else inset
         for inset in segment.insets
     )
-    path = _picture(segment.exr, views, parts) if segment.exr is not None else segment.path
+    path = views[segment.exr] if segment.exr is not None else segment.path
     return replace(segment, path=path, insets=insets)
 
 
-def _picture(exr: ExrView, views: dict[ExrView, Path], parts: Path) -> Path:
-    """The EXR seen through its output transform and fitted to HD, as a lossless file."""
-    if exr not in views:
-        destination = parts / f"view{len(views):03d}.mkv"
-        files = sorted(exr.source.glob("*.exr")) if exr.source.is_dir() else [exr.source]
-        cpu = color.processor(*exr.color.view_transforms())
-        ffmpeg.write_frames((_shown(path, cpu) for path in files), SIZE, destination, RATE)
-        views[exr] = destination
-    return views[exr]
+def _views_wanted(made: Plan, parts: Path) -> dict[ExrView, tuple[Path, list[Path]]]:
+    """Every delivered EXR the stringout shows, plates and insets, once each in order of
+    first use, with the lossless file it becomes and its frames. One listing each."""
+    wanted: dict[ExrView, tuple[Path, list[Path]]] = {}
+    for segment in made.segments:
+        for exr in (segment.exr, *(inset.exr for inset in segment.insets)):
+            if exr is not None and exr not in wanted:
+                files = sorted(exr.source.glob("*.exr")) if exr.source.is_dir() else [exr.source]
+                wanted[exr] = (parts / f"view{len(wanted):03d}.mkv", files)
+    return wanted
+
+
+def _make_views(
+    wanted: dict[ExrView, tuple[Path, list[Path]]], workers: int, progress: Callable[[int], None]
+) -> dict[ExrView, Path]:
+    """Every EXR made into its picture, **several at once** (user, 2026-10-07: "convert
+    the plates in parallel"). Measured on turnover135 before: about 3 minutes per 240
+    frame plate, one after another, nearly all of the stringout's time.
+
+    In spawned processes, as the render's are, for the same reason: the macOS target
+    spawns, so the tests meet its pickling rules. Each counts its frames into a shared
+    counter that is read every second, so the stringout line's bar and time left move
+    while the long part runs. One picture, or one worker, is made in this process: a
+    spawned interpreter costs a second or two to start and buys nothing then.
+    """
+    if not wanted:
+        return {}
+    if len(wanted) == 1 or workers <= 1:
+        done = [0]
+
+        def tick() -> None:
+            done[0] += 1
+            progress(done[0])
+
+        for exr, (destination, files) in wanted.items():
+            _write_view(exr, files, destination, tick)
+        return {exr: destination for exr, (destination, _) in wanted.items()}
+
+    context = multiprocessing.get_context("spawn")
+    counter = context.Value("q", 0)
+    log_queue: Any = context.Queue()
+    listener = logsetup.start_listener(log_queue)
+    initargs = (counter, log_queue, logging.getLogger().getEffectiveLevel(), ffmpeg.current_override())
+    try:
+        with ProcessPoolExecutor(
+            max_workers=min(workers, len(wanted)),
+            mp_context=context,
+            initializer=_view_worker_init,
+            initargs=initargs,
+        ) as pool:
+            futures = [
+                pool.submit(_pooled_view, exr, files, destination)
+                for exr, (destination, files) in wanted.items()
+            ]
+            pending = set(futures)
+            while pending:
+                finished, pending = wait(pending, timeout=1.0, return_when=FIRST_EXCEPTION)
+                progress(int(counter.value))
+                for future in finished:
+                    future.result()  # a picture that failed fails the stringout (QC-142)
+    except BrokenProcessPool as exc:
+        raise StringoutError(f"a process converting the EXRs died: {exc}") from exc
+    finally:
+        listener.stop()
+    return {exr: destination for exr, (destination, _) in wanted.items()}
+
+
+_COUNTER: Any = None
+"""This worker's frame counter, shared with the parent. Handed over at process creation,
+the only way a `multiprocessing.Value` crosses a spawn."""
+
+
+def _view_worker_init(counter: Any, log_queue: Any, log_level: int, ffmpeg_override: Path | None) -> None:
+    """A spawned worker knows nothing the parent was told: the counter, where its log
+    records go (every ffmpeg command is logged, FR-13), and which ffmpeg to run."""
+    global _COUNTER
+    _COUNTER = counter
+    logsetup.install_worker_handler(log_queue, log_level)
+    ffmpeg.set_override(ffmpeg_override)
+
+
+def _pooled_view(exr: ExrView, files: list[Path], destination: Path) -> None:
+    _write_view(exr, files, destination, _count_frame)
+
+
+def _count_frame() -> None:
+    with _COUNTER.get_lock():
+        _COUNTER.value += 1
+
+
+def _write_view(exr: ExrView, files: list[Path], destination: Path, tick: Callable[[], None]) -> None:
+    """One EXR seen through its output transform and fitted to HD, as a lossless file,
+    with `tick` called as each frame is handed to ffmpeg."""
+    chain = exr.color.view_transforms()  # refuses a picture with no encoding (QC-046)
+    assert exr.color.source_encoding is not None
+    cpu = color.baked_processor(exr.color.source_encoding, *chain)
+
+    def shown() -> Iterable[npt.NDArray[np.float32]]:
+        for path in files:
+            yield _shown(path, cpu)
+            tick()
+
+    ffmpeg.write_frames(shown(), SIZE, destination, RATE)
 
 
 def _shown(path: Path, cpu: ocio.CPUProcessor) -> npt.NDArray[np.float32]:

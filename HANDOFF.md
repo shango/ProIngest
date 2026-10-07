@@ -7,11 +7,11 @@ Then read `docs/WORKFLOW.md`, and `CLAUDE.md` for the ground rules.
 
 ## State
 
-- **Version 0.5.35 on branch `hdri/prerender`, PR #19 open, not merged.** Merge only when the
+- **Version 0.5.36 on branch `hdri/prerender`, PR #19 open, not merged.** Merge only when the
   user asks. `main` has 0.5.25 (PR #18, merged 2026-10-06 at the user's request).
-- **0.5.35's CI run** is given in the last commit on the branch; check it with
+- **0.5.36's CI run** is given in the last commit on the branch; check it with
   `gh run list -R shango/ProIngest --branch hdri/prerender -L 3`, and if green hand over
-  `gh run download <id> -R shango/ProIngest -n ProIngest-macos-arm64 -D ~/Downloads/ProIngest-0.5.35`.
+  `gh run download <id> -R shango/ProIngest -n ProIngest-macos-arm64 -D ~/Downloads/ProIngest-0.5.36`. 0.5.35's run (37690475455) was green and is in `~/Downloads/ProIngest-0.5.35/`.
 - 1930 tests pass locally (1 skipped); `ruff`, `ruff format` and `mypy --strict` are clean.
 - Nothing uncommitted except the untracked samples listed under Working notes.
 
@@ -56,6 +56,7 @@ recreate the colors." `docs/QC_RULES.md`'s opening section is the authority; in 
 | 0.5.33 | **The QC overhaul** (above). OQ-83 |
 | 0.5.34 | **The HDRI pre-render on the timeline**: the `... .exr Render.mov` the timeline cuts is the stringout's event, the EXR named in it is delivered when it is in the folder, else QC-086 "HDRI EXR File Missing from turnover folder, omitted from delivery"; no CLF and no CDL shows it as it is (QC-009). **The Fix-it report** says, per clip, the full path it looked for and which file (CSV, EDL with timecode, AMF) reported it. OQ-84 |
 | 0.5.35 | **The stringout's time left** on its line, in Notes, counting down between events |
+| 0.5.36 | **The stringout optimised**: turnover135 from 26m15s to 3m00s. The view chain baked into a 65 point ACEScct cube (the exact ACES 2.0 transform was 98% of the time), a UT Video 10 bit intermediate in local temp, the pictures converted and the events encoded `workers` at a time. Fixed on the way: OCIO's cache reused one baked LUT's processor for another. Next lever: x264 `preset slow` for the stringout, the user's call |
 
 ## Verified on the samples (0.5.34, the replaced exports of 2026-10-07)
 
@@ -65,6 +66,8 @@ recreate the colors." `docs/QC_RULES.md`'s opening section is the authority; in 
   deliverables rendered, 0 failed.
 - **Turnover135**: 21 rows, 0 errors, 42 jobs including the three HDRI EXR copies. Every clip now
   has an AMF; SECA0012's are ungraded (QC-009), SECA0013/14 graded from the CDL (QC-082).
+  All 42 rendered, 0 failed; its stringout (1920 frames) plays the three HDRI pre-renders as
+  they are and cuts the reference stills from their HD references (QC-143, info).
 
 ## Open, with the user (newest first)
 
@@ -81,7 +84,7 @@ recreate the colors." `docs/QC_RULES.md`'s opening section is the authority; in 
 - **OQ-81, the take**: "only if there's more than one take" was read as a Take above 1. No reply.
 - **The HDRI EXR "you don't need to touch"** was read as "copy it, never alter it". If it meant
   "do not deliver it", `planner._hdri_plan` is the one place to stop it. No reply.
-- **Mac checks** in `docs/MAC_SESSION.md`, newest first: the stringout's time left (0.5.35), the HDRI pre-render and Fix-it paths (0.5.34), the QC overhaul (0.5.33), style frames
+- **Mac checks** in `docs/MAC_SESSION.md`, newest first: the stringout optimised (0.5.36), the stringout's time left (0.5.35), the HDRI pre-render and Fix-it paths (0.5.34), the QC overhaul (0.5.33), style frames
   and the stringout line (0.5.32), the stringout from the EXRs (0.5.27), the HDRI pre-render look
   (0.5.26), expiry and the CDL grade (0.5.23), burn-in boxes (0.5.22), and older ones.
 - **"Fix in Resolve" rule list** was chosen by Claude (`models.RESOLVE_FIX_RULES`; QC-008 and

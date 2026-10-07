@@ -1112,7 +1112,8 @@ class TestAddingAndScanningTurnovers:
         seen: list[object] = []
         window.run.stringout_progressed.connect(lambda _turnover, fraction: seen.append(fraction))
 
-        def build(*_args: object, progress: Callable[[int, int], None]) -> None:
+        def build(*_args: object, progress: Callable[[int, int], None], workers: int) -> None:
+            assert workers == window.settings.workers, "the EXRs convert on the run's workers"
             progress(6, 24)
             assert window.shot_model._building == {"t1": 0.25}
             return None

@@ -8,7 +8,7 @@ commit.
 
 ## 1. Resume here
 
-**State at 2026-10-07, version 0.5.35 on branch `hdri/prerender`, PR #19 open** (0.5.35: the stringout's time left on its line; 0.5.34: the HDRI pre-render on the timeline; 0.5.33: the QC overhaul, nothing stops a batch or a turnover; 0.5.32: style frames on the stringout, the stringout line in the shot list; 0.5.31: every Fix-it line names its shot; 0.5.30: the take on the burn-in; 0.5.29: reference clips play in the stringout; 0.5.28: everything in the stringout graded; 0.5.27: the stringout from the EXRs; 0.5.26: the HDRI pre-render and delivery, QC-084, Accept As Is runs what it can; 0.5.25, merged to `main` with PR #18: `User_Generated` and `User_Uploads` at the delivery root; 0.5.24: the Fix-it
+**State at 2026-10-08, version 0.5.36 on branch `hdri/prerender`, PR #19 open** (0.5.36: the stringout from 26 minutes to 3 on turnover135; 0.5.35: the stringout's time left on its line; 0.5.34: the HDRI pre-render on the timeline; 0.5.33: the QC overhaul, nothing stops a batch or a turnover; 0.5.32: style frames on the stringout, the stringout line in the shot list; 0.5.31: every Fix-it line names its shot; 0.5.30: the take on the burn-in; 0.5.29: reference clips play in the stringout; 0.5.28: everything in the stringout graded; 0.5.27: the stringout from the EXRs; 0.5.26: the HDRI pre-render and delivery, QC-084, Accept As Is runs what it can; 0.5.25, merged to `main` with PR #18: `User_Generated` and `User_Uploads` at the delivery root; 0.5.24: the Fix-it
 report, one error per cause, a lone EXR read as one frame, AMFs falling back to the clip they name) (`HANDOFF.md` is the short version, with the session's open items); 0.5.22 went to `main` earlier (PR #17 merged as `70e1160` at the user's request, after its CI
 run 37276656318 built the 0.5.22 dmg). The 2026-09-23 review is built (chunks A
 to H of `docs/REVIEW_2026-09-23.md`), and so are the fixes that a second official turnover,
@@ -17,6 +17,44 @@ renders; Turnover121, every clip 8 bit 4:2:0, runs again with a QC-020 warning o
 since 2026-09-28 (user). What is left is the Mac: `docs/MAC_SESSION.md`, from "The 0.5.0 build, in
 order" down, and Ben's 4.886 slope. Entries are newest first; anything older than 2026-09-22
 describes the tool before the review and is history.
+
+**2026-10-08, 0.5.36, then: the stringout optimised (user).** "I need to get the stringout render
+time optimized. Please make a plan and implement. If parallel is the best we have, optimize
+that." Profiled one HD frame of turnover135's delivered EXRs: read 39 ms, **OCIO 838 ms** (the
+exact ACES 2.0 output transform), packing 4 ms. Then the ffv1 16 bit intermediate wrote 4 frames
+a second on real frames. Built, measured each step on turnover135 (6 plate pictures, 21 events):
+(1) `color.baked_processor`, the view chain baked into a 65 point cube in ACEScct (27 ms a frame;
+0.06/255 mean, 1.4/255 worst on the plates; COLOR_AND_FORMAT section 1); (2) the intermediate is
+UT Video 10 bit (`ffmpeg.VIEW_CODEC`; 49 frames a second, a quarter of ffv1's size); (3) the
+pictures and segments go to local temp (`tempfile.mkdtemp`), never the delivery root on the Drive
+mount, and only the joined `.part` is written beside the stringout; (4) the events are encoded
+`workers` at a time on threads (`stringout._encode_all`). **26m15s one at a time, 15m56s with the
+pictures in parallel, 4m00s with (1) to (3), 3m00s with (4)**, 2m47s at 6 workers and 2m55s at 8.
+The new stringout against the first: 43 dB PSNR (two x264 encodes differ that much anyway) and
+average Y, U and V within 0.02 of a code value over 1920 frames. **Found and fixed**: OCIO's
+processor cache returned the first baked LUT's processor for a second, different one, so a graded
+still would have shown the plain plate's look; baked LUTs use their own config with the cache
+off (`color._uncached_config`, `TestBakedProcessor.test_a_second_bake_is_not_the_first_one_again`).
+Still x264 `preset slow`, the references' setting; a faster preset for the stringout alone is the
+next lever, and the user's call.
+
+**2026-10-08, 0.5.36: the stringout's plates converted in parallel (user).** Asked how long a
+stringout takes from the EXRs, then "yes, convert the plates in parallel". Measured on
+turnover135 (21 events, six 240 frame plate and clean plate EXR sequences, this Linux box under
+WSL, 14 cores): **26m15s one at a time**, of which about 19.5 minutes was converting the six
+delivered EXR sequences to their lossless HD pictures (about 3m10s each, 1.3 frames/s: OpenEXR
+read, Lanczos to HD, OCIO, ffv1) and about 6.5 minutes encoding the events. Now
+`stringout._views_wanted` lists every EXR a stringout shows (plates and inset clean plates) up
+front and `_make_views` converts them in a spawn `ProcessPoolExecutor` of the Settings page's
+Workers (`run_controller` passes `settings.workers`), each worker initialised with the log queue
+and the ffmpeg override as the render's are; one picture, or one worker, stays in process.
+Progress counts converted frames through a shared `multiprocessing.Value` polled each second,
+then encoded frames, so the line's bar and time left move during the long part. **15m56s with 4
+workers** on the same deliverables: the first four conversions ran together in about 6 minutes
+(each slowed to about 5m45s by sharing the machine), the last two in about 4, and the events took
+about 5m45s. The events are now the larger part left; they are still encoded one at a time.
+Verified: `TestBuild.test_its_plates_convert_in_parallel_and_report_as_they_go` (2 workers and
+1), the stringout and UI shell suites, and the full suite. Mac check in `docs/MAC_SESSION.md`.
 
 **2026-10-07, 0.5.35: the stringout's time left (user).** "Can you add on the line item itself
 an estimated time to finish the stringout render that is dynamic?" The stringout line's Notes

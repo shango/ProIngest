@@ -207,6 +207,21 @@ class TestBuild:
         assert [r.rule_id for r in turnover.qc if r.rule_id in stringout.STRINGOUT_RULES] == ["QC-143"]
         made.path.unlink()
 
+    @pytest.mark.parametrize("workers", [2, 1])
+    def test_its_plates_convert_in_parallel_and_report_as_they_go(self, batch: Batch, workers: int) -> None:
+        """User, 2026-10-07: "convert the plates in parallel". Two plates on two workers go
+        through the pool; one worker converts in this process. Progress counts the frames
+        converted, then the frames encoded, and never goes back."""
+        assert batch.delivery_root is not None
+        seen: list[tuple[int, int]] = []
+        root, report = batch.delivery_root, lambda d, t: seen.append((d, t))
+        made = stringout.build(batch, batch.turnovers[0], root, progress=report, workers=workers)
+        assert made is not None and made.frame_count == 2 * FRAMES
+        done = [d for d, _ in seen]
+        assert done == sorted(done) and seen[-1][0] == seen[-1][1] == 2 * FRAMES + 2 * FRAMES
+        assert not list(made.path.parent.glob(".*.parts"))
+        made.path.unlink()
+
     def test_one_that_cannot_be_made_is_qc_142_and_raises_nothing(self, batch: Batch) -> None:
         batch.turnovers[0] = replace(batch.turnovers[0], shooter="")
         assert batch.delivery_root is not None
@@ -542,7 +557,10 @@ class TestAStyleFrame:
             with_style, turnover, with_style.delivery_root, progress=lambda *done: reported.append(done)
         )
         assert made is not None and made.frame_count == 2 * FRAMES
-        assert reported == [(FRAMES, 2 * FRAMES), (2 * FRAMES, 2 * FRAMES)]
+        # The plate's EXR converted first, a frame at a time, then each event encoded.
+        total = FRAMES + 2 * FRAMES
+        assert reported[:FRAMES] == [(done, total) for done in range(1, FRAMES + 1)]
+        assert reported[FRAMES:] == [(2 * FRAMES, total), (total, total)]
         assert not [q for q in turnover.qc if q.rule_id in ("QC-143", "QC-144")]
 
     def test_its_file_missing_is_black_and_qc_144(self, folder: Path, tmp_path: Path) -> None:

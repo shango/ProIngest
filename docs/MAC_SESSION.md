@@ -55,6 +55,14 @@ chunk 7 of `docs/TO_A_WORKING_BUILD.md`, in the order that wastes least.
       in. Open `SECA0009_pl01_ref_HD_v01.mp4` beside Ben's own Resolve playback of the same frame:
       the brightness and colour should match. The tool applies the CDL in ACEScg, unclamped, as
       the AMF states; CI proves the maths, only Ben's screen says it is what Resolve does.
+- [ ] **The stringout optimised (2026-10-08, 0.5.36).** Build turnover135's stringout from the
+      app with Workers at 4 and time it: 3m00s on the Linux dev box (26m15s in 0.5.35). Activity
+      Monitor shows several ProIngest processes busy at once early on, then several ffmpeg. Open it
+      beside a 0.5.35 stringout of the same turnover: the same picture and colour (the views are
+      now a baked LUT, measured at 0.06/255 off on average). Confirm nothing appears in the
+      delivery root's `_reports` but the stringout itself while it builds (the scratch files now
+      go to the Mac's temp folder), and that the bundled ffmpeg has `utvideo`
+      (`ffmpeg -encoders | grep utvideo`).
 - [ ] **The stringout's time left (2026-10-07, 0.5.35).** Build a stringout: its line's Notes
       cell says "Estimating time left", then "About ... left" after the first event, counting
       down each second and re-estimating at each event; it clears when the line turns green.

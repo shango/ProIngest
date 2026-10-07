@@ -719,6 +719,18 @@ SDR 100 nits (Rec.709)` on `Gamma 2.2 Rec.709 - Display`**. One the config lacks
 Until then it was fixed in `color.VIEW` on `sRGB - Display`, on the user's belief rather than
 read off Ben's project (OQ-29); the AMF is that reading.
 
+**The stringout's pictures are baked (2026-10-08).** The stringout cuts each event from the
+delivered HD EXR seen through its clip's output transform. Evaluated exactly, ACES 2.0's output
+transform cost 838 ms an HD frame on CPU, 98% of a stringout's time. The chain is now baked into
+one 65 point 3D LUT sampled in ACEScct (`color.baked_processor`), as the references are baked
+into a cube in their log encoding, and applied by OCIO at about 27 ms a frame. Measured on
+turnover135's plates against the exact chain: 0.06/255 on average, 1.4/255 at worst; greys from
+black to linear 50 stay under 1/255. The worst case is a very bright, very saturated green, about
+9/255, where ACES 2.0's gamut compression bends sharply. The plates and every delivered EXR are
+untouched: they never see the view. Baked LUTs are built on a second copy of the config with
+OCIO's processor cache off, because the cache handed a second in-memory LUT the first one's
+processor.
+
 ### The EXR writer stays as it is
 
 The proposal writes EXRs via OpenImageIO. **This keeps the `OpenEXR` Python bindings**, which

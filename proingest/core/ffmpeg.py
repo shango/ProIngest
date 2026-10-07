@@ -457,10 +457,12 @@ def decode_frames(
             process.wait()
 
 
-VIEW_CODEC = ["-c:v", "ffv1", "-pix_fmt", "gbrp16le"]
-"""A display referred picture the stringout cuts from: lossless 16 bit RGB, read once more
-by the segment encode and then deleted, so size does not matter and a second lossy pass
-would."""
+VIEW_CODEC = ["-c:v", "utvideo", "-pix_fmt", "gbrp10le"]
+"""A display referred picture the stringout cuts from: lossless 10 bit RGB, read once more
+by the segment encode and then deleted, so a second lossy pass would matter and size does
+not much. UT Video rather than ffv1 since 2026-10-08: on turnover135's frames it wrote 49
+frames a second to ffv1 16 bit's 4, at a quarter of the size, and ffv1 had become the
+stringout's slowest step. 10 bit is four times finer than the 8 bit H.264 it ends in."""
 
 
 def write_frames(

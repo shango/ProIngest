@@ -255,6 +255,53 @@ def view_lut(
     return _write_lut(destination, lines)
 
 
+BAKED_LUT_SIZE = 65
+"""Samples per axis when a stringout picture's chain is baked (`baked_processor`).
+Measured on turnover135's plates against the exact chain (2026-10-08): 65 is off by
+0.06/255 on average and 1.4/255 at worst, below what the stringout's 8 bit H.264 keeps;
+33 was 4.2/255 at worst, and 97 bought nothing over 65 for four times the bake."""
+
+BAKED_SHAPER_SPACE = "ACEScct"
+"""Where a baked chain is sampled: ACES's own log space, which spreads scene linear from
+below zero to about 222 across 0..1, so a cube sampled in it keeps the highlights the
+ACES 2.0 output transform rolls off, and puts its samples where the shadows need them."""
+
+
+def baked_processor(
+    source: str, *transforms: ocio.Transform, size: int = BAKED_LUT_SIZE
+) -> ocio.CPUProcessor:
+    """`transforms` from `source`, baked into one 3D LUT sampled in ACEScct.
+
+    For the stringout's pictures, where the exact chain is too slow: ACES 2.0's output
+    transform cost 838 ms an HD frame on CPU, nearly all of a stringout's time, and the
+    baked chain costs about 27 ms (2026-10-08). The delivered references are baked the
+    same way, in their own log encoding (`view_lut`). Never for the plates themselves,
+    which stay exact.
+    """
+    grid = _identity_grid(size)
+    apply(grid, processor(ocio.ColorSpaceTransform(src=BAKED_SHAPER_SPACE, dst=source), *transforms))
+    lut = ocio.Lut3DTransform()
+    lut.setGridSize(size)
+    lut.setInterpolation(INTERPOLATION)
+    # The grid is red fastest, as a .cube is; OCIO's array is blue fastest.
+    lut.setData(np.ascontiguousarray(grid[0].reshape(size, size, size, 3).transpose(2, 1, 0, 3)).ravel())
+    group = ocio.GroupTransform([ocio.ColorSpaceTransform(src=source, dst=BAKED_SHAPER_SPACE), lut])
+    return _uncached_config().getProcessor(group).getDefaultCPUProcessor()
+
+
+@lru_cache(maxsize=1)
+def _uncached_config() -> ocio.Config:
+    """The pinned config again, with OCIO's processor cache off, for baked LUTs alone.
+
+    OCIO's cache does not tell two in-memory LUTs apart by their data: a second chain baked
+    in one process got the first one's processor back (2026-10-08, a graded still came
+    out as the plain plate before it). Every other processor keeps the cache.
+    """
+    uncached = ocio.Config.CreateFromBuiltinConfig(BUILTIN_CONFIG)
+    uncached.setProcessorCacheFlags(ocio.PROCESSOR_CACHE_OFF)
+    return uncached
+
+
 def _write_lut(destination: Path, lines: list[str]) -> Path:
     temp = destination.with_name(f".{destination.name}.part")
     temp.write_text("\n".join(lines) + "\n")

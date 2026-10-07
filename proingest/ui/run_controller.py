@@ -435,6 +435,7 @@ class RunController(QObject):
                 root,
                 pattern,
                 progress=lambda done, total: self.stringout_progressed.emit(turnover, done / max(total, 1)),
+                workers=self._window.settings.workers,
             )
         finally:
             self.stringout_progressed.emit(turnover, None)

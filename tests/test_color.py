@@ -14,6 +14,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import numpy as np
+import numpy.typing as npt
 import PyOpenColorIO as ocio
 import pytest
 
@@ -351,3 +352,58 @@ class TestViewLut:
         """Renamed onto the destination, so ffmpeg cannot read a half written cube."""
         color.view_lut(tmp_path / "MELT0001_view.cube", *self.chain(), size=9)
         assert [path.name for path in tmp_path.iterdir()] == ["MELT0001_view.cube"]
+
+
+class TestBakedProcessor:
+    """The stringout's pictures through a baked chain (2026-10-08): 30 times faster than
+    the exact ACES 2.0 output transform, and close enough not to show in 8 bit."""
+
+    @staticmethod
+    def out() -> ocio.Transform:
+        return color.output_transform(*color.DEFAULT_VIEW)
+
+    @staticmethod
+    def graded() -> list[ocio.Transform]:
+        """A plate with a red lift in its CDL, the way a still's chain carries its looks."""
+        cdl = color.cdl_transform((1.5, 1.0, 1.0, 0, 0, 0, 1, 1, 1, 1), color.PLATE_SPACE)
+        return [color.to_aces(color.PLATE_SPACE), cdl, color.to_plate(), TestBakedProcessor.out()]
+
+    @staticmethod
+    def error(source: npt.NDArray[np.float32], chain: list[ocio.Transform]) -> npt.NDArray[np.float32]:
+        exact = np.ascontiguousarray(source, dtype=np.float32)
+        baked = exact.copy()
+        color.apply(exact, color.processor(*chain))
+        color.apply(baked, color.baked_processor(color.PLATE_SPACE, *chain))
+        return np.abs(np.clip(exact, 0, 1) - np.clip(baked, 0, 1)) * 255
+
+    def test_greys_match_the_exact_chain_from_black_to_bright_highlights(self) -> None:
+        """Scene linear from just below zero to 50, across the ACES 2.0 highlight roll off."""
+        ramp = np.concatenate([[-0.001, 0.0], np.geomspace(1e-4, 50.0, 512)]).astype(np.float32)
+        error = self.error(np.stack([ramp] * 3, axis=-1)[None], [self.out()])
+        assert error.max() < 1.0
+
+    def test_saturated_colours_are_close_on_average(self) -> None:
+        """A primary pushed up to 50 against a grey of 0.18. On average well under a code
+        value; the worst is a very bright, very saturated green, where ACES 2.0's gamut
+        compression bends sharply and no cube size samples it cleanly (9/255 at 65,
+        measured 2026-10-08). Turnover135's real plates were 1.4/255 at worst."""
+        ramp = np.geomspace(1e-4, 50.0, 512).astype(np.float32)
+        rows = []
+        for channel in range(3):
+            tinted = np.full((ramp.size, 3), 0.18, dtype=np.float32)
+            tinted[:, channel] = ramp
+            rows.append(tinted)
+        error = self.error(np.stack(rows), [self.out()])
+        assert error.mean() < 0.25 and error.max() < 12.0
+
+    def test_a_grade_is_baked_in(self) -> None:
+        grey = np.full((1, 1, 3), 0.18, dtype=np.float32)
+        assert self.error(grey, self.graded()).max() < 1.0
+
+    def test_a_second_bake_is_not_the_first_one_again(self) -> None:
+        """OCIO's processor cache handed a second baked chain the first one's processor."""
+        grey = np.full((1, 1, 3), 0.18, dtype=np.float32)
+        plain, graded = grey.copy(), grey.copy()
+        color.apply(plain, color.baked_processor(color.PLATE_SPACE, self.out()))
+        color.apply(graded, color.baked_processor(color.PLATE_SPACE, *self.graded()))
+        assert graded[0, 0, 0] > plain[0, 0, 0] + 0.05
