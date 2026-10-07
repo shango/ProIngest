@@ -57,7 +57,7 @@ chunk 7 of `docs/TO_A_WORKING_BUILD.md`, in the order that wastes least.
       the AMF states; CI proves the maths, only Ben's screen says it is what Resolve does.
 - [ ] **The stringout from the EXRs (2026-10-07, 0.5.27).** Run a turnover and open its
       stringout beside a plate's HD reference mp4: the same picture, brightness and colour, and
-      the plate's sound in sync. A colour chart now shows ungraded, as its delivered EXR is.
+      the plate's sound in sync. A colour chart is graded, with its clip's looks, though its delivered EXR is not.
       CI proves it builds; only the eye says the two colour paths agree.
 - [ ] **The HDRI pre-render (2026-10-07, 0.5.26). Once Ben renders an HDRI's timeline event
       into a turnover as a video under the EXR's name, build the stringout and compare the HDRI

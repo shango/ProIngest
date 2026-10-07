@@ -5,16 +5,17 @@ ffmpeg. The user's decisions, all in OQ-38:
 
 - **The cut is the final saved EDL in the turnover**, event for event, gaps included.
 - **Each event is cut from its delivered EXRs** (user, 2026-10-07): the HD EXR sequence, or
-  a reference still's 4k EXR, so the stringout shows what the vendor works from. Each is read
-  with OpenEXR, put through its clip's output transform alone (a plate's grade is already in
-  it; a still is shown ungraded, as delivered) and fitted to HD into a lossless intermediate
-  the segment is cut from. The HD EXR's frame 1001 is the HD reference's first frame, so
-  every offset is the same either way. **The one exception is an HDRI**, cut from its
-  pre-render (below). ffmpeg's own EXR decoder is not used: it left the last rows of a
+  a reference still's 4k EXR, so the stringout shows what the vendor works from. **Everything
+  in the stringout is graded** (user, 2026-10-07): a plate's EXR has its grade in it already
+  and gets its clip's output transform alone; a still's EXR, delivered ungraded, gets its
+  clip's looks in ACEScg first. Each is read with OpenEXR, transformed and fitted to HD into
+  a lossless intermediate the segment is cut from. The HD EXR's frame 1001 is the HD
+  reference's first frame, so every offset is the same either way. **The one exception is an
+  HDRI**, cut from its pre-render (below). ffmpeg's own EXR decoder is not used: it left the last rows of a
   small DWAA frame black (measured on ffmpeg 6.1.1, 2026-10-07).
-- **An event with no delivered EXR** falls back to its HD reference, then **the ungraded
-  source** (a skipped or failed shot, a clip the CSV gives no `Shot Type`), and black when
-  not even that is known.
+- **An event with no delivered EXR** falls back to its HD reference, then **the source
+  through its AMF** (a skipped or failed shot; a clip with no AMF, such as one the CSV gives
+  no `Shot Type`, stays as it is), and black when not even that is known.
 - **Burn-ins copy Ben's frame** (`burn-ins.png`): the stringout's own name top centre,
   `Frame:` bottom left, `Primary Effect:` (the CSV's `Scene`) bottom centre, and the
   shot and element bottom right. White, Open Sans, no box. No camera timecode: the
@@ -29,7 +30,8 @@ ffmpeg. The user's decisions, all in OQ-38:
   a video (`xxxx_001.mp4` beside `xxxx_001.exr`), in sRGB Linear and ungraded. **The event
   is cut from that pre-render**, from its first frame for the event's length, and **coloured
   through the HDRI's AMF**, its own encoding taking the input transform's place. With no
-  pre-render (QC-083) the EXR is held for the event's length, shown as it is.
+  pre-render (QC-083) the EXR is held for the event's length, graded the same way, read as
+  linear Rec.709 like its pre-render.
 - **Only a plate has sound**, from its delivered wav; every other segment carries silence of
   the same length.
 - **A plate carries its shot's cp top left and wit top right** (user, 2026-09-29), each at
@@ -107,12 +109,11 @@ class StringoutError(RuntimeError):
 
 @dataclass(frozen=True)
 class ExrView:
-    """A delivered EXR, a sequence's folder or a still's file, and the output transform it is
-    seen through: its clip's AMF display and view. Made into a picture at render time."""
+    """A delivered EXR, a sequence's folder or a still's file, and the chain it is seen
+    through, ending in its clip's AMF output transform. Made into a picture at render time."""
 
     source: Path
-    display: str
-    view: str
+    color: clf.ShotColor
 
 
 @dataclass(frozen=True)
@@ -338,6 +339,19 @@ def _segment(
             audio=qc.is_plate(delivering),
             identity=identity,
         )
+    still_hdri = _hdri_exr(row) if qc.is_hdri(row) else None
+    if still_hdri is not None:
+        return Segment(
+            kind="reference",
+            length=shown,
+            event_id=event.event_id,
+            freeze=True,  # one image, held for the event's length
+            label=label,
+            effect=row.scene,
+            path=still_hdri.source,
+            identity=identity,
+            exr=still_hdri,
+        )
     base = row.current.in_frame if row.current is not None else cut.in_frame
     return Segment(
         kind="source",
@@ -351,9 +365,18 @@ def _segment(
         start=cut.in_frame,
         media=known.media,
         identity=identity,
-        # An HDRI with no pre-render is its EXR held, shown as it is (QC-083).
-        color=clf.shot_color(row) if held and not qc.is_hdri(row) else None,
+        # Graded through its AMF (user, 2026-10-07: "everything in the stringout should be graded").
+        color=None if qc.is_hdri(row) else clf.shot_color(row),
     )
+
+
+def _hdri_exr(row: ShotRow) -> ExrView | None:
+    """An HDRI with no pre-render (QC-083): its EXR, read as linear Rec.709 like its
+    pre-render, through its AMF's grade. None when the AMF names no output transform."""
+    shot = replace(clf.shot_color(row), source_encoding=color.HDRI_RENDER_ENCODING)
+    if row.media is None or row.media.path.suffix.lower() != ".exr" or not (shot.display and shot.view):
+        return None
+    return ExrView(row.media.path, shot)
 
 
 def _prerender(event: clf.ConformEvent, row: ShotRow, length: int, show_pattern: str) -> Segment:
@@ -399,19 +422,22 @@ def _held(event: clf.ConformEvent, cut: InOut, identity: naming.ShotIdentity | N
 
 
 def _exr(row: ShotRow, cut: InOut) -> ExrView | None:
-    """The row's delivered EXR and the output transform it is seen through: its HD sequence
-    when that holds the cut, or a still's one frame. None without a display and view to see
-    it through, which leaves the event to its reference."""
+    """The row's delivered EXR and the chain it is seen through: its HD sequence when that
+    holds the cut, which is graded already, or a still's one frame, which takes its clip's
+    looks. None without an output transform to see it through, which leaves the event to its
+    reference."""
     shot = clf.shot_color(row)
     if row.skipped or row.identity is None or row.delivered_range is None or not (shot.display and shot.view):
         return None
     if row.identity.is_still:
         path = _landed(row, "aux_still")
+        chain = replace(shot, source_encoding=color.PLATE_SPACE)
     else:
         held = row.delivered_range
         inside = held.in_frame <= cut.in_frame and cut.out_frame <= held.out_frame
         path = _landed(row, "raw_dir", "HD") if inside else None
-    return ExrView(path, shot.display, shot.view) if path is not None else None
+        chain = clf.ShotColor(source_encoding=color.PLATE_SPACE, display=shot.display, view=shot.view)
+    return ExrView(path, chain) if path is not None else None
 
 
 def _landed(row: ShotRow, kind: str, res: str | None = None) -> Path | None:
@@ -474,8 +500,8 @@ def build(
                 "info",
                 "turnover",
                 f"{deliverable.name}: events {', '.join(stand_ins)} have no delivered EXR and are "
-                f"cut from their HD reference, or the source (a held frame through its AMF's "
-                f"colour, anything else ungraded), or black where no source is known",
+                f"cut from their HD reference, or the source through its AMF's grade (as it is "
+                f"when it has none), or black where no source is known",
             )
         )
     return deliverable
@@ -531,7 +557,7 @@ def _picture(exr: ExrView, views: dict[ExrView, Path], parts: Path) -> Path:
     if exr not in views:
         destination = parts / f"view{len(views):03d}.mkv"
         files = sorted(exr.source.glob("*.exr")) if exr.source.is_dir() else [exr.source]
-        cpu = color.processor(color.output_transform(exr.display, exr.view))
+        cpu = color.processor(*exr.color.view_transforms())
         ffmpeg.write_frames((_shown(path, cpu) for path in files), SIZE, destination, RATE)
         views[exr] = destination
     return views[exr]
@@ -620,8 +646,8 @@ LUT_SUFFIX = ".cube"
 
 
 def _still_lut(segment: Segment, destination: Path) -> Path | None:
-    """A held frame's AMF colour as the LUT its source segment is encoded through, as a
-    reference's is; None, and the source ungraded, when its AMF resolves to no chain."""
+    """A source segment's AMF colour as the LUT it is encoded through, as a reference's is;
+    None, and the source as it is, when its AMF resolves to no chain."""
     if segment.color is None:
         return None
     try:

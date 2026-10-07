@@ -95,13 +95,15 @@ class TestPlan:
         row.deliverables = [Deliverable("aux_still", still.name, still, 1, "4k", status="done")]
         segment = planned(batch).segments[1]
         assert segment.exr is not None and segment.exr.source == still
+        assert segment.exr.color.source_encoding == "ACEScg" and segment.exr.color.looks, "graded"
         assert (segment.start, segment.freeze, segment.length) == (0, True, stringout.STILL_LENGTH)
 
     def test_an_exr_is_seen_through_its_output_transform_on_the_hd_canvas(self, batch: Batch) -> None:
         segment = planned(batch).segments[0]
         assert segment.exr is not None
         first = sorted(segment.exr.source.glob("*.exr"))[0]
-        cpu = color.processor(color.output_transform(segment.exr.display, segment.exr.view))
+        assert segment.exr.color.looks == (), "a plate's EXR has its grade in it already"
+        cpu = color.processor(*segment.exr.color.view_transforms())
         shown = stringout._shown(first, cpu)
         assert shown.shape == (1080, 1920, 3) and float(shown.min()) >= 0.0 and float(shown.max()) <= 1.0
 
@@ -349,7 +351,8 @@ class TestReferenceStills:
     def test_a_plate_is_not_held(self, batch: Batch) -> None:
         batch.rows[1].skipped = True
         plate = planned(batch).segments[1]
-        assert (plate.kind, plate.length, plate.color) == ("source", FRAMES, None)
+        assert (plate.kind, plate.length, plate.freeze) == ("source", FRAMES, False)
+        assert plate.color is not None and plate.color.looks, "graded through its AMF (user, 2026-10-07)"
 
 
 class TestAnHdri:
@@ -386,12 +389,18 @@ class TestAnHdri:
         assert (item.kind, item.name, item.status) == ("hdri", "MELT0002_pl01_HDRI_01_v01.exr", "done")
         assert item.path.read_bytes() == hdri.media.path.read_bytes()
 
-    def test_with_no_pre_render_it_asks_for_one_and_shows_the_exr_as_it_is(self, with_hdri: Batch) -> None:
+    def test_with_no_pre_render_it_asks_for_one_and_holds_the_exr_graded(self, with_hdri: Batch) -> None:
         hdri = with_hdri.rows[1]
         assert [(q.rule_id, q.severity) for q in hdri.qc if q.rule_id == "QC-083"] == [("QC-083", "warning")]
         segment = planned(with_hdri).segments[1]
         assert hdri.media is not None and segment.path == hdri.media.path
-        assert segment.color is None and not segment.prerender
+        assert segment.exr is not None and segment.exr.color.source_encoding == "Linear Rec.709 (sRGB)"
+        assert segment.exr.color.looks and segment.freeze and not segment.prerender
+
+    def test_the_stringout_is_written_with_the_held_exr(self, with_hdri: Batch) -> None:
+        assert with_hdri.delivery_root is not None
+        made = stringout.build(with_hdri, with_hdri.turnovers[0], with_hdri.delivery_root)
+        assert made is not None and made.frame_count == 2 * FRAMES
 
     def test_its_event_is_cut_from_the_pre_render_and_graded(
         self, with_render: Batch, tmp_path: Path

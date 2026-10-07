@@ -6,17 +6,23 @@ disagrees with `PROGRESS.md` or the docs, they are right and this file is wrong.
 
 ## State
 
-- **Version 0.5.27 on branch `hdri/prerender`, PR #19 open, not merged** (merge only when the
-  user asks). 0.5.25 is on `main` (PR #18). 0.5.26 was built in CI run 37543703620.
+- **Version 0.5.28 on branch `hdri/prerender`, PR #19 open, not merged** (merge only when the
+  user asks). 0.5.25 is on `main` (PR #18). 0.5.26 was built in CI run 37543703620, 0.5.27 in 37546876649.
 - The dmg is built by the PR's CI run; its run ID is in the reply that handed it over, as
-  `gh run download <run-id> -R shango/ProIngest -n ProIngest-macos-arm64 -D ~/Downloads/ProIngest-0.5.27`.
+  `gh run download <run-id> -R shango/ProIngest -n ProIngest-macos-arm64 -D ~/Downloads/ProIngest-0.5.28`.
 - `ruff`, `ruff format` and `mypy --strict` are clean and the full suite passes locally.
+
+## What 0.5.28 did (7 Oct 2026, user)
+
+- **Everything in the stringout is graded**: a still's EXR takes its clip's looks, the source
+  fallback is graded held or not, and an HDRI's held EXR (no pre-render) is graded as linear
+  Rec.709.
 
 ## What 0.5.27 did (7 Oct 2026, user)
 
 - **The stringout is cut from the delivered EXRs** (no switch), an HDRI from its pre-render.
   Each EXR goes through its clip's output transform into a lossless intermediate; plate sound
-  from the wav; stills show ungraded. OQ-80.
+  from the wav. OQ-80.
 - **Ben's page corrected** (version 2): no proxy relink, turnover134 blocks nothing, HDRI
   pre-renders asked for.
 
