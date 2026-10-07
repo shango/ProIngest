@@ -303,7 +303,8 @@ def _segment(
     delivering = exr or next((row for row in claimed if _reference(row, cut) is not None), None)
     row = delivering or next((row for row in claimed if row.approved == cut), known)
     identity = effective_identity(row, show_pattern)
-    label = naming.shot_label(identity) if identity is not None else Path(row.clip_name).stem
+    named = naming.shot_label(identity) if identity is not None else Path(row.clip_name).stem
+    label = naming.take_label(named, row.take)
     held = _held(event, cut)
     # A held HDRI keeps the EDL's length (user, 2026-09-30); every other held frame is a second.
     shown = STILL_LENGTH if held and not qc.is_hdri(row) else length
@@ -391,7 +392,9 @@ def _prerender(event: clf.ConformEvent, row: ShotRow, length: int, show_pattern:
         kind="source",
         length=length,
         event_id=event.event_id,
-        label=naming.shot_label(identity) if identity is not None else Path(row.clip_name).stem,
+        label=naming.take_label(
+            naming.shot_label(identity) if identity is not None else Path(row.clip_name).stem, row.take
+        ),
         effect=row.scene,
         path=render.path,
         start=render.start_frame,

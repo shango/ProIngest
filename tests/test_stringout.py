@@ -78,6 +78,11 @@ class TestPlan:
         assert made.stem == f"{FOLDER}_SO_v01" and made.total == 2 * FRAMES
         assert made.timecode == "01:00:00:00", "the EDL's record start"
 
+    def test_a_take_above_1_follows_the_label(self, batch: Batch) -> None:
+        """User, 2026-10-07: `SECA0009_pl01 Take 02`; take 1 or none shows no take."""
+        batch.rows[0].take, batch.rows[1].take = "1", "2"
+        assert [s.label for s in planned(batch).segments] == ["MELT0001_pl01", "MELT0002_pl01 Take 02"]
+
     def test_with_no_hd_exr_the_reference_stands_in(self, batch: Batch) -> None:
         for item in batch.rows[1].deliverables:
             if item.kind == "raw_dir" and item.res == "HD":

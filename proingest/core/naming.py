@@ -254,6 +254,15 @@ def shot_label(identity: ShotIdentity) -> str:
     return identity.stem
 
 
+def take_label(label: str, take: str) -> str:
+    """`SECA0009_pl01 Take 02`: the burn-in with its take, when the CSV's `Take` is above 1.
+    Take 1, a blank or anything not a number leaves the label as it is (user, 2026-10-07)."""
+    written = take.strip()
+    if not written.isdigit() or int(written) <= 1:
+        return label
+    return f"{label} Take {int(written):02d}"
+
+
 # --- Delivery folder layout, NAMING_SPEC.md section 5. ---
 
 

@@ -6,11 +6,16 @@ disagrees with `PROGRESS.md` or the docs, they are right and this file is wrong.
 
 ## State
 
-- **Version 0.5.29 on branch `hdri/prerender`, PR #19 open, not merged** (merge only when the
-  user asks). 0.5.25 is on `main` (PR #18). 0.5.26 was built in CI run 37543703620, 0.5.27 in 37546876649, 0.5.28 in 37599362947.
+- **Version 0.5.30 on branch `hdri/prerender`, PR #19 open, not merged** (merge only when the
+  user asks). 0.5.25 is on `main` (PR #18). 0.5.26 was built in CI run 37543703620, 0.5.27 in 37546876649, 0.5.28 in 37599362947, 0.5.29 in 37605454442.
 - The dmg is built by the PR's CI run; its run ID is in the reply that handed it over, as
-  `gh run download <run-id> -R shango/ProIngest -n ProIngest-macos-arm64 -D ~/Downloads/ProIngest-0.5.29`.
+  `gh run download <run-id> -R shango/ProIngest -n ProIngest-macos-arm64 -D ~/Downloads/ProIngest-0.5.30`.
 - `ruff`, `ruff format` and `mypy --strict` are clean and the full suite passes locally.
+
+## What 0.5.30 did (7 Oct 2026, user)
+
+- **The take on the burn-in**: `SECA0009_pl01 Take 02` bottom right when the CSV's `Take` is
+  above 1 (OQ-81: "more than one take" read as a Take above 1).
 
 ## What 0.5.29 did (7 Oct 2026, user)
 

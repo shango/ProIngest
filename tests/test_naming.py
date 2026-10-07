@@ -301,6 +301,14 @@ class TestDeliveryLayout:
         with pytest.raises(ValueError):
             _ = naming.ShotIdentity("SECA0009", naming.HDRI_KIND, "01").stem
 
+    @pytest.mark.parametrize(
+        ("take", "shown"),
+        [("2", "SECA0009_pl01 Take 02"), ("12", "SECA0009_pl01 Take 12"), ("1", "SECA0009_pl01"),
+         ("", "SECA0009_pl01"), ("A", "SECA0009_pl01")],
+    )  # fmt: skip
+    def test_a_take_above_1_follows_the_burn_in_label(self, take: str, shown: str) -> None:
+        assert naming.take_label("SECA0009_pl01", take) == shown
+
     def test_the_user_folders_sit_at_the_delivery_root(self) -> None:
         assert naming.user_dirs(Path("/d")) == [Path("/d/User_Generated"), Path("/d/User_Uploads")]
 

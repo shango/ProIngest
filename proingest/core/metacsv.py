@@ -34,7 +34,7 @@ from __future__ import annotations
 import csv
 import io
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from proingest.core import naming
@@ -44,6 +44,8 @@ FILE_NAME_COLUMN = "File Name"
 SHOT_COLUMN = "Shot"
 SHOT_TYPE_COLUMN = "Shot Type"
 SCENE_COLUMN = "Scene"
+TAKE_COLUMN = "Take"
+"""The clip's take, burned into the stringout after its label when above 1 (user, 2026-10-07)."""
 START_TC_COLUMN = "Start TC"
 """Where the clip starts as Resolve has it, which the EDL's source timecodes count from.
 After media management it can differ from the file's own (QC-084, user 2026-10-07)."""
@@ -73,6 +75,7 @@ class MetaRow:
     scene: str = ""
     qc: tuple[QCResult, ...] = ()
     start_tc: str = ""
+    take: str = ""
     hdri: bool = False
     """An HDRI (QC-080): the tool copies its EXR as it is and runs no row rule on it, and
     the stringout shows Ben's pre-render of its timeline event (user, 2026-10-07)."""
@@ -229,6 +232,7 @@ def read(path: Path, show_pattern: str = naming.DEFAULT_SHOW_PATTERN) -> MetaCsv
     type_positions = _columns(header, SHOT_TYPE_COLUMN)
     scene_positions = _columns(header, SCENE_COLUMN)
     start_positions = _columns(header, START_TC_COLUMN)
+    take_positions = _columns(header, TAKE_COLUMN)
 
     result = MetaCsv(path=path)
     for record in records[1:]:
@@ -243,7 +247,8 @@ def read(path: Path, show_pattern: str = naming.DEFAULT_SHOW_PATTERN) -> MetaCsv
         scene = _value(record, scene_positions)
         if _HDRI.fullmatch(shot_type.strip()):
             named = naming.parse_shot_code(shot, show_pattern) is not None
-            result.rows.append(_hdri(file_name, shot, shot_type, scene, named))
+            hdri = _hdri(file_name, shot, shot_type, scene, named)
+            result.rows.append(replace(hdri, take=_value(record, take_positions)))
             continue
         result.rows.append(
             MetaRow(
@@ -254,6 +259,7 @@ def read(path: Path, show_pattern: str = naming.DEFAULT_SHOW_PATTERN) -> MetaCsv
                 index=index,
                 scene=scene,
                 start_tc=_value(record, start_positions),
+                take=_value(record, take_positions),
                 qc=tuple(type_qc + _row_qc(file_name, shot, shot_type, kind, show_pattern)),
             )
         )

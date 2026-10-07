@@ -526,6 +526,10 @@ class ShotRow:
     shot_code_override: str | None = None
     media: MediaInfo | None = None
     resolve_start_tc: str = ""
+    take: str = ""
+    """The CSV's `Take`, as written. The stringout burns `Take 02` after the clip's label when
+    it is above 1 (user, 2026-10-07). Additive."""
+
     """The CSV's `Start TC`: where Resolve has the clip start, which the EDL counts from.
     Used when the file's own timecode puts the cut outside it (QC-084). Additive."""
 
@@ -675,6 +679,7 @@ class ShotRow:
             "shot_code_override": self.shot_code_override,
             "media": self.media.to_dict() if self.media else None,
             "resolve_start_tc": self.resolve_start_tc,
+            "take": self.take,
             "hdri_render": self.hdri_render.to_dict() if self.hdri_render else None,
             "record_in": self.record_in,
             "record_out": self.record_out,
@@ -711,6 +716,7 @@ class ShotRow:
             shot_code_override=data.get("shot_code_override"),
             media=MediaInfo.from_dict(media) if media else None,
             resolve_start_tc=str(data.get("resolve_start_tc", "")),
+            take=str(data.get("take", "")),
             hdri_render=MediaInfo.from_dict(data["hdri_render"]) if data.get("hdri_render") else None,
             record_in=int(data.get("record_in", 0)),
             record_out=int(data.get("record_out", 0)),

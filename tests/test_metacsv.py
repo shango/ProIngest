@@ -184,6 +184,11 @@ class TestHdri:
         (row,) = result.rows
         assert row.hdri and row.kind is None
 
+    def test_an_hdri_keeps_its_take(self, tmp_path: Path) -> None:
+        header = ["File Name", "Shot", "Shot Type", "Take"]
+        result = read(tmp_path, header, [["x.exr", "TEST0013", "HDRI", "2"]])
+        assert result.rows[0].take == "2"
+
     def test_a_type_merely_containing_hdri_is_still_qc_010(self, tmp_path: Path) -> None:
         result = read(tmp_path, ["File Name", "Shot", "Shot Type"], [["x.exr", "TEST0013", "HDRIref"]])
         assert [q.rule_id for q in result.rows[0].qc] == ["QC-010"]
@@ -194,6 +199,11 @@ class TestFileShape:
         """Resolve pads with empty cells; nothing guarantees every row is full width."""
         result = read(tmp_path, REAL_HEADER, [["C1.MP4", "MELT0001", "pl01"]])
         assert result.rows[0].shot == "MELT0001"
+
+    def test_the_take_is_read_as_written(self, tmp_path: Path) -> None:
+        header = ["File Name", "Shot", "Shot Type", "Take"]
+        result = read(tmp_path, header, [["C1.MP4", "MELT0001", "pl01", "3"]])
+        assert result.rows[0].take == "3"
 
     def test_blank_lines_are_skipped(self, tmp_path: Path) -> None:
         result = read(tmp_path, ["File Name", "Shot", "Shot Type"], [[], ["C1.MP4", "MELT0001", "pl01"], []])

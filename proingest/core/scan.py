@@ -262,7 +262,9 @@ def _build_row(
     """One CSV row into one shot row: identity, media and encoding. The EDL comes after,
     across every row at once (`_conform_all`), because a match is only unambiguous when no
     other row claims the same event."""
-    row = ShotRow(turnover_id=turnover_id, clip_name=entry.file_name, resolve_start_tc=entry.start_tc)
+    row = ShotRow(
+        turnover_id=turnover_id, clip_name=entry.file_name, resolve_start_tc=entry.start_tc, take=entry.take
+    )
     row.qc.extend(entry.qc)
     if entry.kind is not None and entry.index is not None and not row.errors():
         row.identity = naming.ShotIdentity(shot_code=entry.shot, kind=entry.kind, index=entry.index)
