@@ -787,6 +787,67 @@ class TestTheAmf:
         assert "QC-080" in rules(row) and not row.errors()
 
 
+class TestAPreRenderOnTheTimeline:
+    """Turnover134 and 135 (2026-10-07): the timeline cuts Ben's pre-render, named
+    `<HDRI EXR> Render 1.mov`, typed HDRI; the EXR is off the cut. The pre-render is the
+    stringout's event, and the EXR it is named after is delivered when it is in the folder
+    (user: "If the EXR isn't in the turnover folder ... do nothing for the HDRI delivery")."""
+
+    RENDER = "MELT0001_pl01_HDRI_01_v01.exr Render 1.mp4"
+    EXR = "MELT0001_pl01_HDRI_01_v01.exr"
+
+    def folder(self, tmp_path: Path, exr: bool, render: bool = True, exr_row: bool = False) -> Path:
+        root = tmp_path / GOOD_FOLDER
+        if render:
+            fixtures.make_mp4(root / self.RENDER, count=4)
+        if exr:
+            fixtures.make_exr_sequence(root / "x", count=1)
+            next((root / "x").glob("*.exr")).rename(root / self.EXR)
+        rows = [(self.RENDER, "MELT0001", "HDRI")] + ([(self.EXR, "MELT0001", "HDRI")] if exr_row else [])
+        fixtures.make_meta_csv(root / "metadata.csv", rows)
+        fixtures.make_final_edl(root / "FINAL_v01.edl", [self.RENDER], duration=4)
+        return root
+
+    def scanned(self, folder: Path) -> list[ShotRow]:
+        _, rows = scan.scan_turnover(folder, "t1", scan.ScanSettings(rules=fixtures.SMALL_RULES))
+        return rows
+
+    def test_the_exr_it_is_named_after_is_delivered(self, tmp_path: Path) -> None:
+        (row,) = self.scanned(self.folder(tmp_path, exr=True))
+        assert row.media is not None and row.media.path.name == self.EXR
+        assert row.hdri_render is not None and row.hdri_render.path.name == self.RENDER
+        assert not row.errors() and not rules(row) & {"QC-083", "QC-086"}
+        jobs = planner.plan_row(row, tmp_path / "out", 1).jobs
+        assert [job.kind for job in jobs] == ["hdri"] and jobs[0].source.name == self.EXR
+
+    def test_no_exr_is_qc_086_and_nothing_is_delivered(self, tmp_path: Path) -> None:
+        (row,) = self.scanned(self.folder(tmp_path, exr=False))
+        (note,) = [result for result in row.qc if result.rule_id == "QC-086"]
+        assert note.severity == "warning"
+        assert note.message.startswith("HDRI EXR File Missing from turnover folder, omitted from delivery")
+        assert row.hdri_render is not None and not row.errors()
+        assert planner.plan_row(row, tmp_path / "out", 1).jobs == []
+
+    def test_the_csv_s_own_exr_row_folds_into_the_pre_render(self, tmp_path: Path) -> None:
+        """Turnover135 lists the EXR too, which no EDL event cuts: not a second HDRI (QC-066)."""
+        rows = self.scanned(self.folder(tmp_path, exr=True, exr_row=True))
+        assert [row.clip_name for row in rows] == [self.RENDER]
+        assert "QC-066" not in rules(rows[0])
+
+    def test_a_pre_render_not_in_the_folder_is_qc_083(self, tmp_path: Path) -> None:
+        """Rendered somewhere else, or the timeline points at another folder."""
+        (row,) = self.scanned(self.folder(tmp_path, exr=True, render=False))
+        (note,) = [result for result in row.qc if result.rule_id == "QC-083"]
+        assert note.severity == "warning" and "not in the turnover folder" in note.message
+        assert row.media is not None and not row.errors()
+
+    def test_with_no_color_files_it_is_shown_as_it_is(self, tmp_path: Path) -> None:
+        """User, 2026-10-07: "If there's not color files, you can skip any color correction"."""
+        (row,) = self.scanned(self.folder(tmp_path, exr=True))
+        (note,) = [result for result in row.qc if result.rule_id == "QC-009"]
+        assert note.severity == "info" and "no color correction" in note.message
+
+
 class TestACutOutsideItsFile:
     """User, 2026-10-07: the timeline at face value. A cut the file's own timecode puts
     outside it is read by Resolve's clock, the CSV's `Start TC`, with nothing said; when

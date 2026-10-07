@@ -464,6 +464,37 @@ class TestAnHdri:
         assert made is not None and made.frame_count == 2 * FRAMES
 
 
+class TestAPreRenderOnTheTimeline:
+    """Turnover134 (2026-10-07): the timeline cuts Ben's pre-render, typed HDRI, and the
+    HDRI EXR is not in the folder. Its AMF carries no grade, so the stringout shows it as
+    it is (user: "If there's not color files, you can skip any color correction"), and
+    nothing is delivered for it (QC-086)."""
+
+    RENDER = "MELT0002_pl01_HDRI_01_v01.exr Render 1.mp4"
+
+    @pytest.fixture
+    def batch(self, tmp_path: Path) -> Batch:
+        folder = fixtures.make_turnover(tmp_path / FOLDER, shots=1, frames=FRAMES)
+        fixtures.make_mp4(folder / self.RENDER, count=FRAMES)
+        rows = [("MELT0001_pl01", "MELT0001", "pl01"), (self.RENDER, "MELT0002", "HDRI")]
+        fixtures.make_meta_csv(folder / "metadata.csv", rows)
+        fixtures.make_final_edl(folder / "FINAL_v01.edl", ["MELT0001_pl01", self.RENDER], duration=FRAMES)
+        return TestAnHdri.scanned(folder, Batch(delivery_root=tmp_path / "delivery"))
+
+    def test_it_is_shown_as_it_is_and_nothing_is_delivered(self, batch: Batch, tmp_path: Path) -> None:
+        hdri = batch.rows[1]
+        assert hdri.media is None and hdri.deliverables == [] and not hdri.errors()
+        assert {"QC-009", "QC-086"} <= {q.rule_id for q in hdri.qc}
+        segment = planned(batch).segments[1]
+        assert segment.prerender and hdri.hdri_render is not None and segment.path == hdri.hdri_render.path
+        assert segment.color is None and stringout._still_lut(segment, tmp_path / "x.cube") is None
+
+    def test_the_stringout_is_written(self, batch: Batch) -> None:
+        assert batch.delivery_root is not None
+        made = stringout.build(batch, batch.turnovers[0], batch.delivery_root)
+        assert made is not None and made.frame_count == 2 * FRAMES
+
+
 class TestAStyleFrame:
     """User, 2026-10-07: a pre-graded PNG or JPG before its shot's plate, held as it is for the
     EDL's length, burned in `SECA0009 styleFrame` with no counter, and never delivered."""

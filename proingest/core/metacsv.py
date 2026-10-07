@@ -37,7 +37,7 @@ import re
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
-from proingest.core import naming
+from proingest.core import media, naming
 from proingest.core.models import QCResult
 
 FILE_NAME_COLUMN = "File Name"
@@ -284,13 +284,14 @@ def _hdri(file_name: str, shot: str, shot_type: str, scene: str, named: bool) ->
     """An HDRI row (user, 2026-10-07): its EXR is delivered as it is, with no checks, and
     the stringout shows the pre-render of its timeline event. One whose `Shot` is no shot
     code has nowhere to be delivered, and only the stringout shows it."""
-    note = QCResult(
-        "QC-080",
-        "info",
-        "row",
-        f"{file_name} is an HDRI: the tool delivers it as it is, with no checks, and the "
-        "stringout shows its pre-render",
+    what = (
+        f"{file_name} is an HDRI's pre-render: the stringout shows it, and the tool delivers the "
+        "HDRI EXR it is named after as it is, with no checks"
+        if Path(file_name).suffix.lower() in media.VIDEO_EXTENSIONS
+        else f"{file_name} is an HDRI: the tool delivers it as it is, with no checks, and the "
+        "stringout shows its pre-render"
     )
+    note = QCResult("QC-080", "info", "row", what)
     match = _HDRI.fullmatch(shot_type.strip())
     index = ((match["index"] if match else None) or "1").zfill(2)
     kind = naming.HDRI_KIND if named else None

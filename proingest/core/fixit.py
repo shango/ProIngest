@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import Literal, NamedTuple
 
 from proingest import __version__
-from proingest.core import exports, models, naming, qc
+from proingest.core import exports, frames, models, naming, qc, scan
 from proingest.core.models import Batch, QCResult, ShotRow, Turnover
 
 Where = Literal["resolve", "folder", "look"]
@@ -196,10 +196,16 @@ ADVICE: dict[str, Advice] = {
     "QC-083": Advice(
         "folder",
         "An HDRI's render is missing.",
-        "Each HDRI on the timeline needs its event rendered, with the pan, into the turnover folder "
-        "under the HDRI's name as a video (SECA0009_pl01_HDRI_01_v01.mp4 beside "
-        "SECA0009_pl01_HDRI_01_v01.exr), so the stringout can show it. Please render it into the folder.",
+        "The timeline's HDRI render is not in the turnover folder, so the stringout cannot show it. It was "
+        "probably rendered into another folder, or the timeline event points at a file in another folder. "
+        "Please render it into the turnover folder and relink the timeline event to it.",
         "message",
+    ),
+    "QC-086": Advice(
+        "folder",
+        "HDRI EXR File Missing from turnover folder, omitted from delivery.",
+        "The timeline's HDRI render is named after an HDRI EXR that is not in the folder, so no HDRI "
+        "was delivered. Please copy the EXR in.",
     ),
     "QC-022": Advice(
         "folder",
@@ -293,6 +299,11 @@ class Clip(NamedTuple):
     who: str = ""
     name: str = ""
     detail: str = ""
+    looked_for: str = ""
+    """The full path of the file the tool looked for and did not find, or found wrong."""
+
+    named_by: str = ""
+    """Which of Ben's files names it or says what is wrong: the EDL, the CSV, an AMF."""
 
 
 @dataclass
@@ -348,11 +359,13 @@ def _turnover_report(batch: Batch, turnover: Turnover) -> TurnoverReport:
             continue  # not Ben's, or a note for the QC log rather than something to fix
         _add(items, result.rule_id, ADVICE[result.rule_id], result, _turnover_clips(result, delivered))
     blocked = 0
+    rate = batch.project_rate.nominal()
     for row in rows:
         row_blocks = False
         for result in row.qc:
             if result.rule_id in ADVICE and result.severity != "info":
-                _add(items, result.rule_id, ADVICE[result.rule_id], result, [_clip(row, result)])
+                clip = _clip(row, result, turnover, rate)
+                _add(items, result.rule_id, ADVICE[result.rule_id], result, [clip])
                 row_blocks |= result.severity == "error"
         blocked += row_blocks
     if orphans := _without_a_plate(delivered):
@@ -392,9 +405,69 @@ def _without_a_plate(rows: list[ShotRow]) -> list[Clip]:
     return [Clip(_who(row), row.clip_name) for row in rows if row.shot_code and row.shot_code not in plated]
 
 
-def _clip(row: ShotRow, result: QCResult) -> Clip:
-    """`SECA0012 plate`, its file, then what is particular to this clip."""
-    return Clip(_who(row), row.clip_name, _detail(row, result))
+def _clip(row: ShotRow, result: QCResult, turnover: Turnover, rate: int) -> Clip:
+    """`SECA0012 plate`, its file, then what is particular to this clip, the file the tool
+    looked for and which of Ben's files named it (user, 2026-10-07: "very specific, filename
+    the tool is looking for along with the expected path ... what is reporting the file")."""
+    return Clip(
+        _who(row),
+        row.clip_name,
+        _detail(row, result),
+        _looked_for(row, result, turnover),
+        _named_by(row, result, turnover, rate),
+    )
+
+
+_CLF_NAMED = re.compile(r"^(?P<amf>\S+\.amf): (?P<clf>\S+\.clf) ", re.IGNORECASE)
+"""QC-076's message, `<AMF>: <CLF> is missing`, as `scan._grade_of` writes it."""
+
+
+def _looked_for(row: ShotRow, result: QCResult, turnover: Turnover) -> str:
+    """The full path of the file a missing, doubled or unreadable file finding is about."""
+    folder = turnover.folder
+    rule = result.rule_id
+    if rule == "QC-022" and row.media is not None:
+        return str(row.media.path)
+    if rule in ("QC-012", "QC-013", "QC-014", "QC-022", "QC-083"):
+        return str(folder / row.clip_name)
+    if rule == "QC-086":
+        return str(folder / (scan.hdri_exr_name(row.clip_name) or row.clip_name))
+    if rule == "QC-076" and (named := _CLF_NAMED.match(_plain(result.message))):
+        return str(folder / named["clf"])
+    return ""
+
+
+def _named_by(row: ShotRow, result: QCResult, turnover: Turnover, rate: int) -> str:
+    """Which of Ben's files names the clip, for a finding that holds it or a missing file."""
+    csv = f"the metadata CSV ({turnover.csv_path.name})" if turnover.csv_path else "the metadata CSV"
+    edl = f"the EDL ({turnover.edl_path.name})" if turnover.edl_path else "the EDL"
+    cut = row.record_out > row.record_in
+    at = f", at {frames.frames_to_timecode(row.record_in, rate)} on the timeline" if cut else ""
+    amf = f"the AMF ({row.grade.amf.name})" if row.grade is not None else "the clip's AMF"
+    rule = result.rule_id
+    if rule in ("QC-012", "QC-013", "QC-014", "QC-022"):
+        return f"{csv}, File Name column" + (f", and {edl}{at}" if cut else "")
+    if rule == "QC-083":
+        return f"{edl}{at}, and {csv}, File Name column"
+    if rule == "QC-086":
+        return f"the name of the HDRI render {row.clip_name}, in {edl}{at}, and in {csv}"
+    if rule == "QC-076" and (named := _CLF_NAMED.match(_plain(result.message))):
+        return f"the AMF ({named['amf']})"
+    if rule in ("QC-010", "QC-065"):
+        return f"{csv}, Shot and Shot Type columns"
+    if rule == "QC-011":
+        return f"{csv}, two rows with the same Shot and Shot Type"
+    if rule == "QC-066":
+        return f"{csv} lists it; {edl} has no event that cuts it"
+    if rule == "QC-067":
+        return f"{edl} and {csv}"
+    if rule == "QC-046":
+        return f"no AMF, and no Input Color Space in {csv}"
+    if rule in ("QC-047", "QC-082"):
+        return amf
+    if rule == "QC-075":
+        return f"the AMFs in the turnover folder, for {edl}{at}"
+    return ""
 
 
 def _who(row: ShotRow) -> str:
@@ -539,7 +612,12 @@ def _clip_html(clip: Clip) -> str:
         parts.append(f"<code>{_e(clip.name)}</code>")
     if clip.detail:
         parts.append(f"({_e(clip.detail)})" if parts else _e(clip.detail))
-    return " ".join(parts)
+    line = " ".join(parts)
+    if clip.looked_for:
+        line += f'<span class="source">Looking for <code>{_e(clip.looked_for)}</code></span>'
+    if clip.named_by:
+        line += f'<span class="source">Reported by {_e(clip.named_by)}</span>'
+    return line
 
 
 def _e(text: str) -> str:
@@ -575,6 +653,7 @@ li.note{border-left-color:var(--note)}
 .what{font-weight:600}
 li p{margin:0}
 ul.clips{margin:0;padding-left:20px;font-size:15px}
+.source{display:block;color:var(--muted);font-size:14px}
 .blocks{font-size:13px;font-weight:600;color:var(--resolve)}
 .ok{font-size:13px;color:var(--muted)}
 .clean{margin:0}

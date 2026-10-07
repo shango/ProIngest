@@ -410,9 +410,17 @@ def _prerender(event: clf.ConformEvent, row: ShotRow, length: int, show_pattern:
         start=render.start_frame,
         media=render,
         identity=identity,
-        color=replace(clf.shot_color(row), source_encoding=color.HDRI_RENDER_ENCODING),
+        color=_prerender_color(row),
         prerender=True,
     )
+
+
+def _prerender_color(row: ShotRow) -> clf.ShotColor | None:
+    """None, the pre-render as it is, when it is on the timeline and its AMF carries no
+    grade (QC-009); otherwise the HDRI's grade over linear Rec.709 (QC-083)."""
+    if qc.is_hdri_prerender(row) and not clf.has_grade(row):
+        return None
+    return replace(clf.shot_color(row), source_encoding=color.HDRI_RENDER_ENCODING)
 
 
 def _style_frame(event: clf.ConformEvent, row: ShotRow, length: int, show_pattern: str) -> Segment:

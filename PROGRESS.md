@@ -8,7 +8,7 @@ commit.
 
 ## 1. Resume here
 
-**State at 2026-10-07, version 0.5.33 on branch `hdri/prerender`, PR #19 open** (0.5.33: the QC overhaul, nothing stops a batch or a turnover; 0.5.32: style frames on the stringout, the stringout line in the shot list; 0.5.31: every Fix-it line names its shot; 0.5.30: the take on the burn-in; 0.5.29: reference clips play in the stringout; 0.5.28: everything in the stringout graded; 0.5.27: the stringout from the EXRs; 0.5.26: the HDRI pre-render and delivery, QC-084, Accept As Is runs what it can; 0.5.25, merged to `main` with PR #18: `User_Generated` and `User_Uploads` at the delivery root; 0.5.24: the Fix-it
+**State at 2026-10-07, version 0.5.34 on branch `hdri/prerender`, PR #19 open** (0.5.34: the HDRI pre-render on the timeline; 0.5.33: the QC overhaul, nothing stops a batch or a turnover; 0.5.32: style frames on the stringout, the stringout line in the shot list; 0.5.31: every Fix-it line names its shot; 0.5.30: the take on the burn-in; 0.5.29: reference clips play in the stringout; 0.5.28: everything in the stringout graded; 0.5.27: the stringout from the EXRs; 0.5.26: the HDRI pre-render and delivery, QC-084, Accept As Is runs what it can; 0.5.25, merged to `main` with PR #18: `User_Generated` and `User_Uploads` at the delivery root; 0.5.24: the Fix-it
 report, one error per cause, a lone EXR read as one frame, AMFs falling back to the clip they name) (`HANDOFF.md` is the short version, with the session's open items); 0.5.22 went to `main` earlier (PR #17 merged as `70e1160` at the user's request, after its CI
 run 37276656318 built the 0.5.22 dmg). The 2026-09-23 review is built (chunks A
 to H of `docs/REVIEW_2026-09-23.md`), and so are the fixes that a second official turnover,
@@ -17,6 +17,40 @@ renders; Turnover121, every clip 8 bit 4:2:0, runs again with a QC-020 warning o
 since 2026-09-28 (user). What is left is the Mac: `docs/MAC_SESSION.md`, from "The 0.5.0 build, in
 order" down, and Ben's 4.886 slope. Entries are newest first; anything older than 2026-09-22
 describes the tool before the review and is history.
+
+**2026-10-07, 0.5.34: the HDRI pre-render on the timeline (user).** The replaced turnover134 and
+135 exports cut Ben's pre-render on the timeline, typed `HDRI` and named
+`SECA0009_pl01_HDRI_01_v01.exr Render 1.mov`, with the EXR off the cut; 134 ships no HDRI EXRs,
+135 ships them and lists them in the CSV too. 0.5.33 read the row as the EXR, so each pre-render
+was QC-012 ("no file matches", though it was there) and each of 135's EXR rows QC-066. The user:
+"leave the pre-render naming alone, just be sure you can find the pre-render file that is
+referenced in the timeline. A common error here would be ben pre-rendering into the wrong folder
+... or the timeline looking at the wrong folder. The pre-render, it's only value is it's event in
+the stringout ... If the EXR isn't in the turnover folder ... do nothing for the HDRI delivery step.
+Make a note in the QC sheet, "HDRI EXR File Missing from turnover folder, omitted from delivery""
+and "If there's not color files, you can skip any color correction. Make a note to that effect in
+the qc output". **Built**: an HDRI row naming a video is the pre-render (`qc.is_prerender_name`,
+`scan._resolve_prerender`); the EXR is its name up to `.exr` (`scan.hdri_exr_name`), delivered when
+there, else QC-086 (new, warning) and no job; the CSV's own row for that EXR folds into the
+pre-render's (`scan._fold_hdri_exrs`); a pre-render not in the folder is QC-083 with the
+wrong-folder wording, its event the EXR held or black. The pre-render is graded by its own AMF;
+with no CLF and no CDL it is shown as it is (`stringout._prerender_color`) and QC-009 says "...
+so the stringout shows the pre-render with no color correction" (`qc.check_prerender_color`, run
+for HDRI rows). That AMF's input is the inverse of Rec.709 Gamma 2.2 output and its output the
+same, so "as it is" is what Resolve showed. **Verified**: turnover134 scans with 0 errors (three
+QC-086, three QC-009), turnover135 with 0 errors and 42 jobs including its three HDRI copies;
+new tests in `test_scan.py` (`TestAPreRenderOnTheTimeline`) and `test_stringout.py` (the same
+name: no LUT, the stringout written). Assumptions in OQ-84. Mac check in `docs/MAC_SESSION.md`.
+**Then the Fix-it report (user, same day):** "If there is a blocking event or a missing file, the
+fixit list should be very specific, filename the tool is looking for along with the expected path
+- EDL, CSV etc. Also, if possible, add what is reporting the file. Is it the EDL, CSV etc?" Each
+clip line now adds `Looking for <full path>` for a missing, doubled or unreadable file (QC-012,
+013, 014, 022, 083, 086, and the CLF of QC-076) and `Reported by ...` naming the CSV (and column),
+the EDL (with the event's record timecode) or the AMF, for those and for every finding that holds
+a clip (QC-010, 011, 046, 047, 065, 066, 067, 075) and QC-082 (`fixit._looked_for`,
+`fixit._named_by`). Built in the report, from the row and the turnover's own paths, so the QC
+results and the batch schema are unchanged; QC-076's CLF and AMF are read back out of its
+message (`fixit._CLF_NAMED`), which a test locks.
 
 **2026-10-07, 0.5.33: the QC overhaul (user).** "From now on, nothing prevents rendering an entire
 batch or turnover. Individual shots can get blocked from rendering if there is missing media, or the

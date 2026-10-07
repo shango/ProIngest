@@ -149,7 +149,7 @@ def scan_turnover(
 
     session = replace(session, events=_named_events(folder, session.events, turnover))
     index = media_module.index_directory(folder)
-    rows = [_build_row(entry, index, turnover_id, settings, cache) for entry in meta.rows]
+    rows = [_build_row(entry, index, turnover_id, settings, cache) for entry in _fold_hdri_exrs(meta.rows)]
     grades = _Grades.read(folder)
     turnover.qc.extend(grades.qc)
     turnover.qc.extend(_conform_all(rows, session, grades))
@@ -274,7 +274,9 @@ def _build_row(
     if entry.kind is not None and entry.index is not None and not row.errors():
         row.identity = naming.ShotIdentity(shot_code=entry.shot, kind=entry.kind, index=entry.index)
 
-    if entry.hdri:
+    if entry.hdri and qc.is_prerender_name(entry.file_name):
+        _resolve_prerender(entry.file_name, index, row, cache, settings.project_rate)
+    elif entry.hdri:
         _resolve_hdri(entry.file_name, index, row, cache, settings.project_rate)
     else:
         item = _resolve_media(entry.file_name, index, row)
@@ -286,6 +288,79 @@ def _build_row(
         # What an ungraded clip is read as; its AMF, when one grades it, says instead (QC-009).
         row.source_encoding, row.source_encoding_origin = entry.input_color_space, "CSV"
     return row
+
+
+def _fold_hdri_exrs(entries: list[metacsv.MetaRow]) -> list[metacsv.MetaRow]:
+    """The CSV's HDRI EXR rows that a pre-render on the timeline already names, left out.
+
+    Turnover135 (2026-10-07) lists each HDRI twice: the EXR, which no EDL event cuts, and
+    its pre-render, which the timeline does. The pre-render's row carries the EXR, so the
+    EXR's own row would only be a second HDRI with no cut (QC-066).
+    """
+    named = {
+        exr.casefold()
+        for entry in entries
+        if entry.hdri
+        and (exr := hdri_exr_name(entry.file_name)) is not None
+        and qc.is_prerender_name(entry.file_name)
+    }
+    return [entry for entry in entries if not (entry.hdri and entry.file_name.casefold() in named)]
+
+
+def hdri_exr_name(prerender: str) -> str | None:
+    """The HDRI EXR a pre-render is named after: its name up to `.exr`, as Resolve names a
+    render of a clip (`SECA0009_pl01_HDRI_01_v01.exr Render 1.mov`, turnover134 and 135,
+    2026-10-07). None when the name carries no `.exr`."""
+    end = prerender.casefold().find(".exr")
+    return prerender[: end + len(".exr")] if end >= 0 else None
+
+
+def _resolve_prerender(
+    file_name: str,
+    index: media_module.DirectoryIndex,
+    row: ShotRow,
+    cache: dict[str, MediaInfo],
+    timeline_rate: FrameRate,
+) -> None:
+    """An HDRI whose timeline event is Ben's pre-render (user, 2026-10-07).
+
+    The pre-render is found by the name the timeline uses, and is only ever the stringout's
+    event. The EXR it is named after is what is delivered; when the turnover folder lacks
+    it, nothing is delivered and QC-086 says so. Neither is ever a block.
+    """
+    exr_name = hdri_exr_name(file_name)
+    matches = index.media_matching(Path(exr_name).stem) if exr_name else []
+    images = [item for item in matches if _suffix(item) not in media_module.VIDEO_EXTENSIONS]
+    if len(images) == 1:
+        _probe_into(row, images[0], cache, timeline_rate)
+    elif images:
+        _resolve_media(exr_name or file_name, _only(index, images), row)  # says QC-013
+    else:
+        row.qc.append(
+            QCResult(
+                "QC-086",
+                "warning",
+                "row",
+                f"HDRI EXR File Missing from turnover folder, omitted from delivery: {exr_name or file_name}",
+            )
+        )
+
+    found = index.media_matching(Path(file_name).stem)
+    renders = [item for item in found if _suffix(item) in media_module.VIDEO_EXTENSIONS]
+    if len(renders) == 1:
+        try:
+            row.hdri_render = media_module.probe_cached(renders[0], cache, fallback_rate=timeline_rate)
+        except (ffmpeg.FFprobeError, ffmpeg.FFmpegNotFound) as exc:
+            row.qc.append(QCResult("QC-014", "error", "row", f"media unreadable: {exc}"))
+        return
+    why = (
+        f"two or more files in the turnover folder are named {file_name}"
+        if renders
+        else f"the timeline's pre-render {file_name} is not in the turnover folder: it was rendered "
+        "somewhere else, or the timeline event points at a file in another folder"
+    )
+    shown = "the HDRI EXR held still" if row.media is not None else "black"
+    row.qc.append(QCResult("QC-083", "warning", "row", f"{why}, so its stringout event is {shown}"))
 
 
 def _resolve_hdri(
@@ -599,8 +674,9 @@ def _conform(row: ShotRow, event: clf.ConformEvent, grades: _Grades) -> None:
     """The approved cut off this row's one EDL event, and the colour off that event's AMF."""
 
     row.record_in, row.record_out = event.record_in, event.record_out
-    # A file that is not there (QC-012) has its AMF checked once it is.
-    if row.media is not None:
+    # A file that is not there (QC-012) has its AMF checked once it is. A pre-render on the
+    # timeline is graded by its own AMF whether or not the HDRI EXR is there (QC-086).
+    if row.media is not None or row.hdri_render is not None:
         before = len(row.qc)
         grades.attach(row, event)
         if qc.is_hdri(row) or qc.is_style_frame(row):

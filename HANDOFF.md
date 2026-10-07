@@ -7,14 +7,11 @@ Then read `docs/WORKFLOW.md`, and `CLAUDE.md` for the ground rules.
 
 ## State
 
-- **Version 0.5.33 on branch `hdri/prerender`, PR #19 open, not merged.** Merge only when the
+- **Version 0.5.34 on branch `hdri/prerender`, PR #19 open, not merged.** Merge only when the
   user asks. `main` has 0.5.25 (PR #18, merged 2026-10-06 at the user's request).
-- **0.5.33's CI run, 37681910675, was still building when this was written.** First thing: check
-  it (`gh run view 37681910675 -R shango/ProIngest --json conclusion,jobs`). If green, confirm the
-  dmg is `ProIngest-0.5.33.dmg` in the package job log, download it with
-  `gh run download 37681910675 -R shango/ProIngest -n ProIngest-macos-arm64 -D ~/Downloads/ProIngest-0.5.33`
-  and give the user that command. 0.5.32's run (37672405424) was green and is already in
-  `~/Downloads/ProIngest-0.5.32/`.
+- **0.5.34's CI run** is given in the last commit on the branch; check it with
+  `gh run list -R shango/ProIngest --branch hdri/prerender -L 3`, and if green hand over
+  `gh run download <id> -R shango/ProIngest -n ProIngest-macos-arm64 -D ~/Downloads/ProIngest-0.5.34`.
 - 1930 tests pass locally (1 skipped); `ruff`, `ruff format` and `mypy --strict` are clean.
 - Nothing uncommitted except the untracked samples listed under Working notes.
 
@@ -57,21 +54,16 @@ recreate the colors." `docs/QC_RULES.md`'s opening section is the authority; in 
 | 0.5.31 | **Every Fix-it line names its shot** |
 | 0.5.32 | **Style frames** (`Shot Type` `styleFrame`, QC-085): a pre-graded PNG or JPG held as it is for its EDL length, never delivered, `SECA0009 styleFrame`, no counter. **The stringout line** under each turnover: bar while building, ball green when built, red for QC-142 or a black event (QC-144). OQ-82 |
 | 0.5.33 | **The QC overhaul** (above). OQ-83 |
+| 0.5.34 | **The HDRI pre-render on the timeline**: the `... .exr Render.mov` the timeline cuts is the stringout's event, the EXR named in it is delivered when it is in the folder, else QC-086 "HDRI EXR File Missing from turnover folder, omitted from delivery"; no CLF and no CDL shows it as it is (QC-009). **The Fix-it report** says, per clip, the full path it looked for and which file (CSV, EDL with timecode, AMF) reported it. OQ-84 |
 
-## Verified on the samples (0.5.33)
+## Verified on the samples (0.5.34, the replaced exports of 2026-10-07)
 
-**The user replaced both turnover folders in the repo root at the end of the session, to test
-next.** Everything below, and every sample fact under Open (turnover135's missing SECA0012 stills,
-turnover134's HDRI EXRs with no Shot Type), describes the old copies. Scan the new ones first
-and say what changed.
-
-- **Turnover134** scans with nothing held; its mirror balls are cut by Resolve's clock with
-  nothing said.
-- **Turnover135, which could not run before, now plans 38 jobs.** Only its four SECA0012
-  reference stills are held (QC-012: they are `..._raw_4k_v01.exr` files from another export, not
-  in the folder). Its six camera plates and clean plates render ungraded from Apple Log;
-  `SECA0013_pl01_ref_HD_v01.mp4` was rendered through that path (240 frames, phase B clean) and a
-  frame looked right for ungraded Apple Log.
+- **Turnover134**: 21 rows, 0 errors. Every camera clip graded from the CDL in its AMF (QC-082,
+  no CLFs exported); three short-handle warnings (QC-030). Its three HDRI pre-renders are there,
+  ungraded (QC-009); its HDRI EXRs are not in the folder, so QC-086 and no HDRI delivered. 39
+  deliverables rendered, 0 failed.
+- **Turnover135**: 21 rows, 0 errors, 42 jobs including the three HDRI EXR copies. Every clip now
+  has an AMF; SECA0012's are ungraded (QC-009), SECA0013/14 graded from the CDL (QC-082).
 
 ## Open, with the user (newest first)
 
@@ -82,17 +74,13 @@ and say what changed.
   amber.
 - **Style frames are untested on real media**: no turnover in the repo has one. Ask for the
   first export that does, and check it against OQ-82 (EDL length kept, no OCIO).
-- **Ben's HDRI renders are named differently from what the tool expects.** A newer turnover134
-  export (a screenshot, not in the repo) shows `SECA0009_pl01_HDRI_01_v01.exr Render 1.mov` on the
-  timeline typed HDRI, with the EXRs off the cut. The tool expects `<EXR stem>.<mp4|mov|mxf>` beside
-  the EXR, and the EXR on the timeline typed `HDRI`. Ask how Ben will name and place them before
-  changing anything, and get that export into the repo root to test against.
+- **OQ-84's assumptions** (the HDRI pre-render): the EXR is the render's name up to `.exr`; a
+  render whose AMF does carry a grade keeps the older sRGB Linear treatment, unverified; the HDRI
+  row's In/Out in the shot list is meaningless for the copy.
 - **OQ-81, the take**: "only if there's more than one take" was read as a Take above 1. No reply.
 - **The HDRI EXR "you don't need to touch"** was read as "copy it, never alter it". If it meant
   "do not deliver it", `planner._hdri_plan` is the one place to stop it. No reply.
-- **Turnover134's HDRI EXRs carry no Shot or Shot Type** in that CSV, so they are ignored; no
-  sample has an HDRI pre-render yet.
-- **Mac checks** in `docs/MAC_SESSION.md`, newest first: the QC overhaul (0.5.33), style frames
+- **Mac checks** in `docs/MAC_SESSION.md`, newest first: the HDRI pre-render and Fix-it paths (0.5.34), the QC overhaul (0.5.33), style frames
   and the stringout line (0.5.32), the stringout from the EXRs (0.5.27), the HDRI pre-render look
   (0.5.26), expiry and the CDL grade (0.5.23), burn-in boxes (0.5.22), and older ones.
 - **"Fix in Resolve" rule list** was chosen by Claude (`models.RESOLVE_FIX_RULES`; QC-008 and

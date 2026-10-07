@@ -55,6 +55,15 @@ chunk 7 of `docs/TO_A_WORKING_BUILD.md`, in the order that wastes least.
       in. Open `SECA0009_pl01_ref_HD_v01.mp4` beside Ben's own Resolve playback of the same frame:
       the brightness and colour should match. The tool applies the CDL in ACEScg, unclamped, as
       the AMF states; CI proves the maths, only Ben's screen says it is what Resolve does.
+- [ ] **The HDRI pre-render on the timeline (2026-10-07, 0.5.34).** Build turnover134's and
+      turnover135's stringouts. Each HDRI event plays Ben's `... Render.mov` and looks exactly as it
+      does on Ben's Resolve timeline (shown as it is: its AMF has no CLF and no CDL, and reads it
+      back through Rec.709 Gamma 2.2). 135 delivers `SECA0012/13/14_pl01_HDRI_01_v01.exr` byte for
+      byte; 134, whose EXRs are not in the folder, delivers no HDRI and its QC log says "HDRI EXR File
+      Missing from turnover folder, omitted from delivery" on SECA0009, 10 and 11.
+      Open the Fix-it report for 134: each HDRI line reads `Looking for` the EXR's full path in the
+      turnover folder and `Reported by` the HDRI render's name in the EDL (with its timecode) and
+      the CSV; the paths wrap rather than run off the page in Safari.
 - [ ] **The QC overhaul (2026-10-07, 0.5.33).** Scan turnover135: only the four SECA0012
       reference stills are red (their files are not in the folder); the camera clips are not.
       Press Run: no must-fix dialog, the red rows stay unrendered, everything else renders, and the

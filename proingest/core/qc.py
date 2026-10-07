@@ -775,6 +775,35 @@ def is_hdri(row: ShotRow) -> bool:
     return any(result.rule_id == "QC-080" for result in row.qc)
 
 
+def is_prerender_name(file_name: str) -> bool:
+    """Whether an HDRI's `File Name` is Ben's pre-render rather than its EXR: a video.
+    Turnover134 and 135 (2026-10-07) cut the pre-render on the timeline, the EXR off it."""
+    return Path(file_name).suffix.lower() in media.VIDEO_EXTENSIONS
+
+
+def is_hdri_prerender(row: ShotRow) -> bool:
+    """An HDRI row whose timeline event is its pre-render (`scan._resolve_prerender`)."""
+    return is_hdri(row) and is_prerender_name(row.clip_name)
+
+
+def check_prerender_color(row: ShotRow) -> list[QCResult]:
+    """QC-009, info: a pre-render whose AMF carries no CLF and no CDL is shown on the
+    stringout as it is (user, 2026-10-07: "If there's not color files, you can skip any
+    color correction"). Its AMF reads it back through the display it was rendered for, so
+    as it is is also what Resolve showed."""
+    if not is_hdri_prerender(row) or row.hdri_render is None or clf.has_grade(row):
+        return []
+    why = f"{row.grade.amf.name} carries no CLF and no CDL" if row.grade is not None else "no AMF grades it"
+    return [
+        QCResult(
+            "QC-009",
+            "info",
+            "row",
+            f"{UNGRADED}: {why}, so the stringout shows the pre-render with no color correction",
+        )
+    ]
+
+
 def is_style_frame(row: ShotRow) -> bool:
     """A style frame row (QC-085): shown on the stringout as it is, never delivered, and
     no rule runs on it (user, 2026-10-07)."""
@@ -788,7 +817,9 @@ def run_row_rules(
     name_counts: dict[str, int] | None = None,
 ) -> list[QCResult]:
     """Every row rule that is a pure function of the model, in rule ID order."""
-    if is_hdri(row) or is_style_frame(row):
+    if is_hdri(row):
+        return check_prerender_color(row)
+    if is_style_frame(row):
         return []
     results: list[QCResult] = []
     results.extend(check_duplicate_name(row, name_counts or {}))

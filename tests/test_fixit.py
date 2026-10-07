@@ -88,6 +88,28 @@ class TestTheReport:
         assert item.advice.where == "folder" and item.blocks
         assert [clip.name for clip in item.clips] == ["GONE"]
 
+    def test_a_missing_file_says_where_it_was_looked_for_and_who_named_it(self, tmp_path: Path) -> None:
+        """User, 2026-10-07: "filename the tool is looking for along with the expected path ...
+        what is reporting the file. Is it the EDL, CSV etc?"."""
+        folder = turnover(tmp_path)
+        fixtures.make_meta_csv(
+            folder / "metadata.csv", [("MELT0001_pl01", "MELT0001", "pl01"), ("GONE", "MELT0002", "pl01")]
+        )
+        (clip,) = titled(only(scanned(folder)), fixit.ADVICE["QC-012"].title).clips
+        assert clip.looked_for == str(folder / "GONE")
+        assert clip.named_by.startswith("the metadata CSV (metadata.csv), File Name column")
+        page = fixit.render(scanned(folder))
+        assert f"Looking for <code>{folder / 'GONE'}</code>" in page
+        assert "Reported by the metadata CSV" in page
+
+    def test_a_missing_clf_names_the_clf_and_its_amf(self, tmp_path: Path) -> None:
+        folder = turnover(tmp_path)
+        clf = next(folder.glob("*.clf"))
+        clf.unlink()
+        item = titled(only(scanned(folder)), fixit.ADVICE["QC-076"].title)
+        clip = item.clips[0]
+        assert clip.looked_for == str(folder / clf.name) and clip.named_by.startswith("the AMF (")
+
     def test_a_shot_with_references_and_no_plate_is_worth_a_look(self, tmp_path: Path) -> None:
         """Turnover134's mirror ball typed SECA0001 rather than SECA0011."""
         batch = scanned(turnover(tmp_path, shot_types=["pl01", "mirrorBall"]))
