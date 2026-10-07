@@ -185,8 +185,10 @@ he needs to change, in plain words, with no rule IDs (`core/fixit.py`). Per turn
 ("2 of 18 clips blocked", "Every clip blocked", "Nothing blocking"), then items grouped under
 **Fix in Resolve**, **Fix in the turnover folder** and **Worth a look**, those that stop delivery
 first. Each item is one rule's sentence (`fixit.ADVICE`) with every clip it applies to listed once
-under it, "Every clip in this turnover (N)" when that is all of them, and what is particular to a
-clip beside it (how far a cut misses its file, which side lacks handles). One item is not a rule:
+under it, **each named by its shot** (`SECA0009 plate`), even when it is every clip of the
+turnover (user, 2026-10-07: "If it's every clip, list each clip in the fixit item"); a clip whose
+Shot or Shot Type did not read is named by what the CSV says (`SECA0009 HDRI`, or "no Shot in the
+metadata"). What is particular to a clip goes beside it (how far a cut misses its file, which side lacks handles). One item is not a rule:
 a shot with reference clips and no plate (the
 check that would have caught turnover134's mirror ball typed SECA0001). The editor's own findings
 (In/Out edits, the delivery root, a run) are not Ben's and are left out. Built from the results

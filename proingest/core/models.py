@@ -526,6 +526,11 @@ class ShotRow:
     shot_code_override: str | None = None
     media: MediaInfo | None = None
     resolve_start_tc: str = ""
+    csv_shot: str = ""
+    csv_shot_type: str = ""
+    """The CSV's `Shot` and `Shot Type` as written, kept so a row whose identity did not read
+    can still be pointed at in the Fix-it report (user, 2026-10-07). Additive."""
+
     take: str = ""
     """The CSV's `Take`, as written. The stringout burns `Take 02` after the clip's label when
     it is above 1 (user, 2026-10-07). Additive."""
@@ -679,6 +684,8 @@ class ShotRow:
             "shot_code_override": self.shot_code_override,
             "media": self.media.to_dict() if self.media else None,
             "resolve_start_tc": self.resolve_start_tc,
+            "csv_shot": self.csv_shot,
+            "csv_shot_type": self.csv_shot_type,
             "take": self.take,
             "hdri_render": self.hdri_render.to_dict() if self.hdri_render else None,
             "record_in": self.record_in,
@@ -716,6 +723,8 @@ class ShotRow:
             shot_code_override=data.get("shot_code_override"),
             media=MediaInfo.from_dict(media) if media else None,
             resolve_start_tc=str(data.get("resolve_start_tc", "")),
+            csv_shot=str(data.get("csv_shot", "")),
+            csv_shot_type=str(data.get("csv_shot_type", "")),
             take=str(data.get("take", "")),
             hdri_render=MediaInfo.from_dict(data["hdri_render"]) if data.get("hdri_render") else None,
             record_in=int(data.get("record_in", 0)),

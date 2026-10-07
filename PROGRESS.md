@@ -8,7 +8,7 @@ commit.
 
 ## 1. Resume here
 
-**State at 2026-10-07, version 0.5.30 on branch `hdri/prerender`, PR #19 open** (0.5.30: the take on the burn-in; 0.5.29: reference clips play in the stringout; 0.5.28: everything in the stringout graded; 0.5.27: the stringout from the EXRs; 0.5.26: the HDRI pre-render and delivery, QC-084, Accept As Is runs what it can; 0.5.25, merged to `main` with PR #18: `User_Generated` and `User_Uploads` at the delivery root; 0.5.24: the Fix-it
+**State at 2026-10-07, version 0.5.31 on branch `hdri/prerender`, PR #19 open** (0.5.31: every Fix-it line names its shot; 0.5.30: the take on the burn-in; 0.5.29: reference clips play in the stringout; 0.5.28: everything in the stringout graded; 0.5.27: the stringout from the EXRs; 0.5.26: the HDRI pre-render and delivery, QC-084, Accept As Is runs what it can; 0.5.25, merged to `main` with PR #18: `User_Generated` and `User_Uploads` at the delivery root; 0.5.24: the Fix-it
 report, one error per cause, a lone EXR read as one frame, AMFs falling back to the clip they name) (`HANDOFF.md` is the short version, with the session's open items); 0.5.22 went to `main` earlier (PR #17 merged as `70e1160` at the user's request, after its CI
 run 37276656318 built the 0.5.22 dmg). The 2026-09-23 review is built (chunks A
 to H of `docs/REVIEW_2026-09-23.md`), and so are the fixes that a second official turnover,
@@ -17,6 +17,17 @@ renders; Turnover121, every clip 8 bit 4:2:0, runs again with a QC-020 warning o
 since 2026-09-28 (user). What is left is the Mac: `docs/MAC_SESSION.md`, from "The 0.5.0 build, in
 order" down, and Ben's 4.886 slope. Entries are newest first; anything older than 2026-09-22
 describes the tool before the review and is history.
+
+**2026-10-07, 0.5.31: every Fix-it line names its shot (user).** "In the fix-it list .html file,
+please list the shot item that each fixit is referring too", with a screenshot of a newer
+turnover134 export (not in the repo) where "A clip with a Shot Type is not in the cut" and "An
+HDRI's render is missing" showed only `SECA0009_pl01_HDRI_01_v01.exr`, and "The grade came
+without its CLF file" showed "Every clip in this turnover (18)". Then: "If it's every clip, list
+each clip in the fixit item." The count shortcut is gone, and a row whose identity did not read
+is named by the CSV's own Shot and Shot Type (`ShotRow.csv_shot`, `csv_shot_type`, additive), or
+"no Shot in the metadata". **Seen in that screenshot, not yet acted on**: Ben's pre-renders are
+named `SECA0009_pl01_HDRI_01_v01.exr Render 1.mov` and sit on the timeline typed HDRI, with the
+EXRs off the cut; the tool expects the render under the EXR's stem beside it (QC-083). Asked.
 
 **2026-10-07, 0.5.30: the take on the burn-in (user).** "The tool needs to append the shot take
 to the end of the burn-in where applicable ... under the csv mediadata column as 'Take'. If there

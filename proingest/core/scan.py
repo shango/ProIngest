@@ -263,7 +263,12 @@ def _build_row(
     across every row at once (`_conform_all`), because a match is only unambiguous when no
     other row claims the same event."""
     row = ShotRow(
-        turnover_id=turnover_id, clip_name=entry.file_name, resolve_start_tc=entry.start_tc, take=entry.take
+        turnover_id=turnover_id,
+        clip_name=entry.file_name,
+        resolve_start_tc=entry.start_tc,
+        take=entry.take,
+        csv_shot=entry.shot,
+        csv_shot_type=entry.shot_type,
     )
     row.qc.extend(entry.qc)
     if entry.kind is not None and entry.index is not None and not row.errors():

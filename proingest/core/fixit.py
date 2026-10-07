@@ -372,18 +372,9 @@ def _turnover_report(batch: Batch, turnover: Turnover) -> TurnoverReport:
         blocked += row_blocks
     if orphans := _without_a_plate(delivered):
         _add(items, "NO_PLATE", NO_PLATE, None, orphans)
-    for item in items.values():
-        if len(delivered) > 1 and _every_clip(item, delivered):
-            item.clips = [Clip(detail=f"Every clip in this turnover ({len(delivered)}).")]
     order = list(SECTIONS)
     ranked = sorted(items.items(), key=lambda kv: (order.index(kv[1].advice.where), not kv[1].blocks, kv[0]))
     return TurnoverReport(turnover, len(delivered), blocked, [item for _, item in ranked])
-
-
-def _every_clip(item: Item, rows: list[ShotRow]) -> bool:
-    """A long list that says nothing a count would not: each clip, none with a detail."""
-    names = {clip.name for clip in item.clips if not clip.detail}
-    return len(item.clips) == len(names) and names == {row.clip_name for row in rows}
 
 
 def _add(
@@ -422,9 +413,14 @@ def _clip(row: ShotRow, result: QCResult) -> Clip:
 
 
 def _who(row: ShotRow) -> str:
+    """`SECA0012 plate`. A clip whose Shot or Shot Type did not read is named by what the
+    metadata says, so every line points at a shot (user, 2026-10-07)."""
     identity = row.identity
     if identity is None:
-        return row.shot_code or ""
+        if row.shot_code:
+            return row.shot_code
+        said = f"{row.csv_shot} {row.csv_shot_type}".strip()
+        return said if row.csv_shot else f"{said}, no Shot in the metadata".lstrip(", ")
     word = KIND_WORDS.get(identity.kind, identity.kind)
     number = "" if identity.index in ("", "01", "1") else f" {int(identity.index)}"
     return f"{row.shot_code} {word}{number}"

@@ -7,7 +7,7 @@ from datetime import date
 from pathlib import Path
 
 from proingest.core import fixit, models, scan
-from proingest.core.models import Batch, QCResult
+from proingest.core.models import Batch, QCResult, ShotRow
 from tests.fixtures import media as fixtures
 
 FOLDER = "turnover134_09_29_26_sethcarroll"
@@ -52,14 +52,21 @@ class TestTheReport:
         assert report.blocked == 1 and fixit._status(report) == "1 of 3 clips blocked"
         assert fixit.ADVICE["QC-046"].title not in {other.advice.title for other in report.items}
 
-    def test_a_list_of_every_clip_is_said_as_a_count(self, tmp_path: Path) -> None:
+    def test_every_clip_is_listed_even_when_it_is_every_clip(self, tmp_path: Path) -> None:
+        """User, 2026-10-07: "If it's every clip, list each clip in the fixit item." """
         folder = turnover(tmp_path, shots=3)
         for path in folder.glob("*.amf"):
             path.unlink()
         report = only(scanned(folder))
         item = titled(report, fixit.ADVICE["QC-075"].title)
-        assert item.clips == [fixit.Clip(detail="Every clip in this turnover (3).")]
+        assert [clip.who for clip in item.clips] == ["MELT0001 plate", "MELT0002 plate", "MELT0003 plate"]
         assert fixit._status(report) == "Every clip blocked"
+
+    def test_a_clip_whose_shot_did_not_read_is_named_by_the_metadata(self) -> None:
+        said = ShotRow(turnover_id="t1", clip_name="x.exr", csv_shot="SECA0009", csv_shot_type="HDRI")
+        blank = ShotRow(turnover_id="t1", clip_name="y.exr", csv_shot_type="HDRI")
+        assert fixit._who(said) == "SECA0009 HDRI"
+        assert fixit._who(blank) == "HDRI, no Shot in the metadata"
 
     def test_a_missing_file_is_a_folder_fix(self, tmp_path: Path) -> None:
         folder = turnover(tmp_path)

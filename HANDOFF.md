@@ -6,11 +6,18 @@ disagrees with `PROGRESS.md` or the docs, they are right and this file is wrong.
 
 ## State
 
-- **Version 0.5.30 on branch `hdri/prerender`, PR #19 open, not merged** (merge only when the
-  user asks). 0.5.25 is on `main` (PR #18). 0.5.26 was built in CI run 37543703620, 0.5.27 in 37546876649, 0.5.28 in 37599362947, 0.5.29 in 37605454442.
+- **Version 0.5.31 on branch `hdri/prerender`, PR #19 open, not merged** (merge only when the
+  user asks). 0.5.25 is on `main` (PR #18). 0.5.26 was built in CI run 37543703620, 0.5.27 in 37546876649, 0.5.28 in 37599362947, 0.5.29 in 37605454442, 0.5.30 in 37636390619.
 - The dmg is built by the PR's CI run; its run ID is in the reply that handed it over, as
-  `gh run download <run-id> -R shango/ProIngest -n ProIngest-macos-arm64 -D ~/Downloads/ProIngest-0.5.30`.
+  `gh run download <run-id> -R shango/ProIngest -n ProIngest-macos-arm64 -D ~/Downloads/ProIngest-0.5.31`.
 - `ruff`, `ruff format` and `mypy --strict` are clean and the full suite passes locally.
+
+## What 0.5.31 did (7 Oct 2026, user)
+
+- **Every Fix-it line names its shot**: no "Every clip in this turnover (N)" shortcut, and a
+  clip whose identity did not read is named from the CSV's Shot and Shot Type.
+- **Open**: Ben's newer turnover134 export names the HDRI renders `<exr name> Render 1.mov` and
+  puts them on the timeline typed HDRI; the tool expects `<exr stem>.mp4` beside the EXR.
 
 ## What 0.5.30 did (7 Oct 2026, user)
 
