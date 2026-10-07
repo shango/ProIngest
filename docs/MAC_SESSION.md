@@ -55,6 +55,9 @@ chunk 7 of `docs/TO_A_WORKING_BUILD.md`, in the order that wastes least.
       in. Open `SECA0009_pl01_ref_HD_v01.mp4` beside Ben's own Resolve playback of the same frame:
       the brightness and colour should match. The tool applies the CDL in ACEScg, unclamped, as
       the AMF states; CI proves the maths, only Ben's screen says it is what Resolve does.
+- [ ] **The stringout's time left (2026-10-07, 0.5.35).** Build a stringout: its line's Notes
+      cell says "Estimating time left", then "About ... left" after the first event, counting
+      down each second and re-estimating at each event; it clears when the line turns green.
 - [ ] **The HDRI pre-render on the timeline (2026-10-07, 0.5.34).** Build turnover134's and
       turnover135's stringouts. Each HDRI event plays Ben's `... Render.mov` and looks exactly as it
       does on Ben's Resolve timeline (shown as it is: its AMF has no CLF and no CDL, and reads it

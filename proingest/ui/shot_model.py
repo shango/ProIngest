@@ -24,6 +24,7 @@ through a proxy rather than by rebuilding the model.
 
 from __future__ import annotations
 
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
@@ -35,13 +36,14 @@ from PySide6.QtCore import (
     QObject,
     QPersistentModelIndex,
     Qt,
+    QTimer,
     Signal,
 )
 from PySide6.QtGui import QBrush, QColor, QPainter, QPixmap
 
 from proingest.core import frames, qc, stringout
 from proingest.core.models import Batch, Deliverable, InOut, ShotRow, Turnover
-from proingest.ui.runner import RunProgress
+from proingest.ui.runner import RunProgress, format_eta
 
 ModelIndex = QModelIndex | QPersistentModelIndex
 
@@ -242,6 +244,19 @@ def turnover_state(turnover: Turnover, rows: list[ShotRow]) -> RowState:
 
 STRINGOUT_LABEL = "Stringout"
 
+ESTIMATING = "Estimating time left"
+"""The stringout line's Notes before its first event is encoded: no rate to go on yet."""
+
+
+def stringout_eta(fraction: float, elapsed: float) -> float | None:
+    """Seconds left on a stringout build, at its average rate so far, or None before any
+    of it is done. The average over the whole build, as the run's ETA is (`RunProgress`):
+    events vary from a one second still to a ten second plate, and a recent window swings."""
+    if fraction <= 0 or elapsed <= 0:
+        return None
+    return max(0.0, elapsed * (1 - fraction) / fraction)
+
+
 STRINGOUT_PROBLEMS = ("QC-142", "QC-144")
 """A stringout that was not written, or one with an event that had nothing to show. Red;
 an event cut from a stand-in (QC-143) is still green (user, 2026-10-07)."""
@@ -348,8 +363,9 @@ class ShotListModel(QAbstractItemModel):
     listener wants to know is which row moved, not where it was on screen.
     """
 
-    def __init__(self, parent: QObject | None = None) -> None:
+    def __init__(self, parent: QObject | None = None, clock: Callable[[], float] = time.monotonic) -> None:
         super().__init__(parent)
+        self._clock = clock
         self._batch = Batch()
         self._rows: dict[str, list[ShotRow]] = {}
         self._mode = DisplayMode.FRAMES
@@ -359,6 +375,14 @@ class ShotListModel(QAbstractItemModel):
         self._locked = False
         self._building: dict[str, float] = {}
         """The fraction of each stringout being built, by turnover id."""
+        self._build_started: dict[str, float] = {}
+        """When each stringout build began, by turnover id, for its time left (user, 2026-10-07)."""
+        self._build_estimate: dict[str, tuple[float, float]] = {}
+        """Each build's time left as of its latest event, and when that was, to count down from."""
+        # Repaints the time left each second between events, so it counts down.
+        self._ticker = QTimer(self)
+        self._ticker.setInterval(1000)
+        self._ticker.timeout.connect(self._tick_stringouts)
 
     # --- what it is showing ----------------------------------------------------------
 
@@ -420,16 +444,49 @@ class ShotListModel(QAbstractItemModel):
 
     def set_stringout_progress(self, turnover: Turnover, fraction: float | None) -> None:
         """How far a turnover's stringout build has got, or None once it has ended."""
+        key = turnover.turnover_id
+        now = self._clock()
         if fraction is None:
-            self._building.pop(turnover.turnover_id, None)
+            self._building.pop(key, None)
+            self._build_started.pop(key, None)
+            self._build_estimate.pop(key, None)
         else:
-            self._building[turnover.turnover_id] = fraction
+            self._building[key] = fraction
+            started = self._build_started.setdefault(key, now)
+            left = stringout_eta(fraction, now - started)
+            if left is not None:
+                self._build_estimate[key] = (left, now)
+        if self._building and not self._ticker.isActive():
+            self._ticker.start()
+        elif not self._building:
+            self._ticker.stop()
+        self._repaint_stringout(turnover)
+
+    def stringout_time_left(self, turnover: Turnover) -> float | None:
+        """Seconds left on this turnover's stringout build, or None before its first event.
+
+        Estimated at each event and counted down between them: an estimate redone every
+        second from the average would rise while a long event encodes, and an editor
+        reads a number that goes up as the build stalling.
+        """
+        estimate = self._build_estimate.get(turnover.turnover_id)
+        if estimate is None:
+            return None
+        left, at = estimate
+        return max(0.0, left - (self._clock() - at))
+
+    def _tick_stringouts(self) -> None:
+        for turnover in self._batch.turnovers:
+            if turnover.turnover_id in self._building:
+                self._repaint_stringout(turnover)
+
+    def _repaint_stringout(self, turnover: Turnover) -> None:
         position = self._batch.turnovers.index(turnover) if turnover in self._batch.turnovers else None
         if position is None:
             return
         parent = self.index(position, 0, NO_PARENT)
         last = self.rowCount(parent) - 1
-        self.dataChanged.emit(self.index(last, STATUS, parent), self.index(last, PROGRESS, parent))
+        self.dataChanged.emit(self.index(last, STATUS, parent), self.index(last, NOTES, parent))
 
     def refresh_rows(self) -> None:
         """Repaint every row in place: the status dot, the tints, and every cell but Notes.
@@ -559,6 +616,9 @@ class ShotListModel(QAbstractItemModel):
                 if building is not None:
                     return f"{int(building * 100)}%"
                 return "done" if state is RowState.DONE else ""
+            if column == NOTES and building is not None:
+                left = self.stringout_time_left(turnover)
+                return ESTIMATING if left is None else f"About {format_eta(left)} left"
             return ""
         if role == PROGRESS_ROLE and column == PROGRESS:
             return building if building is not None else (1.0 if state is RowState.DONE else 0.0)

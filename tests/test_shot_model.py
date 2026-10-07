@@ -64,6 +64,35 @@ def cell(model: ShotListModel, row_index: int, column: int, role: int, turnover_
     return model.index(row_index, column, parent).data(role)
 
 
+class TestTheStringoutTimeLeft:
+    """User, 2026-10-07: "an estimated time to finish the stringout render that is dynamic",
+    on the stringout line itself (its Notes cell; the Progress cell is too narrow)."""
+
+    def test_the_estimate_is_the_average_rate_so_far(self) -> None:
+        assert shot_model.stringout_eta(0.25, 30.0) == 90.0
+        assert shot_model.stringout_eta(0.0, 30.0) is None
+        assert shot_model.stringout_eta(1.0, 30.0) == 0.0
+
+    def test_the_line_counts_down_and_clears_when_the_build_ends(self, qt_app: QApplication) -> None:
+        now = [100.0]
+        built = ShotListModel(clock=lambda: now[0])
+        built.set_batch(batch(row()))
+        heading = built.batch.turnovers[0]
+        line = 1  # one row, then the stringout line
+        built.set_stringout_progress(heading, 0.0)
+        assert text(built, line, NOTES) == shot_model.ESTIMATING
+        now[0] = 130.0
+        built.set_stringout_progress(heading, 0.25)
+        assert text(built, line, NOTES) == "About 1m 30s left"
+        now[0] = 150.0  # no new event: it counts down from the last estimate
+        assert text(built, line, NOTES) == "About 1m 10s left"
+        now[0] = 160.0
+        built.set_stringout_progress(heading, 0.5)  # a new event re-estimates: 60s for half
+        assert text(built, line, NOTES) == "About 1m 00s left"
+        built.set_stringout_progress(heading, None)
+        assert text(built, line, NOTES) == "" and not built._ticker.isActive()
+
+
 class TestTheTree:
     """Two levels and no more: a turnover, then its rows in timeline order."""
 

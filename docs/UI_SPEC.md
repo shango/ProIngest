@@ -199,7 +199,7 @@ system, and loads nothing from the network.
 ## 7. Run and progress
 
 - Run opens no dialog if the delivery root is set; otherwise it prompts once.
-- Each row shows a slim progress bar in the Progress column with job count (e.g. 3/5). The stringout line under each turnover shows its own, in percent, while the stringout builds (section 2).
+- Each row shows a slim progress bar in the Progress column with job count (e.g. 3/5). The stringout line under each turnover shows its own, in percent, while the stringout builds (section 2), and its Notes cell says the time left ("About 2m 10s left"; "Estimating time left" before the first event is encoded). The estimate is made at each event from the build's average rate so far, and counts down each second between events (user, 2026-10-07).
 - Status bar shows overall percent, jobs running, throughput (frames/s), and ETA.
 - Stop finishes in-flight frames, discards `.part` outputs, and leaves rows in their previous state.
 - On completion a non-modal banner above the list reads "Batch complete: 27 done, 1 failed, 2 skipped. Exports written to ...". Click opens the folder.

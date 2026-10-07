@@ -7,11 +7,11 @@ Then read `docs/WORKFLOW.md`, and `CLAUDE.md` for the ground rules.
 
 ## State
 
-- **Version 0.5.34 on branch `hdri/prerender`, PR #19 open, not merged.** Merge only when the
+- **Version 0.5.35 on branch `hdri/prerender`, PR #19 open, not merged.** Merge only when the
   user asks. `main` has 0.5.25 (PR #18, merged 2026-10-06 at the user's request).
-- **0.5.34's CI run** is given in the last commit on the branch; check it with
+- **0.5.35's CI run** is given in the last commit on the branch; check it with
   `gh run list -R shango/ProIngest --branch hdri/prerender -L 3`, and if green hand over
-  `gh run download <id> -R shango/ProIngest -n ProIngest-macos-arm64 -D ~/Downloads/ProIngest-0.5.34`.
+  `gh run download <id> -R shango/ProIngest -n ProIngest-macos-arm64 -D ~/Downloads/ProIngest-0.5.35`.
 - 1930 tests pass locally (1 skipped); `ruff`, `ruff format` and `mypy --strict` are clean.
 - Nothing uncommitted except the untracked samples listed under Working notes.
 
@@ -55,6 +55,7 @@ recreate the colors." `docs/QC_RULES.md`'s opening section is the authority; in 
 | 0.5.32 | **Style frames** (`Shot Type` `styleFrame`, QC-085): a pre-graded PNG or JPG held as it is for its EDL length, never delivered, `SECA0009 styleFrame`, no counter. **The stringout line** under each turnover: bar while building, ball green when built, red for QC-142 or a black event (QC-144). OQ-82 |
 | 0.5.33 | **The QC overhaul** (above). OQ-83 |
 | 0.5.34 | **The HDRI pre-render on the timeline**: the `... .exr Render.mov` the timeline cuts is the stringout's event, the EXR named in it is delivered when it is in the folder, else QC-086 "HDRI EXR File Missing from turnover folder, omitted from delivery"; no CLF and no CDL shows it as it is (QC-009). **The Fix-it report** says, per clip, the full path it looked for and which file (CSV, EDL with timecode, AMF) reported it. OQ-84 |
+| 0.5.35 | **The stringout's time left** on its line, in Notes, counting down between events |
 
 ## Verified on the samples (0.5.34, the replaced exports of 2026-10-07)
 
@@ -80,17 +81,18 @@ recreate the colors." `docs/QC_RULES.md`'s opening section is the authority; in 
 - **OQ-81, the take**: "only if there's more than one take" was read as a Take above 1. No reply.
 - **The HDRI EXR "you don't need to touch"** was read as "copy it, never alter it". If it meant
   "do not deliver it", `planner._hdri_plan` is the one place to stop it. No reply.
-- **Mac checks** in `docs/MAC_SESSION.md`, newest first: the HDRI pre-render and Fix-it paths (0.5.34), the QC overhaul (0.5.33), style frames
+- **Mac checks** in `docs/MAC_SESSION.md`, newest first: the stringout's time left (0.5.35), the HDRI pre-render and Fix-it paths (0.5.34), the QC overhaul (0.5.33), style frames
   and the stringout line (0.5.32), the stringout from the EXRs (0.5.27), the HDRI pre-render look
   (0.5.26), expiry and the CDL grade (0.5.23), burn-in boxes (0.5.22), and older ones.
 - **"Fix in Resolve" rule list** was chosen by Claude (`models.RESOLVE_FIX_RULES`; QC-008 and
   QC-029 left it in 0.5.33); the user may adjust it.
 - **Log CSV Level column**: the user reported INFO on blocking errors; the supplied
   `ProIngest-logs-20261005-1301.csv` does not show that. Asked what they saw; no reply.
-- **Ben's pages**: https://claude.ai/artifact/DFshCWhWiGYsEuH35NPAy3 (version 2, private, for
-  134 and 135) predates the QC overhaul, so it still asks Ben to fix things that no longer block
-  (turnover135's missing AMFs now just mean ungraded). Offer to update it. The older per-turnover
-  pages (134: GX82xM9xvaZnjzoWFBkUaL, 135: 9Bynj3M6E2t23n2WB5PtDZ) are stale too.
+- **Ben's page**: https://claude.ai/artifact/DFshCWhWiGYsEuH35NPAy3 (version 3, private until the
+  user shares it) was rewritten on 2026-10-07 for the QC model and the 0.5.34 scan of the new
+  exports: 134's three HDRI EXRs to copy in, CLFs missing everywhere, three short handles, and
+  SECA0012's plate and clean plate ungraded; plus what is done. The older per-turnover pages
+  (134: GX82xM9xvaZnjzoWFBkUaL, 135: 9Bynj3M6E2t23n2WB5PtDZ) are stale and were left alone.
 
 ## Older, still open
 
