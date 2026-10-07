@@ -135,11 +135,6 @@ version if it was delivered before. It replaced Reset and Re-run."""
 RELOCATE_TEXT = "New Folder Location..."
 """A turnover heading's right-click entry: reload it from where it moved to (D16)."""
 
-BYPASS_TEXT = "Accept As Is (Ignore QC)"
-"""A turnover heading's checkable entry (user, 2026-09-28): its errors stop blocking the
-Run and holding rows back, every row that can render does, and QC-074 says so. The
-checks still run and are still reported."""
-
 
 class TwoLineDelegate(QStyledItemDelegate):
     """Draws the primary value and, under it, whichever representation is not primary.
@@ -368,8 +363,6 @@ class ShotListView(QTreeView):
     relocate_requested = Signal(object)
     """A `Turnover` whose heading was right-clicked for New Folder Location (D16)."""
 
-    bypass_toggled = Signal(object, bool)
-    """A `Turnover` whose Accept As Is was ticked (True) or unticked (False)."""
     """`select_row` emptied the filter to reach a hidden row; the search box should follow."""
 
     """The list. Two levels, always expanded, fixed order, one row per shot."""
@@ -559,11 +552,6 @@ class ShotListView(QTreeView):
             action = menu.addAction(text)
             action.setEnabled(not self.shot_model.locked)
             action.triggered.connect(lambda _checked=False, signal=signal: signal.emit(turnover))
-        bypass = menu.addAction(BYPASS_TEXT)
-        bypass.setCheckable(True)
-        bypass.setChecked(turnover.qc_bypassed)
-        bypass.setEnabled(not self.shot_model.locked)
-        bypass.triggered.connect(lambda checked: self.bypass_toggled.emit(turnover, checked))
         armed = [row for row in self.shot_model.batch.rows_for(turnover.turnover_id) if row.rerun]
         if armed:
             self._add_cancel(menu, armed)

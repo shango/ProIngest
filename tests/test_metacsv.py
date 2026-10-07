@@ -194,6 +194,19 @@ class TestHdri:
         assert [q.rule_id for q in result.rows[0].qc] == ["QC-010"]
 
 
+class TestInputColorSpace:
+    """Resolve's `Input Color Space`, read for a clip no AMF grades (QC-009, user 2026-10-07)."""
+
+    def test_it_is_read_as_written(self, tmp_path: Path) -> None:
+        header = ["File Name", "Shot", "Shot Type", metacsv.INPUT_COLOR_SPACE_COLUMN]
+        result = read(tmp_path, header, [["C1.mov", "SECA0009", "pl01", "Apple Log"]])
+        assert result.rows[0].input_color_space == "Apple Log"
+
+    def test_a_csv_without_it_leaves_it_empty(self, tmp_path: Path) -> None:
+        result = read(tmp_path, ["File Name", "Shot", "Shot Type"], [["C1.mov", "SECA0009", "pl01"]])
+        assert result.rows[0].input_color_space == ""
+
+
 class TestStyleFrame:
     """A pre-graded still on the stringout, never delivered (user, 2026-10-07)."""
 

@@ -62,7 +62,7 @@ proingest/
     log_view.py          # the Log tab over a bounded buffer of log records
     deliverables.py      # the Deliverables tab for the selected rows
     run_strip.py         # the strip above the list: bar and line during a run, banner after
-    run_controller.py    # one Run: pre-flight, the must-fix gate, plan, pool, results, exports
+    run_controller.py    # one Run: pre-flight, the delivery root gate, plan, pool, results, exports
     runner.py            # core.render.execute on a worker QThread, progress folded for a timer
     scanner.py           # core.scan on a worker QThread, results back as signals
     background.py        # a run's disk work (pre-flight, plan, exports) on a worker QThread, under the lock

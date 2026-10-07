@@ -42,7 +42,7 @@ Severity = Literal["error", "warning", "info"]
 Scope = Literal["batch", "turnover", "row", "deliverable"]
 DeliverableStatus = Literal["planned", "rendering", "done", "failed", "exists", "skipped"]
 
-SourceEncodingOrigin = Literal["AMF"]
+SourceEncodingOrigin = Literal["AMF", "CSV"]
 """Which carrier named a row's source encoding. COLOR_AND_FORMAT, EXR metadata.
 
 Since 2026-09-28 (user) there is one: the clip's AMF, exported from the colour session,
@@ -107,10 +107,8 @@ RESOLVE_FIX_RULES = frozenset(
         "QC-001",  # the EDL or the metadata CSV is missing
         "QC-002",  # one of them does not parse
         "QC-004",  # one of them is empty
-        "QC-008",  # no AMF at all
         "QC-010",  # a Shot Type with no shot code, or one the tool does not deliver
         "QC-011",  # two rows with one shot code, type and index
-        "QC-029",  # an EDL event cut outside its clip's frames
         "QC-046",  # the AMF names no input transform
         "QC-047",  # the AMF's input transform is not one the config knows
         "QC-065",  # the CSV's two Shot Type columns disagree
@@ -841,12 +839,6 @@ class Turnover:
     where that deserves a second look. Additive, so the schema version does not move.
     """
 
-    qc_bypassed: bool = False
-    """The editor accepted this turnover as it is (user, 2026-09-28): its errors are still
-    reported but neither refuse the Run nor hold its rows back, and every row that can
-    physically render does (`qc.must_fix`, `planner.plannable_identity`). QC-074 says so
-    on the turnover. Additive, so the schema version does not move."""
-
     def to_dict(self) -> dict[str, Any]:
         return {
             "turnover_id": self.turnover_id,
@@ -865,7 +857,6 @@ class Turnover:
             "edl_digest": self.edl_digest,
             "csv_digest": self.csv_digest,
             "stringout": self.stringout.to_dict() if self.stringout else None,
-            "qc_bypassed": self.qc_bypassed,
         }
 
     @classmethod
@@ -883,11 +874,11 @@ class Turnover:
             day=data.get("day"),
             year=data.get("year"),
             shooter=str(data.get("shooter", "")),
-            qc=[QCResult.from_dict(item) for item in data.get("qc", [])],
+            # Accept As Is (QC-074) went on 2026-10-07: every turnover runs as it then did.
+            qc=[QCResult.from_dict(item) for item in data.get("qc", []) if item.get("rule_id") != "QC-074"],
             edl_digest=str(data.get("edl_digest", "")),
             csv_digest=str(data.get("csv_digest", "")),
             stringout=Deliverable.from_dict(data["stringout"]) if data.get("stringout") else None,
-            qc_bypassed=bool(data.get("qc_bypassed", False)),
         )
 
 

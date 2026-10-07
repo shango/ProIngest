@@ -203,7 +203,7 @@ system, and loads nothing from the network.
 - Status bar shows overall percent, jobs running, throughput (frames/s), and ETA.
 - Stop finishes in-flight frames, discards `.part` outputs, and leaves rows in their previous state.
 - On completion a non-modal banner above the list reads "Batch complete: 27 done, 1 failed, 2 skipped. Exports written to ...". Click opens the folder.
-- **A run with anything to fix does not start** (2026-09-23, D8). Run opens one dialog listing every must-fix with where it is - the batch, a turnover folder, or a clip - capped at twenty and pointing at the Issues dock for the rest, and says to correct the folder, press Scan and run. The held-back turnover of 2026-09-17 is gone: one turnover waiting on a fix holds the batch.
+- **Nothing stops a run but the delivery root** (user, 2026-10-07). A shot with an error is held back and every other shot renders. A delivery root that is not writable or has too little space (QC-062, QC-063) opens a popup, "The run cannot start", and nothing is rendered. From 2026-09-23 (D8) to 2026-10-07 any must-fix anywhere stopped the run.
 
 **Two things about a stopped run that this list said too simply** (M5.5, 2026-09-12). The
 records of a stopped run **are** applied to the rows, because a job that finished before Stop
@@ -485,12 +485,6 @@ AMF, CLF or clip into the folder and re-scans.
 
 - **Scan re-scans every turnover in the batch.** Right-clicking a turnover's header offers
   **Re-scan** for that one turnover and **New Folder Location...** for one that has moved (D16).
-- **Accept As Is (Ignore QC)**, a checkbox on the same menu (user, 2026-09-28), lets a turnover
-  run whatever its QC says: its errors stay on the rows and in the Issues dock, the heading shows
-  QC-074, and every clip that can render does, errors and all (user, 2026-10-07). Only a clip
-  with nothing to render or no way to colour it is held back, and it holds back no other
-  (QC_RULES QC-074 lists which). Saved in the
-  batch and kept across Re-scan; unticking it puts the errors back in charge.
 - **What the editor did is carried over by File Name** (`scan.carry_over`), in CSV order, so a
   clip used twice pairs first with first: a trim the editor made, the shot code correction, the
   skip and its reason, the notes, and the delivered state. A trim never made follows the new EDL.
@@ -507,8 +501,8 @@ replaced Reset and Re-run. The editor swaps a file in the folder with the batch 
 Re-scans: a shot for a replaced clip, the heading for a replaced EDL or CSV.
 
 - It reads the turnover again, keeping the editor's trims, skips and notes (D8), so every rule
-  checks what is in the folder now. A new warning or must-fix shows on the row, and a must-fix
-  stops the next Run as any other does.
+  checks what is in the folder now. A new warning or error shows on the row, and an error holds
+  that shot back from the next Run.
 - It puts the shot, or on a heading every shot in the turnover, back for the next Run: its
   progress bar and count empty and it stops reading as done or failed at once. A shot that was
   delivered before comes out at the next version, v02 after v01; one never run is simply

@@ -44,12 +44,10 @@ log = logging.getLogger(__name__)
 NOTHING_TO_RENDER = "Nothing to render: every shot is complete, skipped or waiting for a Re-scan"
 CLOSING_AFTER_RUN = "Stopping the run, then closing..."
 
-MUST_FIX_TITLE = "Fix these before running"
-"""The dialog Run opens when anything must be fixed first (D8, D9).
-
-Every must-fix in the batch, each with where it is, because the fix is in the folder:
-the editor corrects it there, presses Scan, and runs.
-"""
+MUST_FIX_TITLE = "The run cannot start"
+"""The popup Run opens when the delivery root cannot take the delivery: not writable, or too
+little space (QC-062, QC-063). The one thing that stops a run (user, 2026-10-07: "That's a
+blocker that requires a popup"); a shot's own error holds that shot back and nothing else."""
 
 MUST_FIX_SHOWN = 20
 """How many the dialog lists before it points at the Issues dock for the rest."""
@@ -105,7 +103,7 @@ def must_fix_text(found: Sequence[tuple[str, QCResult]]) -> str:
     if len(found) > MUST_FIX_SHOWN:
         lines.append(f"and {len(found) - MUST_FIX_SHOWN} more; see the Issues dock")
     lines.append("")
-    lines.append("Correct them in the turnover folder, press Scan, then Run.")
+    lines.append("Nothing can be delivered until the delivery folder can take it. Fix it, then Run.")
     return "\n".join(lines)
 
 
@@ -203,8 +201,8 @@ class RunController(QObject):
         batch is locked while they do (D15), so nothing on this thread changes it under
         them, and each answer comes back here before the next step starts.
 
-        **Any must-fix anywhere stops the run** (D8): the whole batch waits for the
-        folder to be corrected and re-scanned (`qc.must_fix`).
+        **Only the delivery root stops the run** (user, 2026-10-07; `qc.must_fix`): a
+        shot with an error is held back by the planner and every other shot renders.
         """
         window = self._window
         if not window.batch_open or self.busy or window.scanner.busy:

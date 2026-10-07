@@ -439,15 +439,11 @@ def _cut(event: clf.ConformEvent, source: MediaInfo) -> InOut:
     """The event's frames in its file. **Never None: a file that is there plays** (user,
     2026-09-29). A file with no timecode is counted from 00:00:00:00, which is where Resolve
     starts one and what the EDL's source In counts from (turnover097's events 008 and 015
-    cut from 00:00:00:00). Stringout only: a delivery still refuses to guess (QC-029).
-    A single image has only its one frame."""
-    cut = clf.approved_in_out(event, source)
-    if cut is not None:
-        return cut
-    if not source.is_sequence and source.frame_count <= 1:
+    cut from 00:00:00:00), as a delivery is since 2026-10-07. A single image with no
+    timecode has only its one frame."""
+    if source.start_timecode is None and not source.is_sequence and source.frame_count <= 1:
         return InOut(source.start_frame, source.start_frame)
-    start = source.start_frame + event.source_in
-    return InOut(start, start + event.duration - 1)
+    return clf.approved_in_out(event, source)
 
 
 def _held(event: clf.ConformEvent, cut: InOut) -> bool:

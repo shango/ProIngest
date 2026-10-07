@@ -7,14 +7,14 @@ Then read `docs/WORKFLOW.md`, and `CLAUDE.md` for the ground rules.
 
 ## State
 
-- **Version 0.5.32 on branch `hdri/prerender`, PR #19 open, not merged.** Merge only when the
+- **Version 0.5.33 on branch `hdri/prerender`, PR #19 open, not merged.** Merge only when the
   user asks. `main` has 0.5.25 (PR #18, merged 2026-10-06 at the user's request).
-- PR #19 holds 0.5.26 to 0.5.32, each built by CI on the PR. The latest run:
+- PR #19 holds 0.5.26 to 0.5.33, each built by CI on the PR. The latest run:
   `gh run list -R shango/ProIngest --branch hdri/prerender --limit 1`. Hand a build over as
   `gh run download <run-id> -R shango/ProIngest -n ProIngest-macos-arm64 -D ~/Downloads/ProIngest-<version>`
   plus the artifact's web link (`gh api repos/shango/ProIngest/actions/runs/<run-id>/artifacts`),
   and download it into `~/Downloads/ProIngest-<version>/` too (the user asked for that).
-- 1935 tests pass locally (1 skipped); `ruff`, `ruff format` and `mypy --strict` are clean.
+- 1930 tests pass locally (1 skipped); `ruff`, `ruff format` and `mypy --strict` are clean.
 - Nothing uncommitted except the untracked samples listed under Working notes. Nothing in flight.
 
 ## What this session built (6 and 7 Oct 2026, all user requests)
@@ -29,6 +29,7 @@ Then read `docs/WORKFLOW.md`, and `CLAUDE.md` for the ground rules.
 | 0.5.30 | **Take on the burn-in**: `SECA0009_pl01 Take 02` bottom right when the CSV's `Take` is above 1 (OQ-81) |
 | 0.5.31 | **Every Fix-it line names its shot**: no "Every clip in this turnover (N)" shortcut; a clip whose identity did not read is named from the CSV's Shot and Shot Type |
 | 0.5.32 | **Style frames** (`Shot Type` `styleFrame`, QC-085): a pre-graded PNG or JPG held as it is on the stringout for its EDL length, never delivered, burned in `SECA0009 styleFrame` with no counter. **The stringout line** under each turnover: a bar while it builds, a ball green when built, red for QC-142 or a black event (**QC-144**, split from QC-143). OQ-82 |
+| 0.5.33 | **The QC overhaul**: nothing stops a batch or turnover; an error holds only its own shot (missing media, a grade it cannot rebuild, no name, no cut); only the delivery root stops a run (popup). Accept As Is gone. No AMF = ungraded from the CSV's Input Color Space, "Clip ungraded in Resolve project". The cut at face value (QC-084 retired, QC-029 info). Most errors now warnings; the QC log's new Issues sheet lists every finding in words. OQ-83 |
 
 Also: **Ben's page** for turnovers 134 and 135 (https://claude.ai/artifact/DFshCWhWiGYsEuH35NPAy3,
 version 2, private, the user shares it) now says the mirror balls were never linked to the proxies
@@ -39,6 +40,10 @@ https://claude.ai/artifact/9Bynj3M6E2t23n2WB5PtDZ) were not updated and still ca
 wording.
 
 ## Open, with the user (newest first)
+
+- **The QC overhaul's assumptions (OQ-83)**: no-AMF clips read as the CSV's Input Color Space,
+  references through ACES 2.0 SDR Rec.709 Gamma 2.2, QC-063 (disk space) also stops the run, QC-021
+  and QC-055 made info. Not asked; told the user.
 
 - **Style frames are untested on real media**: no turnover in the repo has one. Ask for the
   first export that does, and check it against OQ-82's assumptions (EDL length kept, no OCIO).

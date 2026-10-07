@@ -243,68 +243,36 @@ def effective_identity(row: ShotRow, show_pattern: str = naming.DEFAULT_SHOW_PAT
     return replace(row.identity, shot_code=row.shot_code_override)
 
 
-QC_CANNOT_RENDER = frozenset(
-    {
-        "QC-008",  # no AMF anywhere: no input transform for any clip
-        "QC-012",  # no file
-        "QC-013",  # two files, and no knowing which
-        "QC-014",  # the file will not open
-        "QC-022",  # the codec will not decode
-        "QC-029",  # the cut is outside the file
-        "QC-031",  # the edited In or Out is outside the file
-        "QC-032",  # In after Out
-        "QC-042",  # the sound to deliver is missing
-        "QC-046",  # the AMF names no input transform
-        "QC-047",  # the input transform is not one the config has
-        "QC-069",  # the turnover's folder is gone
-        "QC-075",  # no AMF matched, so no input transform
-        "QC-076",  # a CLF the AMF names is missing or changed
-    }
-)
-"""The errors Accept As Is (QC-074) cannot render past, because there is nothing to render
-or no way to colour it. **Everything else on an accepted turnover renders** (user,
-2026-10-07: "the turnover should run everything it can and not hold back any other clips"),
-errors and all, and every error is still reported. Before that day it was the reverse: an
-allowlist of four errors rendered past and every other error held its row (OQ-76).
+def holding_errors(row: ShotRow) -> list[QCResult]:
+    """The errors that keep this row from rendering, which is every error it has.
 
-A row or turnover held here does not block the batch; the saved log says which rows and why
-(`qc.log_results`).
-"""
-
-
-def holding_errors(row: ShotRow, bypassed: bool = False) -> list[QCResult]:
-    """The errors that keep this row from rendering: all of them, or on a turnover
-    accepted as it is, only those `QC_CANNOT_RENDER` names."""
-    return [result for result in row.errors() if not bypassed or result.rule_id in QC_CANNOT_RENDER]
-
-
-def bypassed_turnovers(batch: Batch) -> set[str]:
-    """The turnover IDs accepted as they are (QC-074)."""
-    return {turnover.turnover_id for turnover in batch.turnovers if turnover.qc_bypassed}
+    **An error holds one shot and nothing else** (user, 2026-10-07: "nothing prevents
+    rendering an entire batch or turnover"). What is an error is what leaves the tool
+    nothing to render or no way to recreate the colour: missing or unreadable media, no
+    name to give it, no cut, or a grade it cannot rebuild (QC_RULES). Everything else is a
+    warning or a note in the report and renders.
+    """
+    return row.errors()
 
 
 def held_turnovers(batch: Batch) -> set[str]:
-    """Bypassed turnovers whose own error leaves nothing to render, QC-069's missing folder
-    and QC-008's missing AMFs: every row of them is held back."""
+    """Turnovers whose folder is not where the batch last found it (QC-069): their media
+    is missing, so every row of them waits for the folder to be found again."""
     return {
         turnover.turnover_id
         for turnover in batch.turnovers
-        if turnover.qc_bypassed
-        and any(result.severity == "error" and result.rule_id in QC_CANNOT_RENDER for result in turnover.qc)
+        if any(result.rule_id == "QC-069" and result.severity == "error" for result in turnover.qc)
     }
 
 
-def plannable_identity(
-    row: ShotRow, show_pattern: str = naming.DEFAULT_SHOW_PATTERN, bypassed: bool = False
-) -> ShotIdentity | None:
+def plannable_identity(row: ShotRow, show_pattern: str = naming.DEFAULT_SHOW_PATTERN) -> ShotIdentity | None:
     """The identity to plan this row under, or None when the row owes nothing.
 
     A row is not planned when the editor skipped it, when it carries an error, which
     FR-6 says blocks the row but not the batch, or when it has no media and no chosen
-    range, because then there is nothing to read. On a turnover accepted as it is
-    (`bypassed`), only the errors `QC_CANNOT_RENDER` names hold it back.
+    range, because then there is nothing to read.
     """
-    if row.skipped or holding_errors(row, bypassed) or row.media is None or row.current is None:
+    if row.skipped or holding_errors(row) or row.media is None or row.current is None:
         return None
     identity = effective_identity(row, show_pattern)
     # A style frame is only ever on the stringout (QC-085).
@@ -328,10 +296,9 @@ def plan_row(
     version: int,
     show_pattern: str = naming.DEFAULT_SHOW_PATTERN,
     shot_color: clf.ShotColor = clf.DEFAULT_SHOT_COLOR,
-    bypassed: bool = False,
 ) -> RowPlan:
     """The deliverables one row owes at `version`. Pure: it touches no filesystem."""
-    identity = plannable_identity(row, show_pattern, bypassed)
+    identity = plannable_identity(row, show_pattern)
     media, current = row.media, row.current
     if identity is None or media is None or current is None:
         return RowPlan()
@@ -378,9 +345,8 @@ def plan_batch(
 
     **The colour session is not a parameter here.** The scan put it on the rows: the
     approved In/Out off the EDL and the grade off each event's AMF, so planning reads them
-    off the model like every other field. QC-008 is what refuses a **run** with no AMF at
-    all, and every must-fix refuses the whole run before planning is asked
-    (`qc.must_fix`, D8).
+    off the model like every other field. A row with an error is held here and nowhere
+    else; only a batch scope error refuses the run (`qc.must_fix`).
     """
     root = delivery_root or batch.delivery_root
     if root is None:
@@ -388,10 +354,9 @@ def plan_batch(
 
     versions: dict[str, int] = {}
     jobs: list[DeliverableJob] = []
-    bypassed, held = bypassed_turnovers(batch), held_turnovers(batch)
+    held = held_turnovers(batch)
     for row in batch.rows:
-        waived = row.turnover_id in bypassed
-        identity = None if row.turnover_id in held else plannable_identity(row, show_pattern, waived)
+        identity = None if row.turnover_id in held else plannable_identity(row, show_pattern)
         if identity is None:
             _record(row, RowPlan())
             continue
@@ -407,7 +372,7 @@ def plan_batch(
         if state == "pending":
             # A stopped run: the rest of the row at the version it has (D11).
             version = row.deliverables[0].version
-            plan = plan_row(row, root, version, show_pattern, clf.shot_color(row), waived)
+            plan = plan_row(row, root, version, show_pattern, clf.shot_color(row))
             waiting = {item.path for item in row.deliverables if item.status not in LANDED}
             plan.jobs = [job for job in plan.jobs if job.destination in waiting]
             _resume(row, plan)
@@ -420,7 +385,7 @@ def plan_batch(
         version = versions[code]
         row.rerun = False
 
-        plan = plan_row(row, root, version, show_pattern, clf.shot_color(row), waived)
+        plan = plan_row(row, root, version, show_pattern, clf.shot_color(row))
         if version > 1:
             plan.qc.append(
                 QCResult(

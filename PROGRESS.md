@@ -8,7 +8,7 @@ commit.
 
 ## 1. Resume here
 
-**State at 2026-10-07, version 0.5.32 on branch `hdri/prerender`, PR #19 open** (0.5.32: style frames on the stringout, the stringout line in the shot list; 0.5.31: every Fix-it line names its shot; 0.5.30: the take on the burn-in; 0.5.29: reference clips play in the stringout; 0.5.28: everything in the stringout graded; 0.5.27: the stringout from the EXRs; 0.5.26: the HDRI pre-render and delivery, QC-084, Accept As Is runs what it can; 0.5.25, merged to `main` with PR #18: `User_Generated` and `User_Uploads` at the delivery root; 0.5.24: the Fix-it
+**State at 2026-10-07, version 0.5.33 on branch `hdri/prerender`, PR #19 open** (0.5.33: the QC overhaul, nothing stops a batch or a turnover; 0.5.32: style frames on the stringout, the stringout line in the shot list; 0.5.31: every Fix-it line names its shot; 0.5.30: the take on the burn-in; 0.5.29: reference clips play in the stringout; 0.5.28: everything in the stringout graded; 0.5.27: the stringout from the EXRs; 0.5.26: the HDRI pre-render and delivery, QC-084, Accept As Is runs what it can; 0.5.25, merged to `main` with PR #18: `User_Generated` and `User_Uploads` at the delivery root; 0.5.24: the Fix-it
 report, one error per cause, a lone EXR read as one frame, AMFs falling back to the clip they name) (`HANDOFF.md` is the short version, with the session's open items); 0.5.22 went to `main` earlier (PR #17 merged as `70e1160` at the user's request, after its CI
 run 37276656318 built the 0.5.22 dmg). The 2026-09-23 review is built (chunks A
 to H of `docs/REVIEW_2026-09-23.md`), and so are the fixes that a second official turnover,
@@ -17,6 +17,37 @@ renders; Turnover121, every clip 8 bit 4:2:0, runs again with a QC-020 warning o
 since 2026-09-28 (user). What is left is the Mac: `docs/MAC_SESSION.md`, from "The 0.5.0 build, in
 order" down, and Ben's 4.886 slope. Entries are newest first; anything older than 2026-09-22
 describes the tool before the review and is history.
+
+**2026-10-07, 0.5.33: the QC overhaul (user).** "From now on, nothing prevents rendering an entire
+batch or turnover. Individual shots can get blocked from rendering if there is missing media, or the
+amf, cfl or an appropriate cdl are missing so the tool cant recreate the colors ... Use the edl's
+source and record timecodes for each event and don't qc by probing the media. Assume that ben can
+see any gaps or issues visually on the timeline." Then: the mirror balls were probe noise, "take the
+timeline at face value"; no CLF, AMF or CDL is ungraded, noted "Clip ungraded in Resolve project";
+plate length "Render whatever is there ... Plate was 260 frames on the timeline"; an unwritable
+delivery root is "a blocker that requires a popup"; In/Out stays editable with "in after out"; and
+"expand the qc list that gets exported afterward to pick up non-blocker issues". **Built**: an error
+on a row holds that shot only (`planner.holding_errors`), a moved folder holds its turnover's rows
+(`held_turnovers`, QC-069), and only batch errors stop a run (`qc.must_fix`, QC-062/063, popup "The
+run cannot start"). Accept As Is (QC-074) is gone, with `Turnover.qc_bypassed`, the menu entry and
+`planner.QC_CANNOT_RENDER`; an old batch's QC-074 is dropped on load. QC-008 retired. **Ungraded**:
+no AMF for a clip is no longer QC-075; it is read as the CSV's `Input Color Space`
+(`metacsv.INPUT_COLOR_SPACE_COLUMN`, origin "CSV"), its references through `color.DEFAULT_VIEW`
+(the output transform every AMF of 134 and 135 names), and QC-009, now a row rule, says "Clip
+ungraded in Resolve project". With no AMF and no colour space it is QC-046, held. QC-075 is an
+error only for two AMFs on one clip. **Face value**: `clf.approved_in_out` counts a file with no TC
+from 0; `scan._outside` tries the file's own clock then the CSV's `Start TC` silently (QC-084
+retired), else renders the frames the file has with QC-029 info. **Warnings now**: QC-023 (the
+Allow other resolutions setting is gone, read and ignored in old batches), 026, 027, 033/034 ("Plate
+was N frames on the timeline"), 042 (delivered without sound), 073, 079. **Info now**: QC-021, 055
+(they fired on every clip of turnover134). **QC log**: a new Issues sheet, every finding in words with
+its Effect (`exports.issue_lines`); Summary counts rows held back. **Fix-it**: info left out, the
+QC-008 and QC-029 advice gone, format notes moved to Worth a look, "N of M clips held back". OQ-83
+lists the assumptions. **Verified**: turnover134 scans with nothing held (mirror balls cut by
+Resolve's clock, nothing said); turnover135, which could not run, plans 38 jobs with only its four
+SECA0012 stills held (QC-012, files not in the folder) and six camera clips ungraded from Apple Log;
+`SECA0013_pl01_ref_HD_v01.mp4` rendered through that path, 240 frames, phase B clean, a frame looked
+at (a plausible ungraded Apple Log picture).
 
 **2026-10-07, 0.5.32: style frames, and the stringout as a line in the shot list (user).** "The
 first frame before each shot's footage, there will be a still frame held for a number of frames,

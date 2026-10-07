@@ -391,13 +391,6 @@ class TestCarryOver:
         scan.carry_over(was, [], now, [])
         assert now.stringout == was.stringout
 
-    def test_accept_as_is_survives_a_rescan_and_qc_074_with_it(self) -> None:
-        was, now = Turnover("t1", Path("/a")), Turnover("t1", Path("/a"))
-        qc.set_qc_bypassed(was, True)
-        scan.carry_over(was, [], now, [])
-        assert now.qc_bypassed
-        assert [result.rule_id for result in now.qc] == ["QC-074"]
-
     def test_a_trim_never_made_follows_the_new_edl(self) -> None:
         old, new = self.rows("C0145.MP4"), self.rows("C0145.MP4")
         new[0].snapshot = new[0].current = InOut(14, 24)
@@ -568,19 +561,52 @@ class TestTheAmf:
         assert row.grade is not None
         assert [look.kind for look in row.grade.looks] == ["look", "clf"]
 
-    def test_an_event_with_no_amf_is_qc_075(self, tmp_path: Path) -> None:
+    def test_an_event_with_no_amf_and_no_csv_colour_space_is_held_by_qc_046(self, tmp_path: Path) -> None:
+        """Nothing says what colour it is in, so the tool cannot recreate it."""
         folder = self.folder(tmp_path)
         self.amf(folder).unlink()
         _, row = self.scanned(folder)
-        assert "QC-075" in rules(row) and "QC-046" not in rules(row), "one cause, one error"
+        assert "QC-075" not in rules(row)
+        assert [result.rule_id for result in row.errors()] == ["QC-046"]
         assert row.grade is None and row.source_encoding is None
 
-    def test_an_amf_naming_another_file_is_qc_075_not_a_match(self, tmp_path: Path) -> None:
+    def test_an_event_with_no_amf_renders_ungraded_from_the_csv(self, tmp_path: Path) -> None:
+        """User, 2026-10-07: "If there is no CLF, AMF or CDL, assume ungraded". Resolve's
+        `Input Color Space` (Apple Log in turnovers 134 and 135) is what it is read as."""
+        folder = self.folder(tmp_path)
+        rows = [("MELT0001_pl01", "MELT0001", "pl01")]
+        fixtures.make_meta_csv(folder / "metadata.csv", rows, input_color_space="Apple Log")
+        self.amf(folder).unlink()
+        _, row = self.scanned(folder)
+        assert not row.errors() and row.grade is None
+        assert (row.source_encoding, row.source_encoding_origin) == ("Apple Log", "CSV")
+        (said,) = [result for result in row.qc if result.rule_id == "QC-009"]
+        assert said.severity == "info" and said.message.startswith("Clip ungraded in Resolve project")
+        assert planner.plannable_identity(row) is not None
+
+    def test_the_amf_wins_over_the_csv_colour_space(self, tmp_path: Path) -> None:
+        folder = self.folder(tmp_path)
+        rows = [("MELT0001_pl01", "MELT0001", "pl01")]
+        fixtures.make_meta_csv(folder / "metadata.csv", rows, input_color_space="Apple Log")
+        _, row = self.scanned(folder)
+        assert (row.source_encoding, row.source_encoding_origin) == (fixtures.SOURCE_ENCODING, "AMF")
+
+    def test_an_amf_naming_another_file_is_qc_075_info_and_ungraded(self, tmp_path: Path) -> None:
         folder = self.folder(tmp_path)
         path = self.amf(folder)
         path.write_text(path.read_text().replace("<aces:file>MELT0001_pl01<", "<aces:file>MELT0009_pl01<"))
         _, row = self.scanned(folder)
-        assert "QC-075" in rules(row) and row.grade is None
+        assert row.grade is None
+        assert [result.severity for result in row.qc if result.rule_id == "QC-075"] == ["info"]
+
+    def test_two_amfs_claiming_one_event_hold_it(self, tmp_path: Path) -> None:
+        """The tool cannot tell which grade is Ben's."""
+        folder = self.folder(tmp_path)
+        path = self.amf(folder)
+        stamp = path.name.rsplit("_", 1)[-1]
+        (folder / path.name.replace(stamp, "235959Z.amf")).write_text(path.read_text())
+        turnover, row = self.scanned(folder)
+        assert [result.rule_id for result in row.errors()] == ["QC-075"], turnover.qc
 
     def test_an_audio_only_event_does_not_shift_the_amfs(self, tmp_path: Path) -> None:
         """Turnover134 (2026-10-05): its EDL numbers audio-only events of its own and every
@@ -762,9 +788,9 @@ class TestTheAmf:
 
 
 class TestACutOutsideItsFile:
-    """QC-029 and QC-084 (user, 2026-10-07): a cut the file's own timecode puts outside it is
-    read by Resolve's clock, the CSV's `Start TC`, when that puts it inside (a warning), and
-    is an error said in timecode otherwise."""
+    """User, 2026-10-07: the timeline at face value. A cut the file's own timecode puts
+    outside it is read by Resolve's clock, the CSV's `Start TC`, with nothing said; when
+    neither fits, the frames the file has are rendered and QC-029 notes it."""
 
     def folder(self, tmp_path: Path, start_tc: str | None) -> Path:
         folder = fixtures.make_turnover(tmp_path / GOOD_FOLDER, shots=1, frames=4)
@@ -781,16 +807,19 @@ class TestACutOutsideItsFile:
         _, rows = scan.scan_turnover(folder, "t1", scan.ScanSettings(rules=fixtures.SMALL_RULES))
         return rows[0]
 
-    def test_resolve_s_clock_puts_it_inside_so_it_is_a_warning_and_cut_by_it(self, tmp_path: Path) -> None:
+    def test_resolve_s_clock_puts_it_inside_and_nothing_is_said(self, tmp_path: Path) -> None:
+        """Turnover134's mirror balls: probe noise from media management, not a fault."""
         row = self.scanned(self.folder(tmp_path, "00:59:50:00"))
         assert row.media is not None
-        assert "QC-084" in rules(row) and "QC-029" not in rules(row) and not row.errors()
+        assert not rules(row) & {"QC-029", "QC-084"} and not row.errors()
         assert row.current == InOut(row.media.start_frame, row.media.start_frame + 3)
-        (said,) = [result.message for result in row.qc if result.rule_id == "QC-084"]
-        assert "00:59:50:00 to 00:59:50:03" in said and "01:00:00:00 to 01:00:00:03" in said
 
-    def test_with_no_clock_that_fits_it_is_an_error_in_timecode(self, tmp_path: Path) -> None:
+    def test_with_no_clock_that_fits_it_renders_what_the_file_has_with_a_note(self, tmp_path: Path) -> None:
         row = self.scanned(self.folder(tmp_path, None))
+        assert row.media is not None and not row.errors()
         (said,) = [result for result in row.qc if result.rule_id == "QC-029"]
-        assert said.severity == "error"
-        assert "00:59:50:00 to 00:59:50:03" in said.message and "frames" not in said.message
+        assert said.severity == "info"
+        assert "00:59:50:00 to 00:59:50:03" in said.message
+        assert "rendered the 4 frames the file has" in said.message
+        assert row.current == InOut(row.media.start_frame, row.media.start_frame + 3)
+        assert planner.plannable_identity(row) is not None

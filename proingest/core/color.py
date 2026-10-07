@@ -59,6 +59,12 @@ PLATE_SPACE = "ACEScg"
 # `ShotRow.source_encoding` carries what the clip itself names, and a row that names
 # nothing is QC-046 rather than a row converted through a guess.
 
+DEFAULT_VIEW = ("Gamma 2.2 Rec.709 - Display", "ACES 2.0 - SDR 100 nits (Rec.709)")
+"""The display and view a reference is seen through when the clip's AMF gives none: no AMF
+(an ungraded clip, user 2026-10-07) or an output transform the config lacks (QC-079). What
+every AMF in turnovers 134 and 135 names (Output.Academy.Rec709-D65_100nit_in_Rec709-D65_
+Gamma2pt2), so it is Ben's session's own."""
+
 ACES = "ACES2065-1"
 """Where the AMF's looks are applied: the Reference Gamut Compress is defined there, and
 every one of Resolve's CLFs takes it in and gives it back."""

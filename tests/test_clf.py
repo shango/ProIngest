@@ -296,13 +296,16 @@ class TestApprovedInOut:
         assert approved is not None
         assert (approved.in_frame, approved.out_frame) == (1009, 1224)
 
-    def test_media_with_no_timecode_gives_nothing(self, tmp_path: Path) -> None:
-        """An origin guessed here would conform every row to the wrong frames."""
+    def test_media_with_no_timecode_counts_from_zero(self, tmp_path: Path) -> None:
+        """User, 2026-10-07: the timeline at face value. Resolve starts a file with no
+        timecode at 00:00:00:00, and the EDL's source In counts from there."""
         event = clf.read_final_edl(edl(tmp_path), RATE_24)[0]
         media = row().media
         assert media is not None
         blank = MediaInfo(**{**media.__dict__, "start_timecode": None})
-        assert clf.approved_in_out(event, blank) is None
+        cut = clf.approved_in_out(event, blank)
+        assert cut.in_frame == blank.start_frame + event.source_in
+        assert cut.duration == event.duration
 
 
 class TestSession:

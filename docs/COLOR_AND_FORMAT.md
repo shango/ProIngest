@@ -17,7 +17,7 @@ against. A turnover is now:
 | file | what the tool reads from it |
 |---|---|
 | the **EDL** | **the cut**: the approved In/Out of every event, and its retimes. Any `*ASC_SOP` / `*ASC_SAT` lines are **not read** |
-| the **metadata CSV** | **identity only**: `File Name`, `Shot`, `Shot Type`. `Gamma Notes`, `Color Space Notes` and `Input Color Space` are **not read** |
+| the **metadata CSV** | **identity**: `File Name`, `Shot`, `Shot Type`; and, **since 2026-10-07, `Input Color Space` for a clip no AMF grades** (below). `Gamma Notes` and `Color Space Notes` are not read |
 | **one AMF per EDL event**, from Ben's Resolve session | **the colour**: the input transform, the looks in order, and the output transform (`core/amf.py`) |
 | the **CLFs** each AMF names, beside it | the grade, one file per corrector node, checked against the md5 the AMF recorded |
 
@@ -29,9 +29,21 @@ rather than kept behind a switch.
 before the export's timestamp (`..._C4261_1_2026-09-28_180306Z.amf` is index 1), and it is the EDL
 event number less one, verified on all 15 of turnover097. The AMF carries no timecode, so that
 index is the only thing that tells two uses of one clip apart. The AMF must also **name the row's
-file**, as `<aces:file>` or as an `<aces:sequence>` pattern whose range covers it. No AMF for an
-event, two claiming one, an AMF that is not readable, or one that names another file is QC-075, an
-error; an AMF whose name carries no index is a QC-075 warning on the turnover and matches nothing.
+file**, as `<aces:file>` or as an `<aces:sequence>` pattern whose range covers it. Two AMFs
+claiming one event is QC-075, an error that holds that clip; an AMF that is not readable, or whose
+name carries no index, is a QC-075 warning on the turnover and matches nothing.
+
+**A clip with no AMF is ungraded** (user, 2026-10-07: "If there is no CLF, AMF or CDL, assume
+ungraded"): no AMF for its event, or the one at its index naming another file (QC-075 info). It is
+read as the CSV's `Input Color Space`, which Resolve writes for every clip (`Apple Log` in
+turnovers 134 and 135, a colour space the pinned config has by that name), converted to ACEScg
+through the input transform alone, and its references are seen through `color.DEFAULT_VIEW`, ACES
+2.0 SDR 100 nits (Rec.709) on a Gamma 2.2 Rec.709 display, the output transform every AMF in those
+turnovers names. QC-009 says "Clip ungraded in Resolve project". An AMF with no CLF and no CDL is
+ungraded the same way. **Only a clip with no AMF and no `Input Color Space` is held** (QC-046),
+because then nothing says what colour it is in; so is one whose AMF names a CLF that is missing or
+changed (QC-076), since that grade cannot be recreated. Turnover135, one AMF for its 18 clips,
+renders for the first time this way.
 
 **Every transform ID is resolved through the pinned config and nothing else.** The config lists,
 per colour space, look and view transform, the AMF transform IDs it implements
@@ -297,7 +309,7 @@ The session exports these, and since 2026-09-28 the tool uses them like this:
 |---|---|
 | the **updated final EDL** | the conform: timecode and the **approved In/Out** from Ben and the AD's trims. Any `*ASC_SOP` / `*ASC_SAT` lines in it are not read (2026-09-28). Supersedes the shooters' EDL entirely |
 | **one AMF per EDL event**, and the **CLFs** it names | **the whole of the colour**: input transform, looks in order, output transform (the section above) |
-| the **metadata CSV** | identity only: `File Name`, `Shot`, `Shot Type` |
+| the **metadata CSV** | identity: `File Name`, `Shot`, `Shot Type`; `Input Color Space` for a clip with no AMF (2026-10-07) |
 | the **stringout** | with the look and burn-ins. It is what the tool's own references should be checked against |
 
 *The table this replaced (2026-09-18) listed a 65 point `.cube` per shot from Generate LUT as the

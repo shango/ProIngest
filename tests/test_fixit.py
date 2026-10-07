@@ -39,18 +39,28 @@ class TestTheReport:
         report = only(batch)
         assert report.items == [] and report.blocked == 0
         page = fixit.render(batch, DAY)
-        assert fixit.NOTHING_TO_FIX in page and "Nothing blocking" in page
+        assert fixit.NOTHING_TO_FIX in page and "Nothing held back" in page
 
-    def test_missing_amfs_are_one_item_listing_each_clip_and_it_blocks(self, tmp_path: Path) -> None:
+    def test_a_clip_with_no_colour_at_all_is_one_item_and_it_holds_the_clip(self, tmp_path: Path) -> None:
+        """No AMF and no Input Color Space in the CSV: nothing says what colour it is in (QC-046)."""
         folder = turnover(tmp_path, shots=3)
         next(folder.glob("*_0_*.amf")).unlink()
         report = only(scanned(folder))
-        item = titled(report, fixit.ADVICE["QC-075"].title)
+        item = titled(report, fixit.ADVICE["QC-046"].title)
         assert item.blocks and item.advice.where == "resolve"
         assert [clip.name for clip in item.clips] == ["MELT0001_pl01"]
         assert item.clips[0].who == "MELT0001 plate"
-        assert report.blocked == 1 and fixit._status(report) == "1 of 3 clips blocked"
-        assert fixit.ADVICE["QC-046"].title not in {other.advice.title for other in report.items}
+        assert report.blocked == 1 and fixit._status(report) == "1 of 3 clips held back"
+
+    def test_a_clip_with_no_amf_but_a_colour_space_is_ungraded_not_an_item(self, tmp_path: Path) -> None:
+        """User, 2026-10-07: "If there is no CLF, AMF or CDL, assume ungraded". A note in the
+        QC log (QC-009), nothing for Ben to fix."""
+        folder = turnover(tmp_path, shots=3)
+        rows = [(f"MELT000{i}_pl01", f"MELT000{i}", "pl01") for i in (1, 2, 3)]
+        fixtures.make_meta_csv(folder / "metadata.csv", rows, input_color_space=fixtures.SOURCE_ENCODING)
+        next(folder.glob("*_0_*.amf")).unlink()
+        report = only(scanned(folder))
+        assert report.items == [] and report.blocked == 0
 
     def test_every_clip_is_listed_even_when_it_is_every_clip(self, tmp_path: Path) -> None:
         """User, 2026-10-07: "If it's every clip, list each clip in the fixit item." """
@@ -58,9 +68,9 @@ class TestTheReport:
         for path in folder.glob("*.amf"):
             path.unlink()
         report = only(scanned(folder))
-        item = titled(report, fixit.ADVICE["QC-075"].title)
+        item = titled(report, fixit.ADVICE["QC-046"].title)
         assert [clip.who for clip in item.clips] == ["MELT0001 plate", "MELT0002 plate", "MELT0003 plate"]
-        assert fixit._status(report) == "Every clip blocked"
+        assert fixit._status(report) == "Every clip held back"
 
     def test_a_clip_whose_shot_did_not_read_is_named_by_the_metadata(self) -> None:
         said = ShotRow(turnover_id="t1", clip_name="x.exr", csv_shot="SECA0009", csv_shot_type="HDRI")
@@ -109,10 +119,6 @@ class TestDetails:
         assert fixit._handles_detail(message) == (
             "no spare frames before the cut and only 3 spare frames after the cut"
         )
-
-    def test_seconds_are_rounded_and_frames_counted(self) -> None:
-        assert fixit._seconds(131, 24.0) == "about 5 seconds"
-        assert fixit._seconds(1, 24.0) == "1 frame"
 
     def test_the_fix_in_resolve_prefix_is_not_repeated(self) -> None:
         assert fixit._plain(models.FIX_IN_RESOLVE + "no AMF") == "no AMF"

@@ -30,7 +30,7 @@ from proingest.core import color, exr, ffmpeg, logsetup, naming, qc
 from proingest.core.settings import AppSettings
 from proingest.ui import paths
 
-Kind = Literal["int", "text", "bool", "resolution", "lines", "folder", "readonly", "choice"]
+Kind = Literal["int", "text", "resolution", "lines", "folder", "readonly", "choice"]
 """What a field is edited with. `lines` is a `key = value` per line block, which is how
 a small mapping is edited without a table widget and two buttons to maintain, and
 `choice` is a fixed list where a typo would otherwise mean an unreadable setting."""
@@ -143,13 +143,6 @@ def sections() -> tuple[Section, ...]:
                     "Expected resolution",
                     "resolution",
                     "What a source is expected to arrive at, as width x height.",
-                ),
-                Field(
-                    "rules.allow_non_4k",
-                    "Allow other resolutions",
-                    "bool",
-                    "Downgrades QC-023 from an error to a warning. Letterboxing a source "
-                    "that is not 16:9 is not built, so such a row is still resampled.",
                 ),
                 Field(
                     "rules.sync_tolerance_frames",
@@ -301,7 +294,6 @@ def to_values(app: AppSettings, rules: qc.RuleSettings) -> dict[str, Any]:
         "app.reference_crf": app.reference_crf,
         "app.exr_compression_level": app.exr_compression_level,
         "rules.target_resolution": tuple(rules.target_resolution),
-        "rules.allow_non_4k": rules.allow_non_4k,
     }
     for name in (
         "min_duration_frames",
@@ -345,7 +337,6 @@ def apply_values(
             values.get("rules.expected_handle_frames", current.expected_handle_frames)
         ),
         target_resolution=_pair(values.get("rules.target_resolution", current.target_resolution)),
-        allow_non_4k=bool(values.get("rules.allow_non_4k", current.allow_non_4k)),
         sync_tolerance_frames=int(values.get("rules.sync_tolerance_frames", current.sync_tolerance_frames)),
     )
     app.rules = applied.to_dict()

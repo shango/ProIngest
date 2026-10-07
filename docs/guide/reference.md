@@ -37,10 +37,12 @@ One sentence each, the same sentences the buttons themselves show when you hover
 "A run is going" - that is usually the whole answer, and it is the reason the
 toolbar shows everything from the first launch rather than hiding what cannot be used yet.
 
-**Run will not start while anything must be fixed.** It is not greyed for it: pressing it lists
-every must-fix - the red rows and headers - with where each one is. Correct them in the turnover
-folder, press Scan, and Run again. A skipped shot's problems do not count, because a skipped shot
-delivers nothing.
+**Run always runs every shot it can.** A red shot is held back on its own and stays unrendered
+until the problem is fixed and the turnover re-scanned: its media is missing or will not open, or
+its colour cannot be recreated (its CLF is missing, or nothing says what colour space it is in).
+Everything else renders. A shot with no grade from Ben renders ungraded, and the QC log says
+"Clip ungraded in Resolve project". The one thing that stops Run is a delivery folder that cannot
+take the delivery (not writable, or not enough space): a popup says so.
 
 **Scan is how a correction arrives.** The cut is read at scan from the `.edl` in the turnover
 folder, and the grade from each shot's `.amf` and its `.clf` files. When something is wrong - a
@@ -51,17 +53,7 @@ changed. A trim you never made follows the new EDL.
 
 **Right-click a turnover's header** for the same thing on one turnover (**Re-scan**), or for
 **New Folder Location...** when the folder has moved. A batch reopened after its turnover moved
-says so on that header (QC-069) and will not run until you point it at the new folder.
-
-**Accept As Is (Ignore QC)**, on the same right-click menu, is a tick box for a turnover you have
-decided to deliver as it came. Its errors no longer stop Run, and the shots render as they are:
-a clip outside the length limits, or one that is not 4K. (A shot with no grade does not need
-it: that is only a note, QC-009.) The errors are still shown, the heading says
-QC-074, and the QC log and saved logs record that the turnover was accepted. Every shot that can
-render does, whatever its errors. Only a shot with nothing to render, or no way to colour it, stays
-back: media the tool cannot find, open or decode, a cut outside the file, missing sound, or a clip
-with no AMF, no input colour space or a missing CLF. It holds back no other shot, and the saved
-log names it as "not rendered". Untick it to put QC back in charge.
+says so on that header (QC-069), and its shots wait until you point it at the new folder.
 
 **While a scan or a run is going the batch is locked.** Nothing in the list can be edited, and
 New, Open, Settings and the delivery root wait until it ends, because a change made under a run
@@ -106,7 +98,7 @@ so a row can still be identified while reading a column at the far right of it.
 |---|---|
 | grey | nothing wrong, nothing delivered yet |
 | amber | a warning, and the row is tinted faintly |
-| red | must fix: nothing in the batch runs until it is fixed and re-scanned |
+| red | held back: this shot will not render until it is fixed and re-scanned. Nothing else waits for it |
 | hollow | you skipped it |
 | accent | rendering now |
 | green | delivered |

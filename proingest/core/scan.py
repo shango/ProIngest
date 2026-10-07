@@ -282,6 +282,9 @@ def _build_row(
             _probe_into(row, item, cache, settings.project_rate)
 
     row.scene = entry.scene
+    if entry.input_color_space:
+        # What an ungraded clip is read as; its AMF, when one grades it, says instead (QC-009).
+        row.source_encoding, row.source_encoding_origin = entry.input_color_space, "CSV"
     return row
 
 
@@ -526,8 +529,9 @@ def _conform_by_use(rows: list[ShotRow], events: list[clf.ConformEvent], grades:
 
 
 def _refuse_retimes(rows: list[ShotRow], events: list[clf.ConformEvent], rate: FrameRate) -> None:
-    """QC-073: a clip the EDL retimes or reverses. Only a freeze is rendered (OQ-63): any
-    other speed means the frames shown are not the frames in the range, silently."""
+    """QC-073: a clip the EDL retimes or reverses, a warning. Only a freeze is rendered as
+    cut (OQ-63); any other speed renders the range at normal speed, and Ben sees the retime
+    on his timeline (user, 2026-10-07: never a block)."""
     for event in events:
         if not event.clip_name or not event.retimed(rate):
             continue
@@ -536,10 +540,10 @@ def _refuse_retimes(rows: list[ShotRow], events: list[clf.ConformEvent], rate: F
                 row.qc.append(
                     QCResult(
                         "QC-073",
-                        "error",
+                        "warning",
                         "row",
                         f"EDL event {event.event_id} plays {row.clip_name} at {event.speed:g} fps; "
-                        f"the tool renders a freeze but not a retime or a reversal",
+                        f"the tool renders its range at normal speed",
                     )
                 )
 
@@ -604,13 +608,12 @@ def _conform(row: ShotRow, event: clf.ConformEvent, grades: _Grades) -> None:
             # shown as it is; no check runs on either (user, 2026-10-07), so what is wrong
             # with its AMF goes unsaid.
             del row.qc[before:]
-    approved = clf.approved_in_out(event, row.media) if row.media else None
-    if approved is None:
-        _whole_media(row)
-        return
     media = row.media
+    if media is None:
+        return
+    approved = clf.approved_in_out(event, media)
     unchecked = qc.is_hdri(row) or qc.is_style_frame(row)
-    if media is not None and not unchecked and not _fits(approved, media):
+    if not unchecked and not _fits(approved, media):
         approved = _outside(row, event, media, approved)
     row.approved = approved
     row.snapshot = approved
@@ -622,29 +625,36 @@ def _fits(cut: InOut, media: MediaInfo) -> bool:
 
 
 def _outside(row: ShotRow, event: clf.ConformEvent, media: MediaInfo, cut: InOut) -> InOut:
-    """A cut the file's own timecode puts outside it. Read by Resolve's clock instead, the
-    CSV's `Start TC`, when that puts it inside: Resolve's media management can leave a file
-    whose timecode is not the one Resolve shows for it (turnover134's mirror balls), and
-    the EDL counts from Resolve's (QC-084, a warning, user 2026-10-07). Otherwise QC-029."""
+    """A cut the file's own timecode puts outside it, taken at face value (user, 2026-10-07:
+    "take the timeline at face value"; Ben sees any gap on his timeline).
+
+    The EDL counts in Resolve's clock, which is the file's own timecode (Turnover199) or,
+    after Resolve's media management, the CSV's `Start TC` (turnover134's mirror balls). So
+    the file's is tried first and Resolve's second, with nothing said. When neither puts the
+    cut inside the file, the frames the file has are rendered and QC-029 notes it.
+    """
     rate = (media.stated_rate or media.rate).as_float()
     said = media.start_timecode or 0
-    own, edl = _span(said, media.frame_count, rate), _span(event.source_in, event.duration, rate)
     resolve = _resolve_start(row, rate)
     if resolve is not None and resolve != said:
         moved = clf.approved_in_out(event, replace(media, start_timecode=resolve))
-        if moved is not None and _fits(moved, media):
-            row.qc.append(
-                QCResult(
-                    "QC-084",
-                    "warning",
-                    "row",
-                    f"the EDL cuts {edl}; {row.clip_name}'s own timecode runs {own}, but Resolve starts "
-                    f"it at {row.resolve_start_tc} (the CSV's Start TC), so the cut is read by Resolve's",
-                )
-            )
+        if _fits(moved, media):
             return moved
-    row.qc.append(QCResult("QC-029", "error", "row", f"the EDL cuts {edl}, but {row.clip_name} runs {own}"))
-    return cut
+    first, last = media.start_frame, media.max_available_out
+    kept = InOut(max(cut.in_frame, first), min(cut.out_frame, last))
+    if kept.in_frame > kept.out_frame:
+        kept = InOut(first, min(first + cut.duration - 1, last))
+    own, edl = _span(said, media.frame_count, rate), _span(event.source_in, event.duration, rate)
+    row.qc.append(
+        QCResult(
+            "QC-029",
+            "info",
+            "row",
+            f"the EDL cuts {edl}, but {row.clip_name} runs {own}; rendered the {kept.duration} "
+            "frames the file has",
+        )
+    )
+    return kept
 
 
 def _span(first: int, count: int, rate: float) -> str:
@@ -739,7 +749,8 @@ def _attach_audio(row: ShotRow, index: media_module.DirectoryIndex, settings: Sc
     try:
         row.audio = media_module.probe_audio(row.audio_path)
     except (ffmpeg.FFprobeError, ffmpeg.FFmpegNotFound) as exc:
-        row.qc.append(QCResult("QC-042", "error", "row", f"audio unreadable: {exc}"))
+        row.qc.append(QCResult("QC-042", "warning", "row", f"audio unreadable, so none is delivered: {exc}"))
+        row.audio_path = None
 
 
 TURNOVER_ID_PATTERN = re.compile(r"t(\d+)")
@@ -797,8 +808,8 @@ def carry_over(old: Turnover, old_rows: list[ShotRow], new: Turnover, new_rows: 
     editor's: a trim, but only one the editor made, so an EDL that moved the cut is not
     overridden by the cut it replaced; the shot code correction, the skip and its reason,
     the notes, the delivered state, and the mark Re-scan puts on a row for the next Run,
-    since that mark is set just before this rescan (user, 2026-09-25). The turnover keeps its stringout
-    and its Accept As Is (QC-074, user 2026-09-28). Everything else is the new scan's.
+    since that mark is set just before this rescan (user, 2026-09-25). The turnover keeps its stringout.
+    Everything else is the new scan's.
 
     A changed EDL or CSV is a warning on the turnover, QC-070: the edits carried over
     were made against the old one.
@@ -820,7 +831,6 @@ def carry_over(old: Turnover, old_rows: list[ShotRow], new: Turnover, new_rows: 
         row.delivered_range = before.delivered_range
         row.rerun = before.rerun
     new.stringout = old.stringout
-    qc.set_qc_bypassed(new, old.qc_bypassed)
     changed = [
         name
         for name, was, now in (
@@ -863,7 +873,7 @@ class _Grades:
             try:
                 found = amf.read(path)
             except amf.AmfError as exc:
-                grades.qc.append(QCResult("QC-075", "error", "turnover", str(exc)))
+                grades.qc.append(QCResult("QC-075", "warning", "turnover", f"{exc}; ignored"))
                 continue
             if found.index is None:
                 grades.qc.append(
@@ -885,16 +895,17 @@ class _Grades:
         if not any(item.names(row.clip_name) for item in found):
             named = [item for items in self.by_index.values() for item in items if item.names(row.clip_name)]
             found = named if len(named) == 1 else found
-        if len(found) != 1:
+        if not found:
+            return  # ungraded in Resolve (user, 2026-10-07): QC-009 says so
+        if len(found) > 1:
             names = ", ".join(item.path.name for item in found)
-            why = f"two or more AMFs claim it ({names})" if found else "no AMF in the folder grades it"
             row.qc.append(
                 QCResult(
                     "QC-075",
                     "error",
                     "row",
-                    f"EDL event {event.event_id} ({row.clip_name}): {why}, so nothing names its input "
-                    "transform or its grade",
+                    f"EDL event {event.event_id} ({row.clip_name}): two or more AMFs claim it ({names}), "
+                    "so the tool cannot tell which grade is Ben's",
                 )
             )
             return
@@ -903,10 +914,10 @@ class _Grades:
             row.qc.append(
                 QCResult(
                     "QC-075",
-                    "error",
+                    "info",
                     "row",
                     f"{match.path.name} grades video clip {event.position + 1} of the EDL (event "
-                    f"{event.event_id}) but names {match.clip_file}, not {row.clip_name}",
+                    f"{event.event_id}) but names {match.clip_file}, not {row.clip_name}; read as ungraded",
                 )
             )
             return
@@ -959,10 +970,10 @@ def _grade_of(found: amf.Amf, folder: Path) -> tuple[Grade, list[QCResult]]:
         findings.append(
             QCResult(
                 "QC-079",
-                "error",
+                "warning",
                 "row",
                 f"{found.path.name}: the output transform is for {shown[0]}, which an 8 bit Rec.709 "
-                "reference cannot be labelled for",
+                f"reference cannot be labelled for; the references use {color.DEFAULT_VIEW[1]}",
             )
         )
         shown = None
@@ -970,10 +981,10 @@ def _grade_of(found: amf.Amf, folder: Path) -> tuple[Grade, list[QCResult]]:
         findings.append(
             QCResult(
                 "QC-079",
-                "error",
+                "warning",
                 "row",
                 f"{found.path.name}: the output transform {found.output_transform or '(none)'} is not one "
-                f"{color.BUILTIN_CONFIG} has, so the references cannot be viewed as the session was",
+                f"{color.BUILTIN_CONFIG} has; the references use {color.DEFAULT_VIEW[1]}",
             )
         )
     if found.preset.casefold() == amf.DAILIES_PRESET.casefold():

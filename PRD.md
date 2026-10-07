@@ -113,7 +113,7 @@ FR-5 Editing
 - **The list owns every edit.** There is no second surface that writes to a row: no viewers, no colour controls, no editable metadata pane.
 
 FR-6 Validation (pre-flight)
-All rules in `docs/QC_RULES.md` with prefix `QC-0xx`. **Two tiers since 2026-09-23 (D8, D9)**: an error is must-fix, and any must-fix in the batch stops the run until the folder is corrected and re-scanned; a skipped row's errors do not count. Warnings and info never block.
+All rules in `docs/QC_RULES.md` with prefix `QC-0xx`. **Since 2026-10-07 (user) nothing prevents rendering a batch or a turnover**: an error holds its own shot back until it is fixed and re-scanned (missing media, or colour the tool cannot recreate) and every other shot renders. Only a delivery root that cannot take the delivery stops a run, with a popup. Warnings and info never block, and every finding is written in words to the QC log's Issues sheet. The cut is the EDL's, taken at face value. (From 2026-09-23 to 2026-10-07 any must-fix stopped the run.)
 
 FR-7 Render
 - Per row, generate a plan of deliverable jobs from the clip type table in `docs/NAMING_SPEC.md`.

@@ -46,6 +46,9 @@ SHOT_TYPE_COLUMN = "Shot Type"
 SCENE_COLUMN = "Scene"
 TAKE_COLUMN = "Take"
 """The clip's take, burned into the stringout after its label when above 1 (user, 2026-10-07)."""
+INPUT_COLOR_SPACE_COLUMN = "Input Color Space"
+"""Resolve's input colour space for the clip, `Apple Log` in turnovers 134 and 135. Read only
+for a clip no AMF grades, which renders ungraded from it (QC-009, user 2026-10-07)."""
 START_TC_COLUMN = "Start TC"
 """Where the clip starts as Resolve has it, which the EDL's source timecodes count from.
 After media management it can differ from the file's own (QC-084, user 2026-10-07)."""
@@ -76,6 +79,7 @@ class MetaRow:
     qc: tuple[QCResult, ...] = ()
     start_tc: str = ""
     take: str = ""
+    input_color_space: str = ""
     hdri: bool = False
     """An HDRI (QC-080): the tool copies its EXR as it is and runs no row rule on it, and
     the stringout shows Ben's pre-render of its timeline event (user, 2026-10-07)."""
@@ -233,6 +237,7 @@ def read(path: Path, show_pattern: str = naming.DEFAULT_SHOW_PATTERN) -> MetaCsv
     scene_positions = _columns(header, SCENE_COLUMN)
     start_positions = _columns(header, START_TC_COLUMN)
     take_positions = _columns(header, TAKE_COLUMN)
+    space_positions = _columns(header, INPUT_COLOR_SPACE_COLUMN)
 
     result = MetaCsv(path=path)
     for record in records[1:]:
@@ -264,6 +269,7 @@ def read(path: Path, show_pattern: str = naming.DEFAULT_SHOW_PATTERN) -> MetaCsv
                 scene=scene,
                 start_tc=_value(record, start_positions),
                 take=_value(record, take_positions),
+                input_color_space=_value(record, space_positions),
                 qc=tuple(type_qc + _row_qc(file_name, shot, shot_type, kind, show_pattern)),
             )
         )

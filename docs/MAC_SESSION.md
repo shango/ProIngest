@@ -55,6 +55,14 @@ chunk 7 of `docs/TO_A_WORKING_BUILD.md`, in the order that wastes least.
       in. Open `SECA0009_pl01_ref_HD_v01.mp4` beside Ben's own Resolve playback of the same frame:
       the brightness and colour should match. The tool applies the CDL in ACEScg, unclamped, as
       the AMF states; CI proves the maths, only Ben's screen says it is what Resolve does.
+- [ ] **The QC overhaul (2026-10-07, 0.5.33).** Scan turnover135: only the four SECA0012
+      reference stills are red (their files are not in the folder); the camera clips are not.
+      Press Run: no must-fix dialog, the red rows stay unrendered, everything else renders, and the
+      SECA0012/13/14 plates look like ungraded Apple Log brought to Rec.709 (no grade, nothing
+      clipped). Open the QC log: the Issues sheet says "Clip ungraded in Resolve project" on those
+      plates and "held this shot back" on the four stills. Point the delivery root at a read-only
+      folder and Run: a popup, "The run cannot start", and nothing renders. Right-click a heading:
+      no Accept As Is.
 - [ ] **Style frames and the stringout line (2026-10-07, 0.5.32).** Once Ben sends a turnover
       with a `styleFrame` PNG or JPG before a plate, build its stringout: the frame holds for its
       EDL length before the plate, looks as it does in Preview (no grade, no colour shift), and
@@ -423,7 +431,7 @@ Treat it as a working session with the editor rather than a delivery.
   Resolve playback of the same clip and say whether the grade and the gamma 2.2 display match.
   `ffprobe` should report the reference's `color_transfer` as `bt470m` (gamma 2.2); say whether
   QuickTime shows it the same as Resolve's viewer, since that is what the label is for.
-- [ ] **Accept As Is (2026-09-28, 0.5.9).** Right-click a turnover heading with a must-fix (a
+- [x] **Accept As Is (2026-09-28, 0.5.9). Withdrawn 2026-10-07: Accept As Is is gone (OQ-83).** Right-click a turnover heading with a must-fix (a
   clip outside the length limits is the easy one): the menu has a tick box, Accept As Is (Ignore
   QC). Tick it: the heading shows QC-074, Run starts, and that shot renders at its trimmed length.
   Give another shot a hold-back error (move a clip away, QC-012): it is not rendered and the batch

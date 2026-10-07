@@ -56,12 +56,12 @@ behind it is `COLOR_AND_FORMAT.md` section 1 and `PRD.md`.
 | # | step | output |
 |---|---|---|
 | 16 | Scan the turnover: **the folder, Ben's EDL, Ben's CSV and his AMFs**. Identity from `Shot` + `Shot Type`, media matched by `File Name`. | the shot list |
-| 17 | Run pre-flight checks on every row. A **must-fix** blocks the run until the user drops the correction into the folder and re-scans; an **info** is shown and never blocks (2026-09-23, `REVIEW_2026-09-23.md` section 4). | QC-0xx results |
+| 17 | Run pre-flight checks on every row. An **error** holds that one shot back until the correction is in the folder and re-scanned, and the rest render; a **warning** or **info** is shown, logged and never blocks. Only a delivery root that cannot take the delivery stops the run (user, 2026-10-07). | QC-0xx results |
 | 18 | Read the EDL for the approved In/Out per event. **An event belongs to the row whose file's timecode range contains its source range**: Ben's real EDL carries no `FROM CLIP NAME` and reels every event `AX` (2026-09-23). The plate is **the cut only**, no handles. Then **each event's AMF**, found by the timeline index in its file name (event number less one, verified on all 15 of turnover097) and required to name the row's file; its input transform, looks and output transform are resolved through the pinned OCIO config's own AMF IDs, and each CLF it names is checked against the md5 the AMF recorded. | the conform and the grade, or QC-066, QC-075 to QC-079, QC-008; QC-009 (info) for a clip Ben left ungraded |
 | 19 | Let the editor make the occasional one-off trim not worth a trip back to Resolve. | QC-045 on any row that moved |
 | 20 | Convert each clip into ACES2065-1 through its AMF's input transform, apply the AMF's looks in order (the Reference Gamut Compress, then each CLF), convert to ACEScg, write the plates. | 4k and HD EXR, ACEScg, DWAA 45, frames from 1001 (OQ-35) |
 | 21 | Bake that chain plus **the AMF's output transform** into one LUT and encode the references through it (turnover097: Gamma 2.2 Rec.709, not sRGB). | 4k and HD H.264 mp4 |
-| 22 | Deliver the single-frame reference stills, **converted but never graded**, each at **its EDL event's frame**. A still with no event is a must-fix, never a guess. | `<shot>_colorChart_01_4k_v01.exr` and the rest, keyed to the **shot code**, not to an element |
+| 22 | Deliver the single-frame reference stills, **converted but never graded**, each at **its EDL event's frame**. A still with no event is an error that holds that still, never a guess. | `<shot>_colorChart_01_4k_v01.exr` and the rest, keyed to the **shot code**, not to an element |
 | 23 | Deliver the audio of each plate row, renamed to spec, **trimmed to the same event as the picture and retimed by 1000/1001 so it follows the 24 fps video** (2026-09-23). Its contents are not judged. | wav |
 | 24 | **Build the stringout** (OQ-38, PRD FR-9): Ben's final EDL as one HD mp4, cut from the delivered EXRs (an HDRI from its pre-render), the HD reference, the source through its AMF, or black standing in, everything graded but a style frame (shown as it is), with the burn-ins of `burn-ins.png`. At the end of a Run and from Build Stringout on a turnover heading or its stringout line, which shows its progress and a green or red ball. | `turnover###_MM_DD_YYYY_<shooter>_SO_v##.mp4` in `<show>/_reports/` |
 | 25 | Verify every deliverable **under its temp name**, and rename only when it passes. A failure leaves nothing that looks finished: the row is marked failed, naming the output and why, and the user fixes the cause and **resets the row** to re-run it (2026-09-23). | QC-1xx results |
@@ -96,8 +96,8 @@ writes is either a deliverable named from the spec or a report about one.
    no field for one, and the reader takes the rate as an argument - and the `.drt` that could have
    stated it is not read. **Every source is treated as, and rendered at, 24, frame for frame**
    (user, 2026-09-23). A file stating 24000/1001 is the shooters' normal conform and is silent;
-   **any other rate, 25 or 30, is a QC-026 must-fix and the batch does not run** until it is
-   fixed. The rate is a constant today, not a setting.
+   **any other rate, 25 or 30, is a QC-026 warning** and the clip still renders at 24 (user,
+   2026-10-07; a must-fix until then). The rate is a constant today, not a setting.
 6. **Identity is metadata, never a filename.** Camera filenames are delivered unchanged. Nothing
    parses a filename to learn what a clip is.
 6a. **`Shot Type` is the whole of the tool's scope** (user, 2026-09-22). A CSV row that carries a
@@ -106,9 +106,9 @@ writes is either a deliverable named from the spec or a report about one.
    track, a filename or a Resolve VFX flag. Everything in the turnover that is not a `Shot Type`
    row - HDRI, camData, BTS, the lens grid - is delivered by hand or by Ben, and
    the tool does not touch it. The one exception is a plate's **audio**, which has no row of its
-   own and rides along with its `pl` row. **A `Shot Type` the tool does not recognise is a
-   must-fix warning** and gets no deliverables (user, 2026-09-23); so is the same shot code, type
-   and index on two rows. `BTS` and `lensgrid` are ignored when they carry no `Shot Type`.
+   own and rides along with its `pl` row. **A `Shot Type` the tool does not recognise is an
+   error that holds that row** and gets no deliverables (user, 2026-09-23); so is the same shot code,
+   type and index on two rows. `BTS` and `lensgrid` are ignored when they carry no `Shot Type`.
 7. **A trim does not disturb the grade.** The AMF's looks are one static transform for the whole shot, so
    moving In or Out carries it unchanged. Extending into the handles applies the approved grade to
    frames Ben never saw, which is why step 19 is for one-offs.

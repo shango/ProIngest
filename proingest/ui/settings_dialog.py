@@ -23,7 +23,6 @@ from typing import Any
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QCheckBox,
     QComboBox,
     QDialog,
     QDialogButtonBox,
@@ -143,10 +142,6 @@ class SettingsDialog(QDialog):
             spin.setRange(field.minimum, field.maximum)
             spin.setValue(int(value or 0))
             widget = spin
-        elif field.kind == "bool":
-            check = QCheckBox(self)
-            check.setChecked(bool(value))
-            widget = check
         elif field.kind == "resolution":
             width, height = value if value else (0, 0)
             edit = QLineEdit(f"{width}x{height}", self)
@@ -232,8 +227,6 @@ def _read(field: settings_form.Field, widget: QWidget) -> Any:
     """One editor's value, or None when it holds nothing this field can use."""
     if isinstance(widget, QSpinBox):
         return widget.value()
-    if isinstance(widget, QCheckBox):
-        return widget.isChecked()
     if isinstance(widget, QComboBox):
         return widget.currentText()
     if isinstance(widget, QPlainTextEdit):

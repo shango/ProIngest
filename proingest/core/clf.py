@@ -257,26 +257,26 @@ def shot_color(row: ShotRow) -> ShotColor:
     scan put on the row out of its AMF.
     """
     grade = row.grade
+    shown = (grade.display, grade.view) if grade is not None and grade.display and grade.view else None
+    display, view = shown or color.DEFAULT_VIEW
     return ShotColor(
         source_encoding=resolved_encoding(row),
         source_encoding_origin=row.source_encoding_origin,
         looks=grade.looks if grade is not None else (),
         amf=grade.amf.name if grade is not None else "",
-        display=grade.display if grade is not None else None,
-        view=grade.view if grade is not None else None,
+        display=display,
+        view=view,
     )
 
 
-def approved_in_out(event: ConformEvent, media: MediaInfo) -> InOut | None:
-    """The event's source range as frame indices into this media.
+def approved_in_out(event: ConformEvent, media: MediaInfo) -> InOut:
+    """The event's source range as frame indices into this media, at face value.
 
-    None when the media states no start timecode, because then an EDL's source timecode
-    says nothing about which frames it means. The caller reports that; guessing an
-    origin here would silently conform every row to the wrong frames.
+    A file with no timecode is counted from 00:00:00:00, which is where Resolve starts one
+    and what the EDL's source In counts from (turnover097's events 008 and 015). QC-028 says
+    the file has none; the cut is taken as the timeline has it (user, 2026-10-07).
     """
-    if media.start_timecode is None:
-        return None
-    start = media.start_frame + (event.source_in - media.start_timecode)
+    start = media.start_frame + (event.source_in - (media.start_timecode or 0))
     return InOut(start, start + event.duration - 1)
 
 
