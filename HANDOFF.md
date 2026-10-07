@@ -60,6 +60,11 @@ recreate the colors." `docs/QC_RULES.md`'s opening section is the authority; in 
 
 ## Verified on the samples (0.5.33)
 
+**The user replaced both turnover folders in the repo root at the end of the session, to test
+next.** Everything below, and every sample fact under Open (turnover135's missing SECA0012 stills,
+turnover134's HDRI EXRs with no Shot Type), describes the old copies. Scan the new ones first
+and say what changed.
+
 - **Turnover134** scans with nothing held; its mirror balls are cut by Resolve's clock with
   nothing said.
 - **Turnover135, which could not run before, now plans 38 jobs.** Only its four SECA0012
