@@ -86,17 +86,36 @@ class TestPlan:
         assert plate.exr is None and plate.path is not None and plate.path.name.endswith("_ref_HD_v01.mp4")
         assert plate.audio and plate.wav is None, "its sound comes with the reference"
 
-    def test_a_still_is_cut_from_its_delivered_exr(self, batch: Batch) -> None:
-        """A reference still's one 4k EXR, shown as delivered, held for a second."""
+    def test_a_held_reference_clip_is_cut_from_its_delivered_exr(self, batch: Batch) -> None:
+        """Held (an `M2` freeze), a chart is its one delivered EXR frame, graded, for a second."""
+        edl = batch.turnovers[0].edl_path
+        assert edl is not None
+        lines = edl.read_text().splitlines()
+        second = next(i for i, line in enumerate(lines) if line.startswith("002"))
+        lines.insert(second + 1, "M2   AX             000.0                00:00:00:00")
+        edl.write_text("\n".join(lines) + "\n")
+        row = batch.rows[1]
+        row.identity = naming.ShotIdentity("MELT0002", "colorChart", "01")
+        frame = next(item.path for item in row.deliverables if item.kind == "raw_dir" and item.res == "HD")
+        still = sorted(frame.glob("*.exr"))[0]
+        row.deliverables = [Deliverable("aux_still", still.name, still, 1, "4k", status="done")]
+        try:
+            segment = planned(batch).segments[1]
+        finally:
+            del lines[second + 1]
+            edl.write_text("\n".join(lines) + "\n")
+        assert segment.exr is not None and segment.exr.source == still
+        assert segment.exr.color.source_encoding == "ACEScg" and segment.exr.color.looks, "graded"
+        assert (segment.start, segment.freeze, segment.length) == (0, True, stringout.STILL_LENGTH)
+
+    def test_a_playing_reference_clip_is_not_cut_from_its_one_exr_frame(self, batch: Batch) -> None:
         row = batch.rows[1]
         row.identity = naming.ShotIdentity("MELT0002", "colorChart", "01")
         frame = next(item.path for item in row.deliverables if item.kind == "raw_dir" and item.res == "HD")
         still = sorted(frame.glob("*.exr"))[0]
         row.deliverables = [Deliverable("aux_still", still.name, still, 1, "4k", status="done")]
         segment = planned(batch).segments[1]
-        assert segment.exr is not None and segment.exr.source == still
-        assert segment.exr.color.source_encoding == "ACEScg" and segment.exr.color.looks, "graded"
-        assert (segment.start, segment.freeze, segment.length) == (0, True, stringout.STILL_LENGTH)
+        assert segment.exr is None and segment.kind == "source" and segment.length == FRAMES
 
     def test_an_exr_is_seen_through_its_output_transform_on_the_hd_canvas(self, batch: Batch) -> None:
         segment = planned(batch).segments[0]
@@ -313,9 +332,9 @@ class TestInsets:
         assert not any(red_at(frame, 100, 60) for frame in frames), "only inside the inset"
 
 
-class TestReferenceStills:
-    """A chart, ball or size ref: one frame of a video, held for a second and coloured through
-    its AMF on the stringout (user, 2026-09-29)."""
+class TestReferenceClips:
+    """A chart, ball or size ref is a video on the timeline: its event plays its cut at full
+    speed, graded through its AMF (user, 2026-10-07). It is delivered as one EXR frame."""
 
     @staticmethod
     def as_chart(batch: Batch) -> None:
@@ -323,12 +342,12 @@ class TestReferenceStills:
         batch.rows[1].identity = naming.ShotIdentity("MELT0002", "colorChart", "01")
         batch.rows[1].deliverables = []
 
-    def test_a_still_holds_its_frame_for_one_second_through_its_amf(self, batch: Batch) -> None:
+    def test_a_reference_clip_plays_its_cut_through_its_amf(self, batch: Batch) -> None:
         self.as_chart(batch)
-        still = planned(batch).segments[1]
-        assert (still.kind, still.length, still.freeze) == ("source", stringout.STILL_LENGTH, True)
-        assert still.color is not None and still.color.display is not None
-        assert planned(batch).total == FRAMES + stringout.STILL_LENGTH
+        clip = planned(batch).segments[1]
+        assert (clip.kind, clip.length, clip.freeze) == ("source", FRAMES, False)
+        assert clip.color is not None and clip.color.looks, "graded"
+        assert planned(batch).total == 2 * FRAMES
 
     def test_its_colour_is_baked_as_a_reference_is(self, batch: Batch, tmp_path: Path) -> None:
         self.as_chart(batch)
@@ -345,8 +364,8 @@ class TestReferenceStills:
         event = scan.read_session(batch.turnovers[0], batch.project_rate).events[1]
         plate = batch.rows[1].identity
         assert plate is not None and plate.kind == "pl"
-        assert stringout._held(event, InOut(1001, 1001), plate)
-        assert not stringout._held(event, InOut(1001, 1011), plate)
+        assert stringout._held(event, InOut(1001, 1001))
+        assert not stringout._held(event, InOut(1001, 1011))
 
     def test_a_plate_is_not_held(self, batch: Batch) -> None:
         batch.rows[1].skipped = True

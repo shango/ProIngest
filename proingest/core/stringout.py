@@ -20,11 +20,13 @@ ffmpeg. The user's decisions, all in OQ-38:
   `Frame:` bottom left, `Primary Effect:` (the CSV's `Scene`) bottom centre, and the
   shot and element bottom right. White, Open Sans, no box. No camera timecode: the
   counter is the delivered frame number, 1001 on the frame the plate starts with.
-- **Any held frame plays for one second** (user, 2026-09-29): a reference still (a chart,
-  ball or size ref is one frame of a video), a frame hold, a one frame cut. **Except a held
-  HDRI, which keeps the EDL's length** (user, 2026-09-30). Taken from the
-  source, it is **coloured through its AMF** (input transform, CLF nodes, output transform)
-  the way Resolve shows it; a still's delivered EXR stays ungraded.
+- **A reference clip plays** (user, 2026-10-07): a chart, ball or size ref is a video on the
+  timeline, so its event plays its cut at full speed, graded, from the source (its delivery is
+  one EXR frame, which cannot play). It was held for a second until then.
+- **Any held frame plays for one second** (user, 2026-09-29): a frame hold or a one frame cut,
+  a reference clip's from its delivered EXR. **Except a held HDRI, which keeps the EDL's
+  length** (user, 2026-09-30). Taken from the source, it is **coloured through its AMF**
+  (input transform, CLF nodes, output transform) the way Resolve shows it.
 - **An HDRI on the timeline is a frame hold on the HDRI EXR with a pan** (user, 2026-10-07),
   which no EDL carries. Ben renders the event, pan included, beside the EXR under its name as
   a video (`xxxx_001.mp4` beside `xxxx_001.exr`), in sRGB Linear and ungraded. **The event
@@ -297,16 +299,16 @@ def _segment(
             label=name,
         )
 
-    exr = next((row for row in claimed if _exr(row, cut) is not None), None)
+    exr = next((row for row in claimed if _exr(row, cut, event) is not None), None)
     delivering = exr or next((row for row in claimed if _reference(row, cut) is not None), None)
     row = delivering or next((row for row in claimed if row.approved == cut), known)
     identity = effective_identity(row, show_pattern)
     label = naming.shot_label(identity) if identity is not None else Path(row.clip_name).stem
-    held = _held(event, cut, identity)
+    held = _held(event, cut)
     # A held HDRI keeps the EDL's length (user, 2026-09-30); every other held frame is a second.
     shown = STILL_LENGTH if held and not qc.is_hdri(row) else length
     if exr is not None and exr.delivered_range is not None:
-        view = _exr(exr, cut)
+        view = _exr(exr, cut, event)
         assert view is not None
         still = identity is not None and identity.is_still
         offset = 0 if still else cut.in_frame - exr.delivered_range.in_frame
@@ -415,22 +417,22 @@ def _cut(event: clf.ConformEvent, source: MediaInfo) -> InOut:
     return InOut(start, start + event.duration - 1)
 
 
-def _held(event: clf.ConformEvent, cut: InOut, identity: naming.ShotIdentity | None) -> bool:
-    """One frame on screen: a reference still, a frame hold, or a one frame cut of a video.
-    Each plays for `STILL_LENGTH` on the stringout (user, 2026-09-29)."""
-    return event.freeze or cut.duration == 1 or (identity is not None and identity.is_still)
+def _held(event: clf.ConformEvent, cut: InOut) -> bool:
+    """One frame on screen: a frame hold, or a one frame cut. Each plays for `STILL_LENGTH`
+    on the stringout (user, 2026-09-29). A reference clip plays its cut (user, 2026-10-07)."""
+    return event.freeze or cut.duration == 1
 
 
-def _exr(row: ShotRow, cut: InOut) -> ExrView | None:
+def _exr(row: ShotRow, cut: InOut, event: clf.ConformEvent) -> ExrView | None:
     """The row's delivered EXR and the chain it is seen through: its HD sequence when that
-    holds the cut, which is graded already, or a still's one frame, which takes its clip's
-    looks. None without an output transform to see it through, which leaves the event to its
-    reference."""
+    holds the cut, which is graded already, or a reference clip's one frame, which takes its
+    clip's looks, when the event holds one frame. None without an output transform to see it
+    through, or for a reference clip that plays, which leaves the event to its source."""
     shot = clf.shot_color(row)
     if row.skipped or row.identity is None or row.delivered_range is None or not (shot.display and shot.view):
         return None
     if row.identity.is_still:
-        path = _landed(row, "aux_still")
+        path = _landed(row, "aux_still") if _held(event, cut) else None
         chain = replace(shot, source_encoding=color.PLATE_SPACE)
     else:
         held = row.delivered_range
