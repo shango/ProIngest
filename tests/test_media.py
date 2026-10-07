@@ -208,6 +208,12 @@ class TestProbe:
         assert info.rate == RATE_24
         assert info.start_timecode == 86400
 
+    @pytest.mark.parametrize("name", ["SECA0009_styleFrame.png", "SECA0009_styleFrame.jpg"])
+    def test_a_lone_png_or_jpg_is_one_frame(self, tmp_path: Path, name: str) -> None:
+        """A style frame (user, 2026-10-07): ffprobe counts a PNG as 0 frames."""
+        info = media.probe(fixtures.make_still(tmp_path / name))
+        assert (info.frame_count, info.start_frame, info.max_available_out) == (1, 0, 0)
+
     def test_exr_timecode_comes_from_the_header(self, tmp_path: Path) -> None:
         """COLOR_AND_FORMAT section 5: source TC may come from the EXR header."""
         fixtures.make_exr_sequence(tmp_path, count=3, timecode="01:00:00:00")

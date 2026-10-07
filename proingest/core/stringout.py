@@ -34,6 +34,9 @@ ffmpeg. The user's decisions, all in OQ-38:
   through the HDRI's AMF**, its own encoding taking the input transform's place. With no
   pre-render (QC-083) the EXR is held for the event's length, graded the same way, read as
   linear Rec.709 like its pre-render.
+- **A style frame is held as it is** (user, 2026-10-07): a pre-graded PNG or JPG, `Shot Type`
+  `styleFrame`, cut before its shot's plate. It keeps the EDL's length, takes no grade and
+  no `Frame:` counter, and is never delivered (QC-085). Its file missing is black.
 - **Only a plate has sound**, from its delivered wav; every other segment carries silence of
   the same length.
 - **A plate carries its shot's cp top left and wit top right** (user, 2026-09-29), each at
@@ -53,6 +56,7 @@ from __future__ import annotations
 
 import logging
 import shutil
+from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Literal
@@ -99,7 +103,7 @@ INSET_LABEL_Y = "h-text_h-10"
 INSET_CORNERS: dict[str, tuple[int, int]] = {"cp": (0, 0), "wit": (SIZE[0] - INSET_SIZE[0], 0)}
 """Which shot type is inset over a plate, and where its top left corner goes."""
 
-STRINGOUT_RULES = ("QC-142", "QC-143")
+STRINGOUT_RULES = ("QC-142", "QC-143", "QC-144")
 """What a build owns on its turnover, replaced each time it runs."""
 
 SegmentKind = Literal["reference", "source", "black"]
@@ -171,6 +175,9 @@ class Segment:
     prerender: bool = False
     """An HDRI's pre-render (QC-083): linear, so its cube goes behind a shaper, and the
     event it stands for, so it is no stand-in (QC-143)."""
+
+    style_frame: bool = False
+    """A style frame (QC-085): held as it is, with no counter, and no stand-in either."""
 
 
 @dataclass
@@ -286,6 +293,9 @@ def _segment(
     hdri = next((row for row in claimed if qc.is_hdri(row) and row.hdri_render is not None), None)
     if hdri is not None:
         return _prerender(event, hdri, length, show_pattern)
+    style = next((row for row in claimed if qc.is_style_frame(row)), None)
+    if style is not None:
+        return _style_frame(event, style, length, show_pattern)
     known = next((row for row in claimed if row.media is not None), None)
     cut = _cut(event, known.media) if known is not None and known.media is not None else None
     if known is None or cut is None:
@@ -405,6 +415,26 @@ def _prerender(event: clf.ConformEvent, row: ShotRow, length: int, show_pattern:
     )
 
 
+def _style_frame(event: clf.ConformEvent, row: ShotRow, length: int, show_pattern: str) -> Segment:
+    """A style frame's event: its still held as it is for the event's length, or black
+    when the file is not there (user, 2026-10-07)."""
+    identity = effective_identity(row, show_pattern)
+    media = row.media
+    return Segment(
+        kind="black" if media is None else "source",
+        length=length,
+        event_id=event.event_id,
+        freeze=True,
+        label=naming.shot_label(identity) if identity is not None else Path(row.clip_name).stem,
+        effect=row.scene,
+        path=None if media is None else media.path,
+        start=0 if media is None else media.start_frame,
+        media=media,
+        identity=identity,
+        style_frame=True,
+    )
+
+
 def _cut(event: clf.ConformEvent, source: MediaInfo) -> InOut:
     """The event's frames in its file. **Never None: a file that is there plays** (user,
     2026-09-29). A file with no timecode is counted from 00:00:00:00, which is where Resolve
@@ -481,6 +511,7 @@ def build(
     turnover: Turnover,
     delivery_root: Path,
     show_pattern: str = naming.DEFAULT_SHOW_PATTERN,
+    progress: Progress | None = None,
 ) -> Deliverable | None:
     """Plan, render and check one turnover's stringout, and record the outcome on it.
 
@@ -490,14 +521,27 @@ def build(
     turnover.qc = [result for result in turnover.qc if result.rule_id not in STRINGOUT_RULES]
     try:
         made = plan(batch, turnover, delivery_root, show_pattern)
-        deliverable = render(made)
+        deliverable = render(made, progress)
     except (StringoutError, ffmpeg.FFmpegError, ffmpeg.FFprobeError, OSError) as exc:
         turnover.qc.append(QCResult("QC-142", "error", "turnover", f"the stringout was not written: {exc}"))
         return None
     turnover.stringout = deliverable
+    events = [s for s in made.segments if not s.gap and not s.prerender]
+    black = [f"{s.event_id} ({s.label})" for s in events if s.kind == "black"]
     stand_ins = [
-        f"{s.event_id} ({s.label})" for s in made.segments if s.exr is None and not s.gap and not s.prerender
+        f"{s.event_id} ({s.label})"
+        for s in events
+        if s.exr is None and s.kind != "black" and not s.style_frame
     ]
+    if black:
+        turnover.qc.append(
+            QCResult(
+                "QC-144",
+                "warning",
+                "turnover",
+                f"{deliverable.name}: events {', '.join(black)} have nothing to show and are black",
+            )
+        )
     if stand_ins:
         turnover.qc.append(
             QCResult(
@@ -506,13 +550,17 @@ def build(
                 "turnover",
                 f"{deliverable.name}: events {', '.join(stand_ins)} have no delivered EXR and are "
                 f"cut from their HD reference, or the source through its AMF's grade (as it is "
-                f"when it has none), or black where no source is known",
+                f"when it has none)",
             )
         )
     return deliverable
 
 
-def render(made: Plan) -> Deliverable:
+Progress = Callable[[int, int], None]
+"""Frames encoded so far and the stringout's total, called from the thread building it."""
+
+
+def render(made: Plan, progress: Progress | None = None) -> Deliverable:
     """Encode every segment, join them, check the join, and give it its name."""
     folder = made.destination.parent
     folder.mkdir(parents=True, exist_ok=True)
@@ -522,8 +570,12 @@ def render(made: Plan) -> Deliverable:
     parts.mkdir()
     try:
         views: dict[ExrView, Path] = {}
-        seen = [_seen(segment, views, parts) for segment in made.segments]
-        encoded = [_encode(made, segment, parts, index) for index, segment in enumerate(seen)]
+        encoded, done = [], 0
+        for index, segment in enumerate(made.segments):
+            encoded.append(_encode(made, _seen(segment, views, parts), parts, index))
+            done += segment.length
+            if progress is not None:
+                progress(done, made.total)
         listing = parts / "segments.txt"
         listing.write_text("".join(f"file '{_quoted(path)}'\n" for path in encoded), encoding="utf-8")
         _run(ffmpeg.concat_command(listing, temp, made.timecode), temp.name)
@@ -703,8 +755,9 @@ def _burn_ins(stem: str, segment: Segment, base: Path) -> list[str]:
             if segment.freeze
             else f"Frame: %{{eif:n+{segment.first_frame}:d}}"
         )
+        if not segment.style_frame:  # a style frame has no delivered frame to count
+            texts.append((counter, LEFT_X, BOTTOM_Y))
         texts += [
-            (counter, LEFT_X, BOTTOM_Y),
             (ffmpeg.drawtext_literal(f"Primary Effect: {segment.effect}"), CENTRE_X, BOTTOM_Y),
             (ffmpeg.drawtext_literal(segment.label), RIGHT_X, BOTTOM_Y),
         ]

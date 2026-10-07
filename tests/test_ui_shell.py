@@ -30,7 +30,7 @@ from PySide6.QtWidgets import (
 )
 
 from proingest import __version__
-from proingest.core import batchfile, expiry, logsetup, naming, qc
+from proingest.core import batchfile, expiry, logsetup, naming, qc, stringout
 from proingest.core import settings as core_settings
 from proingest.core.models import Batch, Deliverable, QCResult, Turnover
 from proingest.core.planner import DeliverableJob
@@ -450,7 +450,7 @@ class TestOpeningABatch:
 
     def test_the_rows_reach_the_list(self, window: DrivenWindow) -> None:
         window.set_batch(batch(row(), row("MELT0002_pl01")))
-        assert window.shot_list.proxy.rowCount(window.shot_list.proxy.index(0, 0)) == 2
+        assert window.shot_list.proxy.rowCount(window.shot_list.proxy.index(0, 0)) == 3, "and its stringout"
 
     def test_the_list_controls_are_dead_until_there_is_a_list(self, window: DrivenWindow) -> None:
         assert not window.action_cycle_display.isEnabled()
@@ -890,7 +890,7 @@ class TestAddingAndScanningTurnovers:
 
         assert len(window.batch.rows) == 1
         assert window.list_pages.currentIndex() == 0
-        assert window.shot_list.proxy.rowCount(window.shot_list.proxy.index(0, 0)) == 1
+        assert window.shot_list.proxy.rowCount(window.shot_list.proxy.index(0, 0)) == 2, "and its stringout"
 
     def test_the_probe_cache_is_merged_rather_than_replaced(self, window: DrivenWindow) -> None:
         """The worker started from a copy, so what the UI thread learned meanwhile stays."""
@@ -1090,6 +1090,37 @@ class TestAddingAndScanningTurnovers:
         monkeypatch.setattr(window.run, "build_stringout", asked.append)
         self.entries(window, window.shot_list.proxy.index(0, 0))[STRINGOUT_TEXT].trigger()
         assert asked == [heading]
+
+    def test_the_stringout_line_offers_build_stringout_alone(
+        self, window: DrivenWindow, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """User, 2026-10-07: the stringout is a line of its own under the shots."""
+        heading = Turnover("t1", Path("/s/t1"))
+        window.set_batch(batch(row(turnover_id="t1"), turnovers=[heading]))
+        asked: list[Turnover] = []
+        monkeypatch.setattr(window.run, "build_stringout", asked.append)
+        line = window.shot_list.proxy.index(1, 0, window.shot_list.proxy.index(0, 0))
+        entries = self.entries(window, line)
+        assert list(entries) == [STRINGOUT_TEXT]
+        entries[STRINGOUT_TEXT].trigger()
+        assert asked == [heading]
+
+    def test_a_build_moves_the_stringout_line_s_bar_and_ends_it(
+        self, window: DrivenWindow, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        heading = Turnover("t1", Path("/s/t1"))
+        window.set_batch(batch(row(turnover_id="t1"), turnovers=[heading]))
+        seen: list[object] = []
+        window.run.stringout_progressed.connect(lambda _turnover, fraction: seen.append(fraction))
+
+        def build(*_args: object, progress: Callable[[int, int], None]) -> None:
+            progress(6, 24)
+            assert window.shot_model._building == {"t1": 0.25}
+            return None
+
+        monkeypatch.setattr(stringout, "build", build)
+        window.run._build_one(window.batch, heading, Path("/d"), "")
+        assert seen == [0.0, 0.25, None] and window.shot_model._building == {}
 
     def test_accept_as_is_is_a_checkbox_on_the_heading_that_unblocks_the_turnover(
         self, window: DrivenWindow

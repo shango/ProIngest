@@ -297,6 +297,13 @@ class TestDeliveryLayout:
         assert naming.shot_label(hdri) == "SECA0009_pl01_HDRI_01"
         assert naming.next_version([name]) == 3
 
+    def test_a_style_frame_is_labelled_by_its_shot_and_has_no_element_stem(self) -> None:
+        """User, 2026-10-07: the burn-in reads `SECA0009 styleFrame`."""
+        style = naming.ShotIdentity("SECA0009", naming.STYLE_FRAME_KIND, "01")
+        assert naming.shot_label(style) == "SECA0009 styleFrame"
+        with pytest.raises(ValueError):
+            _ = style.stem
+
     def test_an_hdri_has_no_element_stem(self) -> None:
         with pytest.raises(ValueError):
             _ = naming.ShotIdentity("SECA0009", naming.HDRI_KIND, "01").stem

@@ -16,7 +16,8 @@ since `clip_name` is the name the turnover arrived with and is not one of the fo
 rules that read the disk belong to pre-flight and to the run, and neither is a
 keystroke's job.
 
-Two levels and no more: a turnover, then its rows in timeline order. Sorting is fixed
+Two levels and no more: a turnover, then its rows in timeline order, then one line for its
+stringout (user, 2026-10-07), with a ball and a bar like a shot's. Sorting is fixed
 (section 2), so there is no sort implementation to get wrong, and the search box filters
 through a proxy rather than by rebuilding the model.
 """
@@ -38,7 +39,7 @@ from PySide6.QtCore import (
 )
 from PySide6.QtGui import QBrush, QColor, QPainter, QPixmap
 
-from proingest.core import frames, qc
+from proingest.core import frames, qc, stringout
 from proingest.core.models import Batch, Deliverable, InOut, ShotRow, Turnover
 from proingest.ui.runner import RunProgress
 
@@ -239,6 +240,23 @@ def turnover_state(turnover: Turnover, rows: list[ShotRow]) -> RowState:
     return min(states, key=order.index)
 
 
+STRINGOUT_LABEL = "Stringout"
+
+STRINGOUT_PROBLEMS = ("QC-142", "QC-144")
+"""A stringout that was not written, or one with an event that had nothing to show. Red;
+an event cut from a stand-in (QC-143) is still green (user, 2026-10-07)."""
+
+
+def stringout_state(turnover: Turnover, building: float | None = None) -> RowState | None:
+    """The stringout line's ball: blue while it builds, red for a problem, green once
+    written, and none before it has been built."""
+    if building is not None:
+        return RowState.RENDERING
+    if any(result.rule_id in STRINGOUT_PROBLEMS for result in turnover.qc):
+        return RowState.ERROR
+    return RowState.DONE if turnover.stringout is not None else None
+
+
 def _summary(turnover: Turnover, rows: list[ShotRow]) -> str:
     """The counts a collapsed group still has to report (section 2)."""
     errors = sum(1 for row in rows if row.errors()) + sum(
@@ -339,6 +357,8 @@ class ShotListModel(QAbstractItemModel):
         self._name_counts: dict[str, int] = {}
         self._run: RunProgress | None = None
         self._locked = False
+        self._building: dict[str, float] = {}
+        """The fraction of each stringout being built, by turnover id."""
 
     # --- what it is showing ----------------------------------------------------------
 
@@ -398,6 +418,19 @@ class ShotListModel(QAbstractItemModel):
         self._run = progress
         self.refresh_rows()
 
+    def set_stringout_progress(self, turnover: Turnover, fraction: float | None) -> None:
+        """How far a turnover's stringout build has got, or None once it has ended."""
+        if fraction is None:
+            self._building.pop(turnover.turnover_id, None)
+        else:
+            self._building[turnover.turnover_id] = fraction
+        position = self._batch.turnovers.index(turnover) if turnover in self._batch.turnovers else None
+        if position is None:
+            return
+        parent = self.index(position, 0, NO_PARENT)
+        last = self.rowCount(parent) - 1
+        self.dataChanged.emit(self.index(last, STATUS, parent), self.index(last, PROGRESS, parent))
+
     def refresh_rows(self) -> None:
         """Repaint every row in place: the status dot, the tints, and every cell but Notes.
 
@@ -426,7 +459,7 @@ class ShotListModel(QAbstractItemModel):
                 )
 
     def row_at(self, index: ModelIndex) -> ShotRow | None:
-        """The `ShotRow` an index points at, or None for a turnover header."""
+        """The `ShotRow` an index points at, or None for a turnover header or stringout line."""
         if not index.isValid() or index.internalId() == 0:
             return None
         turnover = self._batch.turnovers[int(index.internalId()) - 1]
@@ -446,6 +479,13 @@ class ShotListModel(QAbstractItemModel):
                 if candidate is row:
                     return self.index(offset, 0, self.index(position, 0, NO_PARENT))
         return QModelIndex()
+
+    def stringout_at(self, index: ModelIndex) -> Turnover | None:
+        """The turnover whose stringout line an index is on, or None."""
+        if not index.isValid() or index.internalId() == 0:
+            return None
+        turnover = self._batch.turnovers[int(index.internalId()) - 1]
+        return turnover if index.row() == len(self._rows[turnover.turnover_id]) else None
 
     def turnover_at(self, index: ModelIndex) -> Turnover | None:
         """The turnover an index is under, header or row alike."""
@@ -479,7 +519,7 @@ class ShotListModel(QAbstractItemModel):
         if parent.internalId() != 0:
             return 0
         turnover = self._batch.turnovers[parent.row()]
-        return len(self._rows[turnover.turnover_id])
+        return len(self._rows[turnover.turnover_id]) + 1  # its stringout line last
 
     def columnCount(self, parent: ModelIndex = NO_PARENT) -> int:
         return len(COLUMNS)
@@ -497,9 +537,39 @@ class ShotListModel(QAbstractItemModel):
         if not index.isValid():
             return None
         row = self.row_at(index)
-        if row is None:
-            return self._header_data(index, role)
-        return self._row_data(row, index, role)
+        if row is not None:
+            return self._row_data(row, index, role)
+        turnover = self.stringout_at(index)
+        if turnover is not None:
+            return self._stringout_data(turnover, index.column(), role)
+        return self._header_data(index, role)
+
+    def _stringout_data(self, turnover: Turnover, column: int, role: int) -> Any:
+        """The stringout line: its name, its ball and what the ball means, and its bar."""
+        building = self._building.get(turnover.turnover_id)
+        state = stringout_state(turnover, building)
+        if role == Qt.ItemDataRole.DisplayRole:
+            if column == SHOT:
+                return STRINGOUT_LABEL
+            if column == SOURCE:
+                return turnover.stringout.name if turnover.stringout is not None else ""
+            if column == VERSION and turnover.stringout is not None:
+                return f"v{turnover.stringout.version:02d}"
+            if column == PROGRESS:
+                if building is not None:
+                    return f"{int(building * 100)}%"
+                return "done" if state is RowState.DONE else ""
+            return ""
+        if role == PROGRESS_ROLE and column == PROGRESS:
+            return building if building is not None else (1.0 if state is RowState.DONE else 0.0)
+        if role == Qt.ItemDataRole.DecorationRole and column == STATUS and state is not None:
+            return self._dot(state)
+        if role == Qt.ItemDataRole.ToolTipRole and column == STATUS:
+            said = [r for r in turnover.qc if r.rule_id in stringout.STRINGOUT_RULES]
+            if said:
+                return "\n".join(f"{r.rule_id} {r.message}" for r in said)
+            return "Built, every event from its delivery" if state is RowState.DONE else "Not built yet"
+        return None
 
     def _header_data(self, index: ModelIndex, role: int) -> Any:
         """A turnover group header. The view spans column 0 across the whole width."""

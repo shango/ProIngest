@@ -767,6 +767,12 @@ def is_hdri(row: ShotRow) -> bool:
     return any(result.rule_id == "QC-080" for result in row.qc)
 
 
+def is_style_frame(row: ShotRow) -> bool:
+    """A style frame row (QC-085): shown on the stringout as it is, never delivered, and
+    no rule runs on it (user, 2026-10-07)."""
+    return any(result.rule_id == "QC-085" for result in row.qc)
+
+
 def run_row_rules(
     row: ShotRow,
     project_rate: FrameRate,
@@ -774,7 +780,7 @@ def run_row_rules(
     name_counts: dict[str, int] | None = None,
 ) -> list[QCResult]:
     """Every row rule that is a pure function of the model, in rule ID order."""
-    if is_hdri(row):
+    if is_hdri(row) or is_style_frame(row):
         return []
     results: list[QCResult] = []
     results.extend(check_duplicate_name(row, name_counts or {}))
@@ -1247,8 +1253,8 @@ def preflight(batch: Batch, decoders: frozenset[str] | None = None) -> None:
             graded.add(turnover.turnover_id)
     for row in batch.rows:
         row.qc = [result for result in row.qc if result.rule_id not in OWNED_PREFLIGHT_RULES]
-        if is_hdri(row):
-            continue  # copied as it is, with no checks (user, 2026-10-07)
+        if is_hdri(row) or is_style_frame(row):
+            continue  # copied as it is, or not delivered, with no checks (user, 2026-10-07)
         row.qc.extend(check_source_codec(row, decoders))
         row.qc.extend(check_clf(row, row.turnover_id in graded))
         row.qc.extend(check_color_chain(row))

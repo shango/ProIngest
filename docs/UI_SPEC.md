@@ -90,6 +90,7 @@ Scrolling: Source file, Res, FPS, In (editable), Out (editable), Duration, Max A
 - Secondary line: whichever representation is not primary sits under it in smaller text, so nothing is ever hidden, only demoted. In `Frames` the secondary is source TC; in either TC state it is the source frame number. Row height accommodates two lines.
 - The editor reads frames and timecode at different moments, which is why frames is a first-class state of this control rather than only the secondary line: a frame number is what gets typed into the In/Out cells and what a VFX vendor quotes back, and a timecode is what the AD and the edit talk in. Section 5 accepts both as input whatever this is set to.
 - Turnover group headers are rows in the same view (QTreeView with a flat two-level model), collapsible, showing counts and aggregate status.
+- **The last line under each turnover is its stringout** (user, 2026-10-07): `Stringout` in the Shot column, the file's name under Source, its version, and the bar and percentage in Progress while it builds (frames encoded of the total, from `stringout.build`'s `progress`). Its ball: **green** once written, **red** when the build failed (QC-142) or an event had nothing to show and is black (QC-144), blue while building, none before it is built. An event cut from a stand-in (QC-143) stays green; hovering the ball names those events. Its right-click menu is Build Stringout alone. The search box hides it like any line that does not match.
 - Sorting is fixed to the metadata CSV's row order within a turnover. A search box filters rows by shot code substring.
 
 ## 3. Row colors and status dot
@@ -198,7 +199,7 @@ system, and loads nothing from the network.
 ## 7. Run and progress
 
 - Run opens no dialog if the delivery root is set; otherwise it prompts once.
-- Each row shows a slim progress bar in the Progress column with job count (e.g. 3/5).
+- Each row shows a slim progress bar in the Progress column with job count (e.g. 3/5). The stringout line under each turnover shows its own, in percent, while the stringout builds (section 2).
 - Status bar shows overall percent, jobs running, throughput (frames/s), and ETA.
 - Stop finishes in-flight frames, discards `.part` outputs, and leaves rows in their previous state.
 - On completion a non-modal banner above the list reads "Batch complete: 27 done, 1 failed, 2 skipped. Exports written to ...". Click opens the folder.
@@ -284,6 +285,8 @@ lower inside it than the measured y.
 **Picture in picture on a plate** (`stringout.INSET_CORNERS`) (user, 2026-09-29): over each `pl` event, the shot's **cp top left** and **wit top right**, each 480x270 flush in its corner (Resolve's zoom 0.25 at X -720/+720, Y 405). The first cp and the first wit of the shot in EDL order, from their **delivered HD references**, each playing from its own cut In at the plate's first frame, and **gone** when it runs out or at the plate's Out, whichever is first. No cp or wit, or none delivered: no inset in that corner. The top centre name sits between them (x 499 to 1411 on turnover097). Each inset carries its own element (`cp01`, `wit01`) burned in bottom left inside it, Open Sans 32 px against the frame's 42 (user, 2026-09-29), and it goes when the inset does.
 
 **A reference clip plays** (user, 2026-10-07): a chart, ball or size ref is a video on the timeline, so its event plays its cut at full speed, graded, from the source; it is still delivered as one EXR frame. **Any held frame plays for one second** (user, 2026-09-29): a frame hold (`M2` at 0) or any one frame cut, held for 24 frames whatever the EDL gives it (**except an HDRI, which keeps the EDL's length** and plays its pre-render, user 2026-10-07), so the stringout runs longer than the EDL by that much. Taken from the source, such a frame is **coloured through its AMF** (input transform, CLF nodes, output transform) as Resolve shows it; a still's delivered EXR stays ungraded. An event with no known source is black for the same second.
+
+**A style frame** (user, 2026-10-07; QC-085): a pre-graded PNG or JPG, `Shot Type` `styleFrame`, cut before its shot's plate. It is held **as it is**, ungraded, **for the EDL's length**, never delivered. Bottom right reads `SECA0009 styleFrame`, and there is **no `Frame:` counter**, since it has no delivered frame to count. Its file missing is black for the event's length (QC-144).
 
 The bottom line sits at y 892. No source timecode is burned in. White text with no box is hard
 to read on a bright frame; that matches Ben's template and is not yet decided (PROGRESS).

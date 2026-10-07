@@ -8,7 +8,7 @@ commit.
 
 ## 1. Resume here
 
-**State at 2026-10-07, version 0.5.31 on branch `hdri/prerender`, PR #19 open** (0.5.31: every Fix-it line names its shot; 0.5.30: the take on the burn-in; 0.5.29: reference clips play in the stringout; 0.5.28: everything in the stringout graded; 0.5.27: the stringout from the EXRs; 0.5.26: the HDRI pre-render and delivery, QC-084, Accept As Is runs what it can; 0.5.25, merged to `main` with PR #18: `User_Generated` and `User_Uploads` at the delivery root; 0.5.24: the Fix-it
+**State at 2026-10-07, version 0.5.32 on branch `hdri/prerender`, PR #19 open** (0.5.32: style frames on the stringout, the stringout line in the shot list; 0.5.31: every Fix-it line names its shot; 0.5.30: the take on the burn-in; 0.5.29: reference clips play in the stringout; 0.5.28: everything in the stringout graded; 0.5.27: the stringout from the EXRs; 0.5.26: the HDRI pre-render and delivery, QC-084, Accept As Is runs what it can; 0.5.25, merged to `main` with PR #18: `User_Generated` and `User_Uploads` at the delivery root; 0.5.24: the Fix-it
 report, one error per cause, a lone EXR read as one frame, AMFs falling back to the clip they name) (`HANDOFF.md` is the short version, with the session's open items); 0.5.22 went to `main` earlier (PR #17 merged as `70e1160` at the user's request, after its CI
 run 37276656318 built the 0.5.22 dmg). The 2026-09-23 review is built (chunks A
 to H of `docs/REVIEW_2026-09-23.md`), and so are the fixes that a second official turnover,
@@ -17,6 +17,32 @@ renders; Turnover121, every clip 8 bit 4:2:0, runs again with a QC-020 warning o
 since 2026-09-28 (user). What is left is the Mac: `docs/MAC_SESSION.md`, from "The 0.5.0 build, in
 order" down, and Ben's 4.886 slope. Entries are newest first; anything older than 2026-09-22
 describes the tool before the review and is history.
+
+**2026-10-07, 0.5.32: style frames, and the stringout as a line in the shot list (user).** "The
+first frame before each shot's footage, there will be a still frame held for a number of frames,
+it will have Shot Type styleFrame. This is not a deliverable, just gets added to the stringout.
+Also, there needs to be a progress bar for rendering the stringout ... adds the stringout to the
+line items of each turnover and has a progress bar like the clips. On the left can be a ball
+indicating green for all good and red for something missing or a problem." Then: PNG or JPG,
+"a pre-graded png or jpg. as is", burn-in `SECA0009 styleFrame` with no `Frame:` counter, each with
+its own CSV row and EDL event before the plate, and red only for a failed build or a black event
+(a stand-in stays green, named on hover). **Style frame** (QC-085, info): `naming.STYLE_FRAME_KIND`,
+`metacsv._style_frame`, `qc.is_style_frame` (no row or preflight rule, AMF findings dropped in
+`scan._conform`), `planner.plannable_identity` gives it nothing to deliver, `fixit` leaves it out
+of "every clip" and "no plate". A lone PNG or JPG probes as one frame (`media.STILL_EXTENSIONS`;
+ffprobe said 0 for a PNG). The stringout holds it as it is for the EDL's length
+(`stringout._style_frame`, `Segment.style_frame`); missing is black. **QC-144** (warning,
+turnover) is a stringout's black events, split out of QC-143. **The stringout line**: the last
+child of each turnover in `ShotListModel` (`stringout_at`, `stringout_state`,
+`set_stringout_progress`): name, version, a bar in percent while building (`stringout.build`'s new
+`progress`, frames encoded of the total, sent through `RunController.stringout_progressed`, queued
+to the UI thread), a ball green/red/blue/none, a tooltip with QC-142/143/144, and a menu of Build
+Stringout alone. OQ-82 lists the assumptions (EDL length kept, no OCIO on the still, index
+accepted, unnamed one labelled by its file). **Verified**: tests (naming, metacsv, media, scan,
+stringout, shot model, shot list, UI shell); a stringout built through a flat 192/64/32 PNG
+measured 190/61/29 in the mp4, so the still is shown as is; an offscreen screenshot of the list
+showed the building and red lines. **No sample has a style frame**: synthetic files only; the
+MAC_SESSION line asks for a real one.
 
 **2026-10-07, 0.5.31: every Fix-it line names its shot (user).** "In the fix-it list .html file,
 please list the shot item that each fixit is referring too", with a screenshot of a newer

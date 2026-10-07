@@ -464,6 +464,67 @@ class TestAnHdri:
         assert made is not None and made.frame_count == 2 * FRAMES
 
 
+class TestAStyleFrame:
+    """User, 2026-10-07: a pre-graded PNG or JPG before its shot's plate, held as it is for the
+    EDL's length, burned in `SECA0009 styleFrame` with no counter, and never delivered."""
+
+    @pytest.fixture
+    def folder(self, tmp_path: Path) -> Path:
+        folder = fixtures.make_turnover(
+            tmp_path / FOLDER, shots=2, frames=FRAMES, shot_types=["styleFrame", "pl01"]
+        )
+        for path in (folder / "media").glob("MELT0001_pl01*"):
+            path.unlink()
+        return folder
+
+    @pytest.fixture
+    def with_style(self, folder: Path, tmp_path: Path) -> Batch:
+        fixtures.make_still(folder / "media" / "MELT0001_pl01.png", size=(160, 90))
+        return TestAnHdri.scanned(folder, Batch(delivery_root=tmp_path / "delivery"))
+
+    def test_it_is_held_as_it_is_for_the_events_length(self, with_style: Batch) -> None:
+        style = with_style.rows[0]
+        assert qc.is_style_frame(style) and not style.deliverables
+        segment = planned(with_style).segments[0]
+        assert style.media is not None and segment.path == style.media.path
+        assert (segment.kind, segment.length, segment.freeze, segment.style_frame) == (
+            "source",
+            FRAMES,
+            True,
+            True,
+        )
+        assert segment.color is None and segment.label == "MELT0001 styleFrame"
+
+    def test_its_burn_in_has_no_frame_counter(self, tmp_path: Path) -> None:
+        held = stringout.Segment(
+            kind="source", length=48, freeze=True, label="X styleFrame", style_frame=True
+        )
+        stringout._burn_ins("so", held, tmp_path / "0000")
+        texts = [path.read_text() for path in sorted(tmp_path.glob("0000_*.txt"))]
+        assert not any(text.startswith("Frame:") for text in texts) and "X styleFrame" in texts
+
+    def test_the_stringout_is_written_with_it_and_it_is_no_stand_in(self, with_style: Batch) -> None:
+        assert with_style.delivery_root is not None
+        reported: list[tuple[int, int]] = []
+        turnover = with_style.turnovers[0]
+        made = stringout.build(
+            with_style, turnover, with_style.delivery_root, progress=lambda *done: reported.append(done)
+        )
+        assert made is not None and made.frame_count == 2 * FRAMES
+        assert reported == [(FRAMES, 2 * FRAMES), (2 * FRAMES, 2 * FRAMES)]
+        assert not [q for q in turnover.qc if q.rule_id in ("QC-143", "QC-144")]
+
+    def test_its_file_missing_is_black_and_qc_144(self, folder: Path, tmp_path: Path) -> None:
+        batch = TestAnHdri.scanned(folder, Batch(delivery_root=tmp_path / "delivery"))
+        assert batch.delivery_root is not None
+        segment = planned(batch).segments[0]
+        assert (segment.kind, segment.length) == ("black", FRAMES)
+        made = stringout.build(batch, batch.turnovers[0], batch.delivery_root)
+        assert made is not None
+        said = [(q.rule_id, q.severity) for q in batch.turnovers[0].qc]
+        assert [s for s in said if s[0] in stringout.STRINGOUT_RULES] == [("QC-144", "warning")]
+
+
 class TestAFileThatIsThereAlwaysPlays:
     """User, 2026-09-29: an event whose file is present is never black."""
 

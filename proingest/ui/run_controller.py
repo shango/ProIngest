@@ -26,7 +26,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
-from PySide6.QtCore import QObject, QTimer
+from PySide6.QtCore import QObject, QTimer, Signal
 
 from proingest.core import clf, exports, planner, qc, render, stringout
 from proingest.core.models import Batch, Deliverable, QCResult, Turnover
@@ -124,6 +124,9 @@ class RunController(QObject):
     is the whole of what the window has to know.
     """
 
+    stringout_progressed = Signal(object, object)
+    """A `Turnover` and how far its stringout build has got, 0.0 to 1.0, or None once ended."""
+
     def __init__(self, window: MainWindow) -> None:
         super().__init__(window)
         self._window = window
@@ -158,6 +161,9 @@ class RunController(QObject):
         the next close goes ahead without them rather than waiting again."""
 
         window.run_strip.link_activated.connect(self._open_reports)
+        # To the model's own method, so Qt queues it onto the UI thread: a stringout
+        # reports from the thread building it, and a lambda would run there.
+        self.stringout_progressed.connect(window.shot_model.set_stringout_progress)
 
     @property
     def busy(self) -> bool:
@@ -412,15 +418,28 @@ class RunController(QObject):
         )
         window.update_state()
 
-    @classmethod
-    def _stringouts_then_reports(cls, batch: Batch, touched: list[Turnover], pattern: str) -> Path:
+    def _stringouts_then_reports(self, batch: Batch, touched: list[Turnover], pattern: str) -> Path:
         """Off the UI thread. A stringout that fails is QC-142 on its turnover, never a raise."""
         if batch.delivery_root is not None:
             if touched:
                 render.make_user_folders(batch.delivery_root)
             for turnover in touched:
-                stringout.build(batch, turnover, batch.delivery_root, pattern)
-        return cls._write_reports(batch)
+                self._build_one(batch, turnover, batch.delivery_root, pattern)
+        return self._write_reports(batch)
+
+    def _build_one(self, batch: Batch, turnover: Turnover, root: Path, pattern: str) -> Deliverable | None:
+        """One stringout, its progress on its line in the list (user, 2026-10-07)."""
+        self.stringout_progressed.emit(turnover, 0.0)
+        try:
+            return stringout.build(
+                batch,
+                turnover,
+                root,
+                pattern,
+                progress=lambda done, total: self.stringout_progressed.emit(turnover, done / max(total, 1)),
+            )
+        finally:
+            self.stringout_progressed.emit(turnover, None)
 
     def build_stringout(self, turnover: Turnover) -> None:
         """A heading's Build Stringout: this turnover's, now, at its next version."""
@@ -435,7 +454,7 @@ class RunController(QObject):
         root, pattern = batch.delivery_root, settings_form.show_pattern_of(window.settings)
         window.run_strip.start()
         window.run_strip.say(BUILDING_STRINGOUT)
-        self.background.run(lambda: stringout.build(batch, turnover, root, pattern), self._stringout_built)
+        self.background.run(lambda: self._build_one(batch, turnover, root, pattern), self._stringout_built)
         window.update_state()
 
     def _stringout_built(self, result: object) -> None:

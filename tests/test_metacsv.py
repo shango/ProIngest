@@ -194,6 +194,22 @@ class TestHdri:
         assert [q.rule_id for q in result.rows[0].qc] == ["QC-010"]
 
 
+class TestStyleFrame:
+    """A pre-graded still on the stringout, never delivered (user, 2026-10-07)."""
+
+    @pytest.mark.parametrize("written", ["styleFrame", "styleframe", "STYLEFRAME"])
+    def test_a_style_frame_row_carries_only_info(self, tmp_path: Path, written: str) -> None:
+        result = read(tmp_path, ["File Name", "Shot", "Shot Type"], [["sf.png", "SECA0009", written]])
+        (row,) = result.rows
+        assert (row.kind, row.index) == ("styleFrame", "01") and not row.hdri
+        assert [(q.rule_id, q.severity) for q in row.qc] == [("QC-085", "info")]
+
+    def test_one_with_no_shot_code_has_no_kind(self, tmp_path: Path) -> None:
+        result = read(tmp_path, ["File Name", "Shot", "Shot Type"], [["sf.jpg", "", "styleFrame"]])
+        (row,) = result.rows
+        assert row.kind is None and [q.rule_id for q in row.qc] == ["QC-085"]
+
+
 class TestFileShape:
     def test_short_rows_do_not_raise(self, tmp_path: Path) -> None:
         """Resolve pads with empty cells; nothing guarantees every row is full width."""

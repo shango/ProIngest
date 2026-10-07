@@ -543,6 +543,9 @@ class ShotListView(QTreeView):
         row = self.shot_model.row_at(source)
         if row is not None:
             return self._row_menu(row)
+        built = self.shot_model.stringout_at(source)
+        if built is not None:
+            return self._stringout_menu(built)
         turnover = self.shot_model.turnover_at(source)
         if turnover is None:
             return None
@@ -570,6 +573,14 @@ class ShotListView(QTreeView):
         cancel = menu.addAction(CANCEL_RERUN_TEXT)
         cancel.setEnabled(not self.shot_model.locked)
         cancel.triggered.connect(lambda: self.cancel_rerun_requested.emit(rows))
+
+    def _stringout_menu(self, turnover: Turnover) -> QMenu:
+        """The stringout line's Build Stringout, the heading's own entry."""
+        menu = QMenu(self)
+        build = menu.addAction(STRINGOUT_TEXT)
+        build.setEnabled(not self.shot_model.locked)
+        build.triggered.connect(lambda: self.stringout_requested.emit(turnover))
+        return menu
 
     def _row_menu(self, row: ShotRow) -> QMenu:
         """A shot's Re-scan, and Cancel Re-run while it is marked (user, 2026-09-25)."""

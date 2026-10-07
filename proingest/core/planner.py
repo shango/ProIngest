@@ -306,7 +306,9 @@ def plannable_identity(
     """
     if row.skipped or holding_errors(row, bypassed) or row.media is None or row.current is None:
         return None
-    return effective_identity(row, show_pattern)
+    identity = effective_identity(row, show_pattern)
+    # A style frame is only ever on the stringout (QC-085).
+    return None if identity is not None and identity.is_style_frame else identity
 
 
 def resolve_version(directory: Path, show_pattern: str = naming.DEFAULT_SHOW_PATTERN) -> int:

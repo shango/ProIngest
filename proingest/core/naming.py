@@ -42,6 +42,11 @@ HDRI_KIND = "HDRI"
 The tool delivers the HDRI EXR byte for byte, and the stringout shows Ben's pre-render of
 its timeline event (user, 2026-10-07)."""
 
+STYLE_FRAME_KIND = "styleFrame"
+"""A style frame's `Shot Type` (QC-085, user 2026-10-07): a pre-graded PNG or JPG held on the
+timeline before its shot's plate. Not in `CLIP_TYPES` and never delivered: the stringout
+shows it as it is, for the event's length."""
+
 HDRI_ELEMENT = "pl01"
 """Every HDRI is named under the plate: `[SHOTCODE]_pl01_HDRI_v01.exr` in the shooters'
 spec, `BACH0002_pl01_HDRI_01_v01.exr` in the tracker."""
@@ -99,6 +104,11 @@ class ShotIdentity:
         return self.kind == HDRI_KIND
 
     @property
+    def is_style_frame(self) -> bool:
+        """A style frame: shown on the stringout, never delivered."""
+        return self.kind == STYLE_FRAME_KIND
+
+    @property
     def elem(self) -> str:
         """`pl01`, what a plate's deliverables are named for."""
         return f"{self.kind}{self.index}"
@@ -116,6 +126,8 @@ class ShotIdentity:
             raise ValueError(f"{self.shot_code} {self.kind} is a reference still and has no element stem")
         if self.is_hdri:
             raise ValueError(f"{self.shot_code} {self.kind} is an HDRI and has no element stem")
+        if self.is_style_frame:
+            raise ValueError(f"{self.shot_code} {self.kind} is a style frame and has no element stem")
         return f"{self.shot_code}_{self.elem}"
 
 
@@ -246,11 +258,14 @@ def stringout_version(name: str, number: int, month: int, day: int, year: int, s
 
 def shot_label(identity: ShotIdentity) -> str:
     """What the stringout burns in at bottom right: `TIME1001_pl01`, or a still's
-    `SECA0002_colorChart_01`, the way its own file names it."""
+    `SECA0002_colorChart_01`, the way its own file names it, or `SECA0009 styleFrame`
+    (user, 2026-10-07)."""
     if identity.is_still:
         return f"{identity.shot_code}_{identity.kind}_{identity.index}"
     if identity.is_hdri:
         return hdri_label(identity)
+    if identity.is_style_frame:
+        return f"{identity.shot_code} {STYLE_FRAME_KIND}"
     return identity.stem
 
 

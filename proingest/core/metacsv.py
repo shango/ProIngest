@@ -250,6 +250,10 @@ def read(path: Path, show_pattern: str = naming.DEFAULT_SHOW_PATTERN) -> MetaCsv
             hdri = _hdri(file_name, shot, shot_type, scene, named)
             result.rows.append(replace(hdri, take=_value(record, take_positions)))
             continue
+        if _STYLE_FRAME.fullmatch(shot_type.strip()):
+            named = naming.parse_shot_code(shot, show_pattern) is not None
+            result.rows.append(_style_frame(file_name, shot, shot_type, scene, named))
+            continue
         result.rows.append(
             MetaRow(
                 file_name=file_name,
@@ -285,6 +289,24 @@ def _hdri(file_name: str, shot: str, shot_type: str, scene: str, named: bool) ->
     index = ((match["index"] if match else None) or "1").zfill(2)
     kind = naming.HDRI_KIND if named else None
     return MetaRow(file_name, shot, shot_type, kind, index if named else None, scene, (note,), hdri=True)
+
+
+_STYLE_FRAME = re.compile(r"styleframe(?P<index>\d{1,2})?", re.IGNORECASE)
+
+
+def _style_frame(file_name: str, shot: str, shot_type: str, scene: str, named: bool) -> MetaRow:
+    """A style frame row (QC-085, user 2026-10-07): a pre-graded still the stringout holds
+    before its shot's plate, as it is. Nothing is delivered and no check runs on it."""
+    note = QCResult(
+        "QC-085",
+        "info",
+        "row",
+        f"{file_name} is a style frame: the stringout shows it as it is, and nothing is delivered",
+    )
+    match = _STYLE_FRAME.fullmatch(shot_type.strip())
+    index = ((match["index"] if match else None) or "1").zfill(2)
+    kind = naming.STYLE_FRAME_KIND if named else None
+    return MetaRow(file_name, shot, shot_type, kind, index if named else None, scene, (note,))
 
 
 def find(folder: Path) -> list[Path]:

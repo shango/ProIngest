@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from proingest.core import qc, scan
+from proingest.core import planner, qc, scan
 from proingest.core.models import Batch, Deliverable, InOut, ShotRow, Turnover
 from tests.fixtures import color as color_fixtures
 from tests.fixtures import media as fixtures
@@ -730,6 +730,20 @@ class TestTheAmf:
         assert not row.skipped and row.identity is not None and row.identity.is_hdri
         assert {"QC-080", "QC-083"} <= set(rules(row)) and not row.errors()
         assert not qc.must_fix(Batch(delivery_root=tmp_path, turnovers=[turnover], rows=[row]))
+
+    def test_a_style_frame_blocks_nothing_and_delivers_nothing(self, tmp_path: Path) -> None:
+        """User, 2026-10-07: a pre-graded PNG or JPG held on the stringout, and that is all."""
+        folder = fixtures.make_turnover(tmp_path / GOOD_FOLDER, shots=1, frames=4, shot_types=["styleFrame"])
+        for path in (folder / "media").iterdir():
+            path.unlink()
+        fixtures.make_still(folder / "media" / "MELT0001_pl01.png")
+        turnover, row = self.scanned(folder)
+        assert row.identity is not None and row.identity.is_style_frame and qc.is_style_frame(row)
+        assert row.media is not None and row.media.frame_count == 1
+        assert rules(row) == {"QC-085"}, "no rule runs on it, and its AMF's findings go unsaid"
+        batch = Batch(delivery_root=tmp_path, turnovers=[turnover], rows=[row])
+        qc.preflight(batch)
+        assert not qc.must_fix(batch) and planner.plannable_identity(row) is None
 
     def test_an_hdri_and_its_pre_render_are_not_ambiguous(self, tmp_path: Path) -> None:
         folder = fixtures.make_turnover(tmp_path / GOOD_FOLDER, shots=1, frames=4, shot_types=["HDRI"])

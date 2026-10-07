@@ -62,6 +62,7 @@ Shot Type   ^(?P<kind>[A-Za-z]+)(?P<index>\d{1,2})?$   kind, casefolded, one of
 | re | recon plate | raw 4k, raw HD, ref 4k, ref HD |
 | aux still | reference still, keyed to the shot code | single 4k exr, converted and never graded |
 | HDRI | the HDRI, `Shot Type` `HDRI` (QC-080) | the EXR, **copied byte for byte** and never checked (user, 2026-10-07) |
+| styleFrame | a pre-graded PNG or JPG held before the shot's plate (QC-085) | **nothing**: shown on the stringout only, as it is (user, 2026-10-07) |
 
 **Nothing else is a deliverable** (2026-09-22). camData, BTS stills and the lens grid carry
 no `Shot Type`, which is the whole of the tool's scope, so the tool neither
