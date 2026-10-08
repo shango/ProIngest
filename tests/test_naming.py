@@ -297,6 +297,44 @@ class TestDeliveryLayout:
         assert naming.shot_label(hdri) == "SECA0009_pl01_HDRI_01"
         assert naming.next_version([name]) == 3
 
+    @pytest.mark.parametrize("suffix", [".jpg", ".JPEG", ".png"])
+    def test_an_ldri_mirrors_the_hdri_under_its_own_extension(self, suffix: str) -> None:
+        """User, 2026-10-08: an LDRI is named as the HDRI is, its file copied as it came."""
+        ldri = naming.ShotIdentity("SECA0009", naming.LDRI_KIND, "01")
+        name = naming.ldri_image(ldri, 2, suffix)
+        assert name == f"SECA0009_pl01_LDRI_01_v02{suffix.lower()}"
+        parsed = naming.parse_output_name(name)
+        assert parsed is not None and (parsed.kind, parsed.aux, parsed.version) == ("hdri", "LDRI", 2)
+        assert naming.shot_label(ldri) == "SECA0009_pl01_LDRI_01"
+        assert ldri.is_hdri and ldri.is_ldri and naming.next_version([name]) == 3
+        with pytest.raises(ValueError):
+            _ = ldri.stem
+
+    def test_an_ldri_is_never_an_exr_and_an_hdri_never_a_jpg(self) -> None:
+        hdri = naming.ShotIdentity("SECA0009", naming.HDRI_KIND, "01")
+        ldri = naming.ShotIdentity("SECA0009", naming.LDRI_KIND, "01")
+        with pytest.raises(ValueError):
+            naming.hdri_exr(ldri, 1)
+        with pytest.raises(ValueError):
+            naming.ldri_image(hdri, 1, ".jpg")
+        with pytest.raises(ValueError):
+            naming.ldri_image(ldri, 1, ".exr")
+        assert naming.parse_output_name("SECA0009_pl01_LDRI_01_v01.exr") is None
+
+    @pytest.mark.parametrize(
+        ("written", "kind"),
+        [
+            ("HDRI", "HDRI"),
+            ("hdri2", "HDRI"),
+            ("LDRI", "LDRI"),
+            (" ldri3 ", "LDRI"),
+            ("LDRIref", None),
+            ("pl01", None),
+        ],
+    )
+    def test_hdri_kind_reads_the_shot_type(self, written: str, kind: str | None) -> None:
+        assert naming.hdri_kind(written) == kind
+
     def test_a_style_frame_is_labelled_by_its_shot_and_has_no_element_stem(self) -> None:
         """User, 2026-10-07: the burn-in reads `SECA0009 styleFrame`."""
         style = naming.ShotIdentity("SECA0009", naming.STYLE_FRAME_KIND, "01")

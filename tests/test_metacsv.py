@@ -189,6 +189,16 @@ class TestHdri:
         result = read(tmp_path, header, [["x.exr", "TEST0013", "HDRI", "2"]])
         assert result.rows[0].take == "2"
 
+    @pytest.mark.parametrize(("written", "index"), [("LDRI", "01"), ("ldri", "01"), ("LDRI2", "02")])
+    def test_an_ldri_row_is_an_hdri_of_kind_ldri(self, tmp_path: Path, written: str, index: str) -> None:
+        """User, 2026-10-08: an LDRI is treated as an HDRI, its file a JPG or PNG."""
+        name = "SECA0009_pl01_LDRI_01_v01.jpg Render 1.mov"
+        result = read(tmp_path, ["File Name", "Shot", "Shot Type"], [[name, "TEST0013", written]])
+        (row,) = result.rows
+        assert row.hdri and (row.kind, row.index) == ("LDRI", index)
+        (note,) = row.qc
+        assert note.rule_id == "QC-080" and "LDRI image" in note.message and "HDRI" not in note.message
+
     def test_a_type_merely_containing_hdri_is_still_qc_010(self, tmp_path: Path) -> None:
         result = read(tmp_path, ["File Name", "Shot", "Shot Type"], [["x.exr", "TEST0013", "HDRIref"]])
         assert [q.rule_id for q in result.rows[0].qc] == ["QC-010"]

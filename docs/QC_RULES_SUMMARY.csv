@@ -57,7 +57,7 @@ QC-076,A: scan and pre-flight,row,Error,Holds the shot,That shot only,The shot s
 QC-077,A: scan and pre-flight,row,Warning,Info tier,No,Row coloured amber and logged; the run goes ahead,"A look in the AMF the tool does not apply, and ignores (unknown look ID, an embedded CDL beside a CLF, other)"
 QC-078,A: scan and pre-flight,row,Info,Info tier,No,Logged only,The AMF was exported with Resolve's Dailies Request preset
 QC-079,A: scan and pre-flight,row,Warning,Info tier,No,Row coloured amber and logged in the QC log's Issues sheet; it renders,"The AMF's output transform is not in the pinned config, or names a display a Rec.709 reference cannot be labelled for (P3, HDR)"
-QC-080,A: scan and pre-flight,row,Info,Info tier,No,Row delivers its EXR byte for byte; no check runs on it,Shot Type HDRI: the EXR is copied as it is and the stringout shows its pre-render (QC-083)
+QC-080,A: scan and pre-flight,row,Info,Info tier,No,Row delivers its EXR byte for byte; no check runs on it,Shot Type HDRI or LDRI: the EXR (an LDRI's JPG or PNG) is copied as it is and the stringout shows its pre-render (QC-083)
 QC-081,A: scan and pre-flight,turnover,Retired,,,,Retired 2026-10-05: a two digit year is the expected form
 QC-082,A: scan and pre-flight,row,Warning,Info tier,No,Row coloured amber and logged; the run goes ahead,"Fix in Resolve: the AMF names no CLF, so its embedded CDL is used as the grade"
 QC-083,A: scan and pre-flight,row,Warning,Info tier,No,Row coloured amber; the stringout holds the HDRI EXR still,An HDRI's pre-render (a video under its name) is not in the turnover folder

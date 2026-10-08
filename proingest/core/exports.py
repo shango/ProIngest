@@ -438,8 +438,11 @@ def tracker_row(shot_code: str, rows: list[ShotRow], stringout: str = "") -> lis
     cells[2] = shot_code
     cells[3] = shot_code
     cells[4] = reference.name if reference is not None else ""
-    hdri = next((item for row in rows if (item := _delivered(row, "hdri")) is not None), None)
-    # The HDRI the tool copied (user, 2026-10-07). CAM Data stays the studio's column.
+    hdri = next(
+        (item for row in rows if not qc.is_ldri(row) and (item := _delivered(row, "hdri")) is not None), None
+    )
+    # The HDRI the tool copied (user, 2026-10-07). CAM Data stays the studio's column. An LDRI
+    # has no column: the HDRI cell is left empty, which says there is no HDRI (user, 2026-10-08).
     cells[5] = hdri.name if hdri is not None else ""
     cells[7] = _plate_marks(plate)
     cells[8] = TRACKER_FPS

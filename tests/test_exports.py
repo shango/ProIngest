@@ -14,7 +14,7 @@ from pathlib import Path
 import pytest
 from openpyxl import load_workbook
 
-from proingest.core import exports, qc
+from proingest.core import exports, naming, qc
 from proingest.core.models import (
     AudioInfo,
     Batch,
@@ -325,6 +325,21 @@ class TestShotTracker:
         assert values[4] == "MELT0001_pl01_ref_HD_v01.mp4"
         assert values[5] == "MELT0001_pl01_HDRI_v01.exr", "the HDRI the tool copied (user, 2026-10-07)"
         assert values[6] is None, "CAM Data likewise"
+
+    def test_an_ldri_leaves_the_hdri_cell_empty(self, tmp_path: Path) -> None:
+        """User, 2026-10-08: no LDRI column; an empty HDRI cell says there is no HDRI."""
+        ldri = row(
+            "MELT0001_pl01_LDRI_01_v01.jpg",
+            identity=naming.ShotIdentity("MELT0001", naming.LDRI_KIND, "01"),
+            csv_shot_type="LDRI",
+            qc=[QCResult("QC-080", "info", "row", "an LDRI")],
+            deliverables=[deliverable("hdri", "MELT0001_pl01_LDRI_01_v01.jpg", checksum="dd")],
+        )
+        plate = row()
+        plate.deliverables = [item for item in plate.deliverables if item.kind != "hdri"]
+        tracker = exports.write_shot_tracker(batch_of(plate, ldri), tmp_path / "tracker.xlsx")
+        values = sheet_rows(tracker, "Shots")[1]
+        assert values[4] == "MELT0001_pl01_ref_HD_v01.mp4" and values[5] is None
         assert values[8] == "24"
         assert values[9] == "✓"
 

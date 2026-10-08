@@ -7,8 +7,8 @@ Then read `docs/WORKFLOW.md`, and `CLAUDE.md` for the ground rules.
 
 ## State
 
-- **Version 0.5.36 on branch `hdri/prerender`, PR #19 open, not merged.** Merge only when the
-  user asks. `main` has 0.5.25 (PR #18, merged 2026-10-06 at the user's request).
+- **Version 0.5.37 on branch `ldri` (2026-10-08): the LDRI, an HDRI whose file is a JPG or PNG**
+  (`PROGRESS.md`, OQ-85). Merge only when the user asks. `main` has 0.5.36 (PR #19, `a85cd53`).
 - **0.5.36's CI run** is given in the last commit on the branch; check it with
   `gh run list -R shango/ProIngest --branch hdri/prerender -L 3`, and if green hand over
   `gh run download <id> -R shango/ProIngest -n ProIngest-macos-arm64 -D ~/Downloads/ProIngest-0.5.36`. 0.5.35's run (37690475455) was green and is in `~/Downloads/ProIngest-0.5.35/`.

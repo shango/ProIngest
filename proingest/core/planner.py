@@ -548,14 +548,21 @@ def _audio_job(shot: _Shot) -> DeliverableJob | None:
 
 
 def _hdri_plan(shot: _Shot) -> RowPlan:
-    """An HDRI delivers its EXR, copied byte for byte (user, 2026-10-07). A copy has no
-    frame range and no colour."""
+    """An HDRI delivers its EXR, copied byte for byte (user, 2026-10-07), and an LDRI its JPG
+    or PNG, under the extension it came with (user, 2026-10-08). A copy has no frame range
+    and no colour."""
+    identity, source = shot.identity, shot.media.path
+    name = (
+        naming.ldri_image(identity, shot.version, source.suffix)
+        if identity.is_ldri
+        else naming.hdri_exr(identity, shot.version)
+    )
     return RowPlan(
         jobs=[
             DeliverableJob(
                 kind="hdri",
-                source=shot.media.path,
-                destination=shot.directory / naming.hdri_exr(shot.identity, shot.version),
+                source=source,
+                destination=shot.directory / name,
                 version=shot.version,
                 shot_code=shot.identity.shot_code,
                 elem=naming.HDRI_ELEMENT,

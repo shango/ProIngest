@@ -42,13 +42,34 @@ HDRI_KIND = "HDRI"
 The tool delivers the HDRI EXR byte for byte, and the stringout shows Ben's pre-render of
 its timeline event (user, 2026-10-07)."""
 
+LDRI_KIND = "LDRI"
+"""An LDRI's `Shot Type` (user, 2026-10-08): an HDRI whose file is a JPG or PNG. Treated as
+an HDRI throughout (`ShotIdentity.is_hdri` is true of both, and so is `qc.is_hdri`), except
+that its file is delivered byte for byte under its own extension and the stringout shows it,
+or its pre-render, as it is, with no grade."""
+
+LDRI_EXTENSIONS = (".jpg", ".jpeg", ".png")
+"""What an LDRI's file is, and so what its delivered copy ends with."""
+
+HDRI_SHOT_TYPE = re.compile(r"(?P<kind>hdri|ldri)(?P<index>\d{1,2})?", re.IGNORECASE)
+"""`HDRI` or `LDRI`, as the CSV writes it, with or without an index (`HDRI2` is 02)."""
+
+
+def hdri_kind(shot_type: str) -> str | None:
+    """`HDRI_KIND` or `LDRI_KIND` for a `Shot Type` that is one, else None."""
+    match = HDRI_SHOT_TYPE.fullmatch(shot_type.strip())
+    if match is None:
+        return None
+    return LDRI_KIND if match["kind"].casefold() == LDRI_KIND.casefold() else HDRI_KIND
+
+
 STYLE_FRAME_KIND = "styleFrame"
 """A style frame's `Shot Type` (QC-085, user 2026-10-07): a pre-graded PNG or JPG held on the
 timeline before its shot's plate. Not in `CLIP_TYPES` and never delivered: the stringout
 shows it as it is, for the event's length."""
 
 HDRI_ELEMENT = "pl01"
-"""Every HDRI is named under the plate: `[SHOTCODE]_pl01_HDRI_v01.exr` in the shooters'
+"""Every HDRI and LDRI is named under the plate: `[SHOTCODE]_pl01_HDRI_v01.exr` in the shooters'
 spec, `BACH0002_pl01_HDRI_01_v01.exr` in the tracker."""
 
 _SHOT_TYPE_INDEX = {name.casefold(): name for name in CLIP_TYPES}
@@ -100,8 +121,13 @@ class ShotIdentity:
 
     @property
     def is_hdri(self) -> bool:
-        """An HDRI: its EXR is delivered as it is, keyed to the shot's plate."""
-        return self.kind == HDRI_KIND
+        """An HDRI or an LDRI: its file is delivered as it is, keyed to the shot's plate."""
+        return self.kind in (HDRI_KIND, LDRI_KIND)
+
+    @property
+    def is_ldri(self) -> bool:
+        """An LDRI: an HDRI whose file is a JPG or PNG (user, 2026-10-08)."""
+        return self.kind == LDRI_KIND
 
     @property
     def is_style_frame(self) -> bool:
@@ -211,14 +237,24 @@ def aux_still_exr(identity: ShotIdentity, version: int) -> str:
 
 def hdri_exr(identity: ShotIdentity, version: int) -> str:
     """`SECA0009_pl01_HDRI_01_v01.exr`: the HDRI, copied byte for byte (user, 2026-10-07)."""
-    if not identity.is_hdri:
+    if identity.kind != HDRI_KIND:
         raise ValueError(f"an HDRI must have kind {HDRI_KIND!r}, got {identity.kind!r}")
     return f"{hdri_label(identity)}_{_ver(version)}.exr"
 
 
+def ldri_image(identity: ShotIdentity, version: int, suffix: str) -> str:
+    """`SECA0009_pl01_LDRI_01_v01.jpg`: the LDRI, copied byte for byte under the extension it
+    came with (user, 2026-10-08)."""
+    if not identity.is_ldri:
+        raise ValueError(f"an LDRI must have kind {LDRI_KIND!r}, got {identity.kind!r}")
+    if suffix.lower() not in LDRI_EXTENSIONS:
+        raise ValueError(f"an LDRI must be one of {LDRI_EXTENSIONS}, got {suffix!r}")
+    return f"{hdri_label(identity)}_{_ver(version)}{suffix.lower()}"
+
+
 def hdri_label(identity: ShotIdentity) -> str:
-    """`SECA0009_pl01_HDRI_01`: the HDRI's name without its version."""
-    return f"{identity.shot_code}_{HDRI_ELEMENT}_{HDRI_KIND}_{identity.index}"
+    """`SECA0009_pl01_HDRI_01` or `SECA0009_pl01_LDRI_01`: the name without its version."""
+    return f"{identity.shot_code}_{HDRI_ELEMENT}_{identity.kind}_{identity.index}"
 
 
 # --- The turnover stringout, NAMING_SPEC.md section 5 (OQ-38, reopened 2026-09-25). ---
@@ -338,6 +374,12 @@ def _output_patterns(show_pattern: str) -> list[tuple[OutputKind, re.Pattern[str
         ("audio", re.compile(rf"^{sc}_audio_{v}\.wav$")),
         ("aux_still", re.compile(rf"^{shot}_(?P<aux>{_AUX})_(?P<auxidx>\d{{2}})_4k_{v}\.exr$")),
         ("hdri", re.compile(rf"^{shot}_{HDRI_ELEMENT}_(?P<aux>{HDRI_KIND})_(?P<auxidx>\d{{2}})_{v}\.exr$")),
+        (
+            "hdri",
+            re.compile(
+                rf"^{shot}_{HDRI_ELEMENT}_(?P<aux>{LDRI_KIND})_(?P<auxidx>\d{{2}})_{v}\.(?P<ext>jpe?g|png)$"
+            ),
+        ),
     ]
 
 

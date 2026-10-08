@@ -62,6 +62,7 @@ Shot Type   ^(?P<kind>[A-Za-z]+)(?P<index>\d{1,2})?$   kind, casefolded, one of
 | re | recon plate | raw 4k, raw HD, ref 4k, ref HD |
 | aux still | reference still, keyed to the shot code | single 4k exr, converted and never graded |
 | HDRI | the HDRI, `Shot Type` `HDRI` (QC-080) | the EXR, **copied byte for byte** and never checked (user, 2026-10-07) |
+| LDRI | the LDRI, `Shot Type` `LDRI` (QC-080): an HDRI whose file is a JPG or PNG | the JPG or PNG, **copied byte for byte** under its own extension and never checked (user, 2026-10-08) |
 | styleFrame | a pre-graded PNG or JPG held before the shot's plate (QC-085) | **nothing**: shown on the stringout only, as it is (user, 2026-10-07) |
 
 **Nothing else is a deliverable** (2026-09-22). camData, BTS stills and the lens grid carry
@@ -83,6 +84,7 @@ Tokens: `{shotcode}` `{elem}` `{kind}` `{res}` `{ver}` `{frame}` `{aux}` `{auxid
 | ref mp4 | `{shotcode}_{elem}_ref_{res}_v{ver}.mp4` | `MELT0001_pl01_ref_HD_v01.mp4` |
 | audio | `{shotcode}_{elem}_audio_v{ver}.wav` | `MELT0001_pl01_audio_v01.wav` |
 | HDRI exr | `{shotcode}_pl01_HDRI_{idx}_v{ver}.exr` | `SECA0009_pl01_HDRI_01_v01.exr`. As the tracker writes it (`BACH0002_pl01_HDRI_01_v01.exr`); the shooters' spec drops the index. `naming.hdri_exr` (2026-10-07) |
+| LDRI image | `{shotcode}_pl01_LDRI_{idx}_v{ver}.{jpg\|jpeg\|png}` | `SECA0009_pl01_LDRI_01_v01.jpg`. The HDRI's name mirrored, with the source's own extension, lowercased (user, 2026-10-08). The tracker has no LDRI column. `naming.ldri_image` |
 | aux still exr | `{shotcode}_{aux}_{auxidx}_4k_v{ver}.exr` | `MELT0001_colorChart_01_4k_v01.exr`. **No element segment** (shooters' spec, 2026-09-21): a reference still is keyed to the shot code |
 | stringout mp4 | `turnover{num:03}_{MM}_{DD}_{YY}_{shooter}_SO_v{ver}.mp4`, in `<show>/_reports/` | `turnover121_09_23_26_danielluckett_SO_v01.mp4`. Dated as the turnover folder, not the render; month, day and year are always two digits each (user, 2026-10-05; a folder's four digit year is written as its last two). A stringout written earlier with a four digit year still counts as a version. `naming.stringout_stem` (2026-09-25) |
 
@@ -131,6 +133,7 @@ the sheet does not go looking for the rule behind one of them.
       <shotcode>_<elem>_audio_v01.wav
       <shotcode>_colorChart_01_4k_v01.exr     (keyed to the shot code, not an element)
       <shotcode>_pl01_HDRI_01_v01.exr         (the HDRI, copied as it is)
+      <shotcode>_pl01_LDRI_01_v01.jpg         (or .png: an LDRI, copied as it is)
     _reports/
       shot_tracker_<batchname>_<date>.xlsx      (<date> is YYYYMMDD, so name order is date order)
       qc_ingest_log_<batchname>_<date>.xlsx
@@ -171,6 +174,7 @@ One anchored pattern per kind, tried in order. They are mutually exclusive becau
 | ref mp4 | `^<sc>_ref_(?P<res>4k\|HD)_v(?P<ver>\d{2})\.mp4$` |
 | audio | `^<sc>_audio_v(?P<ver>\d{2})\.wav$` |
 | HDRI exr | `^<shotcode>_pl01_(?P<aux>HDRI)_(?P<auxidx>\d{2})_v(?P<ver>\d{2})\.exr$` |
+| LDRI image | `^<shotcode>_pl01_(?P<aux>LDRI)_(?P<auxidx>\d{2})_v(?P<ver>\d{2})\.(?P<ext>jpe?g\|png)$` (read back as kind `hdri`) |
 | aux still exr | `^<shotcode>_(?P<aux>colorChart\|mirrorBall\|greyBall\|sizeRef)_(?P<auxidx>\d{2})_4k_v(?P<ver>\d{2})\.exr$` |
 
 The `show` prefix pattern is the same configurable value as section 1, so a Settings change applies to both directions at once.

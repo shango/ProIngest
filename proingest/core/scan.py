@@ -274,10 +274,11 @@ def _build_row(
     if entry.kind is not None and entry.index is not None and not row.errors():
         row.identity = naming.ShotIdentity(shot_code=entry.shot, kind=entry.kind, index=entry.index)
 
+    hdri = naming.hdri_kind(entry.shot_type) or naming.HDRI_KIND
     if entry.hdri and qc.is_prerender_name(entry.file_name):
-        _resolve_prerender(entry.file_name, index, row, cache, settings.project_rate)
+        _resolve_prerender(entry.file_name, hdri, index, row, cache, settings.project_rate)
     elif entry.hdri:
-        _resolve_hdri(entry.file_name, index, row, cache, settings.project_rate)
+        _resolve_hdri(entry.file_name, hdri, index, row, cache, settings.project_rate)
     else:
         item = _resolve_media(entry.file_name, index, row)
         if item is not None:
@@ -301,34 +302,41 @@ def _fold_hdri_exrs(entries: list[metacsv.MetaRow]) -> list[metacsv.MetaRow]:
         exr.casefold()
         for entry in entries
         if entry.hdri
-        and (exr := hdri_exr_name(entry.file_name)) is not None
+        and (exr := hdri_source_name(entry.file_name)) is not None
         and qc.is_prerender_name(entry.file_name)
     }
     return [entry for entry in entries if not (entry.hdri and entry.file_name.casefold() in named)]
 
 
-def hdri_exr_name(prerender: str) -> str | None:
-    """The HDRI EXR a pre-render is named after: its name up to `.exr`, as Resolve names a
-    render of a clip (`SECA0009_pl01_HDRI_01_v01.exr Render 1.mov`, turnover134 and 135,
-    2026-10-07). None when the name carries no `.exr`."""
-    end = prerender.casefold().find(".exr")
-    return prerender[: end + len(".exr")] if end >= 0 else None
+_HDRI_SOURCE = re.compile(r"^(?P<name>.+?\.(?:exr|jpe?g|png))(?![A-Za-z0-9])", re.IGNORECASE)
+
+
+def hdri_source_name(prerender: str) -> str | None:
+    """The HDRI EXR or LDRI image a pre-render is named after: its name up to `.exr`, `.jpg`,
+    `.jpeg` or `.png`, as Resolve names a render of a clip (`SECA0009_pl01_HDRI_01_v01.exr
+    Render 1.mov`, turnover134 and 135, 2026-10-07; an LDRI the same, user 2026-10-08). None
+    when the name carries none of them."""
+    match = _HDRI_SOURCE.match(prerender)
+    return match["name"] if match else None
 
 
 def _resolve_prerender(
     file_name: str,
+    hdri: str,
     index: media_module.DirectoryIndex,
     row: ShotRow,
     cache: dict[str, MediaInfo],
     timeline_rate: FrameRate,
 ) -> None:
-    """An HDRI whose timeline event is Ben's pre-render (user, 2026-10-07).
+    """An HDRI or LDRI whose timeline event is Ben's pre-render (user, 2026-10-07).
 
     The pre-render is found by the name the timeline uses, and is only ever the stringout's
-    event. The EXR it is named after is what is delivered; when the turnover folder lacks
-    it, nothing is delivered and QC-086 says so. Neither is ever a block.
+    event. The EXR (or an LDRI's JPG or PNG) it is named after is what is delivered; when the
+    turnover folder lacks it, nothing is delivered and QC-086 says so. Neither is ever a block.
     """
-    exr_name = hdri_exr_name(file_name)
+    exr_name = hdri_source_name(file_name)
+    # "HDRI EXR", the user's own words for QC-086, and "LDRI JPG" or "LDRI PNG" the same way.
+    what = f"{hdri} {Path(exr_name).suffix.lstrip('.').upper()}" if exr_name else hdri
     matches = index.media_matching(Path(exr_name).stem) if exr_name else []
     images = [item for item in matches if _suffix(item) not in media_module.VIDEO_EXTENSIONS]
     if len(images) == 1:
@@ -341,7 +349,7 @@ def _resolve_prerender(
                 "QC-086",
                 "warning",
                 "row",
-                f"HDRI EXR File Missing from turnover folder, omitted from delivery: {exr_name or file_name}",
+                f"{what} File Missing from turnover folder, omitted from delivery: {exr_name or file_name}",
             )
         )
 
@@ -359,12 +367,13 @@ def _resolve_prerender(
         else f"the timeline's pre-render {file_name} is not in the turnover folder: it was rendered "
         "somewhere else, or the timeline event points at a file in another folder"
     )
-    shown = "the HDRI EXR held still" if row.media is not None else "black"
+    shown = f"the {what} held still" if row.media is not None else "black"
     row.qc.append(QCResult("QC-083", "warning", "row", f"{why}, so its stringout event is {shown}"))
 
 
 def _resolve_hdri(
     file_name: str,
+    hdri: str,
     index: media_module.DirectoryIndex,
     row: ShotRow,
     cache: dict[str, MediaInfo],
@@ -395,8 +404,8 @@ def _resolve_hdri(
             "QC-083",
             "warning",
             "row",
-            f"{why} the pre-render of HDRI {file_name} (a video named {stem}, such as {stem}.mp4), "
-            "so the stringout shows the HDRI held still",
+            f"{why} the pre-render of {hdri} {file_name} (a video named {stem}, such as {stem}.mp4), "
+            f"so the stringout shows the {hdri} held still",
         )
     )
 
