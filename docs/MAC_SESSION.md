@@ -55,6 +55,12 @@ chunk 7 of `docs/TO_A_WORKING_BUILD.md`, in the order that wastes least.
       in. Open `SECA0009_pl01_ref_HD_v01.mp4` beside Ben's own Resolve playback of the same frame:
       the brightness and colour should match. The tool applies the CDL in ACEScg, unclamped, as
       the AMF states; CI proves the maths, only Ben's screen says it is what Resolve does.
+- [ ] **The LDRI (2026-10-08, 0.5.37).** Once Ben sends a turnover with an LDRI (`Shot Type`
+      `LDRI`, a JPG or PNG, its pre-render `<image> Render 1.mov` on the timeline), scan and run it.
+      Its stringout event plays the pre-render exactly as Ben's Resolve timeline shows it, with no
+      grade; the shot folder gets `<shotcode>_pl01_LDRI_01_v01.jpg` (or `.png`), byte identical to
+      the source (`cmp`); the tracker's HDRI cell for that shot is empty. Move the pre-render
+      out and re-scan: QC-083, and the event holds the image as it is. No sample has one yet.
 - [ ] **The stringout optimised (2026-10-08, 0.5.36).** Build turnover135's stringout from the
       app with Workers at 4 and time it: 3m00s on the Linux dev box (26m15s in 0.5.35). Activity
       Monitor shows several ProIngest processes busy at once early on, then several ffmpeg. Open it

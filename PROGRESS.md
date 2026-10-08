@@ -8,7 +8,7 @@ commit.
 
 ## 1. Resume here
 
-**State at 2026-10-08, version 0.5.36 on branch `hdri/prerender`, PR #19 open** (0.5.36: the stringout from 26 minutes to 3 on turnover135; 0.5.35: the stringout's time left on its line; 0.5.34: the HDRI pre-render on the timeline; 0.5.33: the QC overhaul, nothing stops a batch or a turnover; 0.5.32: style frames on the stringout, the stringout line in the shot list; 0.5.31: every Fix-it line names its shot; 0.5.30: the take on the burn-in; 0.5.29: reference clips play in the stringout; 0.5.28: everything in the stringout graded; 0.5.27: the stringout from the EXRs; 0.5.26: the HDRI pre-render and delivery, QC-084, Accept As Is runs what it can; 0.5.25, merged to `main` with PR #18: `User_Generated` and `User_Uploads` at the delivery root; 0.5.24: the Fix-it
+**State at 2026-10-08, version 0.5.37 on branch `ldri`** (0.5.37: the LDRI; 0.5.36 and before merged to `main` with PR #19 as `a85cd53`; 0.5.36: the stringout from 26 minutes to 3 on turnover135; 0.5.35: the stringout's time left on its line; 0.5.34: the HDRI pre-render on the timeline; 0.5.33: the QC overhaul, nothing stops a batch or a turnover; 0.5.32: style frames on the stringout, the stringout line in the shot list; 0.5.31: every Fix-it line names its shot; 0.5.30: the take on the burn-in; 0.5.29: reference clips play in the stringout; 0.5.28: everything in the stringout graded; 0.5.27: the stringout from the EXRs; 0.5.26: the HDRI pre-render and delivery, QC-084, Accept As Is runs what it can; 0.5.25, merged to `main` with PR #18: `User_Generated` and `User_Uploads` at the delivery root; 0.5.24: the Fix-it
 report, one error per cause, a lone EXR read as one frame, AMFs falling back to the clip they name) (`HANDOFF.md` is the short version, with the session's open items); 0.5.22 went to `main` earlier (PR #17 merged as `70e1160` at the user's request, after its CI
 run 37276656318 built the 0.5.22 dmg). The 2026-09-23 review is built (chunks A
 to H of `docs/REVIEW_2026-09-23.md`), and so are the fixes that a second official turnover,
@@ -17,6 +17,26 @@ renders; Turnover121, every clip 8 bit 4:2:0, runs again with a QC-020 warning o
 since 2026-09-28 (user). What is left is the Mac: `docs/MAC_SESSION.md`, from "The 0.5.0 build, in
 order" down, and Ben's 4.886 slope. Entries are newest first; anything older than 2026-09-22
 describes the tool before the review and is history.
+
+**2026-10-08, 0.5.37: the LDRI (user).** "In some turnovers, there won't be an HDRI on the
+stringout. Instead it will be LDRI shot type. Treated the same as the HDRI in regards to the
+stringout. Only difference is that the deliverable file will be a jpg or png rather than an EXR and
+the naming is LDRI rather than HDRI." Asked five things and answered: delivered byte for byte;
+named as the HDRI mirrored (`SECA0009_pl01_LDRI_01_v01.jpg`, its own extension); its pre-render
+named as the HDRI's (`<image> Render 1.mov`); shown on the stringout as it is, never graded, since a
+JPG or PNG is display referred; no tracker column ("the list simply indicates that there's no
+HDRI"). **Built** as an HDRI of another kind, so every HDRI path carries it: `naming.LDRI_KIND`,
+`ShotIdentity.is_hdri` true of both and `is_ldri` for the one, `naming.hdri_kind` reading
+`HDRI`/`LDRI` (with an index) for `metacsv`, `qc.is_ldri` from the CSV's `Shot Type` (so a row with
+no shot code knows too), `naming.ldri_image` (extension lowercased) read back as kind `hdri`,
+`scan.hdri_source_name` (was `hdri_exr_name`) taking the name up to `.exr`, `.jpg`, `.jpeg` or
+`.png`, QC-086 reading `LDRI JPG File Missing ...` and QC-083 `the LDRI JPG held still`,
+`stringout._prerender_color` returning None for an LDRI, its held image (no pre-render) falling
+through to the source segment as it is, and `exports` leaving the HDRI cell empty for one.
+**Verified**: `TestAnLdri` in `test_scan.py` and `test_stringout.py` (delivered byte identical as
+`.jpg`, a graded AMF not applied, held as it is, the stringout written), naming, metacsv and
+tracker tests; turnover134 and 135 still scan with 0 errors and the HDRI wording unchanged. **No
+sample has an LDRI**: synthetic JPGs only. Assumptions in OQ-85. Mac check in `docs/MAC_SESSION.md`.
 
 **2026-10-08, 0.5.36, then: the stringout optimised (user).** "I need to get the stringout render
 time optimized. Please make a plan and implement. If parallel is the best we have, optimize

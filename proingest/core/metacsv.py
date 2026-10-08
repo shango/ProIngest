@@ -81,7 +81,7 @@ class MetaRow:
     take: str = ""
     input_color_space: str = ""
     hdri: bool = False
-    """An HDRI (QC-080): the tool copies its EXR as it is and runs no row rule on it, and
+    """An HDRI or LDRI (QC-080): the tool copies its file as it is and runs no row rule on it, and
     the stringout shows Ben's pre-render of its timeline event (user, 2026-10-07)."""
 
 
@@ -250,7 +250,7 @@ def read(path: Path, show_pattern: str = naming.DEFAULT_SHOW_PATTERN) -> MetaCsv
             continue
         shot = _shot(_value(record, shot_positions), show_pattern)
         scene = _value(record, scene_positions)
-        if _HDRI.fullmatch(shot_type.strip()):
+        if naming.hdri_kind(shot_type) is not None:
             named = naming.parse_shot_code(shot, show_pattern) is not None
             hdri = _hdri(file_name, shot, shot_type, scene, named)
             result.rows.append(replace(hdri, take=_value(record, take_positions)))
@@ -276,25 +276,23 @@ def read(path: Path, show_pattern: str = naming.DEFAULT_SHOW_PATTERN) -> MetaCsv
     return result
 
 
-_HDRI = re.compile(r"hdri(?P<index>\d{1,2})?", re.IGNORECASE)
-"""`HDRI`, as turnover097's CSV writes it, with or without an index."""
-
-
 def _hdri(file_name: str, shot: str, shot_type: str, scene: str, named: bool) -> MetaRow:
-    """An HDRI row (user, 2026-10-07): its EXR is delivered as it is, with no checks, and
-    the stringout shows the pre-render of its timeline event. One whose `Shot` is no shot
-    code has nowhere to be delivered, and only the stringout shows it."""
+    """An HDRI or LDRI row (user, 2026-10-07 and 2026-10-08): its file is delivered as it is,
+    with no checks, and the stringout shows the pre-render of its timeline event. One whose
+    `Shot` is no shot code has nowhere to be delivered, and only the stringout shows it."""
+    hdri = naming.hdri_kind(shot_type) or naming.HDRI_KIND
+    image = "HDRI EXR" if hdri == naming.HDRI_KIND else "LDRI image"
     what = (
-        f"{file_name} is an HDRI's pre-render: the stringout shows it, and the tool delivers the "
-        "HDRI EXR it is named after as it is, with no checks"
+        f"{file_name} is an {hdri}'s pre-render: the stringout shows it, and the tool delivers the "
+        f"{image} it is named after as it is, with no checks"
         if Path(file_name).suffix.lower() in media.VIDEO_EXTENSIONS
-        else f"{file_name} is an HDRI: the tool delivers it as it is, with no checks, and the "
+        else f"{file_name} is an {hdri}: the tool delivers it as it is, with no checks, and the "
         "stringout shows its pre-render"
     )
     note = QCResult("QC-080", "info", "row", what)
-    match = _HDRI.fullmatch(shot_type.strip())
+    match = naming.HDRI_SHOT_TYPE.fullmatch(shot_type.strip())
     index = ((match["index"] if match else None) or "1").zfill(2)
-    kind = naming.HDRI_KIND if named else None
+    kind = hdri if named else None
     return MetaRow(file_name, shot, shot_type, kind, index if named else None, scene, (note,), hdri=True)
 
 

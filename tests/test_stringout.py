@@ -12,6 +12,7 @@ import pytest
 
 from proingest.core import clf, color, ffmpeg, naming, planner, qc, render, scan, stringout
 from proingest.core.models import Batch, Deliverable, FrameRate, InOut, MediaInfo
+from tests.fixtures import color as color_fixtures
 from tests.fixtures import media as fixtures
 
 FOLDER = "turnover007_09_23_26_testshooter"
@@ -505,6 +506,58 @@ class TestAPreRenderOnTheTimeline:
         assert segment.color is None and stringout._still_lut(segment, tmp_path / "x.cube") is None
 
     def test_the_stringout_is_written(self, batch: Batch) -> None:
+        assert batch.delivery_root is not None
+        made = stringout.build(batch, batch.turnovers[0], batch.delivery_root)
+        assert made is not None and made.frame_count == 2 * FRAMES
+
+
+class TestAnLdri:
+    """User, 2026-10-08: an LDRI is treated as an HDRI on the stringout, its file a JPG or PNG
+    delivered byte for byte. A JPG or PNG is display referred, so its pre-render, and the
+    image held when there is none, are shown as they are, graded or not."""
+
+    RENDER = "MELT0002_pl01_LDRI_01_v01.jpg Render 1.mp4"
+    IMAGE = "MELT0002_pl01_LDRI_01_v01.jpg"
+
+    def batch(self, tmp_path: Path, render: bool) -> Batch:
+        folder = fixtures.make_turnover(tmp_path / FOLDER, shots=1, frames=FRAMES)
+        if render:
+            fixtures.make_mp4(folder / self.RENDER, count=FRAMES)
+        fixtures.make_still(folder / self.IMAGE)
+        name = self.RENDER if render else self.IMAGE
+        grade = [color_fixtures.make_clf(folder / "ldri_ClipGraph_CorrectorNode_1.clf").name]
+        color_fixtures.make_amf(folder, 2, name, clfs=grade)
+        rows = [("MELT0001_pl01", "MELT0001", "pl01"), (name, "MELT0002", "LDRI")]
+        fixtures.make_meta_csv(folder / "metadata.csv", rows)
+        fixtures.make_final_edl(folder / "FINAL_v01.edl", ["MELT0001_pl01", name], duration=FRAMES)
+        return TestAnHdri.scanned(folder, Batch(delivery_root=tmp_path / "delivery"))
+
+    def test_its_image_is_delivered_byte_for_byte(self, tmp_path: Path) -> None:
+        ldri = self.batch(tmp_path, render=True).rows[1]
+        assert qc.is_ldri(ldri) and ldri.media is not None
+        (item,) = ldri.deliverables
+        assert (item.kind, item.name, item.status) == ("hdri", self.IMAGE, "done")
+        assert item.path.read_bytes() == ldri.media.path.read_bytes()
+
+    def test_its_pre_render_is_shown_as_it_is_though_graded(self, tmp_path: Path) -> None:
+        batch = self.batch(tmp_path, render=True)
+        ldri = batch.rows[1]
+        assert clf.has_grade(ldri), "the AMF carries a CLF, and it is not applied"
+        segment = planned(batch).segments[1]
+        assert segment.prerender and ldri.hdri_render is not None and segment.path == ldri.hdri_render.path
+        assert segment.color is None and stringout._still_lut(segment, tmp_path / "x.cube") is None
+        assert segment.label == "MELT0002_pl01_LDRI_01"
+        assert batch.delivery_root is not None
+        made = stringout.build(batch, batch.turnovers[0], batch.delivery_root)
+        assert made is not None and made.frame_count == 2 * FRAMES
+
+    def test_with_no_pre_render_the_image_is_held_as_it_is(self, tmp_path: Path) -> None:
+        batch = self.batch(tmp_path, render=False)
+        ldri = batch.rows[1]
+        assert "QC-083" in {q.rule_id for q in ldri.qc}
+        segment = planned(batch).segments[1]
+        assert ldri.media is not None and segment.path == ldri.media.path and segment.exr is None
+        assert (segment.kind, segment.length, segment.freeze, segment.color) == ("source", FRAMES, True, None)
         assert batch.delivery_root is not None
         made = stringout.build(batch, batch.turnovers[0], batch.delivery_root)
         assert made is not None and made.frame_count == 2 * FRAMES

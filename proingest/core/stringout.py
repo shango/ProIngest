@@ -34,6 +34,10 @@ ffmpeg. The user's decisions, all in OQ-38:
   through the HDRI's AMF**, its own encoding taking the input transform's place. With no
   pre-render (QC-083) the EXR is held for the event's length, graded the same way, read as
   linear Rec.709 like its pre-render.
+- **An LDRI is an HDRI whose file is a JPG or PNG** (user, 2026-10-08): its event is cut
+  from its pre-render the same way, but **shown as it is, with no grade**, since a JPG or PNG
+  is display referred already. With no pre-render the image is held as it is for the event's
+  length, as a style frame is.
 - **A style frame is held as it is** (user, 2026-10-07): a pre-graded PNG or JPG, `Shot Type`
   `styleFrame`, cut before its shot's plate. It keeps the EDL's length, takes no grade and
   no `Frame:` counter, and is never delivered (QC-085). Its file missing is black.
@@ -429,9 +433,10 @@ def _prerender(event: clf.ConformEvent, row: ShotRow, length: int, show_pattern:
 
 
 def _prerender_color(row: ShotRow) -> clf.ShotColor | None:
-    """None, the pre-render as it is, when it is on the timeline and its AMF carries no
-    grade (QC-009); otherwise the HDRI's grade over linear Rec.709 (QC-083)."""
-    if qc.is_hdri_prerender(row) and not clf.has_grade(row):
+    """None, the pre-render as it is, for an LDRI (user, 2026-10-08) or when it is on the
+    timeline and its AMF carries no grade (QC-009); otherwise the HDRI's grade over linear
+    Rec.709 (QC-083)."""
+    if qc.is_ldri(row) or (qc.is_hdri_prerender(row) and not clf.has_grade(row)):
         return None
     return replace(clf.shot_color(row), source_encoding=color.HDRI_RENDER_ENCODING)
 

@@ -848,6 +848,69 @@ class TestAPreRenderOnTheTimeline:
         assert note.severity == "info" and "no color correction" in note.message
 
 
+class TestAnLdri:
+    """User, 2026-10-08: an LDRI is an HDRI whose file is a JPG or PNG. Its pre-render is
+    named the same way (`<LDRI image> Render 1.mov`) and the image is delivered byte for
+    byte under its own extension."""
+
+    RENDER = "MELT0001_pl01_LDRI_01_v01.jpg Render 1.mp4"
+    IMAGE = "MELT0001_pl01_LDRI_01_v01.jpg"
+
+    def folder(self, tmp_path: Path, image: bool, render: bool = True, image_row: bool = False) -> Path:
+        root = tmp_path / GOOD_FOLDER
+        if render:
+            fixtures.make_mp4(root / self.RENDER, count=4)
+        if image:
+            fixtures.make_still(root / self.IMAGE)
+        rows = [(self.RENDER, "MELT0001", "LDRI")] + ([(self.IMAGE, "MELT0001", "LDRI")] if image_row else [])
+        fixtures.make_meta_csv(root / "metadata.csv", rows)
+        fixtures.make_final_edl(root / "FINAL_v01.edl", [self.RENDER], duration=4)
+        return root
+
+    def scanned(self, folder: Path) -> list[ShotRow]:
+        _, rows = scan.scan_turnover(folder, "t1", scan.ScanSettings(rules=fixtures.SMALL_RULES))
+        return rows
+
+    def test_the_image_it_is_named_after_is_delivered_as_an_ldri(self, tmp_path: Path) -> None:
+        (row,) = self.scanned(self.folder(tmp_path, image=True))
+        assert qc.is_hdri(row) and qc.is_ldri(row)
+        assert row.media is not None and row.media.path.name == self.IMAGE
+        assert row.hdri_render is not None and row.hdri_render.path.name == self.RENDER
+        assert not row.errors() and not rules(row) & {"QC-083", "QC-086"}
+        (job,) = planner.plan_row(row, tmp_path / "out", 1).jobs
+        assert (job.kind, job.source.name, job.destination.name) == ("hdri", self.IMAGE, self.IMAGE)
+
+    def test_no_image_is_qc_086_in_ldri_words(self, tmp_path: Path) -> None:
+        (row,) = self.scanned(self.folder(tmp_path, image=False))
+        (note,) = [result for result in row.qc if result.rule_id == "QC-086"]
+        assert note.message.startswith("LDRI JPG File Missing from turnover folder, omitted from delivery")
+        assert planner.plan_row(row, tmp_path / "out", 1).jobs == []
+
+    def test_the_csv_s_own_image_row_folds_into_the_pre_render(self, tmp_path: Path) -> None:
+        rows = self.scanned(self.folder(tmp_path, image=True, image_row=True))
+        assert [row.clip_name for row in rows] == [self.RENDER]
+
+    def test_a_pre_render_not_in_the_folder_holds_the_image(self, tmp_path: Path) -> None:
+        (row,) = self.scanned(self.folder(tmp_path, image=True, render=False))
+        (note,) = [result for result in row.qc if result.rule_id == "QC-083"]
+        assert "the LDRI JPG held still" in note.message and not row.errors()
+
+
+@pytest.mark.parametrize(
+    ("prerender", "source"),
+    [
+        ("SECA0009_pl01_HDRI_01_v01.exr Render 1.mov", "SECA0009_pl01_HDRI_01_v01.exr"),
+        ("SECA0009_pl01_LDRI_01_v01.jpg Render.mov", "SECA0009_pl01_LDRI_01_v01.jpg"),
+        ("SECA0009_pl01_LDRI_01_v01.JPEG Render 1.mov", "SECA0009_pl01_LDRI_01_v01.JPEG"),
+        ("SECA0009_pl01_LDRI_01_v01.png Render 1.mov", "SECA0009_pl01_LDRI_01_v01.png"),
+        ("SECA0009_pl01_HDRI_01_v01 Render 1.mov", None),
+        ("a.exrs Render.mov", None),
+    ],
+)
+def test_hdri_source_name(prerender: str, source: str | None) -> None:
+    assert scan.hdri_source_name(prerender) == source
+
+
 class TestACutOutsideItsFile:
     """User, 2026-10-07: the timeline at face value. A cut the file's own timecode puts
     outside it is read by Resolve's clock, the CSV's `Start TC`, with nothing said; when
