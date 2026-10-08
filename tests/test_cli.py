@@ -27,14 +27,15 @@ class TestScanCommand:
         assert "MELT0002" in out
         assert "2 rows, 0 errors, 0 warnings" in out
 
-    def test_fixture_sized_media_fails_the_real_rules(
+    def test_fixture_sized_media_is_reported_by_the_real_rules(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        """Without overrides the shipped thresholds apply, and 64x36 is not 4k."""
+        """Without overrides the shipped thresholds apply, and 64x36 is not 4k. Both are
+        warnings since 2026-10-07 (user): reported, and nothing is held back."""
         folder = tmp_path / FOLDER
         fixtures.make_turnover(folder, shots=1, frames=4)
 
-        assert main(["scan", str(folder)]) == 1
+        assert main(["scan", str(folder)]) == 0
         out = capsys.readouterr().out
         assert "QC-023" in out
         assert "QC-033" in out
@@ -220,20 +221,18 @@ class TestRunCommand:
         assert "0 err" in out, "the pre-flight found nothing blocking"
         assert "deliverables from 1 shots" in out
 
-    def test_a_row_error_from_the_preflight_is_printed_too(
-        self, tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+    def test_a_row_error_from_the_preflight_does_not_stop_the_run(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """D8: a row's must-fix stops the run, and says where it is."""
+        """User, 2026-10-07: a row's error holds that shot back and nothing else."""
         batch_path = self.scanned(tmp_path)
 
         def flag_a_row(batch: Batch) -> None:
-            batch.rows[0].qc.append(QCResult("QC-019", "error", "row", "the HDRI will not open"))
+            batch.rows[0].qc.append(QCResult("QC-012", "error", "row", "no such file"))
 
         monkeypatch.setattr(qc, "preflight", flag_a_row)
         code = main(["run", str(batch_path), "--delivery-root", str(tmp_path / "delivery"), "--dry-run"])
-        err = capsys.readouterr().err
-        assert code == 2
-        assert "QC-019" in err and "MELT0001" in err
+        assert code == 0
 
     def test_an_unwritable_delivery_root_stops_the_run(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]

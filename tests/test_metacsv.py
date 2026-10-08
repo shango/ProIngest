@@ -166,20 +166,61 @@ class TestColumnsNotRead:
 
 
 class TestHdri:
-    """Delivered by the shooters by hand; the tool delivers nothing for it (user, 2026-09-28)."""
+    """Its EXR is copied as it is and no check runs on it (user, 2026-10-07)."""
 
-    @pytest.mark.parametrize("written", ["HDRI", "hdri", "HDRI01"])
-    def test_an_hdri_row_is_kept_marked_and_carries_only_info(self, tmp_path: Path, written: str) -> None:
+    @pytest.mark.parametrize(("written", "index"), [("HDRI", "01"), ("hdri", "01"), ("HDRI2", "02")])
+    def test_an_hdri_row_is_marked_and_carries_only_info(
+        self, tmp_path: Path, written: str, index: str
+    ) -> None:
         result = read(
             tmp_path, ["File Name", "Shot", "Shot Type"], [["DALU0012_pl01_02_HDRI.exr", "TEST0013", written]]
         )
         (row,) = result.rows
-        assert row.shooter_delivered and row.kind is None
+        assert row.hdri and (row.kind, row.index) == ("HDRI", index)
         assert [(q.rule_id, q.severity) for q in row.qc] == [("QC-080", "info")]
+
+    def test_one_with_no_shot_code_has_no_kind_to_deliver(self, tmp_path: Path) -> None:
+        result = read(tmp_path, ["File Name", "Shot", "Shot Type"], [["x.exr", "", "HDRI"]])
+        (row,) = result.rows
+        assert row.hdri and row.kind is None
+
+    def test_an_hdri_keeps_its_take(self, tmp_path: Path) -> None:
+        header = ["File Name", "Shot", "Shot Type", "Take"]
+        result = read(tmp_path, header, [["x.exr", "TEST0013", "HDRI", "2"]])
+        assert result.rows[0].take == "2"
 
     def test_a_type_merely_containing_hdri_is_still_qc_010(self, tmp_path: Path) -> None:
         result = read(tmp_path, ["File Name", "Shot", "Shot Type"], [["x.exr", "TEST0013", "HDRIref"]])
         assert [q.rule_id for q in result.rows[0].qc] == ["QC-010"]
+
+
+class TestInputColorSpace:
+    """Resolve's `Input Color Space`, read for a clip no AMF grades (QC-009, user 2026-10-07)."""
+
+    def test_it_is_read_as_written(self, tmp_path: Path) -> None:
+        header = ["File Name", "Shot", "Shot Type", metacsv.INPUT_COLOR_SPACE_COLUMN]
+        result = read(tmp_path, header, [["C1.mov", "SECA0009", "pl01", "Apple Log"]])
+        assert result.rows[0].input_color_space == "Apple Log"
+
+    def test_a_csv_without_it_leaves_it_empty(self, tmp_path: Path) -> None:
+        result = read(tmp_path, ["File Name", "Shot", "Shot Type"], [["C1.mov", "SECA0009", "pl01"]])
+        assert result.rows[0].input_color_space == ""
+
+
+class TestStyleFrame:
+    """A pre-graded still on the stringout, never delivered (user, 2026-10-07)."""
+
+    @pytest.mark.parametrize("written", ["styleFrame", "styleframe", "STYLEFRAME"])
+    def test_a_style_frame_row_carries_only_info(self, tmp_path: Path, written: str) -> None:
+        result = read(tmp_path, ["File Name", "Shot", "Shot Type"], [["sf.png", "SECA0009", written]])
+        (row,) = result.rows
+        assert (row.kind, row.index) == ("styleFrame", "01") and not row.hdri
+        assert [(q.rule_id, q.severity) for q in row.qc] == [("QC-085", "info")]
+
+    def test_one_with_no_shot_code_has_no_kind(self, tmp_path: Path) -> None:
+        result = read(tmp_path, ["File Name", "Shot", "Shot Type"], [["sf.jpg", "", "styleFrame"]])
+        (row,) = result.rows
+        assert row.kind is None and [q.rule_id for q in row.qc] == ["QC-085"]
 
 
 class TestFileShape:
@@ -187,6 +228,11 @@ class TestFileShape:
         """Resolve pads with empty cells; nothing guarantees every row is full width."""
         result = read(tmp_path, REAL_HEADER, [["C1.MP4", "MELT0001", "pl01"]])
         assert result.rows[0].shot == "MELT0001"
+
+    def test_the_take_is_read_as_written(self, tmp_path: Path) -> None:
+        header = ["File Name", "Shot", "Shot Type", "Take"]
+        result = read(tmp_path, header, [["C1.MP4", "MELT0001", "pl01", "3"]])
+        assert result.rows[0].take == "3"
 
     def test_blank_lines_are_skipped(self, tmp_path: Path) -> None:
         result = read(tmp_path, ["File Name", "Shot", "Shot Type"], [[], ["C1.MP4", "MELT0001", "pl01"], []])
@@ -198,9 +244,11 @@ class TestFileShape:
 
     def test_nothing_reads_a_duration_a_frame_count_or_a_path(self) -> None:
         """The real file's `Frames` and `Clip Directory` describe the originals, so the
-        reader must not expose them at all: a caller cannot misuse what it cannot reach."""
+        reader must not expose them at all: a caller cannot misuse what it cannot reach.
+        `Start TC` is the one exception, read only when the file's own timecode puts the
+        EDL's cut outside it (QC-084, user 2026-10-07)."""
         fields = set(metacsv.MetaRow.__dataclass_fields__)
-        assert not fields & {"frames", "duration", "clip_directory", "start_tc", "end_tc", "path"}
+        assert not fields & {"frames", "duration", "clip_directory", "end_tc", "path"}
 
 
 class TestFind:

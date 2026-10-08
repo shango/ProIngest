@@ -145,7 +145,6 @@ def _write_summary(book: Workbook, batch: Batch, when: date) -> None:
     """One key and one value per line: what was run, and what it said."""
     sheet = _sheet(book, "Summary", ("Item", "Value"))
     counts = severity_counts(batch)
-    waived = planner.bypassed_turnovers(batch)
     for label, value in (
         ("Batch", batch.name),
         ("Date", when.isoformat()),
@@ -154,13 +153,10 @@ def _write_summary(book: Workbook, batch: Batch, when: date) -> None:
         ("Delivery root", str(batch.delivery_root) if batch.delivery_root else ""),
         ("Turnovers", len(batch.turnovers)),
         ("Rows", len(batch.rows)),
-        ("Rows delivered", sum(1 for row in batch.rows if _row_state(row, waived) == "delivered")),
-        ("Rows skipped", sum(1 for row in batch.rows if _row_state(row, waived) == "skipped")),
-        ("Rows failed", sum(1 for row in batch.rows if _row_state(row, waived) == "failed")),
-        (
-            "QC bypassed (QC-074)",
-            ", ".join(t.folder.name for t in batch.turnovers if t.qc_bypassed) or "none",
-        ),
+        ("Rows delivered", sum(1 for row in batch.rows if _row_state(row) == "delivered")),
+        ("Rows skipped", sum(1 for row in batch.rows if _row_state(row) == "skipped")),
+        ("Rows held back", sum(1 for row in batch.rows if _row_state(row) == "held")),
+        ("Rows failed", sum(1 for row in batch.rows if _row_state(row) == "failed")),
         ("Deliverables", sum(len(row.deliverables) for row in batch.rows)),
         ("Errors", counts["error"]),
         ("Warnings", counts["warning"]),
@@ -187,18 +183,18 @@ def _every_result(batch: Batch) -> list[list[QCResult]]:
     return results
 
 
-def _row_state(row: ShotRow, waived: set[str]) -> str:
-    """`skipped`, `failed` or `delivered`, which is what the Summary counts.
+def _row_state(row: ShotRow) -> str:
+    """`skipped`, `held`, `failed` or `delivered`, which is what the Summary counts.
 
-    A row with nothing planned counts as delivered rather than failed: the planner had
-    nothing to do for it, which is a different thing from a render that did not finish.
-    An error Accept As Is rendered past (`waived` turnovers) is not a failure.
+    Held is a row an error kept back until it is fixed and re-scanned (missing media, or
+    colour the tool cannot recreate). A row with nothing planned counts as delivered: the
+    planner had nothing to do for it, which is not a render that did not finish.
     """
     if row.skipped:
         return "skipped"
-    if planner.holding_errors(row, row.turnover_id in waived) or any(
-        item.status == "failed" for item in row.deliverables
-    ):
+    if planner.holding_errors(row):
+        return "held"
+    if any(item.status == "failed" for item in row.deliverables):
         return "failed"
     return "delivered"
 
@@ -288,16 +284,62 @@ def _checksum(item: Deliverable) -> str:
     return first if len(item.frame_checksums) == 1 else f"{first} .. {last}"
 
 
+ISSUES_HEADERS = ("Turnover", "Shot code", "Clip name", "Rule", "Level", "Effect", "Message")
+
+RECORD_ONLY_RULES = frozenset({"QC-048", "QC-060", "QC-061", "QC-080", "QC-085"})
+"""Results that record what the tool did rather than anything about the clip: the colour
+chain, the version, an HDRI or style frame being what it is. Kept off the Issues sheet."""
+
+
+def issue_lines(batch: Batch) -> list[list[str]]:
+    """Every finding with its words, one line each (user, 2026-10-07: "expand the qc list
+    that gets exported afterward to pick up non-blocker issues"). The Effect says what it
+    did: an error at batch scope stopped the run, a row's error held that shot back, and
+    everything else rendered."""
+    names = {t.turnover_id: t.folder.name for t in batch.turnovers}
+    lines: list[list[str]] = []
+
+    def add(turnover: str, row: ShotRow | None, result: QCResult, effect: str) -> None:
+        if result.rule_id in RECORD_ONLY_RULES:
+            return
+        code = (row.shot_code or "") if row is not None else ""
+        clip = row.clip_name if row is not None else ""
+        lines.append([turnover, code, clip, result.rule_id, result.severity, effect, result.message])
+
+    for result in batch.qc:
+        add("", None, result, "stopped the run" if result.severity == "error" else "")
+    for turnover in batch.turnovers:
+        for result in turnover.qc:
+            add(turnover.folder.name, None, result, "")
+    for row in batch.rows:
+        where = names.get(row.turnover_id, row.turnover_id)
+        for result in row.qc:
+            held = result.severity == "error" and not result.rule_id.startswith("QC-1")
+            add(where, row, result, "held this shot back" if held else "rendered")
+        for item in row.deliverables:
+            for result in item.qc:
+                add(where, row, result, f"{item.name}: {item.status}")
+    return lines
+
+
+def _write_issues(book: Workbook, batch: Batch) -> None:
+    sheet = _sheet(book, "Issues", ISSUES_HEADERS)
+    for line in issue_lines(batch):
+        _append(sheet, line)
+    sheet.column_dimensions["G"].width = 100
+
+
 def write_qc_log(batch: Batch, path: Path, when: date | None = None) -> Path:
     """Write the QC log. Creates the folder; overwrites an existing file.
 
-    Three sheets since 2026-09-22, not five: Side Files and Camera Data went with the
-    deliverables they described.
+    Four sheets: the Summary, the Shots, every finding in words on Issues (2026-10-07),
+    and the Deliverables.
     """
     book = Workbook()
     book.remove(book.active)
     _write_summary(book, batch, when or date.today())
     _write_shots(book, batch)
+    _write_issues(book, batch)
     _write_deliverables(book, batch)
     return _save(book, path)
 
@@ -341,13 +383,13 @@ _LANDED = ("done", "exists")
 """A deliverable that is on disk and passed: written this run, or already complete."""
 
 
-def _landed(row: ShotRow, waived: set[str]) -> bool:
+def _landed(row: ShotRow) -> bool:
     """Whether this row delivered everything it planned.
 
     Skipped, blocked, failed and cancelled rows did not, and a tracker line for any of
     them would add a shot to the production's sheet that is not in the delivery.
     """
-    if row.skipped or planner.holding_errors(row, row.turnover_id in waived) or not row.deliverables:
+    if row.skipped or planner.holding_errors(row) or not row.deliverables:
         return False
     return all(item.status in _LANDED for item in row.deliverables)
 
@@ -396,8 +438,9 @@ def tracker_row(shot_code: str, rows: list[ShotRow], stringout: str = "") -> lis
     cells[2] = shot_code
     cells[3] = shot_code
     cells[4] = reference.name if reference is not None else ""
-    # HDRI and CAM Data stay the studio's columns and stay empty: neither carries a
-    # `Shot Type`, so neither is a deliverable of this tool any more (2026-09-22).
+    hdri = next((item for row in rows if (item := _delivered(row, "hdri")) is not None), None)
+    # The HDRI the tool copied (user, 2026-10-07). CAM Data stays the studio's column.
+    cells[5] = hdri.name if hdri is not None else ""
     cells[7] = _plate_marks(plate)
     cells[8] = TRACKER_FPS
     cells[9] = _TICK if audio is not None else ""
@@ -408,9 +451,8 @@ def tracker_row(shot_code: str, rows: list[ShotRow], stringout: str = "") -> lis
 def tracker_rows(batch: Batch) -> list[list[str]]:
     """One line per shot code that delivered anything, in the order the batch lists them."""
     shots: dict[str, list[ShotRow]] = {}
-    waived = planner.bypassed_turnovers(batch)
     for row in batch.rows:
-        if row.shot_code and _landed(row, waived):
+        if row.shot_code and _landed(row):
             shots.setdefault(row.shot_code, []).append(row)
     written = {t.turnover_id: t.stringout.name for t in batch.turnovers if t.stringout is not None}
     return [tracker_row(code, rows, written.get(rows[0].turnover_id, "")) for code, rows in shots.items()]

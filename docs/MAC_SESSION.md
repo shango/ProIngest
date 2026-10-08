@@ -55,6 +55,51 @@ chunk 7 of `docs/TO_A_WORKING_BUILD.md`, in the order that wastes least.
       in. Open `SECA0009_pl01_ref_HD_v01.mp4` beside Ben's own Resolve playback of the same frame:
       the brightness and colour should match. The tool applies the CDL in ACEScg, unclamped, as
       the AMF states; CI proves the maths, only Ben's screen says it is what Resolve does.
+- [ ] **The stringout optimised (2026-10-08, 0.5.36).** Build turnover135's stringout from the
+      app with Workers at 4 and time it: 3m00s on the Linux dev box (26m15s in 0.5.35). Activity
+      Monitor shows several ProIngest processes busy at once early on, then several ffmpeg. Open it
+      beside a 0.5.35 stringout of the same turnover: the same picture and colour (the views are
+      now a baked LUT, measured at 0.06/255 off on average). Confirm nothing appears in the
+      delivery root's `_reports` but the stringout itself while it builds (the scratch files now
+      go to the Mac's temp folder), and that the bundled ffmpeg has `utvideo`
+      (`ffmpeg -encoders | grep utvideo`).
+- [ ] **The stringout's time left (2026-10-07, 0.5.35).** Build a stringout: its line's Notes
+      cell says "Estimating time left", then "About ... left" after the first event, counting
+      down each second and re-estimating at each event; it clears when the line turns green.
+- [ ] **The HDRI pre-render on the timeline (2026-10-07, 0.5.34).** Build turnover134's and
+      turnover135's stringouts. Each HDRI event plays Ben's `... Render.mov` and looks exactly as it
+      does on Ben's Resolve timeline (shown as it is: its AMF has no CLF and no CDL, and reads it
+      back through Rec.709 Gamma 2.2). 135 delivers `SECA0012/13/14_pl01_HDRI_01_v01.exr` byte for
+      byte; 134, whose EXRs are not in the folder, delivers no HDRI and its QC log says "HDRI EXR File
+      Missing from turnover folder, omitted from delivery" on SECA0009, 10 and 11.
+      Open the Fix-it report for 134: each HDRI line reads `Looking for` the EXR's full path in the
+      turnover folder and `Reported by` the HDRI render's name in the EDL (with its timecode) and
+      the CSV; the paths wrap rather than run off the page in Safari.
+- [ ] **The QC overhaul (2026-10-07, 0.5.33).** Scan turnover135: only the four SECA0012
+      reference stills are red (their files are not in the folder); the camera clips are not.
+      Press Run: no must-fix dialog, the red rows stay unrendered, everything else renders, and the
+      SECA0012/13/14 plates look like ungraded Apple Log brought to Rec.709 (no grade, nothing
+      clipped). Open the QC log: the Issues sheet says "Clip ungraded in Resolve project" on those
+      plates and "held this shot back" on the four stills. Point the delivery root at a read-only
+      folder and Run: a popup, "The run cannot start", and nothing renders. Right-click a heading:
+      no Accept As Is.
+- [ ] **Style frames and the stringout line (2026-10-07, 0.5.32).** Once Ben sends a turnover
+      with a `styleFrame` PNG or JPG before a plate, build its stringout: the frame holds for its
+      EDL length before the plate, looks as it does in Preview (no grade, no colour shift), and
+      reads `SECA0009 styleFrame` bottom right with no `Frame:` at bottom left. In the shot list,
+      the `Stringout` line under the turnover shows a moving bar and a percentage while it builds,
+      then a green ball; move the PNG out of the folder, Scan, build again: red, and hovering the
+      ball says which event is black.
+- [ ] **The stringout from the EXRs (2026-10-07, 0.5.27).** Run a turnover and open its
+      stringout beside a plate's HD reference mp4: the same picture, brightness and colour, and
+      the plate's sound in sync. A colour chart is graded, with its clip's looks, though its delivered EXR is not.
+      CI proves it builds; only the eye says the two colour paths agree.
+- [ ] **The HDRI pre-render (2026-10-07, 0.5.26). Once Ben renders an HDRI's timeline event
+      into a turnover as a video under the EXR's name, build the stringout and compare the HDRI
+      event with his Resolve playback of it: same pan, same brightness and colour, no banding in
+      the shadows. The tool reads the render as sRGB Linear and applies the HDRI's AMF; only his
+      screen says that matches Resolve. Check the delivered `..._pl01_HDRI_01_v01.exr` is the
+      same size as the EXR in the turnover.
 - [ ] **Expiry (2026-10-05, 0.5.23).** With the Mac's
       date set a month past the dmg's build day (System Settings > General > Date & Time, turn off
       "Set automatically"), launch: the "Update ProIngest" modal shows, and New, Open and a Finder
@@ -406,7 +451,7 @@ Treat it as a working session with the editor rather than a delivery.
   Resolve playback of the same clip and say whether the grade and the gamma 2.2 display match.
   `ffprobe` should report the reference's `color_transfer` as `bt470m` (gamma 2.2); say whether
   QuickTime shows it the same as Resolve's viewer, since that is what the label is for.
-- [ ] **Accept As Is (2026-09-28, 0.5.9).** Right-click a turnover heading with a must-fix (a
+- [x] **Accept As Is (2026-09-28, 0.5.9). Withdrawn 2026-10-07: Accept As Is is gone (OQ-83).** Right-click a turnover heading with a must-fix (a
   clip outside the length limits is the easy one): the menu has a tick box, Accept As Is (Ignore
   QC). Tick it: the heading shows QC-074, Run starts, and that shot renders at its trimmed length.
   Give another shot a hold-back error (move a clip away, QC-012): it is not rendered and the batch

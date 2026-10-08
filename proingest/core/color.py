@@ -59,6 +59,12 @@ PLATE_SPACE = "ACEScg"
 # `ShotRow.source_encoding` carries what the clip itself names, and a row that names
 # nothing is QC-046 rather than a row converted through a guess.
 
+DEFAULT_VIEW = ("Gamma 2.2 Rec.709 - Display", "ACES 2.0 - SDR 100 nits (Rec.709)")
+"""The display and view a reference is seen through when the clip's AMF gives none: no AMF
+(an ungraded clip, user 2026-10-07) or an output transform the config lacks (QC-079). What
+every AMF in turnovers 134 and 135 names (Output.Academy.Rec709-D65_100nit_in_Rec709-D65_
+Gamma2pt2), so it is Ben's session's own."""
+
 ACES = "ACES2065-1"
 """Where the AMF's looks are applied: the Reference Gamut Compress is defined there, and
 every one of Resolve's CLFs takes it in and gives it back."""
@@ -200,7 +206,29 @@ def output_transform(display: str, view: str) -> ocio.DisplayViewTransform:
     return ocio.DisplayViewTransform(src=PLATE_SPACE, display=display, view=view)
 
 
-def view_lut(destination: Path, *transforms: ocio.Transform, size: int = LUT_SIZE) -> Path:
+HDRI_RENDER_ENCODING = "Linear Rec.709 (sRGB)"
+"""What Ben renders an HDRI's timeline event in: sRGB Linear (user, 2026-10-07). The
+pre-render is not on the timeline, so no AMF or CSV row names it."""
+
+SHAPER_GAMMA = 2.4
+"""A linear source reaches the cube through `x ** (1 / SHAPER_GAMMA)`, so the cube's
+samples crowd into the shadows where linear values do."""
+
+SHAPER_SIZE = 4096
+
+
+def shaper_lut(destination: Path, size: int = SHAPER_SIZE) -> Path:
+    """The 1D `.cube` a linear source goes through before its view cube (`view_lut` with
+    `shaped`): a 33 point cube spread evenly over linear 0..1 puts one sample in the
+    darkest 3%, which bands every shadow."""
+    axis = np.linspace(0.0, 1.0, size, dtype=np.float64) ** (1.0 / SHAPER_GAMMA)
+    lines = [f"LUT_1D_SIZE {size}"] + [f"{v:.6f} {v:.6f} {v:.6f}" for v in axis]
+    return _write_lut(destination, lines)
+
+
+def view_lut(
+    destination: Path, *transforms: ocio.Transform, size: int = LUT_SIZE, shaped: bool = False
+) -> Path:
     """Bake a chain into one Resolve `.cube`. COLOR_AND_FORMAT section 1.
 
     **This is how an OCIO transform reaches ffmpeg**, which has no OCIO filter and does
@@ -208,17 +236,73 @@ def view_lut(destination: Path, *transforms: ocio.Transform, size: int = LUT_SIZ
     through Python, and it is only ever the view branch: a 3D LUT needs a bounded input
     domain, which the log encoding gives and scene linear does not.
 
-    No shaper LUT, because the domain is already log: the input runs 0..1 across the
+    No shaper for a log source, because the domain is already log: the input runs 0..1 across the
     source encoding and the samples land where the code values are, which is the whole
     reason the view branch stays in log until the output transform.
+
+    `shaped` is for the one linear source, an HDRI's pre-render: its cube is sampled in the
+    domain `shaper_lut` leaves it in, and applied after that shaper.
 
     Written to a temporary name in the same folder and renamed, so a cancelled bake
     cannot leave a short file that ffmpeg would read as a LUT.
     """
     grid = _identity_grid(size)
+    if shaped:
+        grid = np.ascontiguousarray(grid**SHAPER_GAMMA, dtype=np.float32)
     apply(grid, processor(*transforms))
     lines = [f"LUT_3D_SIZE {size}"]
     lines += [f"{r:.6f} {g:.6f} {b:.6f}" for r, g, b in grid[0]]
+    return _write_lut(destination, lines)
+
+
+BAKED_LUT_SIZE = 65
+"""Samples per axis when a stringout picture's chain is baked (`baked_processor`).
+Measured on turnover135's plates against the exact chain (2026-10-08): 65 is off by
+0.06/255 on average and 1.4/255 at worst, below what the stringout's 8 bit H.264 keeps;
+33 was 4.2/255 at worst, and 97 bought nothing over 65 for four times the bake."""
+
+BAKED_SHAPER_SPACE = "ACEScct"
+"""Where a baked chain is sampled: ACES's own log space, which spreads scene linear from
+below zero to about 222 across 0..1, so a cube sampled in it keeps the highlights the
+ACES 2.0 output transform rolls off, and puts its samples where the shadows need them."""
+
+
+def baked_processor(
+    source: str, *transforms: ocio.Transform, size: int = BAKED_LUT_SIZE
+) -> ocio.CPUProcessor:
+    """`transforms` from `source`, baked into one 3D LUT sampled in ACEScct.
+
+    For the stringout's pictures, where the exact chain is too slow: ACES 2.0's output
+    transform cost 838 ms an HD frame on CPU, nearly all of a stringout's time, and the
+    baked chain costs about 27 ms (2026-10-08). The delivered references are baked the
+    same way, in their own log encoding (`view_lut`). Never for the plates themselves,
+    which stay exact.
+    """
+    grid = _identity_grid(size)
+    apply(grid, processor(ocio.ColorSpaceTransform(src=BAKED_SHAPER_SPACE, dst=source), *transforms))
+    lut = ocio.Lut3DTransform()
+    lut.setGridSize(size)
+    lut.setInterpolation(INTERPOLATION)
+    # The grid is red fastest, as a .cube is; OCIO's array is blue fastest.
+    lut.setData(np.ascontiguousarray(grid[0].reshape(size, size, size, 3).transpose(2, 1, 0, 3)).ravel())
+    group = ocio.GroupTransform([ocio.ColorSpaceTransform(src=source, dst=BAKED_SHAPER_SPACE), lut])
+    return _uncached_config().getProcessor(group).getDefaultCPUProcessor()
+
+
+@lru_cache(maxsize=1)
+def _uncached_config() -> ocio.Config:
+    """The pinned config again, with OCIO's processor cache off, for baked LUTs alone.
+
+    OCIO's cache does not tell two in-memory LUTs apart by their data: a second chain baked
+    in one process got the first one's processor back (2026-10-08, a graded still came
+    out as the plain plate before it). Every other processor keeps the cache.
+    """
+    uncached = ocio.Config.CreateFromBuiltinConfig(BUILTIN_CONFIG)
+    uncached.setProcessorCacheFlags(ocio.PROCESSOR_CACHE_OFF)
+    return uncached
+
+
+def _write_lut(destination: Path, lines: list[str]) -> Path:
     temp = destination.with_name(f".{destination.name}.part")
     temp.write_text("\n".join(lines) + "\n")
     temp.replace(destination)

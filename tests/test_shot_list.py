@@ -66,7 +66,7 @@ def shown(view: ShotListView) -> list[str]:
 
 class TestWhatItShows:
     def test_every_shot_of_every_turnover(self, view: ShotListView) -> None:
-        assert shown(view) == ["MELT0001", "MELT0002", "BRIK0007"]
+        assert shown(view) == ["MELT0001", "MELT0002", "Stringout", "BRIK0007", "Stringout"]
 
     def test_turnovers_open_expanded(self, view: ShotListView) -> None:
         """A collapsed turnover on first sight hides what the tool was opened to look at."""
@@ -112,7 +112,7 @@ class TestTheSearchBox:
     def test_clearing_it_brings_everything_back(self, view: ShotListView) -> None:
         view.filter_by("BRIK")
         view.filter_by("")
-        assert shown(view) == ["MELT0001", "MELT0002", "BRIK0007"]
+        assert shown(view) == ["MELT0001", "MELT0002", "Stringout", "BRIK0007", "Stringout"]
 
     def test_nothing_matching_shows_nothing_rather_than_everything(self, view: ShotListView) -> None:
         view.filter_by("ZZZZ")

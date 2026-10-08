@@ -17,7 +17,7 @@ against. A turnover is now:
 | file | what the tool reads from it |
 |---|---|
 | the **EDL** | **the cut**: the approved In/Out of every event, and its retimes. Any `*ASC_SOP` / `*ASC_SAT` lines are **not read** |
-| the **metadata CSV** | **identity only**: `File Name`, `Shot`, `Shot Type`. `Gamma Notes`, `Color Space Notes` and `Input Color Space` are **not read** |
+| the **metadata CSV** | **identity**: `File Name`, `Shot`, `Shot Type`; and, **since 2026-10-07, `Input Color Space` for a clip no AMF grades** (below). `Gamma Notes` and `Color Space Notes` are not read |
 | **one AMF per EDL event**, from Ben's Resolve session | **the colour**: the input transform, the looks in order, and the output transform (`core/amf.py`) |
 | the **CLFs** each AMF names, beside it | the grade, one file per corrector node, checked against the md5 the AMF recorded |
 
@@ -29,9 +29,21 @@ rather than kept behind a switch.
 before the export's timestamp (`..._C4261_1_2026-09-28_180306Z.amf` is index 1), and it is the EDL
 event number less one, verified on all 15 of turnover097. The AMF carries no timecode, so that
 index is the only thing that tells two uses of one clip apart. The AMF must also **name the row's
-file**, as `<aces:file>` or as an `<aces:sequence>` pattern whose range covers it. No AMF for an
-event, two claiming one, an AMF that is not readable, or one that names another file is QC-075, an
-error; an AMF whose name carries no index is a QC-075 warning on the turnover and matches nothing.
+file**, as `<aces:file>` or as an `<aces:sequence>` pattern whose range covers it. Two AMFs
+claiming one event is QC-075, an error that holds that clip; an AMF that is not readable, or whose
+name carries no index, is a QC-075 warning on the turnover and matches nothing.
+
+**A clip with no AMF is ungraded** (user, 2026-10-07: "If there is no CLF, AMF or CDL, assume
+ungraded"): no AMF for its event, or the one at its index naming another file (QC-075 info). It is
+read as the CSV's `Input Color Space`, which Resolve writes for every clip (`Apple Log` in
+turnovers 134 and 135, a colour space the pinned config has by that name), converted to ACEScg
+through the input transform alone, and its references are seen through `color.DEFAULT_VIEW`, ACES
+2.0 SDR 100 nits (Rec.709) on a Gamma 2.2 Rec.709 display, the output transform every AMF in those
+turnovers names. QC-009 says "Clip ungraded in Resolve project". An AMF with no CLF and no CDL is
+ungraded the same way. **Only a clip with no AMF and no `Input Color Space` is held** (QC-046),
+because then nothing says what colour it is in; so is one whose AMF names a CLF that is missing or
+changed (QC-076), since that grade cannot be recreated. Turnover135, one AMF for its 18 clips,
+renders for the first time this way.
 
 **Every transform ID is resolved through the pinned config and nothing else.** The config lists,
 per colour space, look and view transform, the AMF transform IDs it implements
@@ -81,9 +93,13 @@ source encoding  ->  ACES2065-1  ->  the AMF's looks, in order  ->  linear ACESc
   and it renders through its input transform and the Reference Gamut Compress alone.
 - **No AMF in the turnover grades any clip** is QC-008, because then nothing names an input
   transform.
-- **An HDRI row** (`Shot Type` `HDRI`) is delivered by the shooters by hand: the tool skips it at
-  scan and shows its clip in the stringout only (QC-080). Turnover097's HDRI AMFs name no input
-  transform.
+- **An HDRI row** (`Shot Type` `HDRI`) delivers its EXR byte for byte, with no colour applied and
+  no check run (QC-080, user 2026-10-07). Its AMF is read only for the grade the stringout gives
+  its pre-render: Ben renders the event, pan included, in **sRGB Linear**, ungraded, so the
+  stringout reads it as `Linear Rec.709 (sRGB)` in place of an input transform (turnover097's and
+  turnover134's HDRI AMFs name none), then the AMF's CLF and output transform. A linear source
+  gets a 1D shaper (`x ** (1/2.4)`) ahead of its 33 point cube, which would otherwise put one
+  sample in the darkest 3% (`color.shaper_lut`, ffmpeg `lut1d`).
 
 **What a grade may contain** (user, 2026-09-28): **primaries plus simple sky secondaries**, in as
 many corrector nodes as the shot needs. Anything a CLF or an AMF look cannot carry - a look ID the
@@ -293,7 +309,7 @@ The session exports these, and since 2026-09-28 the tool uses them like this:
 |---|---|
 | the **updated final EDL** | the conform: timecode and the **approved In/Out** from Ben and the AD's trims. Any `*ASC_SOP` / `*ASC_SAT` lines in it are not read (2026-09-28). Supersedes the shooters' EDL entirely |
 | **one AMF per EDL event**, and the **CLFs** it names | **the whole of the colour**: input transform, looks in order, output transform (the section above) |
-| the **metadata CSV** | identity only: `File Name`, `Shot`, `Shot Type` |
+| the **metadata CSV** | identity: `File Name`, `Shot`, `Shot Type`; `Input Color Space` for a clip with no AMF (2026-10-07) |
 | the **stringout** | with the look and burn-ins. It is what the tool's own references should be checked against |
 
 *The table this replaced (2026-09-18) listed a 65 point `.cube` per shot from Generate LUT as the
@@ -703,6 +719,18 @@ SDR 100 nits (Rec.709)` on `Gamma 2.2 Rec.709 - Display`**. One the config lacks
 Until then it was fixed in `color.VIEW` on `sRGB - Display`, on the user's belief rather than
 read off Ben's project (OQ-29); the AMF is that reading.
 
+**The stringout's pictures are baked (2026-10-08).** The stringout cuts each event from the
+delivered HD EXR seen through its clip's output transform. Evaluated exactly, ACES 2.0's output
+transform cost 838 ms an HD frame on CPU, 98% of a stringout's time. The chain is now baked into
+one 65 point 3D LUT sampled in ACEScct (`color.baked_processor`), as the references are baked
+into a cube in their log encoding, and applied by OCIO at about 27 ms a frame. Measured on
+turnover135's plates against the exact chain: 0.06/255 on average, 1.4/255 at worst; greys from
+black to linear 50 stay under 1/255. The worst case is a very bright, very saturated green, about
+9/255, where ACES 2.0's gamut compression bends sharply. The plates and every delivered EXR are
+untouched: they never see the view. Baked LUTs are built on a second copy of the config with
+OCIO's processor cache off, because the cache handed a second in-memory LUT the first one's
+processor.
+
 ### The EXR writer stays as it is
 
 The proposal writes EXRs via OpenImageIO. **This keeps the `OpenEXR` Python bindings**, which
@@ -765,7 +793,8 @@ look very nearly right.
 | ref mp4 4k | 3840x2160, H.264 High, yuv420p, CRF 18 (x264 `-preset slow`) or `h264_videotoolbox` when hardware encoding is enabled, keyint 24, `-movflags +faststart`, AAC 192k if audio associated. **Only a plate's reference carries sound** (2026-09-23): a cp or el is delivered silent even when its own file has a track |
 | ref mp4 HD | same, 1920x1080 |
 | audio | PCM 16 bit, same sample rate and channel count, no resampling. Cut to the delivered range and sped up with the picture (1.001 for a 24000/1001 source, D2 of `docs/REVIEW_2026-09-23.md`), padded with silence where the range runs past the recorded sound. Only a row with no range is delivered as-is: a wav source byte for byte, audio in a container extracted whole. QC-044 if the source was not 16 bit |
-| HDRI, stills, camData | **not delivered by the tool** (2026-09-22). An HDRI row on the timeline is skipped at scan and shown in the stringout only (QC-080, 2026-09-28) |
+| HDRI | **copied byte for byte** (QC-080, user 2026-10-07); the stringout shows its pre-render, graded (QC-083) |
+| BTS stills, camData | **not delivered by the tool** (2026-09-22) |
 | lens grid | not written in v01; moved and renamed by hand (OQ-20) |
 
 **Two of those numbers are editable as of M5.12** and only two: the EXR compression level and

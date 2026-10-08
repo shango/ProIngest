@@ -42,7 +42,7 @@ Severity = Literal["error", "warning", "info"]
 Scope = Literal["batch", "turnover", "row", "deliverable"]
 DeliverableStatus = Literal["planned", "rendering", "done", "failed", "exists", "skipped"]
 
-SourceEncodingOrigin = Literal["AMF"]
+SourceEncodingOrigin = Literal["AMF", "CSV"]
 """Which carrier named a row's source encoding. COLOR_AND_FORMAT, EXR metadata.
 
 Since 2026-09-28 (user) there is one: the clip's AMF, exported from the colour session,
@@ -107,10 +107,8 @@ RESOLVE_FIX_RULES = frozenset(
         "QC-001",  # the EDL or the metadata CSV is missing
         "QC-002",  # one of them does not parse
         "QC-004",  # one of them is empty
-        "QC-008",  # no AMF at all
         "QC-010",  # a Shot Type with no shot code, or one the tool does not deliver
         "QC-011",  # two rows with one shot code, type and index
-        "QC-029",  # an EDL event cut outside its clip's frames
         "QC-046",  # the AMF names no input transform
         "QC-047",  # the AMF's input transform is not one the config knows
         "QC-065",  # the CSV's two Shot Type columns disagree
@@ -525,6 +523,24 @@ class ShotRow:
     identity: ShotIdentity | None = None
     shot_code_override: str | None = None
     media: MediaInfo | None = None
+    resolve_start_tc: str = ""
+    csv_shot: str = ""
+    csv_shot_type: str = ""
+    """The CSV's `Shot` and `Shot Type` as written, kept so a row whose identity did not read
+    can still be pointed at in the Fix-it report (user, 2026-10-07). Additive."""
+
+    take: str = ""
+    """The CSV's `Take`, as written. The stringout burns `Take 02` after the clip's label when
+    it is above 1 (user, 2026-10-07). Additive."""
+
+    """The CSV's `Start TC`: where Resolve has the clip start, which the EDL counts from.
+    Used when the file's own timecode puts the cut outside it (QC-084). Additive."""
+
+    hdri_render: MediaInfo | None = None
+    """An HDRI's pre-render: its timeline event with the pan, rendered by Ben into the
+    turnover folder under the HDRI's name as a video (user, 2026-10-07). What the stringout
+    shows; QC-083 when it is missing. Additive, so the schema version does not move."""
+
     record_in: int = 0
     record_out: int = 0
     snapshot: InOut | None = None
@@ -665,6 +681,11 @@ class ShotRow:
             "identity": _identity_to_dict(self.identity),
             "shot_code_override": self.shot_code_override,
             "media": self.media.to_dict() if self.media else None,
+            "resolve_start_tc": self.resolve_start_tc,
+            "csv_shot": self.csv_shot,
+            "csv_shot_type": self.csv_shot_type,
+            "take": self.take,
+            "hdri_render": self.hdri_render.to_dict() if self.hdri_render else None,
             "record_in": self.record_in,
             "record_out": self.record_out,
             "snapshot": self.snapshot.to_dict() if self.snapshot else None,
@@ -699,6 +720,11 @@ class ShotRow:
             identity=_identity_from_dict(data.get("identity")),
             shot_code_override=data.get("shot_code_override"),
             media=MediaInfo.from_dict(media) if media else None,
+            resolve_start_tc=str(data.get("resolve_start_tc", "")),
+            csv_shot=str(data.get("csv_shot", "")),
+            csv_shot_type=str(data.get("csv_shot_type", "")),
+            take=str(data.get("take", "")),
+            hdri_render=MediaInfo.from_dict(data["hdri_render"]) if data.get("hdri_render") else None,
             record_in=int(data.get("record_in", 0)),
             record_out=int(data.get("record_out", 0)),
             snapshot=InOut.from_dict(snapshot) if snapshot else None,
@@ -813,12 +839,6 @@ class Turnover:
     where that deserves a second look. Additive, so the schema version does not move.
     """
 
-    qc_bypassed: bool = False
-    """The editor accepted this turnover as it is (user, 2026-09-28): its errors are still
-    reported but neither refuse the Run nor hold its rows back, and every row that can
-    physically render does (`qc.must_fix`, `planner.plannable_identity`). QC-074 says so
-    on the turnover. Additive, so the schema version does not move."""
-
     def to_dict(self) -> dict[str, Any]:
         return {
             "turnover_id": self.turnover_id,
@@ -837,7 +857,6 @@ class Turnover:
             "edl_digest": self.edl_digest,
             "csv_digest": self.csv_digest,
             "stringout": self.stringout.to_dict() if self.stringout else None,
-            "qc_bypassed": self.qc_bypassed,
         }
 
     @classmethod
@@ -855,11 +874,11 @@ class Turnover:
             day=data.get("day"),
             year=data.get("year"),
             shooter=str(data.get("shooter", "")),
-            qc=[QCResult.from_dict(item) for item in data.get("qc", [])],
+            # Accept As Is (QC-074) went on 2026-10-07: every turnover runs as it then did.
+            qc=[QCResult.from_dict(item) for item in data.get("qc", []) if item.get("rule_id") != "QC-074"],
             edl_digest=str(data.get("edl_digest", "")),
             csv_digest=str(data.get("csv_digest", "")),
             stringout=Deliverable.from_dict(data["stringout"]) if data.get("stringout") else None,
-            qc_bypassed=bool(data.get("qc_bypassed", False)),
         )
 
 

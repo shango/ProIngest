@@ -36,7 +36,7 @@ TEMP_SUFFIX = ".part"
 RESOLUTIONS: dict[Resolution, tuple[int, int]] = {"4k": (3840, 2160), "HD": (1920, 1080)}
 """Exact target sizes, docs/COLOR_AND_FORMAT.md section 4. Never derived from the source."""
 
-JobKind = Literal["raw_dir", "ref_mp4", "audio", "aux_still"]
+JobKind = Literal["raw_dir", "ref_mp4", "audio", "aux_still", "hdri"]
 
 PICTURE_DELIVERABLES: tuple[tuple[JobKind, Resolution], ...] = (
     ("raw_dir", "4k"),
@@ -243,57 +243,40 @@ def effective_identity(row: ShotRow, show_pattern: str = naming.DEFAULT_SHOW_PAT
     return replace(row.identity, shot_code=row.shot_code_override)
 
 
-QC_BYPASSABLE = frozenset({"QC-023", "QC-033", "QC-034", "QC-071"})
-"""The errors Accept As Is (QC-074) renders past, because each was traced through the
-planner and the renderer to a correct file of what is there (2026-09-28): letterboxed for
-QC-023, the cut as trimmed for QC-033 and QC-034, and QC-071's rows match by timecode or
-carry their own error. QC-008 and QC-009 left it the same day, when colour moved to the
-AMF: QC-009 became info, and QC-008 means no AMF anywhere, so no input transform.
+def holding_errors(row: ShotRow) -> list[QCResult]:
+    """The errors that keep this row from rendering, which is every error it has.
 
-**An allowlist, so a rule nobody has traced holds its row back.** The rest either render
-a plausible wrong file with no error (QC-011 two rows into one set of files, QC-026 and
-QC-027 the wrong frames, QC-066 and QC-067 the whole clip ungraded, QC-073 the retime
-lost, QC-032 an empty file that passes) or fail part way through as QC-100 (QC-022,
-QC-029, QC-031, QC-042, QC-046, QC-047, QC-069). Holding a row back does not block the
-batch; the saved log says which rows and why (`qc.log_results`).
-"""
-
-
-def holding_errors(row: ShotRow, bypassed: bool = False) -> list[QCResult]:
-    """The errors that keep this row from rendering: all of them, or on a turnover
-    accepted as it is, those outside `QC_BYPASSABLE`."""
-    return [result for result in row.errors() if not (bypassed and result.rule_id in QC_BYPASSABLE)]
-
-
-def bypassed_turnovers(batch: Batch) -> set[str]:
-    """The turnover IDs accepted as they are (QC-074)."""
-    return {turnover.turnover_id for turnover in batch.turnovers if turnover.qc_bypassed}
+    **An error holds one shot and nothing else** (user, 2026-10-07: "nothing prevents
+    rendering an entire batch or turnover"). What is an error is what leaves the tool
+    nothing to render or no way to recreate the colour: missing or unreadable media, no
+    name to give it, no cut, or a grade it cannot rebuild (QC_RULES). Everything else is a
+    warning or a note in the report and renders.
+    """
+    return row.errors()
 
 
 def held_turnovers(batch: Batch) -> set[str]:
-    """Bypassed turnovers whose own error the bypass cannot render past, QC-069's missing
-    folder being the one with rows: every row of them is held back."""
+    """Turnovers whose folder is not where the batch last found it (QC-069): their media
+    is missing, so every row of them waits for the folder to be found again."""
     return {
         turnover.turnover_id
         for turnover in batch.turnovers
-        if turnover.qc_bypassed
-        and any(result.severity == "error" and result.rule_id not in QC_BYPASSABLE for result in turnover.qc)
+        if any(result.rule_id == "QC-069" and result.severity == "error" for result in turnover.qc)
     }
 
 
-def plannable_identity(
-    row: ShotRow, show_pattern: str = naming.DEFAULT_SHOW_PATTERN, bypassed: bool = False
-) -> ShotIdentity | None:
+def plannable_identity(row: ShotRow, show_pattern: str = naming.DEFAULT_SHOW_PATTERN) -> ShotIdentity | None:
     """The identity to plan this row under, or None when the row owes nothing.
 
     A row is not planned when the editor skipped it, when it carries an error, which
     FR-6 says blocks the row but not the batch, or when it has no media and no chosen
-    range, because then there is nothing to read. On a turnover accepted as it is
-    (`bypassed`), only the errors outside `QC_BYPASSABLE` hold it back.
+    range, because then there is nothing to read.
     """
-    if row.skipped or holding_errors(row, bypassed) or row.media is None or row.current is None:
+    if row.skipped or holding_errors(row) or row.media is None or row.current is None:
         return None
-    return effective_identity(row, show_pattern)
+    identity = effective_identity(row, show_pattern)
+    # A style frame is only ever on the stringout (QC-085).
+    return None if identity is not None and identity.is_style_frame else identity
 
 
 def resolve_version(directory: Path, show_pattern: str = naming.DEFAULT_SHOW_PATTERN) -> int:
@@ -313,10 +296,9 @@ def plan_row(
     version: int,
     show_pattern: str = naming.DEFAULT_SHOW_PATTERN,
     shot_color: clf.ShotColor = clf.DEFAULT_SHOT_COLOR,
-    bypassed: bool = False,
 ) -> RowPlan:
     """The deliverables one row owes at `version`. Pure: it touches no filesystem."""
-    identity = plannable_identity(row, show_pattern, bypassed)
+    identity = plannable_identity(row, show_pattern)
     media, current = row.media, row.current
     if identity is None or media is None or current is None:
         return RowPlan()
@@ -333,6 +315,8 @@ def plan_row(
     )
     if identity.is_still:
         plan = _aux_plan(shot)
+    elif identity.is_hdri:
+        plan = _hdri_plan(shot)
     else:
         plan = RowPlan(jobs=[_picture_job(shot, kind, res) for kind, res in TYPE_TABLE[identity.kind]])
         audio = _audio_job(shot)
@@ -361,9 +345,8 @@ def plan_batch(
 
     **The colour session is not a parameter here.** The scan put it on the rows: the
     approved In/Out off the EDL and the grade off each event's AMF, so planning reads them
-    off the model like every other field. QC-008 is what refuses a **run** with no AMF at
-    all, and every must-fix refuses the whole run before planning is asked
-    (`qc.must_fix`, D8).
+    off the model like every other field. A row with an error is held here and nowhere
+    else; only a batch scope error refuses the run (`qc.must_fix`).
     """
     root = delivery_root or batch.delivery_root
     if root is None:
@@ -371,10 +354,9 @@ def plan_batch(
 
     versions: dict[str, int] = {}
     jobs: list[DeliverableJob] = []
-    bypassed, held = bypassed_turnovers(batch), held_turnovers(batch)
+    held = held_turnovers(batch)
     for row in batch.rows:
-        waived = row.turnover_id in bypassed
-        identity = None if row.turnover_id in held else plannable_identity(row, show_pattern, waived)
+        identity = None if row.turnover_id in held else plannable_identity(row, show_pattern)
         if identity is None:
             _record(row, RowPlan())
             continue
@@ -390,7 +372,7 @@ def plan_batch(
         if state == "pending":
             # A stopped run: the rest of the row at the version it has (D11).
             version = row.deliverables[0].version
-            plan = plan_row(row, root, version, show_pattern, clf.shot_color(row), waived)
+            plan = plan_row(row, root, version, show_pattern, clf.shot_color(row))
             waiting = {item.path for item in row.deliverables if item.status not in LANDED}
             plan.jobs = [job for job in plan.jobs if job.destination in waiting]
             _resume(row, plan)
@@ -403,7 +385,7 @@ def plan_batch(
         version = versions[code]
         row.rerun = False
 
-        plan = plan_row(row, root, version, show_pattern, clf.shot_color(row), waived)
+        plan = plan_row(row, root, version, show_pattern, clf.shot_color(row))
         if version > 1:
             plan.qc.append(
                 QCResult(
@@ -562,6 +544,23 @@ def _audio_job(shot: _Shot) -> DeliverableJob | None:
         rate=shot.media.rate,
         source_rate=shot.media.stated_rate or shot.media.rate,
         source_start_frame=shot.media.start_frame,
+    )
+
+
+def _hdri_plan(shot: _Shot) -> RowPlan:
+    """An HDRI delivers its EXR, copied byte for byte (user, 2026-10-07). A copy has no
+    frame range and no colour."""
+    return RowPlan(
+        jobs=[
+            DeliverableJob(
+                kind="hdri",
+                source=shot.media.path,
+                destination=shot.directory / naming.hdri_exr(shot.identity, shot.version),
+                version=shot.version,
+                shot_code=shot.identity.shot_code,
+                elem=naming.HDRI_ELEMENT,
+            )
+        ]
     )
 
 

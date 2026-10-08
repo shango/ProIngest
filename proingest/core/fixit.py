@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import Literal, NamedTuple
 
 from proingest import __version__
-from proingest.core import exports, models, naming, qc
+from proingest.core import exports, frames, models, naming, qc, scan
 from proingest.core.models import Batch, QCResult, ShotRow, Turnover
 
 Where = Literal["resolve", "folder", "look"]
@@ -44,9 +44,9 @@ class Advice:
     explain: str
     """Why it matters and what to do, in a sentence or two."""
 
-    detail: Literal["none", "message", "range", "handles"] = "none"
-    """What each listed clip adds: nothing, the tool's own message, how far the cut
-    misses the file (QC-029), or which side is short of spare frames (QC-030)."""
+    detail: Literal["none", "message", "handles"] = "none"
+    """What each listed clip adds: nothing, the tool's own message, or which side is short
+    of spare frames (QC-030)."""
 
 
 ADVICE: dict[str, Advice] = {
@@ -69,13 +69,6 @@ ADVICE: dict[str, Advice] = {
         "Please export it again from the timeline with the clips on it.",
         "message",
     ),
-    "QC-008": Advice(
-        "resolve",
-        "None of the clips has its colour file (AMF).",
-        "Each clip on the timeline needs its own AMF, exported from the same timeline. The AMF tells "
-        "the tool which camera colour space the clip is in and what its grade is; without it nothing "
-        "can be converted.",
-    ),
     "QC-010": Advice(
         "resolve",
         "A clip's Shot or Shot Type cannot be used.",
@@ -90,31 +83,24 @@ ADVICE: dict[str, Advice] = {
         "They have the same Shot and Shot Type. Please give one of them the next number (pl02 instead "
         "of pl01, for example).",
     ),
-    "QC-029": Advice(
-        "resolve",
-        "The cut uses frames the camera file does not have.",
-        "The EDL asks for frames from before the file starts or after it ends. This usually means the "
-        "clip on the timeline is linked to a different file, such as a proxy copy. Please relink it to "
-        "the camera original, then export the EDL and AMFs again.",
-        "range",
-    ),
     "QC-033": Advice(
-        "resolve",
-        "A plate is too short.",
-        "Plates have a minimum length. Please lengthen the cut on the timeline.",
+        "look",
+        "A plate is shorter than usual.",
+        "It was delivered as cut. Fine if intended.",
         "message",
     ),
     "QC-034": Advice(
-        "resolve",
-        "A plate is too long.",
-        "Plates have a maximum length. Please shorten the cut on the timeline.",
+        "look",
+        "A plate is longer than usual.",
+        "It was delivered as cut. Fine if intended.",
         "message",
     ),
     "QC-046": Advice(
         "resolve",
-        "A clip's colour file (AMF) does not say what colour space the camera recorded in.",
-        "Without it the tool cannot convert the clip. Please check the clip's input colour space in "
-        "Resolve and export its AMF again.",
+        "A clip has no colour information.",
+        "It has no AMF, and the metadata gives no Input Color Space, so the tool cannot tell what colour "
+        "space the camera recorded in and holds the clip back. Please set its input colour space in "
+        "Resolve and export the metadata (or its AMF) again.",
     ),
     "QC-047": Advice(
         "resolve",
@@ -147,16 +133,15 @@ ADVICE: dict[str, Advice] = {
         "Please export the ALE again from the same timeline, or take it out of the folder.",
     ),
     "QC-073": Advice(
-        "resolve",
+        "look",
         "A clip is sped up, slowed down or reversed.",
-        "VFX plates are delivered at normal speed. Please remove the speed change. A freeze frame is fine.",
+        "It was delivered at normal speed, as VFX plates are. Fine if intended.",
     ),
     "QC-075": Advice(
         "resolve",
-        "A clip has no colour file (AMF), or the one there is for a different clip.",
-        "Each clip on the timeline needs its own AMF, exported from the same timeline as the EDL. The "
-        "AMF tells the tool which camera colour space the clip is in and what its grade is; without it "
-        "nothing can be converted.",
+        "Two colour files (AMF) claim the same clip.",
+        "The tool cannot tell which grade is the right one, so it holds the clip back. Please export the "
+        "AMFs again from the timeline, one per clip.",
     ),
     "QC-076": Advice(
         "resolve",
@@ -173,10 +158,10 @@ ADVICE: dict[str, Advice] = {
         "message",
     ),
     "QC-079": Advice(
-        "resolve",
+        "look",
         "A clip's colour file (AMF) names a viewing setup the tool does not know.",
-        "The AMF's output transform (what the grade was viewed through) is not one the tool recognises. "
-        "Please check the project's output colour space.",
+        "Its reference movies were made for a standard Rec.709 screen instead. Please check the "
+        "project's output colour space.",
         "message",
     ),
     "QC-082": Advice(
@@ -208,6 +193,20 @@ ADVICE: dict[str, Advice] = {
         "Please copy the sequence into the folder again.",
         "message",
     ),
+    "QC-083": Advice(
+        "folder",
+        "An HDRI's render is missing.",
+        "The timeline's HDRI render is not in the turnover folder, so the stringout cannot show it. It was "
+        "probably rendered into another folder, or the timeline event points at a file in another folder. "
+        "Please render it into the turnover folder and relink the timeline event to it.",
+        "message",
+    ),
+    "QC-086": Advice(
+        "folder",
+        "HDRI EXR File Missing from turnover folder, omitted from delivery.",
+        "The timeline's HDRI render is named after an HDRI EXR that is not in the folder, so no HDRI "
+        "was delivered. Please copy the EXR in.",
+    ),
     "QC-022": Advice(
         "folder",
         "A clip is in a format the tool cannot read.",
@@ -215,21 +214,21 @@ ADVICE: dict[str, Advice] = {
         "message",
     ),
     "QC-023": Advice(
-        "folder",
+        "look",
         "A clip is not UHD (3840 x 2160).",
-        "Plates are delivered at UHD. Please check the clip's resolution.",
+        "It was delivered fitted to UHD. Please check the clip's resolution.",
         "message",
     ),
     "QC-026": Advice(
-        "folder",
+        "look",
         "A clip is not 24 frames per second.",
-        "Every clip has to be 24 fps. Please check its frame rate.",
+        "It was delivered at 24 fps, frame for frame. Please check its frame rate.",
         "message",
     ),
     "QC-027": Advice(
-        "folder",
+        "look",
         "A clip has drop-frame timecode.",
-        "The project is 24 fps non-drop. Please supply the clip with non-drop timecode.",
+        "The project is 24 fps non-drop. It was delivered anyway; please check its timecode.",
     ),
     "QC-041": Advice(
         "folder",
@@ -237,9 +236,9 @@ ADVICE: dict[str, Advice] = {
         "Please keep one sound file per plate in the folder.",
     ),
     "QC-042": Advice(
-        "folder",
+        "look",
         "A plate's sound file is missing or cannot be read.",
-        "Please copy the sound file into the folder again.",
+        "The plate was delivered without sound. Please copy the sound file into the folder again.",
     ),
     "QC-028": Advice(
         "look",
@@ -273,15 +272,6 @@ ADVICE: dict[str, Advice] = {
 }
 """Every rule Ben can act on, in his words. A rule not here is the editor's, or the tool's."""
 
-HDRI_IMAGE = Advice(
-    "resolve",
-    "An HDRI on the timeline is the stitched panorama image.",
-    "The timeline should carry the shooter's HDRI video clip instead, so the stringout shows it. The "
-    "stitched panorama is delivered by the shooters separately.",
-)
-"""Not a QC rule: an HDRI row (QC-080) whose clip is an EXR (memory: the HDRI on the
-timeline is the shooter's video clip, 2026-09-29)."""
-
 NO_PLATE = Advice(
     "look",
     "A shot has reference clips but no plate.",
@@ -309,6 +299,11 @@ class Clip(NamedTuple):
     who: str = ""
     name: str = ""
     detail: str = ""
+    looked_for: str = ""
+    """The full path of the file the tool looked for and did not find, or found wrong."""
+
+    named_by: str = ""
+    """Which of Ben's files names it or says what is wrong: the EDL, the CSV, an AMF."""
 
 
 @dataclass
@@ -355,38 +350,29 @@ def reports(batch: Batch) -> list[TurnoverReport]:
 
 def _turnover_report(batch: Batch, turnover: Turnover) -> TurnoverReport:
     rows = [row for row in batch.rows if row.turnover_id == turnover.turnover_id]
-    delivered = [row for row in rows if not qc.is_shooter_delivered(row)]
+    # What "every clip" and "no plate" count: an HDRI or a style frame is neither a clip of a
+    # shot nor its plate.
+    delivered = [row for row in rows if not qc.is_hdri(row) and not qc.is_style_frame(row)]
     items: dict[str, Item] = {}
-    any_amf_finding = any(r.rule_id == "QC-075" for row in rows for r in row.qc)
     for result in turnover.qc:
-        if result.rule_id not in ADVICE or (result.rule_id == "QC-008" and any_amf_finding):
-            continue  # not Ben's, or QC-075 already lists the same clips one by one
+        if result.rule_id not in ADVICE or result.severity == "info":
+            continue  # not Ben's, or a note for the QC log rather than something to fix
         _add(items, result.rule_id, ADVICE[result.rule_id], result, _turnover_clips(result, delivered))
-    for row in rows:
-        if qc.is_shooter_delivered(row) and row.clip_name.lower().endswith(".exr"):
-            _add(items, "HDRI", HDRI_IMAGE, None, [Clip(name=row.clip_name)])
     blocked = 0
-    for row in delivered:
+    rate = batch.project_rate.nominal()
+    for row in rows:
         row_blocks = False
         for result in row.qc:
-            if result.rule_id in ADVICE:
-                _add(items, result.rule_id, ADVICE[result.rule_id], result, [_clip(row, result)])
+            if result.rule_id in ADVICE and result.severity != "info":
+                clip = _clip(row, result, turnover, rate)
+                _add(items, result.rule_id, ADVICE[result.rule_id], result, [clip])
                 row_blocks |= result.severity == "error"
         blocked += row_blocks
     if orphans := _without_a_plate(delivered):
         _add(items, "NO_PLATE", NO_PLATE, None, orphans)
-    for item in items.values():
-        if len(delivered) > 1 and _every_clip(item, delivered):
-            item.clips = [Clip(detail=f"Every clip in this turnover ({len(delivered)}).")]
     order = list(SECTIONS)
     ranked = sorted(items.items(), key=lambda kv: (order.index(kv[1].advice.where), not kv[1].blocks, kv[0]))
     return TurnoverReport(turnover, len(delivered), blocked, [item for _, item in ranked])
-
-
-def _every_clip(item: Item, rows: list[ShotRow]) -> bool:
-    """A long list that says nothing a count would not: each clip, none with a detail."""
-    names = {clip.name for clip in item.clips if not clip.detail}
-    return len(item.clips) == len(names) and names == {row.clip_name for row in rows}
 
 
 def _add(
@@ -419,15 +405,80 @@ def _without_a_plate(rows: list[ShotRow]) -> list[Clip]:
     return [Clip(_who(row), row.clip_name) for row in rows if row.shot_code and row.shot_code not in plated]
 
 
-def _clip(row: ShotRow, result: QCResult) -> Clip:
-    """`SECA0012 plate`, its file, then what is particular to this clip."""
-    return Clip(_who(row), row.clip_name, _detail(row, result))
+def _clip(row: ShotRow, result: QCResult, turnover: Turnover, rate: int) -> Clip:
+    """`SECA0012 plate`, its file, then what is particular to this clip, the file the tool
+    looked for and which of Ben's files named it (user, 2026-10-07: "very specific, filename
+    the tool is looking for along with the expected path ... what is reporting the file")."""
+    return Clip(
+        _who(row),
+        row.clip_name,
+        _detail(row, result),
+        _looked_for(row, result, turnover),
+        _named_by(row, result, turnover, rate),
+    )
+
+
+_CLF_NAMED = re.compile(r"^(?P<amf>\S+\.amf): (?P<clf>\S+\.clf) ", re.IGNORECASE)
+"""QC-076's message, `<AMF>: <CLF> is missing`, as `scan._grade_of` writes it."""
+
+
+def _looked_for(row: ShotRow, result: QCResult, turnover: Turnover) -> str:
+    """The full path of the file a missing, doubled or unreadable file finding is about."""
+    folder = turnover.folder
+    rule = result.rule_id
+    if rule == "QC-022" and row.media is not None:
+        return str(row.media.path)
+    if rule in ("QC-012", "QC-013", "QC-014", "QC-022", "QC-083"):
+        return str(folder / row.clip_name)
+    if rule == "QC-086":
+        return str(folder / (scan.hdri_exr_name(row.clip_name) or row.clip_name))
+    if rule == "QC-076" and (named := _CLF_NAMED.match(_plain(result.message))):
+        return str(folder / named["clf"])
+    return ""
+
+
+def _named_by(row: ShotRow, result: QCResult, turnover: Turnover, rate: int) -> str:
+    """Which of Ben's files names the clip, for a finding that holds it or a missing file."""
+    csv = f"the metadata CSV ({turnover.csv_path.name})" if turnover.csv_path else "the metadata CSV"
+    edl = f"the EDL ({turnover.edl_path.name})" if turnover.edl_path else "the EDL"
+    cut = row.record_out > row.record_in
+    at = f", at {frames.frames_to_timecode(row.record_in, rate)} on the timeline" if cut else ""
+    amf = f"the AMF ({row.grade.amf.name})" if row.grade is not None else "the clip's AMF"
+    rule = result.rule_id
+    if rule in ("QC-012", "QC-013", "QC-014", "QC-022"):
+        return f"{csv}, File Name column" + (f", and {edl}{at}" if cut else "")
+    if rule == "QC-083":
+        return f"{edl}{at}, and {csv}, File Name column"
+    if rule == "QC-086":
+        return f"the name of the HDRI render {row.clip_name}, in {edl}{at}, and in {csv}"
+    if rule == "QC-076" and (named := _CLF_NAMED.match(_plain(result.message))):
+        return f"the AMF ({named['amf']})"
+    if rule in ("QC-010", "QC-065"):
+        return f"{csv}, Shot and Shot Type columns"
+    if rule == "QC-011":
+        return f"{csv}, two rows with the same Shot and Shot Type"
+    if rule == "QC-066":
+        return f"{csv} lists it; {edl} has no event that cuts it"
+    if rule == "QC-067":
+        return f"{edl} and {csv}"
+    if rule == "QC-046":
+        return f"no AMF, and no Input Color Space in {csv}"
+    if rule in ("QC-047", "QC-082"):
+        return amf
+    if rule == "QC-075":
+        return f"the AMFs in the turnover folder, for {edl}{at}"
+    return ""
 
 
 def _who(row: ShotRow) -> str:
+    """`SECA0012 plate`. A clip whose Shot or Shot Type did not read is named by what the
+    metadata says, so every line points at a shot (user, 2026-10-07)."""
     identity = row.identity
     if identity is None:
-        return row.shot_code or ""
+        if row.shot_code:
+            return row.shot_code
+        said = f"{row.csv_shot} {row.csv_shot_type}".strip()
+        return said if row.csv_shot else f"{said}, no Shot in the metadata".lstrip(", ")
     word = KIND_WORDS.get(identity.kind, identity.kind)
     number = "" if identity.index in ("", "01", "1") else f" {int(identity.index)}"
     return f"{row.shot_code} {word}{number}"
@@ -437,8 +488,6 @@ def _detail(row: ShotRow, result: QCResult) -> str:
     kind = ADVICE[result.rule_id].detail
     if kind == "message":
         return _plain(result.message)
-    if kind == "range":
-        return _range_detail(row)
     if kind == "handles":
         return _handles_detail(result.message)
     return ""
@@ -446,27 +495,6 @@ def _detail(row: ShotRow, result: QCResult) -> str:
 
 def _plain(message: str) -> str:
     return message.removeprefix(models.FIX_IN_RESOLVE)
-
-
-def _range_detail(row: ShotRow) -> str:
-    """How far the EDL's cut falls outside the file, in seconds."""
-    if row.media is None or row.approved is None:
-        return ""
-    fps = row.media.rate.as_float()
-    before = row.media.start_frame - row.approved.in_frame
-    after = row.approved.out_frame - row.media.max_available_out
-    if before > 0:
-        return f"the cut starts {_seconds(before, fps)} before the file does"
-    if after > 0:
-        return f"the cut ends {_seconds(after, fps)} after the file does"
-    return ""
-
-
-def _seconds(frames: int, fps: float) -> str:
-    if frames < fps:
-        return f"{frames} frame{'s' if frames != 1 else ''}"
-    seconds = round(frames / fps)
-    return f"about {seconds} second{'s' if seconds != 1 else ''}"
 
 
 _SHORT = re.compile(r"(\d+) (before In|after Out)")
@@ -514,10 +542,10 @@ def _turnover_name(turnover: Turnover) -> str:
 
 def _status(report: TurnoverReport) -> str:
     if report.blocked == 0:
-        return "Nothing blocking"
+        return "Nothing held back"
     if report.blocked >= report.clips:
-        return "Every clip blocked"
-    return f"{report.blocked} of {report.clips} clips blocked"
+        return "Every clip held back"
+    return f"{report.blocked} of {report.clips} clips held back"
 
 
 def _summary(found: list[TurnoverReport]) -> str:
@@ -584,7 +612,12 @@ def _clip_html(clip: Clip) -> str:
         parts.append(f"<code>{_e(clip.name)}</code>")
     if clip.detail:
         parts.append(f"({_e(clip.detail)})" if parts else _e(clip.detail))
-    return " ".join(parts)
+    line = " ".join(parts)
+    if clip.looked_for:
+        line += f'<span class="source">Looking for <code>{_e(clip.looked_for)}</code></span>'
+    if clip.named_by:
+        line += f'<span class="source">Reported by {_e(clip.named_by)}</span>'
+    return line
 
 
 def _e(text: str) -> str:
@@ -620,6 +653,7 @@ li.note{border-left-color:var(--note)}
 .what{font-weight:600}
 li p{margin:0}
 ul.clips{margin:0;padding-left:20px;font-size:15px}
+.source{display:block;color:var(--muted);font-size:14px}
 .blocks{font-size:13px;font-weight:600;color:var(--resolve)}
 .ok{font-size:13px;color:var(--muted)}
 .clean{margin:0}

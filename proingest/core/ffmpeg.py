@@ -22,7 +22,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
-from collections.abc import Generator, Sequence
+from collections.abc import Generator, Iterable, Sequence
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -457,6 +457,59 @@ def decode_frames(
             process.wait()
 
 
+VIEW_CODEC = ["-c:v", "utvideo", "-pix_fmt", "gbrp10le"]
+"""A display referred picture the stringout cuts from: lossless 10 bit RGB, read once more
+by the segment encode and then deleted, so a second lossy pass would matter and size does
+not much. UT Video rather than ffv1 since 2026-10-08: on turnover135's frames it wrote 49
+frames a second to ffv1 16 bit's 4, at a quarter of the size, and ffv1 had become the
+stringout's slowest step. 10 bit is four times finer than the 8 bit H.264 it ends in."""
+
+
+def write_frames(
+    frames_in: Iterable[npt.NDArray[np.float32]],
+    size: tuple[int, int],
+    destination: Path,
+    rate: str,
+    ffmpeg: Path | None = None,
+    timeout: int = DECODE_TIMEOUT,
+) -> int:
+    """Write `(h, w, 3)` float32 RGB frames, already display referred and 0..1, to a
+    lossless file at `destination` (`.mkv`). Returns the frames written.
+
+    The pipe's other direction from `decode_frames`: planes go in G, B, R order. Raises
+    FFmpegError when ffmpeg fails, and always leaves the process dead.
+    """
+    tool = ffmpeg or resolve_tool("ffmpeg")
+    width, height = size
+    command = [
+        str(tool), "-hide_banner", "-loglevel", "error", "-y",
+        "-f", "rawvideo", "-pix_fmt", "gbrpf32le", "-s", f"{width}x{height}", "-r", rate, "-i", "-",
+        *VIEW_CODEC, "-f", "matroska", str(destination),
+    ]  # fmt: skip
+    log.info("running: %s", shlex.join(command))
+    written = 0
+    with tempfile.TemporaryFile() as errors:
+        process = subprocess.Popen(command, stdin=subprocess.PIPE, stderr=errors)
+        stdin = process.stdin
+        assert stdin is not None
+        try:
+            for frame in frames_in:
+                planes = np.stack((frame[..., 1], frame[..., 2], frame[..., 0])).astype(_RAW_DTYPE)
+                stdin.write(planes.tobytes())
+                written += 1
+            stdin.close()
+            if process.wait(timeout) != 0:
+                raise FFmpegError(f"writing {destination.name} failed: {_stderr_tail(errors)}")
+        except BrokenPipeError as exc:
+            process.wait(timeout)
+            raise FFmpegError(f"writing {destination.name} failed: {_stderr_tail(errors)}") from exc
+        finally:
+            if process.poll() is None:
+                process.kill()
+            process.wait()
+    return written
+
+
 # --- Extracting audio out of a container. COLOR_AND_FORMAT section 3. ---
 
 
@@ -655,6 +708,11 @@ def lut_filter(cube: Path) -> str:
     return f"lut3d={_filter_path(cube)}:interp={LUT_INTERPOLATION}"
 
 
+def shaper_filter(cube: Path) -> str:
+    """The 1D shaper a linear source goes through before its cube (`color.shaper_lut`)."""
+    return f"lut1d={_filter_path(cube)}:interp=linear"
+
+
 def encode_command(
     source: str,
     destination: Path,
@@ -669,6 +727,7 @@ def encode_command(
     ffmpeg: Path | None = None,
     crf: int | None = None,
     audio_tempo: float = 1.0,
+    shaper: Path | None = None,
     timecode: str | None = None,
     color_space: str = "",
     color_range: str = "",
@@ -759,6 +818,8 @@ def encode_command(
         command += ["-f", "lavfi", "-i", SILENCE]
 
     filters.append(to_rgb(target_size, color_space, color_range, LUT_PIXEL_FORMAT))
+    if shaper is not None:
+        filters.append(shaper_filter(shaper))
     if lut is not None:
         filters.append(lut_filter(lut))
     filters += [REFERENCE_TO_YUV, reference_label(display)]

@@ -73,6 +73,13 @@ def media(
     )
 
 
+GRADED = Grade(
+    amf=Path("/t/C4261.amf"),
+    input_transform="urn:ampas:aces:transformId:v2.0:CSC.Sony.SLog3_SGamut3Cine_to_ACES.a2.v1",
+    looks=(GradeLook("clf", "/t/C4261_1_ClipGraph_CorrectorNode_1.clf"),),
+)
+
+
 def row(
     stated: FrameRate | None = RATE_24,
     audio: AudioInfo | None = None,
@@ -80,18 +87,21 @@ def row(
     clip_name: str = "MELT0001_pl01",
     current: InOut | None = CHOSEN,
     source_encoding: str | None = "ACEScct",
+    grade: Grade | None = GRADED,
     **media_kwargs: object,
 ) -> ShotRow:
     """A plate that passes every default rule, so a test changes only what it is about.
 
     It names a source encoding because a real clip does: since M4.6.4 a clip that names
-    none is QC-046, so a row without one is not the clean row these tests want.
+    none is QC-046, so a row without one is not the clean row these tests want. It is
+    graded, since an ungraded clip carries QC-009's note (2026-10-07).
     """
     return ShotRow(
         turnover_id="t1",
         clip_name=clip_name,
         identity=identity_of(clip_name),
         source_encoding=source_encoding,
+        grade=grade,
         media=media(stated, **media_kwargs),  # type: ignore[arg-type]
         snapshot=CHOSEN,
         current=current,
@@ -124,7 +134,7 @@ class TestSourceRate:
         """The file escaped the conform in Resolve, so the file gets flagged."""
         results = qc.check_source_rate(row(stated=RATE_30), RATE_24)
         assert ids(results) == ["QC-026"]
-        assert results[0].severity == "error"
+        assert results[0].severity == "warning", "never a block since 2026-10-07 (user)"
         assert "MELT0001_pl01.1001.exr" in results[0].message, "the message names the file"
 
     def test_media_that_states_no_rate_cannot_disagree(self) -> None:
@@ -138,9 +148,9 @@ class TestSourceRate:
         """Every real file states 24000/1001 and is rendered at 24 (user, 2026-09-23)."""
         assert qc.check_source_rate(row(stated=NTSC), RATE_24) == []
 
-    def test_25_fps_against_a_24_project_is_an_error(self) -> None:
+    def test_25_fps_against_a_24_project_is_a_warning(self) -> None:
         results = qc.check_source_rate(row(stated=FrameRate(25)), RATE_24)
-        assert ids(results) == ["QC-026"] and results[0].severity == "error"
+        assert ids(results) == ["QC-026"] and results[0].severity == "warning"
 
 
 class TestAudioSync:
@@ -251,7 +261,7 @@ class TestSourceFormat:
         """DPX and ProRes 4444 decode fine; the warning is about linear precision."""
         results = qc.check_source_format(row(pixel_format=pixel_format))
         assert ids(results) == ["QC-021"]
-        assert results[0].severity == "warning"
+        assert results[0].severity == "info", "every ProRes clip had it; a note since 2026-10-07"
 
     def test_a_row_with_no_media_is_skipped(self) -> None:
         assert qc.check_source_format(ShotRow(turnover_id="t1", clip_name="x")) == []
@@ -354,14 +364,8 @@ class TestSourceResolution:
         """`render._fit` would resample it to the target and squash it."""
         results = qc.check_source_resolution(row(size=(1920, 1080)), qc.DEFAULT_SETTINGS)
         assert ids(results) == ["QC-023"]
-        assert results[0].severity == "error"
+        assert results[0].severity == "warning", "rendered fitted to the target since 2026-10-07"
         assert "1920x1080" in results[0].message
-
-    def test_the_setting_downgrades_it_to_a_warning(self) -> None:
-        settings = qc.RuleSettings(allow_non_4k=True)
-        results = qc.check_source_resolution(row(size=(4096, 2160)), settings)
-        assert ids(results) == ["QC-023"]
-        assert results[0].severity == "warning"
 
     def test_a_still_is_not_asked(self) -> None:
         """An aux still is delivered at its own size and has no 4k contract."""
@@ -391,16 +395,13 @@ class TestRange:
     def test_in_before_the_media_is_qc_031(self) -> None:
         assert ids(qc.check_range(row(current=InOut(1, 1248)))) == ["QC-031"]
 
-    def test_silent_while_the_cut_is_still_the_edls_and_qc_029_says_so(self) -> None:
-        """Turnover134's mirror balls (user, 2026-10-06, "too much noise"): QC-029 and QC-031
-        for one cut. Once the editor moves it, QC-031 speaks for the new range."""
-        cut = InOut(1, 1248)
-        late = row(current=cut)
-        late.approved = cut
-        late.qc.append(QCResult("QC-029", "error", "row", "x"))
-        assert qc.check_range(late) == []
-        late.current = InOut(2, 1248)
-        assert ids(qc.check_range(late)) == ["QC-031"]
+    def test_an_edit_outside_the_file_is_qc_031_and_holds_the_shot(self) -> None:
+        """User, 2026-10-07: In/Out can still be edited, and "in after out etc" stays. The
+        scan keeps the EDL's cut inside the file, so only an edit lands outside it."""
+        late = row(current=InOut(2, 1248))
+        late.approved = InOut(1001, 1248)
+        results = qc.check_range(late)
+        assert ids(results) == ["QC-031"] and results[0].severity == "error"
 
     def test_in_after_out_is_qc_032(self) -> None:
         """Reported alone: an inverted range makes every other range answer nonsense."""
@@ -439,12 +440,14 @@ class TestDuration:
     def test_too_short_is_qc_033(self) -> None:
         results = qc.check_duration(row(current=InOut(1009, 1050)), qc.DEFAULT_SETTINGS)
         assert ids(results) == ["QC-033"]
-        assert results[0].severity == "error", "must-fix since 2026-09-25 (user)"
+        assert results[0].severity == "warning", "rendered as it is since 2026-10-07 (user)"
+        assert results[0].message.startswith("Plate was 42 frames on the timeline")
 
     def test_too_long_is_qc_034(self) -> None:
         results = qc.check_duration(row(current=InOut(1001, 1264)), qc.DEFAULT_SETTINGS)
         assert ids(results) == ["QC-034"]
-        assert results[0].severity == "error", "must-fix since 2026-09-25 (user)"
+        assert results[0].severity == "warning", "rendered as it is since 2026-10-07 (user)"
+        assert results[0].message.startswith("Plate was 264 frames on the timeline")
 
     @pytest.mark.parametrize("kind", ["cp01", "el01", "wit01", "re01"])
     def test_only_a_plate_has_limits(self, kind: str) -> None:
@@ -495,6 +498,12 @@ class TestAudioPresence:
         results = qc.check_audio_presence(row())
         assert ids(results) == ["QC-040"]
         assert results[0].severity == "warning"
+
+    def test_unreadable_audio_is_said_once(self) -> None:
+        """QC-042 already says it, as a warning, and the plate is delivered without sound."""
+        plate = row()
+        plate.qc.append(QCResult("QC-042", "warning", "row", "audio unreadable, so none is delivered"))
+        assert qc.check_audio_presence(plate) == []
 
     def test_audio_inside_the_plate_s_own_file_counts(self) -> None:
         """F20: every real plate carries its sound embedded, and was told it had none."""
@@ -558,13 +567,6 @@ class TestAuxStill:
         assert qc.check_aux_still(row()) == []
 
 
-GRADED = Grade(
-    amf=Path("/t/C4261.amf"),
-    input_transform="urn:ampas:aces:transformId:v2.0:CSC.Sony.SLog3_SGamut3Cine_to_ACES.a2.v1",
-    looks=(GradeLook("clf", "/t/C4261_1_ClipGraph_CorrectorNode_1.clf"),),
-)
-
-
 class TestSourceEncodingRule:
     """QC-046 and QC-047: the AMF names no input transform, or one the config lacks."""
 
@@ -575,7 +577,7 @@ class TestSourceEncodingRule:
         assert qc.check_source_encoding(row(source_encoding="CanonLog3 CinemaGamut D55")) == []
 
     def test_a_plate_with_no_amf_is_qc_046_error(self) -> None:
-        results = qc.check_source_encoding(row(source_encoding=None))
+        results = qc.check_source_encoding(row(source_encoding=None, grade=None))
         assert ids(results) == ["QC-046"]
         assert results[0].severity == "error"
         assert "no AMF" in results[0].message
@@ -584,7 +586,7 @@ class TestSourceEncodingRule:
     def test_silent_where_the_missing_amf_or_file_is_already_the_error(self, cause: str) -> None:
         """Turnover135 (user, 2026-10-06, "too much noise"): one cause, one error. QC-075 or
         QC-012 already holds the row back, so QC-046 saying it again was noise."""
-        plate = row(source_encoding=None)
+        plate = row(source_encoding=None, grade=None)
         plate.qc.append(QCResult(cause, "error", "row", "x"))
         assert qc.check_source_encoding(plate) == []
 
@@ -595,7 +597,7 @@ class TestSourceEncodingRule:
 
     def test_an_aux_still_that_names_none_is_qc_046_error(self) -> None:
         """The one picture the tool converts on its own authority, so it cannot be delivered."""
-        results = qc.check_source_encoding(self.chart(source_encoding=None))
+        results = qc.check_source_encoding(self.chart(source_encoding=None, grade=None))
         assert ids(results) == ["QC-046"]
         assert results[0].severity == "error"
 
@@ -614,7 +616,7 @@ class TestSourceEncodingRule:
 
     def test_a_bts_still_is_not_blocked(self) -> None:
         """It is copied byte for byte and never transformed."""
-        bts = row(clip_name="MELT0001_pl01_BTS_01", source_encoding=None)
+        bts = row(clip_name="MELT0001_pl01_BTS_01", source_encoding=None, grade=None)
         assert qc.check_source_encoding(bts)[0].severity == "info"
 
 
@@ -635,7 +637,9 @@ class TestColorChain:
         )
 
     def test_a_row_with_no_look_names_the_input_transform(self) -> None:
-        message = qc.check_color_chain(row(source_encoding="CanonLog3 CinemaGamut D55"))[0].message
+        message = qc.check_color_chain(row(source_encoding="CanonLog3 CinemaGamut D55", grade=None))[
+            0
+        ].message
         assert "no look" in message
         assert "CanonLog3 CinemaGamut D55 to ACEScg" in message
 
@@ -702,8 +706,14 @@ class TestRuleSettings:
 
     def test_a_batch_carries_its_own_settings(self) -> None:
         batch = Batch()
+        batch.settings_overrides[qc.RULES_OVERRIDE_KEY] = {"min_duration_frames": 48}
+        assert qc.settings_for(batch).min_duration_frames == 48
+
+    def test_a_retired_setting_in_an_older_batch_is_ignored(self) -> None:
+        """Allow other resolutions went on 2026-10-07; a batch saved with it still opens."""
+        batch = Batch()
         batch.settings_overrides[qc.RULES_OVERRIDE_KEY] = {"allow_non_4k": True}
-        assert qc.settings_for(batch).allow_non_4k is True
+        assert qc.settings_for(batch) == qc.DEFAULT_SETTINGS
 
     def test_a_batch_without_overrides_gets_the_defaults(self) -> None:
         assert qc.settings_for(Batch()) == qc.DEFAULT_SETTINGS
@@ -814,14 +824,14 @@ class TestPreflight:
         batch = Batch(delivery_root=delivery, turnovers=[Turnover("t1", tmp_path)], rows=[row()])
         qc.preflight(batch)
         assert ids(batch.qc) == []
-        assert ids(batch.turnovers[0].qc) == ["QC-008"]
+        assert ids(batch.turnovers[0].qc) == [], "QC-008 is gone: no AMF is an ungraded clip"
 
     def test_rerunning_does_not_duplicate(self, tmp_path: Path) -> None:
         batch = Batch(turnovers=[Turnover("t1", tmp_path)], rows=[row()])
         qc.preflight(batch)
         qc.preflight(batch)
         assert ids(batch.qc) == ["QC-062"]
-        assert ids(batch.turnovers[0].qc) == ["QC-008"]
+        assert ids(batch.turnovers[0].qc) == []
 
     def test_model_rules_survive_a_preflight(self, tmp_path: Path) -> None:
         """The two registries own different IDs and must not clear each other."""
@@ -832,7 +842,8 @@ class TestPreflight:
 
 
 class TestBlockingResults:
-    """D8: every must-fix stops the run, wherever it is (`qc.must_fix`)."""
+    """User, 2026-10-07: only the delivery root stops a run (`qc.must_fix`); a row's error
+    holds that row back and nothing else."""
 
     def test_a_batch_scope_error_blocks(self) -> None:
         batch = Batch(rows=[row()])
@@ -844,16 +855,27 @@ class TestBlockingResults:
         batch.qc.append(QCResult("QC-063", "warning", "batch", "not much room left"))
         assert qc.blocking_results(batch) == []
 
-    def test_a_turnover_scope_error_stops_the_run(self, tmp_path: Path) -> None:
-        batch = Batch(delivery_root=tmp_path, turnovers=[Turnover("t1", tmp_path)], rows=[row()])
-        qc.preflight(batch)
-        assert (tmp_path.name, "QC-008") in [(where, result.rule_id) for where, result in qc.must_fix(batch)]
+    def test_a_turnover_scope_error_does_not_stop_the_run(self, tmp_path: Path) -> None:
+        turnover = Turnover("t1", tmp_path, qc=[QCResult("QC-069", "error", "turnover", "moved")])
+        assert qc.must_fix(Batch(delivery_root=tmp_path, turnovers=[turnover], rows=[row()])) == []
 
-    def test_a_row_scope_error_stops_the_run_and_says_which_row(self, tmp_path: Path) -> None:
+    def test_a_row_scope_error_does_not_stop_the_run(self, tmp_path: Path) -> None:
         broken = row()
         broken.qc.append(QCResult("QC-012", "error", "row", "no such file"))
-        found = qc.must_fix(Batch(delivery_root=tmp_path, rows=[broken]))
-        assert [(where, result.rule_id) for where, result in found] == [("MELT0001_pl01", "QC-012")]
+        assert qc.must_fix(Batch(delivery_root=tmp_path, rows=[broken])) == []
+
+    def test_only_the_batch_scope_errors_are_said(self, tmp_path: Path) -> None:
+        broken = row()
+        broken.qc.append(QCResult("QC-012", "error", "row", "no such file"))
+        batch = Batch(delivery_root=tmp_path, rows=[broken])
+        batch.qc = [
+            QCResult("QC-062", "error", "batch", "not writable"),
+            QCResult("QC-063", "error", "batch", "no room"),
+        ]
+        assert [(where, result.rule_id) for where, result in qc.must_fix(batch)] == [
+            ("batch", "QC-062"),
+            ("batch", "QC-063"),
+        ]
 
     def test_a_skipped_row_s_error_does_not(self, tmp_path: Path) -> None:
         broken = row()
@@ -868,44 +890,6 @@ class TestBlockingResults:
         assert qc.must_fix(Batch(delivery_root=tmp_path, rows=[failed])) == []
 
 
-class TestQcBypass:
-    """A turnover accepted as it is: reported, never blocking (user, 2026-09-28)."""
-
-    def bypassed_batch(self, tmp_path: Path) -> Batch:
-        broken = row()
-        broken.qc.append(QCResult("QC-033", "error", "row", "too short"))
-        turnover = Turnover("t1", tmp_path / "Turnover121")
-        turnover.qc.append(QCResult("QC-008", "error", "turnover", "no colour session"))
-        return Batch(delivery_root=tmp_path, turnovers=[turnover], rows=[broken])
-
-    def test_without_it_the_turnover_and_its_rows_block(self, tmp_path: Path) -> None:
-        batch = self.bypassed_batch(tmp_path)
-        assert [result.rule_id for _, result in qc.must_fix(batch)] == ["QC-008", "QC-033"]
-
-    def test_with_it_nothing_of_the_turnover_blocks_and_qc_074_says_so(self, tmp_path: Path) -> None:
-        batch = self.bypassed_batch(tmp_path)
-        qc.set_qc_bypassed(batch.turnovers[0], True)
-        assert qc.must_fix(batch) == []
-        assert ids(batch.turnovers[0].qc) == ["QC-008", "QC-074"]
-        assert batch.turnovers[0].qc[-1].severity == "warning"
-        assert ids(batch.rows[0].qc) == ["QC-033"], "the errors are still reported"
-
-    def test_a_batch_scope_error_still_blocks(self, tmp_path: Path) -> None:
-        batch = self.bypassed_batch(tmp_path)
-        qc.set_qc_bypassed(batch.turnovers[0], True)
-        batch.qc.append(QCResult("QC-062", "error", "batch", "not writable"))
-        assert [result.rule_id for _, result in qc.must_fix(batch)] == ["QC-062"]
-
-    def test_unticking_it_takes_qc_074_away_and_the_errors_block_again(self, tmp_path: Path) -> None:
-        batch = self.bypassed_batch(tmp_path)
-        qc.set_qc_bypassed(batch.turnovers[0], True)
-        qc.set_qc_bypassed(batch.turnovers[0], True)
-        assert ids(batch.turnovers[0].qc).count("QC-074") == 1
-        qc.set_qc_bypassed(batch.turnovers[0], False)
-        assert "QC-074" not in ids(batch.turnovers[0].qc)
-        assert len(qc.must_fix(batch)) == 2
-
-
 class TestLogResults:
     """Every result the Issues dock shows goes to the log at its own level (user, 2026-09-28)."""
 
@@ -914,7 +898,7 @@ class TestLogResults:
             qc.log_results(batch, "after the scan")
         return [(record.levelname, record.getMessage()) for record in caplog.records]
 
-    def test_each_severity_is_its_own_level_and_a_must_fix_says_it_blocks(
+    def test_each_severity_is_its_own_level_and_a_row_error_says_it_holds_the_shot(
         self, tmp_path: Path, caplog: pytest.LogCaptureFixture
     ) -> None:
         plate = row()
@@ -928,11 +912,23 @@ class TestLogResults:
         )
         where = "after the scan: Turnover121 / MELT0001 (MELT0001_pl01)"
         assert self.logged(caplog, batch) == [
-            ("ERROR", f"{where}: QC-012 no such file (blocks the run)"),
+            ("ERROR", f"{where}: QC-012 no such file (holds this shot back)"),
             ("WARNING", f"{where}: QC-020 is yuv420p (8 bit)"),
             ("INFO", f"{where}: QC-018 decoded as BT.709"),
-            ("ERROR", "after the scan: QC summary: 1 errors, 1 warnings, 1 info; 1 block the run"),
+            ("INFO", "after the scan: QC summary: 1 errors, 1 warnings, 1 info; nothing blocks the run"),
         ]
+
+    def test_a_batch_scope_error_says_it_stops_the_run(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        batch = Batch(delivery_root=tmp_path, rows=[row()])
+        batch.qc = [QCResult("QC-062", "error", "batch", "not writable")]
+        lines = self.logged(caplog, batch)
+        assert lines[0] == ("ERROR", "after the scan: batch: QC-062 not writable (blocks the run)")
+        assert lines[-1] == (
+            "ERROR",
+            "after the scan: QC summary: 1 errors, 0 warnings, 0 info; 1 block the run",
+        )
 
     def test_an_error_that_does_not_block_says_why_and_the_summary_is_info(
         self, tmp_path: Path, caplog: pytest.LogCaptureFixture
@@ -951,29 +947,6 @@ class TestLogResults:
             "after the scan: QC summary: 1 errors, 0 warnings, 0 info; nothing blocks the run",
         )
 
-    def test_a_bypassed_turnover_says_what_was_rendered_past_and_what_was_held(
-        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
-    ) -> None:
-        plate = row()
-        plate.qc = [
-            QCResult("QC-033", "error", "row", "too short"),
-            QCResult("QC-011", "error", "row", "twice"),
-        ]
-        turnover = Turnover("t1", tmp_path / "T")
-        qc.set_qc_bypassed(turnover, True)
-        batch = Batch(delivery_root=tmp_path, turnovers=[turnover], rows=[plate])
-        lines = self.logged(caplog, batch)
-        assert lines[0][0] == "WARNING" and "QC-074" in lines[0][1]
-        assert lines[1][1].endswith("QC-033 too short (bypassed: rendered as it is)")
-        assert lines[2][1].endswith(
-            "QC-011 Fix in Resolve - twice (bypassed, but not rendered: "
-            "Accept As Is cannot render past this, so the row is held back)"
-        )
-        assert lines[-1] == (
-            "INFO",
-            "after the scan: QC summary: 2 errors, 1 warnings, 0 info; nothing blocks the run",
-        )
-
     def test_batch_turnover_and_deliverable_results_are_there_too(
         self, tmp_path: Path, caplog: pytest.LogCaptureFixture
     ) -> None:
@@ -981,103 +954,56 @@ class TestLogResults:
         plate.deliverables = [Deliverable(kind="ref_mp4", name="r.mp4", path=tmp_path / "r.mp4", version=1)]
         plate.deliverables[0].qc = [QCResult("QC-100", "error", "deliverable", "ffmpeg failed")]
         turnover = Turnover("t1", tmp_path / "T")
-        turnover.qc = [QCResult("QC-008", "error", "turnover", "no colour session")]
+        turnover.qc = [QCResult("QC-071", "error", "turnover", "the ALE does not match")]
         batch = Batch(delivery_root=tmp_path, turnovers=[turnover], rows=[plate])
         batch.qc = [QCResult("QC-063", "warning", "batch", "not much room left")]
         assert [message for _, message in self.logged(caplog, batch)][:3] == [
             "after the scan: batch: QC-063 not much room left",
-            "after the scan: T: QC-008 Fix in Resolve - no colour session (blocks the run)",
+            "after the scan: T: QC-071 Fix in Resolve - the ALE does not match",
             "after the scan: T / MELT0001 (MELT0001_pl01) / r.mp4: QC-100 ffmpeg failed",
         ]
 
 
-def ingested_batch(tmp_path: Path, *rows: ShotRow, edl_name: str = "MELT_FINAL.edl") -> Batch:
-    """A batch whose one turnover has had a colour session ingested into it.
-
-    The EDL is written rather than matched against, because these rules read what the
-    ingest left on the model rather than the package: QC-008's own file check is the
-    one exception and it has its own test.
-    """
-    edl = tmp_path / edl_name
-    edl.touch()
-    turnover = Turnover("t1", tmp_path, color_session_edl=edl)
-    return Batch(delivery_root=tmp_path, turnovers=[turnover], rows=list(rows))
-
-
-class TestColorSessionRule:
-    """QC-008: no AMF in the turnover grades any clip, so nothing names an input transform."""
-
-    def test_a_turnover_nothing_was_ingested_into_is_an_error(self, tmp_path: Path) -> None:
-        batch = Batch(delivery_root=tmp_path, turnovers=[Turnover("t1", tmp_path)], rows=[row()])
-        results = qc.check_color_session(batch.turnovers[0], batch.rows)
-        assert ids(results) == ["QC-008"]
-        assert results[0].severity == "error"
-
-    def test_an_archived_edl_is_not_an_error(self, tmp_path: Path) -> None:
-        """The scan put the grade on the rows, so nothing reads the EDL again."""
-        graded = row()
-        graded.grade = GRADED
-        batch = ingested_batch(tmp_path, graded)
-        edl = batch.turnovers[0].color_session_edl
-        assert edl is not None
-        edl.unlink()
-        assert qc.check_color_session(batch.turnovers[0], batch.rows) == []
-
-    def test_no_row_with_an_amf_is_an_error(self, tmp_path: Path) -> None:
-        batch = ingested_batch(tmp_path, row())
-        results = qc.check_color_session(batch.turnovers[0], batch.rows)
-        assert ids(results) == ["QC-008"]
-        assert "no AMF" in results[0].message
-
-    def test_one_row_with_an_amf_is_enough_to_satisfy_it(self, tmp_path: Path) -> None:
-        graded, ungraded = row(), row(clip_name="MELT0002_pl01")
-        graded.grade = GRADED
-        batch = ingested_batch(tmp_path, graded, ungraded)
-        assert qc.check_color_session(batch.turnovers[0], batch.rows) == []
-
-    def test_it_is_scoped_per_turnover(self, tmp_path: Path) -> None:
-        """One turnover can wait on colour while another renders, which is the point."""
-        graded = row()
-        graded.grade = GRADED
-        batch = ingested_batch(tmp_path, graded)
-        waiting = Turnover("t2", tmp_path)
-        batch.turnovers.append(waiting)
-        batch.rows.append(row(clip_name="MELT0002_pl01"))
-        batch.rows[-1].turnover_id = "t2"
-        qc.preflight(batch)
-        assert "QC-008" not in ids(batch.turnovers[0].qc)
-        assert "QC-008" in ids(batch.turnovers[1].qc)
-
-
 class TestClfRule:
-    """QC-009, info: the colourist left this plate no grade (user, 2026-09-28)."""
+    """QC-009, info: "Clip ungraded in Resolve project" (user, 2026-10-07). No CLF, no AMF or
+    no CDL is an ungraded clip, never a block."""
 
-    def test_an_amf_with_no_clf_is_info(self) -> None:
+    def test_an_amf_with_no_clf_and_no_cdl_is_ungraded(self) -> None:
         plain = row()
         plain.grade = replace(GRADED, looks=(GradeLook("look", "ACES 1.3 Reference Gamut Compression"),))
-        results = qc.check_clf(plain, has_session=True)
+        results = qc.check_clf(plain)
         assert ids(results) == ["QC-009"]
         assert results[0].severity == "info"
-        assert "C4261.amf carries no grade" in results[0].message
+        assert results[0].message.startswith(qc.UNGRADED)
+        assert "C4261.amf carries no CLF and no CDL" in results[0].message
 
-    def test_a_row_with_no_amf_leaves_it_to_qc_075(self) -> None:
-        assert qc.check_clf(row(), has_session=True) == []
+    def test_a_row_with_no_amf_is_ungraded_from_the_csv_colour_space(self) -> None:
+        plain = row(source_encoding="Apple Log", grade=None)
+        results = qc.check_clf(plain)
+        assert ids(results) == ["QC-009"]
+        assert "read as Apple Log, the CSV's Input Color Space" in results[0].message
 
-    def test_it_is_silent_until_a_session_has_been_ingested(self) -> None:
-        """With none the whole turnover is QC-008, and repeating it per row buries it."""
-        plain = row()
-        plain.grade = replace(GRADED, looks=())
-        assert qc.check_clf(plain, has_session=False) == []
+    def test_a_row_with_no_colour_at_all_leaves_it_to_qc_046(self) -> None:
+        assert qc.check_clf(row(source_encoding=None, grade=None)) == []
+
+    def test_a_cdl_in_place_of_a_clf_is_a_grade(self) -> None:
+        cdl = row()
+        cdl.grade = replace(GRADED, looks=(GradeLook("cdl", "ACEScg", (1.0,) * 10),))
+        assert qc.check_clf(cdl) == []
 
     def test_an_aux_still_owes_no_grade(self) -> None:
         chart = row(clip_name="MELT0001_pl01_colorChart_01")
         chart.grade = replace(GRADED, looks=())
-        assert qc.check_clf(chart, has_session=True) == []
+        assert qc.check_clf(chart) == []
 
     def test_a_graded_row_passes(self) -> None:
-        graded = row()
-        graded.grade = GRADED
-        assert qc.check_clf(graded, has_session=True) == []
+        assert qc.check_clf(row()) == []
+
+    def test_it_runs_with_the_row_rules(self) -> None:
+        """A row rule since 2026-10-07, so the editor sees it at scan, not only after a run."""
+        plain = row(grade=None)
+        qc.apply_row_rules(plain, RATE_24)
+        assert "QC-009" in ids(plain.qc)
 
 
 class TestApprovedRule:
@@ -1548,7 +1474,7 @@ class TestDropFrame:
         assert dropped.media is not None
         dropped.media.drop_frame = True
         results = qc.check_timecode(dropped)
-        assert [(r.rule_id, r.severity) for r in results] == [("QC-027", "error")]
+        assert [(r.rule_id, r.severity) for r in results] == [("QC-027", "warning")]
 
 
 class TestCancelRerunRefusal:

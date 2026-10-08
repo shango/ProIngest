@@ -8,7 +8,7 @@ commit.
 
 ## 1. Resume here
 
-**State at 2026-10-06, version 0.5.25 merged to `main` with PR #18** (0.5.25: `User_Generated` and `User_Uploads` at the delivery root; 0.5.24: the Fix-it
+**State at 2026-10-08, version 0.5.36 on branch `hdri/prerender`, PR #19 open** (0.5.36: the stringout from 26 minutes to 3 on turnover135; 0.5.35: the stringout's time left on its line; 0.5.34: the HDRI pre-render on the timeline; 0.5.33: the QC overhaul, nothing stops a batch or a turnover; 0.5.32: style frames on the stringout, the stringout line in the shot list; 0.5.31: every Fix-it line names its shot; 0.5.30: the take on the burn-in; 0.5.29: reference clips play in the stringout; 0.5.28: everything in the stringout graded; 0.5.27: the stringout from the EXRs; 0.5.26: the HDRI pre-render and delivery, QC-084, Accept As Is runs what it can; 0.5.25, merged to `main` with PR #18: `User_Generated` and `User_Uploads` at the delivery root; 0.5.24: the Fix-it
 report, one error per cause, a lone EXR read as one frame, AMFs falling back to the clip they name) (`HANDOFF.md` is the short version, with the session's open items); 0.5.22 went to `main` earlier (PR #17 merged as `70e1160` at the user's request, after its CI
 run 37276656318 built the 0.5.22 dmg). The 2026-09-23 review is built (chunks A
 to H of `docs/REVIEW_2026-09-23.md`), and so are the fixes that a second official turnover,
@@ -17,6 +17,236 @@ renders; Turnover121, every clip 8 bit 4:2:0, runs again with a QC-020 warning o
 since 2026-09-28 (user). What is left is the Mac: `docs/MAC_SESSION.md`, from "The 0.5.0 build, in
 order" down, and Ben's 4.886 slope. Entries are newest first; anything older than 2026-09-22
 describes the tool before the review and is history.
+
+**2026-10-08, 0.5.36, then: the stringout optimised (user).** "I need to get the stringout render
+time optimized. Please make a plan and implement. If parallel is the best we have, optimize
+that." Profiled one HD frame of turnover135's delivered EXRs: read 39 ms, **OCIO 838 ms** (the
+exact ACES 2.0 output transform), packing 4 ms. Then the ffv1 16 bit intermediate wrote 4 frames
+a second on real frames. Built, measured each step on turnover135 (6 plate pictures, 21 events):
+(1) `color.baked_processor`, the view chain baked into a 65 point cube in ACEScct (27 ms a frame;
+0.06/255 mean, 1.4/255 worst on the plates; COLOR_AND_FORMAT section 1); (2) the intermediate is
+UT Video 10 bit (`ffmpeg.VIEW_CODEC`; 49 frames a second, a quarter of ffv1's size); (3) the
+pictures and segments go to local temp (`tempfile.mkdtemp`), never the delivery root on the Drive
+mount, and only the joined `.part` is written beside the stringout; (4) the events are encoded
+`workers` at a time on threads (`stringout._encode_all`). **26m15s one at a time, 15m56s with the
+pictures in parallel, 4m00s with (1) to (3), 3m00s with (4)**, 2m47s at 6 workers and 2m55s at 8.
+The new stringout against the first: 43 dB PSNR (two x264 encodes differ that much anyway) and
+average Y, U and V within 0.02 of a code value over 1920 frames. **Found and fixed**: OCIO's
+processor cache returned the first baked LUT's processor for a second, different one, so a graded
+still would have shown the plain plate's look; baked LUTs use their own config with the cache
+off (`color._uncached_config`, `TestBakedProcessor.test_a_second_bake_is_not_the_first_one_again`).
+Still x264 `preset slow`, the references' setting; a faster preset for the stringout alone is the
+next lever, and the user's call.
+
+**2026-10-08, 0.5.36: the stringout's plates converted in parallel (user).** Asked how long a
+stringout takes from the EXRs, then "yes, convert the plates in parallel". Measured on
+turnover135 (21 events, six 240 frame plate and clean plate EXR sequences, this Linux box under
+WSL, 14 cores): **26m15s one at a time**, of which about 19.5 minutes was converting the six
+delivered EXR sequences to their lossless HD pictures (about 3m10s each, 1.3 frames/s: OpenEXR
+read, Lanczos to HD, OCIO, ffv1) and about 6.5 minutes encoding the events. Now
+`stringout._views_wanted` lists every EXR a stringout shows (plates and inset clean plates) up
+front and `_make_views` converts them in a spawn `ProcessPoolExecutor` of the Settings page's
+Workers (`run_controller` passes `settings.workers`), each worker initialised with the log queue
+and the ffmpeg override as the render's are; one picture, or one worker, stays in process.
+Progress counts converted frames through a shared `multiprocessing.Value` polled each second,
+then encoded frames, so the line's bar and time left move during the long part. **15m56s with 4
+workers** on the same deliverables: the first four conversions ran together in about 6 minutes
+(each slowed to about 5m45s by sharing the machine), the last two in about 4, and the events took
+about 5m45s. The events are now the larger part left; they are still encoded one at a time.
+Verified: `TestBuild.test_its_plates_convert_in_parallel_and_report_as_they_go` (2 workers and
+1), the stringout and UI shell suites, and the full suite. Mac check in `docs/MAC_SESSION.md`.
+
+**2026-10-07, 0.5.35: the stringout's time left (user).** "Can you add on the line item itself
+an estimated time to finish the stringout render that is dynamic?" The stringout line's Notes
+cell (the Progress cell is 90 px, too narrow for both) reads "About 2m 10s left" while it builds,
+"Estimating time left" before its first event. `shot_model.stringout_eta` estimates at each event
+from the average rate so far, as the run's ETA does; `ShotListModel.stringout_time_left` counts
+down from that between events on a one second `QTimer`, because an average redone every second
+rises while a long event encodes. Verified: `TestTheStringoutTimeLeft` in `test_shot_model.py`
+with a fake clock; 312 shot model and UI shell tests pass. Mac check in `docs/MAC_SESSION.md`.
+
+**2026-10-07, 0.5.34: the HDRI pre-render on the timeline (user).** The replaced turnover134 and
+135 exports cut Ben's pre-render on the timeline, typed `HDRI` and named
+`SECA0009_pl01_HDRI_01_v01.exr Render 1.mov`, with the EXR off the cut; 134 ships no HDRI EXRs,
+135 ships them and lists them in the CSV too. 0.5.33 read the row as the EXR, so each pre-render
+was QC-012 ("no file matches", though it was there) and each of 135's EXR rows QC-066. The user:
+"leave the pre-render naming alone, just be sure you can find the pre-render file that is
+referenced in the timeline. A common error here would be ben pre-rendering into the wrong folder
+... or the timeline looking at the wrong folder. The pre-render, it's only value is it's event in
+the stringout ... If the EXR isn't in the turnover folder ... do nothing for the HDRI delivery step.
+Make a note in the QC sheet, "HDRI EXR File Missing from turnover folder, omitted from delivery""
+and "If there's not color files, you can skip any color correction. Make a note to that effect in
+the qc output". **Built**: an HDRI row naming a video is the pre-render (`qc.is_prerender_name`,
+`scan._resolve_prerender`); the EXR is its name up to `.exr` (`scan.hdri_exr_name`), delivered when
+there, else QC-086 (new, warning) and no job; the CSV's own row for that EXR folds into the
+pre-render's (`scan._fold_hdri_exrs`); a pre-render not in the folder is QC-083 with the
+wrong-folder wording, its event the EXR held or black. The pre-render is graded by its own AMF;
+with no CLF and no CDL it is shown as it is (`stringout._prerender_color`) and QC-009 says "...
+so the stringout shows the pre-render with no color correction" (`qc.check_prerender_color`, run
+for HDRI rows). That AMF's input is the inverse of Rec.709 Gamma 2.2 output and its output the
+same, so "as it is" is what Resolve showed. **Verified**: turnover134 scans with 0 errors (three
+QC-086, three QC-009), turnover135 with 0 errors and 42 jobs including its three HDRI copies;
+new tests in `test_scan.py` (`TestAPreRenderOnTheTimeline`) and `test_stringout.py` (the same
+name: no LUT, the stringout written). Assumptions in OQ-84. Mac check in `docs/MAC_SESSION.md`.
+**Then the Fix-it report (user, same day):** "If there is a blocking event or a missing file, the
+fixit list should be very specific, filename the tool is looking for along with the expected path
+- EDL, CSV etc. Also, if possible, add what is reporting the file. Is it the EDL, CSV etc?" Each
+clip line now adds `Looking for <full path>` for a missing, doubled or unreadable file (QC-012,
+013, 014, 022, 083, 086, and the CLF of QC-076) and `Reported by ...` naming the CSV (and column),
+the EDL (with the event's record timecode) or the AMF, for those and for every finding that holds
+a clip (QC-010, 011, 046, 047, 065, 066, 067, 075) and QC-082 (`fixit._looked_for`,
+`fixit._named_by`). Built in the report, from the row and the turnover's own paths, so the QC
+results and the batch schema are unchanged; QC-076's CLF and AMF are read back out of its
+message (`fixit._CLF_NAMED`), which a test locks.
+
+**2026-10-07, 0.5.33: the QC overhaul (user).** "From now on, nothing prevents rendering an entire
+batch or turnover. Individual shots can get blocked from rendering if there is missing media, or the
+amf, cfl or an appropriate cdl are missing so the tool cant recreate the colors ... Use the edl's
+source and record timecodes for each event and don't qc by probing the media. Assume that ben can
+see any gaps or issues visually on the timeline." Then: the mirror balls were probe noise, "take the
+timeline at face value"; no CLF, AMF or CDL is ungraded, noted "Clip ungraded in Resolve project";
+plate length "Render whatever is there ... Plate was 260 frames on the timeline"; an unwritable
+delivery root is "a blocker that requires a popup"; In/Out stays editable with "in after out"; and
+"expand the qc list that gets exported afterward to pick up non-blocker issues". **Built**: an error
+on a row holds that shot only (`planner.holding_errors`), a moved folder holds its turnover's rows
+(`held_turnovers`, QC-069), and only batch errors stop a run (`qc.must_fix`, QC-062/063, popup "The
+run cannot start"). Accept As Is (QC-074) is gone, with `Turnover.qc_bypassed`, the menu entry and
+`planner.QC_CANNOT_RENDER`; an old batch's QC-074 is dropped on load. QC-008 retired. **Ungraded**:
+no AMF for a clip is no longer QC-075; it is read as the CSV's `Input Color Space`
+(`metacsv.INPUT_COLOR_SPACE_COLUMN`, origin "CSV"), its references through `color.DEFAULT_VIEW`
+(the output transform every AMF of 134 and 135 names), and QC-009, now a row rule, says "Clip
+ungraded in Resolve project". With no AMF and no colour space it is QC-046, held. QC-075 is an
+error only for two AMFs on one clip. **Face value**: `clf.approved_in_out` counts a file with no TC
+from 0; `scan._outside` tries the file's own clock then the CSV's `Start TC` silently (QC-084
+retired), else renders the frames the file has with QC-029 info. **Warnings now**: QC-023 (the
+Allow other resolutions setting is gone, read and ignored in old batches), 026, 027, 033/034 ("Plate
+was N frames on the timeline"), 042 (delivered without sound), 073, 079. **Info now**: QC-021, 055
+(they fired on every clip of turnover134). **QC log**: a new Issues sheet, every finding in words with
+its Effect (`exports.issue_lines`); Summary counts rows held back. **Fix-it**: info left out, the
+QC-008 and QC-029 advice gone, format notes moved to Worth a look, "N of M clips held back". OQ-83
+lists the assumptions. **Verified**: turnover134 scans with nothing held (mirror balls cut by
+Resolve's clock, nothing said); turnover135, which could not run, plans 38 jobs with only its four
+SECA0012 stills held (QC-012, files not in the folder) and six camera clips ungraded from Apple Log;
+`SECA0013_pl01_ref_HD_v01.mp4` rendered through that path, 240 frames, phase B clean, a frame looked
+at (a plausible ungraded Apple Log picture).
+
+**2026-10-07, 0.5.32: style frames, and the stringout as a line in the shot list (user).** "The
+first frame before each shot's footage, there will be a still frame held for a number of frames,
+it will have Shot Type styleFrame. This is not a deliverable, just gets added to the stringout.
+Also, there needs to be a progress bar for rendering the stringout ... adds the stringout to the
+line items of each turnover and has a progress bar like the clips. On the left can be a ball
+indicating green for all good and red for something missing or a problem." Then: PNG or JPG,
+"a pre-graded png or jpg. as is", burn-in `SECA0009 styleFrame` with no `Frame:` counter, each with
+its own CSV row and EDL event before the plate, and red only for a failed build or a black event
+(a stand-in stays green, named on hover). **Style frame** (QC-085, info): `naming.STYLE_FRAME_KIND`,
+`metacsv._style_frame`, `qc.is_style_frame` (no row or preflight rule, AMF findings dropped in
+`scan._conform`), `planner.plannable_identity` gives it nothing to deliver, `fixit` leaves it out
+of "every clip" and "no plate". A lone PNG or JPG probes as one frame (`media.STILL_EXTENSIONS`;
+ffprobe said 0 for a PNG). The stringout holds it as it is for the EDL's length
+(`stringout._style_frame`, `Segment.style_frame`); missing is black. **QC-144** (warning,
+turnover) is a stringout's black events, split out of QC-143. **The stringout line**: the last
+child of each turnover in `ShotListModel` (`stringout_at`, `stringout_state`,
+`set_stringout_progress`): name, version, a bar in percent while building (`stringout.build`'s new
+`progress`, frames encoded of the total, sent through `RunController.stringout_progressed`, queued
+to the UI thread), a ball green/red/blue/none, a tooltip with QC-142/143/144, and a menu of Build
+Stringout alone. OQ-82 lists the assumptions (EDL length kept, no OCIO on the still, index
+accepted, unnamed one labelled by its file). **Verified**: tests (naming, metacsv, media, scan,
+stringout, shot model, shot list, UI shell); a stringout built through a flat 192/64/32 PNG
+measured 190/61/29 in the mp4, so the still is shown as is; an offscreen screenshot of the list
+showed the building and red lines. **No sample has a style frame**: synthetic files only; the
+MAC_SESSION line asks for a real one.
+
+**2026-10-07, 0.5.31: every Fix-it line names its shot (user).** "In the fix-it list .html file,
+please list the shot item that each fixit is referring too", with a screenshot of a newer
+turnover134 export (not in the repo) where "A clip with a Shot Type is not in the cut" and "An
+HDRI's render is missing" showed only `SECA0009_pl01_HDRI_01_v01.exr`, and "The grade came
+without its CLF file" showed "Every clip in this turnover (18)". Then: "If it's every clip, list
+each clip in the fixit item." The count shortcut is gone, and a row whose identity did not read
+is named by the CSV's own Shot and Shot Type (`ShotRow.csv_shot`, `csv_shot_type`, additive), or
+"no Shot in the metadata". **Seen in that screenshot, not yet acted on**: Ben's pre-renders are
+named `SECA0009_pl01_HDRI_01_v01.exr Render 1.mov` and sit on the timeline typed HDRI, with the
+EXRs off the cut; the tool expects the render under the EXR's stem beside it (QC-083). Asked.
+
+**2026-10-07, 0.5.30: the take on the burn-in (user).** "The tool needs to append the shot take
+to the end of the burn-in where applicable ... under the csv mediadata column as 'Take'. If there
+is no Take number, then skip it." Then: bottom-right label only, written `SECA0009_pl01 Take 01`,
+"Only if there's more than one take." Read as a Take above 1 (OQ-81): `metacsv.TAKE_COLUMN`,
+`ShotRow.take` (additive), `naming.take_label`. Every clip in turnover134 and 135 is take 1, so
+neither shows a take today.
+
+**2026-10-07, 0.5.29: reference clips play in the stringout (user).** "When you say reference
+stills, the timeline in turnover 134 are videos, not stills. Playing at full speed for a few
+seconds." Turnover134's charts and balls are 34 to 58 frame videos cut for 10 frames each.
+Asked whether to change the stringout, the delivery or both: "Option 1 is perfect. Delivery as
+1 frame exr." So a reference clip's event now plays its cut at full speed from the source, graded
+through its AMF, and only a real freeze or a one frame cut is held for a second (from the clip's
+delivered EXR frame, graded); `stringout._held` no longer looks at the type. Delivery unchanged:
+one 4k EXR of the In frame. This reverses the 2026-09-29 "a reference still ... held for one
+second".
+
+**2026-10-07, 0.5.28: everything in the stringout is graded (user).** "Yes, everything in the
+stringout should be graded." A still's EXR (delivered ungraded) now takes its clip's looks in
+ACEScg before the output transform; a plate's EXR, graded already, keeps the output transform
+alone (`ExrView.color` carries the whole chain). The source fallback is graded through its AMF
+whether held or not (it was only a held frame), and an HDRI with no pre-render is its EXR held,
+graded, read as linear Rec.709 like the pre-render. Only a clip with no AMF stays as it is.
+Verified: stringouts built through the graded still, the held HDRI EXR and the pre-render.
+
+**2026-10-07, 0.5.27: the stringout from the EXRs (user).** "No switch, strigout is from exr
+sources, except for the clip on the timeline labeled hdri." Each event is cut from its row's
+delivered HD EXR sequence (a still from its 4k EXR), seen through the clip's AMF output transform
+alone; the cp and wit insets likewise; plate sound from the delivered wav. No EXR: the HD
+reference, then the source, then black, as before (QC-143 says which). Each EXR is read with
+OpenEXR, transformed in OCIO, fitted to HD and written once per stringout to a lossless ffv1
+intermediate (`stringout._picture`, `ffmpeg.write_frames`); the segment encode, insets and join
+are unchanged. ffmpeg's own EXR decoder was measured and not used: on a 64x36 DWAA frame it failed
+the last block and left four rows black (ffmpeg 6.1.1), though a 1080 row frame decoded within
+0.15% of OpenEXR. A still now shows ungraded, as delivered. OQ-80 lists the assumptions,
+MAC_SESSION the look check. Verified: the stringout tests build real stringouts through the new
+path. **Also 2026-10-07**: Ben's page (https://claude.ai/artifact/DFshCWhWiGYsEuH35NPAy3,
+version 2) now says the mirror balls were never linked to the proxies, turnover134 blocks
+nothing, and asks for the HDRI pre-renders; the older per-turnover page for 134 was not touched.
+
+**2026-10-07, 0.5.26: the HDRI pre-render and delivery, QC-084, Accept As Is runs what it can
+(user).** Three requests, one build.
+
+- **HDRI** (user: "HDRI on the timeline is a frame hold on an exr sequence with a basic
+  panning/translation effect that should be used in the stringout"; then the pre-render "will be
+  something like xxxx_001.mp4" beside `xxxx_001.exr`, "Still needs grading", "Use the in to out on
+  the timeline", "if it's missing, ask for the file", delivered "Just like the rest", "copy byte
+  for byte", "Ignore checks on the HDRI", and the pre-render is "sRGB Linear"; "That clip is only
+  for preview in the timeline ... The actual deliverable that artists will use is the single frame
+  exr file that you don't need to touch"). No EDL carries the pan (CMX 3600 has no transform; the
+  `.drt` predates the HDRIs). A `Shot Type` `HDRI` row now has an identity (`naming.HDRI_KIND`,
+  index from `HDRI2`), is not skipped, and delivers `<shotcode>_pl01_HDRI_<idx>_v<ver>.exr` copied
+  byte for byte (`planner._hdri_plan`, `render._copy_hdri`), versioned with its shot; the tracker's
+  HDRI column names it. No row, preflight or phase B check runs on it, and its AMF's findings are
+  dropped (`qc.is_hdri`). Scan splits the stem's matches into the EXR and a video pre-render
+  (`ShotRow.hdri_render`, additive), so the pair is not QC-013; none is **QC-083** (warning, Fix-it
+  "Fix in the turnover folder"). The stringout cuts the event from the pre-render, first frame for
+  the record length (a short one holds its last frame), graded through the HDRI's AMF with
+  `Linear Rec.709 (sRGB)` as input and a 1D shaper `x ** (1/2.4)` ahead of the cube
+  (`color.shaper_lut`, ffmpeg `lut1d`); it is no QC-143 stand-in. The Fix-it item "an HDRI on the
+  timeline is the stitched panorama image" is gone. Verified: a stringout built with the shaper in
+  the graph (ffmpeg accepts `lut1d`). **Turnover134's three HDRI EXRs carry no Shot and no Shot
+  Type in its CSV**, so they are still ignored there; nothing in the folder exercises this yet.
+  OQ-79 lists the assumptions; MAC_SESSION has the look check.
+- **QC-084** (user: "an issue with how the media was being managed in Resolve. There is not gap in
+  the timeline, let's demote that type of issue to a warning"). Turnover134's mirror balls: the
+  file's timecode puts the cut outside it, Resolve's clock (the CSV's `Start TC`, the original
+  camera clip's head) puts it on the file's first ten frames. That case is now a warning and cut by
+  Resolve's clock (`scan._outside`); QC-029 stays an error when neither clock fits and is said in
+  timecode, never as negative frame indices. Verified on turnover134: C007 and C013 are QC-084 at
+  frames 0-9. **The CSV's `Start TC` is read for this alone**: Turnover199 showed it stale while the
+  EDL followed the file, so a cut that fits by the file's own timecode is still cut by it, which
+  leaves turnover134's C003 (7 frames) and C012 (3 frames) on the file's clock. Told the user.
+  The Fix-it QC-029 advice no longer guesses "a proxy copy" (turnover134's `Proxy/` held the camera
+  originals; the earlier diagnosis to Ben was wrong).
+- **Accept As Is** (user: "the turnover should run everything it can and not hold back any other
+  clips"). The allowlist `planner.QC_BYPASSABLE` is now a denylist, `planner.QC_CANNOT_RENDER`:
+  only a row with nothing to render or no way to colour it is held (QC-012, -013, -014, -022, -029,
+  -031, -032, -042, -046, -047, -075, -076; a turnover's QC-008 or QC-069 holds every row). OQ-76
+  answered.
 
 **2026-10-06, `User_Generated` and `User_Uploads` (user), 0.5.25.** "For the output folders, we need
 to add 2 empty folder for user into the output folder structure", then "delivery root is the

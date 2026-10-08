@@ -26,7 +26,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
-from PySide6.QtCore import QObject, QTimer
+from PySide6.QtCore import QObject, QTimer, Signal
 
 from proingest.core import clf, exports, planner, qc, render, stringout
 from proingest.core.models import Batch, Deliverable, QCResult, Turnover
@@ -44,12 +44,10 @@ log = logging.getLogger(__name__)
 NOTHING_TO_RENDER = "Nothing to render: every shot is complete, skipped or waiting for a Re-scan"
 CLOSING_AFTER_RUN = "Stopping the run, then closing..."
 
-MUST_FIX_TITLE = "Fix these before running"
-"""The dialog Run opens when anything must be fixed first (D8, D9).
-
-Every must-fix in the batch, each with where it is, because the fix is in the folder:
-the editor corrects it there, presses Scan, and runs.
-"""
+MUST_FIX_TITLE = "The run cannot start"
+"""The popup Run opens when the delivery root cannot take the delivery: not writable, or too
+little space (QC-062, QC-063). The one thing that stops a run (user, 2026-10-07: "That's a
+blocker that requires a popup"); a shot's own error holds that shot back and nothing else."""
 
 MUST_FIX_SHOWN = 20
 """How many the dialog lists before it points at the Issues dock for the rest."""
@@ -105,7 +103,7 @@ def must_fix_text(found: Sequence[tuple[str, QCResult]]) -> str:
     if len(found) > MUST_FIX_SHOWN:
         lines.append(f"and {len(found) - MUST_FIX_SHOWN} more; see the Issues dock")
     lines.append("")
-    lines.append("Correct them in the turnover folder, press Scan, then Run.")
+    lines.append("Nothing can be delivered until the delivery folder can take it. Fix it, then Run.")
     return "\n".join(lines)
 
 
@@ -123,6 +121,9 @@ class RunController(QObject):
     the strip's link from there: a run has one owner, and the window asking it to start
     is the whole of what the window has to know.
     """
+
+    stringout_progressed = Signal(object, object)
+    """A `Turnover` and how far its stringout build has got, 0.0 to 1.0, or None once ended."""
 
     def __init__(self, window: MainWindow) -> None:
         super().__init__(window)
@@ -158,6 +159,9 @@ class RunController(QObject):
         the next close goes ahead without them rather than waiting again."""
 
         window.run_strip.link_activated.connect(self._open_reports)
+        # To the model's own method, so Qt queues it onto the UI thread: a stringout
+        # reports from the thread building it, and a lambda would run there.
+        self.stringout_progressed.connect(window.shot_model.set_stringout_progress)
 
     @property
     def busy(self) -> bool:
@@ -197,8 +201,8 @@ class RunController(QObject):
         batch is locked while they do (D15), so nothing on this thread changes it under
         them, and each answer comes back here before the next step starts.
 
-        **Any must-fix anywhere stops the run** (D8): the whole batch waits for the
-        folder to be corrected and re-scanned (`qc.must_fix`).
+        **Only the delivery root stops the run** (user, 2026-10-07; `qc.must_fix`): a
+        shot with an error is held back by the planner and every other shot renders.
         """
         window = self._window
         if not window.batch_open or self.busy or window.scanner.busy:
@@ -412,15 +416,29 @@ class RunController(QObject):
         )
         window.update_state()
 
-    @classmethod
-    def _stringouts_then_reports(cls, batch: Batch, touched: list[Turnover], pattern: str) -> Path:
+    def _stringouts_then_reports(self, batch: Batch, touched: list[Turnover], pattern: str) -> Path:
         """Off the UI thread. A stringout that fails is QC-142 on its turnover, never a raise."""
         if batch.delivery_root is not None:
             if touched:
                 render.make_user_folders(batch.delivery_root)
             for turnover in touched:
-                stringout.build(batch, turnover, batch.delivery_root, pattern)
-        return cls._write_reports(batch)
+                self._build_one(batch, turnover, batch.delivery_root, pattern)
+        return self._write_reports(batch)
+
+    def _build_one(self, batch: Batch, turnover: Turnover, root: Path, pattern: str) -> Deliverable | None:
+        """One stringout, its progress on its line in the list (user, 2026-10-07)."""
+        self.stringout_progressed.emit(turnover, 0.0)
+        try:
+            return stringout.build(
+                batch,
+                turnover,
+                root,
+                pattern,
+                progress=lambda done, total: self.stringout_progressed.emit(turnover, done / max(total, 1)),
+                workers=self._window.settings.workers,
+            )
+        finally:
+            self.stringout_progressed.emit(turnover, None)
 
     def build_stringout(self, turnover: Turnover) -> None:
         """A heading's Build Stringout: this turnover's, now, at its next version."""
@@ -435,7 +453,7 @@ class RunController(QObject):
         root, pattern = batch.delivery_root, settings_form.show_pattern_of(window.settings)
         window.run_strip.start()
         window.run_strip.say(BUILDING_STRINGOUT)
-        self.background.run(lambda: stringout.build(batch, turnover, root, pattern), self._stringout_built)
+        self.background.run(lambda: self._build_one(batch, turnover, root, pattern), self._stringout_built)
         window.update_state()
 
     def _stringout_built(self, result: object) -> None:

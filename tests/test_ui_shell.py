@@ -30,7 +30,7 @@ from PySide6.QtWidgets import (
 )
 
 from proingest import __version__
-from proingest.core import batchfile, expiry, logsetup, naming, qc
+from proingest.core import batchfile, expiry, logsetup, naming, stringout
 from proingest.core import settings as core_settings
 from proingest.core.models import Batch, Deliverable, QCResult, Turnover
 from proingest.core.planner import DeliverableJob
@@ -39,7 +39,6 @@ from proingest.ui import app as ui_app
 from proingest.ui import deliverables, paths
 from proingest.ui.background import Inline
 from proingest.ui.batch_bar import NO_DELIVERY_ROOT
-from proingest.ui.issues import issues_for
 from proingest.ui.log_view import SAVE_TEXT
 from proingest.ui.main_window import (
     BOTTOM_TABS,
@@ -62,7 +61,7 @@ from proingest.ui.run_controller import (
 from proingest.ui.run_strip import LINK_COLOR, RunStrip
 from proingest.ui.runner import RENDERING
 from proingest.ui.settings_dialog import SettingsDialog
-from proingest.ui.shot_list import BYPASS_TEXT, CANCEL_RERUN_TEXT, RELOCATE_TEXT, RESCAN_TEXT, STRINGOUT_TEXT
+from proingest.ui.shot_list import CANCEL_RERUN_TEXT, RELOCATE_TEXT, RESCAN_TEXT, STRINGOUT_TEXT
 from proingest.ui.shot_model import IN, NOTES, PROGRESS, SHOT, DisplayMode, RowState
 from tests.fixtures.batches import (
     batch,
@@ -450,7 +449,7 @@ class TestOpeningABatch:
 
     def test_the_rows_reach_the_list(self, window: DrivenWindow) -> None:
         window.set_batch(batch(row(), row("MELT0002_pl01")))
-        assert window.shot_list.proxy.rowCount(window.shot_list.proxy.index(0, 0)) == 2
+        assert window.shot_list.proxy.rowCount(window.shot_list.proxy.index(0, 0)) == 3, "and its stringout"
 
     def test_the_list_controls_are_dead_until_there_is_a_list(self, window: DrivenWindow) -> None:
         assert not window.action_cycle_display.isEnabled()
@@ -890,7 +889,7 @@ class TestAddingAndScanningTurnovers:
 
         assert len(window.batch.rows) == 1
         assert window.list_pages.currentIndex() == 0
-        assert window.shot_list.proxy.rowCount(window.shot_list.proxy.index(0, 0)) == 1
+        assert window.shot_list.proxy.rowCount(window.shot_list.proxy.index(0, 0)) == 2, "and its stringout"
 
     def test_the_probe_cache_is_merged_rather_than_replaced(self, window: DrivenWindow) -> None:
         """The worker started from a copy, so what the UI thread learned meanwhile stays."""
@@ -1091,23 +1090,43 @@ class TestAddingAndScanningTurnovers:
         self.entries(window, window.shot_list.proxy.index(0, 0))[STRINGOUT_TEXT].trigger()
         assert asked == [heading]
 
-    def test_accept_as_is_is_a_checkbox_on_the_heading_that_unblocks_the_turnover(
-        self, window: DrivenWindow
+    def test_the_stringout_line_offers_build_stringout_alone(
+        self, window: DrivenWindow, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """User, 2026-09-28: the errors stay reported, QC-074 says why nothing blocks."""
-        broken = row(turnover_id="t1")
-        broken.qc.append(QCResult("QC-033", "error", "row", "too short"))
-        window.set_batch(batch(broken, turnovers=[Turnover("t1", Path("/s/t1"))]))
-        entry = self.entries(window, window.shot_list.proxy.index(0, 0))[BYPASS_TEXT]
-        assert entry.isCheckable() and not entry.isChecked()
-        entry.trigger()
+        """User, 2026-10-07: the stringout is a line of its own under the shots."""
+        heading = Turnover("t1", Path("/s/t1"))
+        window.set_batch(batch(row(turnover_id="t1"), turnovers=[heading]))
+        asked: list[Turnover] = []
+        monkeypatch.setattr(window.run, "build_stringout", asked.append)
+        line = window.shot_list.proxy.index(1, 0, window.shot_list.proxy.index(0, 0))
+        entries = self.entries(window, line)
+        assert list(entries) == [STRINGOUT_TEXT]
+        entries[STRINGOUT_TEXT].trigger()
+        assert asked == [heading]
 
-        assert window.batch.turnovers[0].qc_bypassed
-        assert qc.must_fix(window.batch) == []
-        assert "QC-074" in [issue.result.rule_id for issue in issues_for(window.batch)]
-        assert self.entries(window, window.shot_list.proxy.index(0, 0))[BYPASS_TEXT].isChecked()
-        self.entries(window, window.shot_list.proxy.index(0, 0))[BYPASS_TEXT].trigger()
-        assert not window.batch.turnovers[0].qc_bypassed
+    def test_a_build_moves_the_stringout_line_s_bar_and_ends_it(
+        self, window: DrivenWindow, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        heading = Turnover("t1", Path("/s/t1"))
+        window.set_batch(batch(row(turnover_id="t1"), turnovers=[heading]))
+        seen: list[object] = []
+        window.run.stringout_progressed.connect(lambda _turnover, fraction: seen.append(fraction))
+
+        def build(*_args: object, progress: Callable[[int, int], None], workers: int) -> None:
+            assert workers == window.settings.workers, "the EXRs convert on the run's workers"
+            progress(6, 24)
+            assert window.shot_model._building == {"t1": 0.25}
+            return None
+
+        monkeypatch.setattr(stringout, "build", build)
+        window.run._build_one(window.batch, heading, Path("/d"), "")
+        assert seen == [0.0, 0.25, None] and window.shot_model._building == {}
+
+    def test_the_heading_offers_no_accept_as_is(self, window: DrivenWindow) -> None:
+        """User, 2026-10-07: nothing stops a turnover, so there is nothing to accept as is."""
+        window.set_batch(batch(row(turnover_id="t1"), turnovers=[Turnover("t1", Path("/s/t1"))]))
+        entries = self.entries(window, window.shot_list.proxy.index(0, 0))
+        assert not any("Accept As Is" in text for text in entries)
 
     def test_a_run_rebuilds_the_stringout_only_where_it_delivered(self) -> None:
         first = delivered(row("MELT0001_pl01", turnover_id="t1"))
@@ -1376,14 +1395,13 @@ class TestRunningABatch:
         assert window.problems and "QC-0" in window.problems[0][1]
         assert window.bottom_tabs.currentIndex() == BOTTOM_TABS.index("Issues")
 
-    def test_a_row_scope_error_stops_it_too(self, window: DrivenWindow, tmp_path: Path) -> None:
-        """D8: every must-fix is fixed before running, whatever it is about."""
+    def test_a_row_scope_error_holds_only_that_shot(self, window: DrivenWindow, tmp_path: Path) -> None:
+        """User, 2026-10-07: a shot with missing media waits; every other shot renders."""
         window.set_batch(ingested(batch(fail(row()), row("MELT0002_pl01"), delivery_root=tmp_path), tmp_path))
         started = stub_runner(window)
         window.action_run.trigger()
-        assert started == []
-        assert window.problems[0][0] == MUST_FIX_TITLE
-        assert window.problems[0][1].startswith("MELT0001_pl01: ")
+        assert window.problems == []
+        assert len(started) == 1 and {job.shot_code for job in started[0]} == {"MELT0002"}
 
     def test_a_skipped_row_s_error_does_not(self, window: DrivenWindow, tmp_path: Path) -> None:
         """A skipped row renders nothing, so what is wrong with it cannot reach a delivery."""
@@ -1393,53 +1411,56 @@ class TestRunningABatch:
         window.action_run.trigger()
         assert started and window.problems == []
 
-    def test_a_turnover_with_no_colour_session_is_held_back(
-        self, window: DrivenWindow, tmp_path: Path
-    ) -> None:
-        """QC-008: an ungraded plate is the wrong pixels, so nothing is handed over."""
-        window.set_batch(batch(row(), delivery_root=tmp_path))
+    def test_a_turnover_with_no_colour_session_still_runs(self, window: DrivenWindow, tmp_path: Path) -> None:
+        """QC-008 went on 2026-10-07: a clip with no AMF is an ungraded clip, not a block."""
+        window.set_batch(batch(row(), turnovers=[turnover(folder=tmp_path)], delivery_root=tmp_path))
         started = stub_runner(window)
         window.action_run.trigger()
 
-        assert started == []
-        assert "QC-008" in [result.rule_id for result in window.batch.turnovers[0].qc]
+        assert started and window.problems == []
+        assert "QC-008" not in [result.rule_id for result in window.batch.turnovers[0].qc]
 
-    def test_a_run_that_would_render_nothing_says_why_in_a_dialog(
+    def test_an_unwritable_delivery_root_stops_the_run_with_a_popup(
         self, window: DrivenWindow, tmp_path: Path
     ) -> None:
-        """A dialog naming where each must-fix is and its rule, not a status line."""
-        window.set_batch(batch(row(), delivery_root=tmp_path))
-        window.bottom_dock.setVisible(False)
-        window.action_run.trigger()
+        """User, 2026-10-07: "That's a blocker that requires a popup". The one thing that
+        stops a run, named with its rule."""
+        locked = tmp_path / "locked"
+        locked.mkdir(mode=0o500)
+        try:
+            window.set_batch(batch(row(), delivery_root=locked / "delivery"))
+            window.bottom_dock.setVisible(False)
+            started = stub_runner(window)
+            window.action_run.trigger()
+        finally:
+            locked.chmod(0o700)
 
+        assert started == []
         assert len(window.problems) == 1
         title, text = window.problems[0]
-        assert title == MUST_FIX_TITLE
-        assert text.startswith(window.batch.turnovers[0].folder.name)
-        assert "QC-008" in text
+        assert title == MUST_FIX_TITLE == "The run cannot start"
+        assert text.startswith("batch: QC-062")
         assert window.run_strip.state == "empty"
         assert not window.bottom_dock.isHidden()
 
-    def test_one_turnover_s_must_fix_holds_the_whole_batch(
+    def test_one_turnover_s_held_shot_holds_no_other_turnover(
         self, window: DrivenWindow, tmp_path: Path
     ) -> None:
-        """D8: the held-back turnover of M5.7.1 is gone; the batch waits for the fix."""
+        """User, 2026-10-07: "nothing prevents rendering an entire batch or turnover"."""
         ready, waiting = turnover("turnover001"), turnover("turnover002")
         built = batch(
             row(),
-            row("MELT0002_pl01", turnover_id="turnover002"),
+            fail(row("MELT0002_pl01", turnover_id="turnover002")),
             turnovers=[ready, waiting],
             delivery_root=tmp_path,
         )
         ingested(built, tmp_path)
-        waiting.color_session_edl = None
-        built.rows[1].grade = None
         window.set_batch(built)
         started = stub_runner(window)
         window.action_run.trigger()
 
-        assert started == []
-        assert window.problems[0][0] == MUST_FIX_TITLE
+        assert window.problems == []
+        assert len(started) == 1 and {job.shot_code for job in started[0]} == {"MELT0001"}
 
     def test_a_batch_that_plans_nothing_says_so_rather_than_starting(
         self, window: DrivenWindow, tmp_path: Path

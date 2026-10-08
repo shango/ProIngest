@@ -25,6 +25,10 @@ MEDIA_EXTENSIONS = frozenset(
     {".exr", ".dpx", ".mov", ".mp4", ".mxf", ".tif", ".tiff", ".png", ".jpg", ".jpeg"}
 )
 AUDIO_EXTENSIONS = frozenset({".wav", ".aif", ".aiff"})
+VIDEO_EXTENSIONS = frozenset({".mov", ".mp4", ".mxf"})
+STILL_EXTENSIONS = frozenset({".png", ".jpg", ".jpeg"})
+"""A file of these alone is one picture, whatever ffprobe counts."""
+"""Containers a clip can be. An HDRI's pre-render is one of these beside its EXR."""
 
 
 @dataclass(frozen=True)
@@ -391,6 +395,10 @@ def probe(
     elif header is not None:
         # A lone EXR (a reference still) is one frame, and ffprobe says 0 frames at 25/1.
         stated = _exr_stated_rate(header)
+        frame_count, start_frame = 1, 0
+    elif target.suffix.lower() in STILL_EXTENSIONS:
+        # A lone PNG or JPG (a style frame) is one frame; ffprobe says 0 for a PNG.
+        stated = None
         frame_count, start_frame = 1, 0
     else:
         stated = _stated_rate(stream)

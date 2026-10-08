@@ -295,16 +295,20 @@ SOURCE_ENCODING = color_fixtures.SOURCE_ENCODING
 """What the fixture turnover's clips are encoded in, as each clip's AMF names it."""
 
 
-def make_meta_csv(path: Path, rows: list[tuple[str, str, str]]) -> Path:
+def make_meta_csv(path: Path, rows: list[tuple[str, str, str]], input_color_space: str = "") -> Path:
     """Ben's metadata CSV, in the shape the real one has.
 
     `rows` is (File Name, Shot, Shot Type). UTF-16 with a BOM and **`Shot Type` twice**,
     because the real file carries Resolve's built-in at column 12 and the shooters'
     custom field of the same name at column 44: a fixture without the collision would
-    not exercise the reader that exists to arbitrate it (QC-065).
+    not exercise the reader that exists to arbitrate it (QC-065). `input_color_space`
+    fills Resolve's `Input Color Space` on every row, which an ungraded clip is read as
+    (QC-009, 2026-10-07); empty leaves the column out.
     """
     header = ["File Name", "Shot", "Shot Type", "Shot Code", "Shot Type"]
     lines = [header] + [[name, shot, kind, shot, kind] for name, shot, kind in rows]
+    if input_color_space:
+        lines = [[*line, input_color_space if at else "Input Color Space"] for at, line in enumerate(lines)]
     text = "\r\n".join(",".join(f'"{cell}"' for cell in line) for line in lines) + "\r\n"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(text.encode("utf-16"))

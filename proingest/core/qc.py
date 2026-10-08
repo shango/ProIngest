@@ -36,7 +36,7 @@ from proingest.core.models import (
     ShotRow,
     Turnover,
 )
-from proingest.core.planner import QC_BYPASSABLE, DeliverableJob, effective_identity
+from proingest.core.planner import DeliverableJob, effective_identity
 
 log = logging.getLogger(__name__)
 
@@ -59,6 +59,11 @@ PICTURE_DELIVERABLES_PER_ROW = 4
 """Raw and reference at both resolutions. `planner.PICTURE_DELIVERABLES`, for QC-063."""
 
 
+RETIRED_RULE_SETTINGS = frozenset({"allow_non_4k"})
+"""Keys an older batch may carry that no longer do anything, read and ignored. Allow other
+resolutions went on 2026-10-07, when QC-023 became a warning that never blocks."""
+
+
 @dataclass(frozen=True)
 class RuleSettings:
     """The thresholds the rules compare against. FR-12's Rules section, in one place.
@@ -72,7 +77,6 @@ class RuleSettings:
     max_duration_frames: int = 240
     expected_handle_frames: int = 8
     target_resolution: tuple[int, int] = (3840, 2160)
-    allow_non_4k: bool = False
     sync_tolerance_frames: int = SYNC_TOLERANCE_FRAMES
 
     def to_dict(self) -> dict[str, Any]:
@@ -81,7 +85,6 @@ class RuleSettings:
             "max_duration_frames": self.max_duration_frames,
             "expected_handle_frames": self.expected_handle_frames,
             "target_resolution": list(self.target_resolution),
-            "allow_non_4k": self.allow_non_4k,
             "sync_tolerance_frames": self.sync_tolerance_frames,
         }
 
@@ -92,7 +95,7 @@ class RuleSettings:
         An unknown key is an error rather than a shrug: a typo in a settings file
         that silently changed nothing is the failure mode this exists to avoid.
         """
-        known = {f.name for f in fields(cls)}
+        known = {f.name for f in fields(cls)} | RETIRED_RULE_SETTINGS
         unknown = sorted(set(data) - known)
         if unknown:
             raise ValueError(f"unknown rule settings: {', '.join(unknown)}")
@@ -104,7 +107,6 @@ class RuleSettings:
             target_resolution=(
                 (int(resolution[0]), int(resolution[1])) if resolution is not None else cls.target_resolution
             ),
-            allow_non_4k=bool(data.get("allow_non_4k", cls.allow_non_4k)),
             sync_tolerance_frames=int(data.get("sync_tolerance_frames", cls.sync_tolerance_frames)),
         )
 
@@ -116,6 +118,7 @@ RULES_OVERRIDE_KEY = "rules"
 
 OWNED_ROW_RULES = frozenset(
     {
+        "QC-009",
         "QC-011",
         "QC-018",
         "QC-020",
@@ -155,7 +158,7 @@ def is_picture_row(row: ShotRow) -> bool:
     (`planner._aux_plan`), so the range, duration, handle and timecode rules do not
     apply to it.
     """
-    return row.identity is not None and not row.identity.is_still
+    return row.identity is not None and not row.identity.is_still and not row.identity.is_hdri
 
 
 def delivers_aux_still(row: ShotRow) -> bool:
@@ -263,10 +266,11 @@ def check_source_format(row: ShotRow) -> list[QCResult]:
     """QC-020 and QC-021: whether the source can carry a linear plate.
 
     COLOR_AND_FORMAT section 2 is the list. Float formats and EXR are what the
-    pipeline wants; an integer container still decodes, so it is a warning about
-    precision rather than a refusal; 8 bit or 4:2:0 is a poor linear plate, and is a
-    warning again (user, 2026-09-28, reversing the must-fix of 2026-09-25): it decodes and
-    delivers, and a turnover of it has to be able to run.
+    pipeline wants; an integer container still decodes, so it is a note about
+    precision (info since 2026-10-07: every ProRes clip of turnover134 raised it); 8 bit
+    or 4:2:0 is a poor linear plate, and is a warning again (user, 2026-09-28, reversing
+    the must-fix of 2026-09-25): it decodes and delivers, and a turnover of it has to be
+    able to run.
     """
     if row.media is None:
         return []
@@ -287,7 +291,7 @@ def check_source_format(row: ShotRow) -> list[QCResult]:
     return [
         QCResult(
             "QC-021",
-            "warning",
+            "info",
             "row",
             f"{row.media.path.name} is {pixel_format}, an integer container; linear "
             f"shadow precision is at risk",
@@ -335,22 +339,21 @@ def check_source_codec(row: ShotRow, decoders: frozenset[str]) -> list[QCResult]
 
 
 def check_source_resolution(row: ShotRow, settings: RuleSettings) -> list[QCResult]:
-    """QC-023: the source must be the target resolution.
+    """QC-023: the source is not the target resolution.
 
     A source of another size is resampled to fit and letterboxed rather than stretched
-    (F9), which is a delivery nobody asked for, so it is still an error unless the
-    setting allows it.
+    (F9). A warning in the report and never a block (user, 2026-10-07: nothing but missing
+    media or colour holds a shot), so the setting that allowed it has nothing left to do.
     """
     if row.media is None or not is_picture_row(row):
         return []
     if row.media.resolution == settings.target_resolution:
         return []
     width, height = settings.target_resolution
-    severity: Severity = "warning" if settings.allow_non_4k else "error"
     return [
         QCResult(
             "QC-023",
-            severity,
+            "warning",
             "row",
             f"{row.media.path.name} is {row.media.width}x{row.media.height}, not {width}x{height}",
         )
@@ -360,10 +363,11 @@ def check_source_resolution(row: ShotRow, settings: RuleSettings) -> list[QCResu
 def check_timecode(row: ShotRow) -> list[QCResult]:
     """QC-027 and QC-028: drop-frame timecode, and a source with none.
 
-    Drop-frame is must-fix: no 24 fps frame count honours it, and it used to fall
-    through to QC-028 as though the file had none (F24). No timecode at all is not
-    fatal: the delivered EXRs simply carry no `timeCode` attribute. It is worth saying
-    out loud because the vendor reading them back has no way to conform.
+    Drop-frame is a warning (user, 2026-10-07: never a block); no 24 fps frame count
+    honours it, and it used to fall through to QC-028 as though the file had none (F24).
+    No timecode at all is not fatal: the cut counts from 00:00:00:00, as Resolve does, and
+    the delivered EXRs carry no `timeCode` attribute. It is worth saying out loud because
+    the vendor reading them back has no way to conform.
     """
     if row.media is None or not is_picture_row(row):
         return []
@@ -371,7 +375,7 @@ def check_timecode(row: ShotRow) -> list[QCResult]:
         return [
             QCResult(
                 "QC-027",
-                "error",
+                "warning",
                 "row",
                 f"{row.media.path.name} states drop-frame timecode, which a 24 fps delivery cannot carry",
             )
@@ -387,14 +391,11 @@ def check_timecode(row: ShotRow) -> list[QCResult]:
 def check_range(row: ShotRow) -> list[QCResult]:
     """QC-031 and QC-032: an In/Out the media cannot satisfy.
 
-    QC-029 says the same thing about the range the turnover arrived with. These two
-    are about the range the editor has chosen since, so both can be true at once and
-    each names a different culprit. **Silent while the cut is still the EDL's and QC-029
-    has said so** (user, 2026-10-06: "Too much noise"): then they are one fact.
+    About the range the editor has chosen: the cut off the EDL is taken at face value and
+    kept inside the file at scan (QC-029, user 2026-10-07), so only an edit lands here.
+    Each holds its shot, since there is no such range to render (user: "Keep in after out").
     """
     if row.media is None or row.current is None:
-        return []
-    if row.current == row.approved and any(result.rule_id == "QC-029" for result in row.qc):
         return []
     if row.current.in_frame > row.current.out_frame:
         return [
@@ -446,9 +447,10 @@ def check_handles(row: ShotRow, settings: RuleSettings) -> list[QCResult]:
 
 
 def check_duration(row: ShotRow, settings: RuleSettings) -> list[QCResult]:
-    """QC-033 and QC-034: a cut outside the expected shot length, must-fix (user, 2026-09-25).
+    """QC-033 and QC-034: a plate outside the expected shot length, a warning.
 
-    Fixed by trimming the row inside the limits, or by moving the limits in Settings.
+    **Rendered as it is** (user, 2026-10-07: "Render whatever is there, add a note in the QC
+    report. Plate was 260 frames on the timeline"); it was must-fix from 2026-09-25.
     **Plates only** (user, 2026-09-29): a cp, el, wit or re is as long as the shoot made it.
     """
     if row.current is None or not is_plate(row):
@@ -458,18 +460,20 @@ def check_duration(row: ShotRow, settings: RuleSettings) -> list[QCResult]:
         return [
             QCResult(
                 "QC-033",
-                "error",
+                "warning",
                 "row",
-                f"{duration} frames is below the {settings.min_duration_frames} frame minimum",
+                f"Plate was {duration} frames on the timeline, below the "
+                f"{settings.min_duration_frames} frame minimum",
             )
         ]
     if duration > settings.max_duration_frames:
         return [
             QCResult(
                 "QC-034",
-                "error",
+                "warning",
                 "row",
-                f"{duration} frames is above the {settings.max_duration_frames} frame maximum",
+                f"Plate was {duration} frames on the timeline, above the "
+                f"{settings.max_duration_frames} frame maximum",
             )
         ]
     return []
@@ -547,7 +551,8 @@ def check_audio_presence(row: ShotRow) -> list[QCResult]:
     # Audio inside the plate's own file is audio: it was delivered and reported
     # missing on every real plate (F20).
     embedded = row.media is not None and row.media.has_audio
-    if is_plate(row) and row.audio_path is None and not embedded:
+    unreadable = any(result.rule_id == "QC-042" for result in row.qc)  # one cause, one note
+    if is_plate(row) and row.audio_path is None and not embedded and not unreadable:
         results.append(QCResult("QC-040", "warning", "row", "plate has no associated audio clip"))
     if row.audio_clip_count > 1:
         results.append(
@@ -634,7 +639,8 @@ def check_source_rate(row: ShotRow, project_rate: FrameRate) -> list[QCResult]:
     **24000/1001 against 24 is the normal case and is silent** (user, 2026-09-23). The
     shooters set every clip to 24 in Resolve, which is a timeline property: Copy with trim
     does not rewrite the file, so every delivered file states 24000/1001 and is rendered
-    at 24 frame for frame. Any other rate, 25 or 30, is an error and the row does not run.
+    at 24 frame for frame. Any other rate, 25 or 30, is a warning and the row still renders at
+    24 (user, 2026-10-07: never a block).
 
     Frame math already follows the timeline, so an odd rate here does not corrupt
     the output. It does mean this particular file escaped the conform, so the file
@@ -649,7 +655,7 @@ def check_source_rate(row: ShotRow, project_rate: FrameRate) -> list[QCResult]:
     return [
         QCResult(
             "QC-026",
-            "error",
+            "warning",
             "row",
             f"{row.media.path.name} reports {row.media.stated_rate} fps but the project is "
             f"{project_rate} fps; the file was not conformed with the rest of the turnover",
@@ -664,7 +670,8 @@ def check_aux_still(row: ShotRow) -> list[QCResult]:
     hundred frames loses ninety-nine of them silently without this. **Judged on the cut,
     not the file** (2026-09-23): every real still is one timeline frame inside a longer
     file, and the EDL choosing that one frame is the case working, not a finding. It
-    fires when the range still spans frames, which is a cut that chose none.
+    fires when the range still spans frames, which is a cut that chose none. Info since
+    2026-10-07: every chart and ball of turnover134 is a clip cut for ten frames.
     """
     if row.identity is None or not row.identity.is_still:
         return []
@@ -674,7 +681,7 @@ def check_aux_still(row: ShotRow) -> list[QCResult]:
     return [
         QCResult(
             "QC-055",
-            "warning",
+            "info",
             "row",
             f"{row.identity.kind} still is cut as {span} frames; the In frame will be used",
         )
@@ -719,7 +726,8 @@ def check_source_encoding(row: ShotRow) -> list[QCResult]:
     said = (
         f"{grade.amf.name} names no input transform"
         if grade is not None
-        else "no AMF names the clip's input transform"
+        else "no AMF grades the clip and the CSV gives no Input Color Space, so nothing says what "
+        "colour it is in"
     )
     return [QCResult("QC-046", "error" if blocking else "info", "row", said)]
 
@@ -761,10 +769,45 @@ def check_duplicate_name(row: ShotRow, counts: dict[str, int]) -> list[QCResult]
 # --- registry ---------------------------------------------------------------------
 
 
-def is_shooter_delivered(row: ShotRow) -> bool:
-    """An HDRI row (QC-080): the tool delivers nothing for it, so no row rule has anything
-    to say about it. Its source fps or range said as errors was noise (user, 2026-09-29)."""
+def is_hdri(row: ShotRow) -> bool:
+    """An HDRI row (QC-080): its EXR is copied as it is and no row rule runs on it
+    (user, 2026-10-07). Its source fps or range said as errors was noise (2026-09-29)."""
     return any(result.rule_id == "QC-080" for result in row.qc)
+
+
+def is_prerender_name(file_name: str) -> bool:
+    """Whether an HDRI's `File Name` is Ben's pre-render rather than its EXR: a video.
+    Turnover134 and 135 (2026-10-07) cut the pre-render on the timeline, the EXR off it."""
+    return Path(file_name).suffix.lower() in media.VIDEO_EXTENSIONS
+
+
+def is_hdri_prerender(row: ShotRow) -> bool:
+    """An HDRI row whose timeline event is its pre-render (`scan._resolve_prerender`)."""
+    return is_hdri(row) and is_prerender_name(row.clip_name)
+
+
+def check_prerender_color(row: ShotRow) -> list[QCResult]:
+    """QC-009, info: a pre-render whose AMF carries no CLF and no CDL is shown on the
+    stringout as it is (user, 2026-10-07: "If there's not color files, you can skip any
+    color correction"). Its AMF reads it back through the display it was rendered for, so
+    as it is is also what Resolve showed."""
+    if not is_hdri_prerender(row) or row.hdri_render is None or clf.has_grade(row):
+        return []
+    why = f"{row.grade.amf.name} carries no CLF and no CDL" if row.grade is not None else "no AMF grades it"
+    return [
+        QCResult(
+            "QC-009",
+            "info",
+            "row",
+            f"{UNGRADED}: {why}, so the stringout shows the pre-render with no color correction",
+        )
+    ]
+
+
+def is_style_frame(row: ShotRow) -> bool:
+    """A style frame row (QC-085): shown on the stringout as it is, never delivered, and
+    no rule runs on it (user, 2026-10-07)."""
+    return any(result.rule_id == "QC-085" for result in row.qc)
 
 
 def run_row_rules(
@@ -774,11 +817,14 @@ def run_row_rules(
     name_counts: dict[str, int] | None = None,
 ) -> list[QCResult]:
     """Every row rule that is a pure function of the model, in rule ID order."""
-    if is_shooter_delivered(row):
+    if is_hdri(row):
+        return check_prerender_color(row)
+    if is_style_frame(row):
         return []
     results: list[QCResult] = []
     results.extend(check_duplicate_name(row, name_counts or {}))
     results.extend(check_source_encoding(row))
+    results.extend(check_clf(row))
     results.extend(check_color_tags(row))
     results.extend(check_source_format(row))
     results.extend(check_source_resolution(row, settings))
@@ -848,7 +894,6 @@ OWNED_PREFLIGHT_RULES = frozenset(
     {
         "QC-008",
         "QC-069",
-        "QC-009",
         "QC-022",
         "QC-048",
         "QC-062",
@@ -862,70 +907,25 @@ from asking ffmpeg. The rule itself is pure; `check_source_codec` takes the set.
 """
 
 
-def check_color_session(turnover: Turnover, rows: list[ShotRow]) -> list[QCResult]:
-    """QC-008: the turnover has no colour session behind it, so nothing final can be rendered.
+UNGRADED = "Clip ungraded in Resolve project"
+"""QC-009's words in the delivered QC report (user, 2026-10-07)."""
 
-    **Turnover scope rather than batch scope, and that is the point of it**: turnovers
-    arrive on different days and the grade for one is signed off while the next is still
-    being shot, so one turnover can be waiting on colour while another renders
-    (`Turnover.color_session_edl`).
 
-    Two ways to be in that state and they read differently to the person fixing it: an
-    ingest that never happened, and a session that ingested but delivered no CLF for
-    anything in this turnover. The second is the one worth separating from QC-009: a
-    single row with no CLF is a matching problem, and no row with one is a package that
-    was never exported.
+def check_clf(row: ShotRow) -> list[QCResult]:
+    """QC-009, info: Ben left this clip no grade, so it renders ungraded.
 
-    **The package's own files are not checked here and that is deliberate.** An ingest
-    writes what the session said onto the rows, so nothing reads the EDL again and a
-    package archived after a delivery costs a re-ingest rather than a render. The one
-    file a render still needs is the CLF itself, and QC-009 is what checks that, per row,
-    where the answer differs per row.
+    **No CLF, no AMF or no CDL is an ungraded clip, never a block** (user, 2026-10-07: "If
+    there is no CLF, AMF or CDL, assume ungraded"). With no AMF the input transform is the
+    CSV's `Input Color Space`; with neither, QC-046 holds the shot, because then nothing
+    says what colour it is in. Silent on a still, which is delivered ungraded by design.
     """
-    edl = turnover.color_session_edl
-    if edl is None:
-        return [
-            QCResult(
-                "QC-008",
-                "error",
-                "turnover",
-                "no colour session has been ingested; nothing final can be rendered "
-                "until the session's final EDL is ingested for this turnover",
-            )
-        ]
-    if not any(row.grade is not None for row in rows):
-        return [
-            QCResult(
-                "QC-008",
-                "error",
-                "turnover",
-                "no AMF in this turnover grades any of its clips, so nothing names an input "
-                "transform; Ben's session exports one per EDL event",
-            )
-        ]
-    return []
-
-
-def check_clf(row: ShotRow, has_session: bool) -> list[QCResult]:
-    """QC-009, info: the colourist left this plate no grade, so it renders ungraded.
-
-    **Info rather than an error** (user, 2026-09-28): a clip Ben did not grade has an AMF
-    with no CLF in it, and that is his decision rather than a fault. Silent where the whole
-    turnover is QC-008, on a row with no AMF at all (QC-075 says that), and on an aux still
-    and a BTS frame, which are delivered ungraded by design.
-    """
-    if not has_session or not is_picture_row(row) or row.grade is None:
+    if not is_picture_row(row) or clf.has_grade(row) or clf.resolved_encoding(row) is None:
         return []
-    if not clf.has_grade(row):
-        return [
-            QCResult(
-                "QC-009",
-                "info",
-                "row",
-                f"{row.grade.amf.name} carries no grade for this shot; it renders ungraded",
-            )
-        ]
-    return []
+    if row.grade is None:
+        why = f"no AMF grades it, so it is read as {row.source_encoding}, the CSV's Input Color Space"
+    else:
+        why = f"{row.grade.amf.name} carries no CLF and no CDL"
+    return [QCResult("QC-009", "info", "row", f"{UNGRADED}: {why}")]
 
 
 def check_color_chain(row: ShotRow) -> list[QCResult]:
@@ -1054,31 +1054,14 @@ def check_free_space(batch: Batch) -> list[QCResult]:
 
 
 def must_fix(batch: Batch) -> list[tuple[str, QCResult]]:
-    """Every error in the batch that stops a run, with where it is (D8, D9).
+    """What stops a run: only an error at batch scope, which is about the delivery root
+    every turnover writes to (QC-062, QC-063).
 
-    **Any must-fix anywhere stops the whole run**: the editor fixes the folder, re-scans
-    and runs, and nothing renders past a problem nobody has looked at. A skipped row's
-    errors do not count, because a skipped row renders nothing. Where is the batch, a
-    turnover's folder name, or a row's clip name. Phase B (QC-1xx) is not here: it is
-    about what a run wrote, and fails the row rather than refusing the next run.
-
-    **A turnover accepted as it is (QC-074) contributes nothing** (user, 2026-09-28): its
-    errors are still on it and its rows, and still reported, but none refuses the run.
-    Batch scope errors are about the delivery root every turnover writes to, and still do.
+    **Nothing else stops a batch or a turnover** (user, 2026-10-07). An error on a row holds
+    that one shot back (`planner.holding_errors`) and every other shot renders; a turnover's
+    own errors say why it has nothing to render, or report.
     """
-    found: list[tuple[str, QCResult]] = [("batch", r) for r in batch.qc if r.severity == "error"]
-    bypassed = {turnover.turnover_id for turnover in batch.turnovers if turnover.qc_bypassed}
-    for turnover in batch.turnovers:
-        if turnover.qc_bypassed:
-            continue
-        found.extend(
-            (turnover.folder.name, r) for r in turnover.qc if r.severity == "error" and not _phase_b(r)
-        )
-    for row in batch.rows:
-        if row.skipped or row.turnover_id in bypassed:
-            continue
-        found.extend((row.clip_name, r) for r in row.qc if r.severity == "error" and not _phase_b(r))
-    return found
+    return [("batch", result) for result in batch.qc if result.severity == "error"]
 
 
 def blocking_results(batch: Batch) -> list[QCResult]:
@@ -1091,40 +1074,6 @@ def _phase_b(result: QCResult) -> bool:
     return result.rule_id.startswith("QC-1")
 
 
-def _bypass_note(bypassed: bool, result: QCResult, held: str) -> str:
-    """What Accept As Is did with an error, for its log line; empty when it did nothing."""
-    if not bypassed or result.severity != "error" or _phase_b(result):
-        return ""
-    if result.rule_id in QC_BYPASSABLE:
-        return "bypassed: rendered as it is"
-    return f"bypassed, but not rendered: Accept As Is cannot render past this, so {held} is held back"
-
-
-QC_BYPASSED = "QC-074"
-
-
-def set_qc_bypassed(turnover: Turnover, bypassed: bool) -> None:
-    """Accept a turnover as it is, or withdraw that, and say so on it as QC-074.
-
-    A warning rather than info, because it is the one result that says every error
-    under it was seen and waved through rather than fixed; the QC log and a saved log
-    carry it with the rest.
-    """
-    turnover.qc_bypassed = bypassed
-    turnover.qc = [result for result in turnover.qc if result.rule_id != QC_BYPASSED]
-    if bypassed:
-        turnover.qc.append(
-            QCResult(
-                QC_BYPASSED,
-                "warning",
-                "turnover",
-                "QC is bypassed by the editor: its errors do not block the run. Rows whose only "
-                f"errors are {', '.join(sorted(QC_BYPASSABLE))} render as they are; any other error "
-                "still holds its row back, because rendering past it writes a wrong file",
-            )
-        )
-
-
 LOG_LEVELS = {"info": logging.INFO, "warning": logging.WARNING, "error": logging.ERROR}
 """What each severity is logged at, so the Level column of a saved log is the severity
 the Issues dock shows."""
@@ -1135,11 +1084,9 @@ def log_results(batch: Batch, when: str) -> None:
 
     The app log is what Save Logs exports, and the dock is gone once the window closes:
     without this, a saved log said nothing about what blocked a run or why (user,
-    2026-09-28). The order is the dock's, and a result that is must-fix says it blocks
-    the run, so the lines answer the same question `must_fix` does. On a turnover
-    accepted as it is (QC-074), an error says whether it was rendered past or still holds
-    its row back (`planner.QC_BYPASSABLE`). A closing line counts them, at ERROR when
-    anything blocks.
+    2026-09-28). The order is the dock's. A result that stops the run says so, and a row's
+    error says it holds that shot back, which is all an error does to a row since
+    2026-10-07. A closing line counts them, at ERROR when anything stops the run.
     """
     blocking = {id(result) for _, result in must_fix(batch)}
     counts = dict.fromkeys(LOG_LEVELS, 0)
@@ -1164,13 +1111,14 @@ def log_results(batch: Batch, when: str) -> None:
     for turnover in batch.turnovers:
         name = turnover.folder.name
         for result in turnover.qc:
-            emit(name, result, _bypass_note(turnover.qc_bypassed, result, "every row"))
+            emit(name, result)
         for row in batch.rows_for(turnover.turnover_id):
             where = f"{name} / {row.shot_code or row.clip_name}"
             if row.shot_code and row.shot_code != row.clip_name:
                 where += f" ({row.clip_name})"
             for result in row.qc:
-                note = "row skipped" if row.skipped else _bypass_note(turnover.qc_bypassed, result, "the row")
+                held = result.severity == "error" and not _phase_b(result)
+                note = "row skipped" if row.skipped else ("holds this shot back" if held else "")
                 emit(where, result, note)
             for deliverable in row.deliverables:
                 for result in deliverable.qc:
@@ -1190,7 +1138,8 @@ def log_results(batch: Batch, when: str) -> None:
 def check_turnover_folder(turnover: Turnover) -> list[QCResult]:
     """QC-069: the turnover's folder is not where the batch last found it (D16).
 
-    An error, so the turnover cannot run: its sources are in that folder. Fixed by
+    An error, and its rows wait (`planner.held_turnovers`): their media is in that folder,
+    so this is missing media for every one of them. The rest of the batch renders. Fixed by
     right-clicking the turnover and choosing its new location, which rescans it there.
     """
     if turnover.folder.is_dir():
@@ -1237,17 +1186,14 @@ def preflight(batch: Batch, decoders: frozenset[str] | None = None) -> None:
     batch.qc = [result for result in batch.qc if result.rule_id not in OWNED_PREFLIGHT_RULES]
     batch.qc.extend(check_destination_writable(batch.delivery_root))
     batch.qc.extend(check_free_space(batch))
-    graded: set[str] = set()
     for turnover in batch.turnovers:
         turnover.qc = [result for result in turnover.qc if result.rule_id not in OWNED_PREFLIGHT_RULES]
-        turnover.qc.extend(check_color_session(turnover, batch.rows_for(turnover.turnover_id)))
         turnover.qc.extend(check_turnover_folder(turnover))
-        if turnover.color_session_edl is not None:
-            graded.add(turnover.turnover_id)
     for row in batch.rows:
         row.qc = [result for result in row.qc if result.rule_id not in OWNED_PREFLIGHT_RULES]
+        if is_hdri(row) or is_style_frame(row):
+            continue  # copied as it is, or not delivered, with no checks (user, 2026-10-07)
         row.qc.extend(check_source_codec(row, decoders))
-        row.qc.extend(check_clf(row, row.turnover_id in graded))
         row.qc.extend(check_color_chain(row))
 
 
@@ -1311,6 +1257,7 @@ def run_phase_b(job: DeliverableJob, deliverable: Deliverable) -> list[QCResult]
     verifier = {
         "raw_dir": _verify_sequence,
         "aux_still": _verify_still,
+        "hdri": _no_checks,
         "ref_mp4": _verify_reference,
         "audio": _verify_audio,
     }.get(job.kind)
@@ -1319,6 +1266,11 @@ def run_phase_b(job: DeliverableJob, deliverable: Deliverable) -> list[QCResult]
     if not job.destination.exists():
         return [_failure(RENDER_FAILED, f"{job.name}: nothing was written to {job.destination}")]
     return verifier(job, deliverable)
+
+
+def _no_checks(job: DeliverableJob, deliverable: Deliverable) -> list[QCResult]:
+    """An HDRI is copied as it is, and no check runs on it (user, 2026-10-07)."""
+    return []
 
 
 # --- QC-101 to QC-107: a delivered EXR sequence -----------------------------------
@@ -1739,6 +1691,7 @@ of them belongs here.
 DELIVERABLE_RULES_BY_KIND: dict[str, tuple[str, ...]] = {
     "raw_dir": ("QC-101", "QC-102", "QC-103", "QC-104", "QC-105", "QC-106", "QC-107"),
     "aux_still": ("QC-103", "QC-104", "QC-105", "QC-106"),
+    "hdri": (),
     "ref_mp4": ("QC-110", "QC-111", "QC-112", "QC-113", "QC-114", "QC-115"),
     "audio": ("QC-120", "QC-121"),
 }
@@ -1832,7 +1785,7 @@ def _identity_fault(parsed: naming.ParsedOutput | None, identity: naming.ShotIde
         return None
     if parsed.shot_code != identity.shot_code:
         return f"reads as {parsed.shot_code}, but the row is {identity.shot_code}"
-    if identity.is_still:
+    if identity.is_still or identity.is_hdri:
         if (parsed.aux, parsed.aux_index) != (identity.kind, identity.index):
             said, row_is = f"{parsed.aux} {parsed.aux_index}", f"{identity.kind} {identity.index}"
             return f"reads as {said}, but the row is {row_is}"

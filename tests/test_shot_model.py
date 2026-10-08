@@ -64,15 +64,47 @@ def cell(model: ShotListModel, row_index: int, column: int, role: int, turnover_
     return model.index(row_index, column, parent).data(role)
 
 
+class TestTheStringoutTimeLeft:
+    """User, 2026-10-07: "an estimated time to finish the stringout render that is dynamic",
+    on the stringout line itself (its Notes cell; the Progress cell is too narrow)."""
+
+    def test_the_estimate_is_the_average_rate_so_far(self) -> None:
+        assert shot_model.stringout_eta(0.25, 30.0) == 90.0
+        assert shot_model.stringout_eta(0.0, 30.0) is None
+        assert shot_model.stringout_eta(1.0, 30.0) == 0.0
+
+    def test_the_line_counts_down_and_clears_when_the_build_ends(self, qt_app: QApplication) -> None:
+        now = [100.0]
+        built = ShotListModel(clock=lambda: now[0])
+        built.set_batch(batch(row()))
+        heading = built.batch.turnovers[0]
+        line = 1  # one row, then the stringout line
+        built.set_stringout_progress(heading, 0.0)
+        assert text(built, line, NOTES) == shot_model.ESTIMATING
+        now[0] = 130.0
+        built.set_stringout_progress(heading, 0.25)
+        assert text(built, line, NOTES) == "About 1m 30s left"
+        now[0] = 150.0  # no new event: it counts down from the last estimate
+        assert text(built, line, NOTES) == "About 1m 10s left"
+        now[0] = 160.0
+        built.set_stringout_progress(heading, 0.5)  # a new event re-estimates: 60s for half
+        assert text(built, line, NOTES) == "About 1m 00s left"
+        built.set_stringout_progress(heading, None)
+        assert text(built, line, NOTES) == "" and not built._ticker.isActive()
+
+
 class TestTheTree:
     """Two levels and no more: a turnover, then its rows in timeline order."""
 
     def test_the_top_level_is_one_row_per_turnover(self, model: ShotListModel) -> None:
         assert model.rowCount(QModelIndex()) == 1
 
-    def test_the_children_are_that_turnover_s_rows(self, model: ShotListModel) -> None:
+    def test_the_children_are_that_turnover_s_rows_then_its_stringout(self, model: ShotListModel) -> None:
         parent = model.index(0, 0, QModelIndex())
-        assert model.rowCount(parent) == 2
+        assert model.rowCount(parent) == 3
+        last = model.index(2, SHOT, parent)
+        assert model.row_at(last) is None and model.stringout_at(last) is model.batch.turnovers[0]
+        assert model.stringout_at(model.index(0, SHOT, parent)) is None
 
     def test_a_shot_row_has_no_children_of_its_own(self, model: ShotListModel) -> None:
         parent = model.index(0, 0, QModelIndex())
@@ -105,7 +137,8 @@ class TestTheTree:
                 turnovers=[turnover(), turnover("turnover002")],
             )
         )
-        assert [built.rowCount(built.index(i, 0, QModelIndex())) for i in (0, 1)] == [1, 1]
+        counts = [built.rowCount(built.index(i, 0, QModelIndex())) for i in (0, 1)]
+        assert counts == [2, 2], "a shot and the stringout line"
         assert text(built, 0, SHOT, turnover_index=1) == "MELT0009"
 
     def test_what_is_behind_an_index(self, model: ShotListModel) -> None:
@@ -489,7 +522,7 @@ class TestReplacingTheBatch:
         model.modelReset.connect(lambda: resets.append(1))
         model.set_batch(batch(row()))
         assert resets == [1]
-        assert model.rowCount(model.index(0, 0, QModelIndex())) == 1
+        assert model.rowCount(model.index(0, 0, QModelIndex())) == 2, "a shot and the stringout line"
 
     def test_an_empty_batch_shows_nothing_and_does_not_raise(self, qt_app: QApplication) -> None:
         built = ShotListModel()
@@ -662,8 +695,10 @@ class TestCommittingAnEdit:
         """QC-031 says it about the row. Refusing the keystroke would stop an editor who
         is typing Out before In on the way to a range that is fine."""
         assert self.commit(model, OUT, "900")
-        # The same range is also too long, which is must-fix since 2026-09-25 (QC-034).
-        assert [result.rule_id for result in model.batch.rows[0].errors()] == ["QC-031", "QC-034"]
+        # Too long too (QC-034), which is a warning since 2026-10-07: only QC-031 holds the shot.
+        row = model.batch.rows[0]
+        assert [result.rule_id for result in row.errors()] == ["QC-031"]
+        assert "QC-034" in [result.rule_id for result in row.warnings()]
 
     def test_a_range_before_the_media_s_timecode_still_renders(self, model: ShotListModel) -> None:
         """The stored value can sit before the media's own timecode; the cell that shows
@@ -745,3 +780,49 @@ class TestSkipping:
 
     def test_a_turnover_header_cannot_be_skipped(self, model: ShotListModel) -> None:
         assert not model.set_skipped(model.index(0, 0, QModelIndex()), True, "no")
+
+
+class TestTheStringoutLine:
+    """User, 2026-10-07: each turnover's stringout is a line under its shots, with a bar like
+    a shot's and a ball: green when built, red for a problem or something missing."""
+
+    STRINGOUT = 2
+
+    def built(self, model: ShotListModel) -> None:
+        model.batch.turnovers[0].stringout = Deliverable(
+            "stringout", "turnover007_09_23_26_x_SO_v02.mp4", Path("/d/so.mp4"), version=2, status="done"
+        )
+
+    def test_before_it_is_built_it_has_a_name_and_no_ball(self, model: ShotListModel) -> None:
+        assert text(model, self.STRINGOUT, SHOT) == "Stringout"
+        assert cell(model, self.STRINGOUT, STATUS, Qt.ItemDataRole.DecorationRole) is None
+        assert cell(model, self.STRINGOUT, STATUS, Qt.ItemDataRole.ToolTipRole) == "Not built yet"
+
+    def test_built_it_is_green_with_its_file_and_version(self, model: ShotListModel) -> None:
+        self.built(model)
+        assert shot_model.stringout_state(model.batch.turnovers[0]) is RowState.DONE
+        assert text(model, self.STRINGOUT, SOURCE) == "turnover007_09_23_26_x_SO_v02.mp4"
+        assert text(model, self.STRINGOUT, VERSION) == "v02"
+        assert cell(model, self.STRINGOUT, PROGRESS, PROGRESS_ROLE) == 1.0
+
+    def test_a_stand_in_stays_green_and_is_named_on_hover(self, model: ShotListModel) -> None:
+        self.built(model)
+        model.batch.turnovers[0].qc.append(QCResult("QC-143", "info", "turnover", "events 002 (X) ..."))
+        assert shot_model.stringout_state(model.batch.turnovers[0]) is RowState.DONE
+        assert "002 (X)" in cell(model, self.STRINGOUT, STATUS, Qt.ItemDataRole.ToolTipRole)
+
+    @pytest.mark.parametrize("rule", ["QC-142", "QC-144"])
+    def test_a_failed_build_or_a_black_event_is_red(self, model: ShotListModel, rule: str) -> None:
+        self.built(model)
+        model.batch.turnovers[0].qc.append(QCResult(rule, "warning", "turnover", "why"))
+        assert shot_model.stringout_state(model.batch.turnovers[0]) is RowState.ERROR
+        assert cell(model, self.STRINGOUT, STATUS, Qt.ItemDataRole.ToolTipRole) == f"{rule} why"
+
+    def test_while_it_builds_its_bar_moves(self, model: ShotListModel) -> None:
+        heading = model.batch.turnovers[0]
+        model.set_stringout_progress(heading, 0.5)
+        assert cell(model, self.STRINGOUT, PROGRESS, PROGRESS_ROLE) == 0.5
+        assert text(model, self.STRINGOUT, PROGRESS) == "50%"
+        assert shot_model.stringout_state(heading, 0.5) is RowState.RENDERING
+        model.set_stringout_progress(heading, None)
+        assert text(model, self.STRINGOUT, PROGRESS) == ""

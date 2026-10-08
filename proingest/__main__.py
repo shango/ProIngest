@@ -146,8 +146,8 @@ def _scan(
 def _print_preflight(batch: Batch) -> bool:
     """Print what the pre-flight rules found and say whether the run must stop.
 
-    **Any must-fix anywhere stops it** (D8, `qc.must_fix`): the batch waits for the
-    folder to be corrected and re-scanned. Warnings about the batch and its turnovers are
+    **Only the delivery root stops it** (`qc.must_fix`, user 2026-10-07): a shot with an
+    error is held back and the rest render. Warnings about the batch and its turnovers are
     printed too, because they are what the editor reads before a delivery.
     """
     results = list(batch.qc) + [result for turnover in batch.turnovers for result in turnover.qc]
@@ -188,7 +188,8 @@ def _run(
     is in the delivery folder at the moment the run starts (NAMING_SPEC section 4).
 
     The cut and the grade were read at scan from the EDL in the turnover folder and are
-    on the rows. Any must-fix stops the run before anything is planned (`qc.must_fix`).
+    on the rows. A delivery root that cannot take the delivery stops the run before anything
+    is planned (`qc.must_fix`); a shot with an error is held back by the planner.
     """
     try:
         batch = batchfile.load(batch_path)

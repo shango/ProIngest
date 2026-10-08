@@ -135,11 +135,6 @@ version if it was delivered before. It replaced Reset and Re-run."""
 RELOCATE_TEXT = "New Folder Location..."
 """A turnover heading's right-click entry: reload it from where it moved to (D16)."""
 
-BYPASS_TEXT = "Accept As Is (Ignore QC)"
-"""A turnover heading's checkable entry (user, 2026-09-28): its errors stop blocking the
-Run and holding rows back, every row that can render does, and QC-074 says so. The
-checks still run and are still reported."""
-
 
 class TwoLineDelegate(QStyledItemDelegate):
     """Draws the primary value and, under it, whichever representation is not primary.
@@ -368,8 +363,6 @@ class ShotListView(QTreeView):
     relocate_requested = Signal(object)
     """A `Turnover` whose heading was right-clicked for New Folder Location (D16)."""
 
-    bypass_toggled = Signal(object, bool)
-    """A `Turnover` whose Accept As Is was ticked (True) or unticked (False)."""
     """`select_row` emptied the filter to reach a hidden row; the search box should follow."""
 
     """The list. Two levels, always expanded, fixed order, one row per shot."""
@@ -543,6 +536,9 @@ class ShotListView(QTreeView):
         row = self.shot_model.row_at(source)
         if row is not None:
             return self._row_menu(row)
+        built = self.shot_model.stringout_at(source)
+        if built is not None:
+            return self._stringout_menu(built)
         turnover = self.shot_model.turnover_at(source)
         if turnover is None:
             return None
@@ -556,11 +552,6 @@ class ShotListView(QTreeView):
             action = menu.addAction(text)
             action.setEnabled(not self.shot_model.locked)
             action.triggered.connect(lambda _checked=False, signal=signal: signal.emit(turnover))
-        bypass = menu.addAction(BYPASS_TEXT)
-        bypass.setCheckable(True)
-        bypass.setChecked(turnover.qc_bypassed)
-        bypass.setEnabled(not self.shot_model.locked)
-        bypass.triggered.connect(lambda checked: self.bypass_toggled.emit(turnover, checked))
         armed = [row for row in self.shot_model.batch.rows_for(turnover.turnover_id) if row.rerun]
         if armed:
             self._add_cancel(menu, armed)
@@ -570,6 +561,14 @@ class ShotListView(QTreeView):
         cancel = menu.addAction(CANCEL_RERUN_TEXT)
         cancel.setEnabled(not self.shot_model.locked)
         cancel.triggered.connect(lambda: self.cancel_rerun_requested.emit(rows))
+
+    def _stringout_menu(self, turnover: Turnover) -> QMenu:
+        """The stringout line's Build Stringout, the heading's own entry."""
+        menu = QMenu(self)
+        build = menu.addAction(STRINGOUT_TEXT)
+        build.setEnabled(not self.shot_model.locked)
+        build.triggered.connect(lambda: self.stringout_requested.emit(turnover))
+        return menu
 
     def _row_menu(self, row: ShotRow) -> QMenu:
         """A shot's Re-scan, and Cancel Re-run while it is marked (user, 2026-09-25)."""

@@ -141,10 +141,9 @@ class TestQcLogSheets:
         summary = {line[0]: line[1] for line in sheet_rows(log, "Summary")}
         assert "ffmpeg version" in str(summary["ffmpeg"]).lower()
 
-    def test_the_three_sheets_the_spec_names(self, log: Path) -> None:
-        """Three since 2026-09-22: Side Files and Camera Data went with the deliverables
-        they described, which the tool no longer produces."""
-        assert load_workbook(log).sheetnames == ["Summary", "Shots", "Deliverables"]
+    def test_the_four_sheets(self, log: Path) -> None:
+        """Side Files and Camera Data went on 2026-09-22; Issues came on 2026-10-07."""
+        assert load_workbook(log).sheetnames == ["Summary", "Shots", "Issues", "Deliverables"]
 
     def test_the_summary_counts_what_ran(self, log: Path) -> None:
         summary: dict[object, object] = {key: value for key, value in sheet_rows(log, "Summary")[1:]}
@@ -153,24 +152,40 @@ class TestQcLogSheets:
         assert summary["Rows delivered"] == 1
         assert summary["Deliverables"] == 7
 
-    def test_a_bypassed_turnover_s_waived_error_is_delivered_named_and_tracked(self, tmp_path: Path) -> None:
-        """Accept As Is (QC-074): QC-033 was rendered past, so the row is not a failure."""
-        short = row(qc=[QCResult("QC-033", "error", "row", "too short")])
-        batch = batch_of(short)
-        batch.turnovers[0].qc_bypassed = True
-        log = exports.write_qc_log(batch, tmp_path / "log.xlsx", date(2026, 9, 28))
+    def test_a_warning_renders_and_is_delivered_and_tracked(self, tmp_path: Path) -> None:
+        """User, 2026-10-07: a plate outside the length limits is rendered as it is."""
+        long = row(qc=[QCResult("QC-034", "warning", "row", "Plate was 260 frames on the timeline")])
+        batch = batch_of(long)
+        log = exports.write_qc_log(batch, tmp_path / "log.xlsx", date(2026, 10, 7))
         summary: dict[object, object] = {key: value for key, value in sheet_rows(log, "Summary")[1:]}
-        assert (summary["Rows delivered"], summary["Rows failed"]) == (1, 0)
-        assert summary["QC bypassed (QC-074)"] == "turnover"
+        assert (summary["Rows delivered"], summary["Rows held back"], summary["Rows failed"]) == (1, 0, 0)
+        assert "QC bypassed (QC-074)" not in summary
         tracked = exports.tracker_rows(batch)
         assert len(tracked) == 1 and "MELT0001" in tracked[0]
 
-    def test_without_the_bypass_the_same_row_is_failed_and_untracked(self, tmp_path: Path) -> None:
-        batch = batch_of(row(qc=[QCResult("QC-033", "error", "row", "too short")]))
-        log = exports.write_qc_log(batch, tmp_path / "log.xlsx", date(2026, 9, 28))
+    def test_a_row_with_an_error_is_held_back_and_untracked(self, tmp_path: Path) -> None:
+        batch = batch_of(row(qc=[QCResult("QC-012", "error", "row", "no such file")]))
+        log = exports.write_qc_log(batch, tmp_path / "log.xlsx", date(2026, 10, 7))
         summary: dict[object, object] = {key: value for key, value in sheet_rows(log, "Summary")[1:]}
-        assert (summary["Rows failed"], summary["QC bypassed (QC-074)"]) == (1, "none")
+        assert (summary["Rows held back"], summary["Rows failed"]) == (1, 0)
         assert exports.tracker_rows(batch) == []
+
+    def test_the_issues_sheet_says_every_finding_in_words_and_what_it_did(self, tmp_path: Path) -> None:
+        """User, 2026-10-07: "expand the qc list that gets exported afterward to pick up
+        non-blocker issues"."""
+        ungraded = QCResult("QC-009", "info", "row", "Clip ungraded in Resolve project: no AMF grades it")
+        missing = QCResult("QC-012", "error", "row", "no such file")
+        chain = QCResult("QC-048", "info", "row", "rendered through Apple Log to ACEScg")
+        batch = batch_of(row(qc=[ungraded, chain]), row("MELT0002_pl01", qc=[missing]))
+        log = exports.write_qc_log(batch, tmp_path / "log.xlsx", date(2026, 10, 7))
+        header, *lines = sheet_rows(log, "Issues")
+        assert tuple(header) == exports.ISSUES_HEADERS
+        found = {line[3]: dict(zip(header, line, strict=True)) for line in lines}
+        assert set(found) == {"QC-009", "QC-012"}, "QC-048 is a record, not an issue"
+        assert found["QC-009"]["Message"] == ungraded.message
+        assert found["QC-009"]["Effect"] == "rendered"
+        assert found["QC-012"]["Effect"] == "held this shot back"
+        assert found["QC-012"]["Shot code"] == "MELT0002"
 
     def test_one_shots_row_per_shot(self, log: Path) -> None:
         rows = sheet_rows(log, "Shots")
@@ -308,7 +323,7 @@ class TestShotTracker:
         assert values[2] == "MELT0001"
         assert values[3] == "MELT0001"
         assert values[4] == "MELT0001_pl01_ref_HD_v01.mp4"
-        assert values[5] is None, "HDRI is the studio's column and no longer ours to fill"
+        assert values[5] == "MELT0001_pl01_HDRI_v01.exr", "the HDRI the tool copied (user, 2026-10-07)"
         assert values[6] is None, "CAM Data likewise"
         assert values[8] == "24"
         assert values[9] == "✓"

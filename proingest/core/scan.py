@@ -26,7 +26,7 @@ import re
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
-from proingest.core import ale, amf, clf, color, ffmpeg, metacsv, naming, qc
+from proingest.core import ale, amf, clf, color, ffmpeg, frames, metacsv, naming, qc
 from proingest.core import media as media_module
 from proingest.core.models import (
     Batch,
@@ -149,7 +149,7 @@ def scan_turnover(
 
     session = replace(session, events=_named_events(folder, session.events, turnover))
     index = media_module.index_directory(folder)
-    rows = [_build_row(entry, index, turnover_id, settings, cache) for entry in meta.rows]
+    rows = [_build_row(entry, index, turnover_id, settings, cache) for entry in _fold_hdri_exrs(meta.rows)]
     grades = _Grades.read(folder)
     turnover.qc.extend(grades.qc)
     turnover.qc.extend(_conform_all(rows, session, grades))
@@ -262,20 +262,156 @@ def _build_row(
     """One CSV row into one shot row: identity, media and encoding. The EDL comes after,
     across every row at once (`_conform_all`), because a match is only unambiguous when no
     other row claims the same event."""
-    row = ShotRow(turnover_id=turnover_id, clip_name=entry.file_name)
+    row = ShotRow(
+        turnover_id=turnover_id,
+        clip_name=entry.file_name,
+        resolve_start_tc=entry.start_tc,
+        take=entry.take,
+        csv_shot=entry.shot,
+        csv_shot_type=entry.shot_type,
+    )
     row.qc.extend(entry.qc)
     if entry.kind is not None and entry.index is not None and not row.errors():
         row.identity = naming.ShotIdentity(shot_code=entry.shot, kind=entry.kind, index=entry.index)
 
-    item = _resolve_media(entry.file_name, index, row)
-    if item is not None:
-        _probe_into(row, item, cache, settings.project_rate)
+    if entry.hdri and qc.is_prerender_name(entry.file_name):
+        _resolve_prerender(entry.file_name, index, row, cache, settings.project_rate)
+    elif entry.hdri:
+        _resolve_hdri(entry.file_name, index, row, cache, settings.project_rate)
+    else:
+        item = _resolve_media(entry.file_name, index, row)
+        if item is not None:
+            _probe_into(row, item, cache, settings.project_rate)
 
     row.scene = entry.scene
-    if entry.shooter_delivered:
-        # Kept, skipped, so the stringout still shows the clip in its place (QC-080).
-        row.skipped, row.skip_reason = True, "HDRI: delivered by the shooters"
+    if entry.input_color_space:
+        # What an ungraded clip is read as; its AMF, when one grades it, says instead (QC-009).
+        row.source_encoding, row.source_encoding_origin = entry.input_color_space, "CSV"
     return row
+
+
+def _fold_hdri_exrs(entries: list[metacsv.MetaRow]) -> list[metacsv.MetaRow]:
+    """The CSV's HDRI EXR rows that a pre-render on the timeline already names, left out.
+
+    Turnover135 (2026-10-07) lists each HDRI twice: the EXR, which no EDL event cuts, and
+    its pre-render, which the timeline does. The pre-render's row carries the EXR, so the
+    EXR's own row would only be a second HDRI with no cut (QC-066).
+    """
+    named = {
+        exr.casefold()
+        for entry in entries
+        if entry.hdri
+        and (exr := hdri_exr_name(entry.file_name)) is not None
+        and qc.is_prerender_name(entry.file_name)
+    }
+    return [entry for entry in entries if not (entry.hdri and entry.file_name.casefold() in named)]
+
+
+def hdri_exr_name(prerender: str) -> str | None:
+    """The HDRI EXR a pre-render is named after: its name up to `.exr`, as Resolve names a
+    render of a clip (`SECA0009_pl01_HDRI_01_v01.exr Render 1.mov`, turnover134 and 135,
+    2026-10-07). None when the name carries no `.exr`."""
+    end = prerender.casefold().find(".exr")
+    return prerender[: end + len(".exr")] if end >= 0 else None
+
+
+def _resolve_prerender(
+    file_name: str,
+    index: media_module.DirectoryIndex,
+    row: ShotRow,
+    cache: dict[str, MediaInfo],
+    timeline_rate: FrameRate,
+) -> None:
+    """An HDRI whose timeline event is Ben's pre-render (user, 2026-10-07).
+
+    The pre-render is found by the name the timeline uses, and is only ever the stringout's
+    event. The EXR it is named after is what is delivered; when the turnover folder lacks
+    it, nothing is delivered and QC-086 says so. Neither is ever a block.
+    """
+    exr_name = hdri_exr_name(file_name)
+    matches = index.media_matching(Path(exr_name).stem) if exr_name else []
+    images = [item for item in matches if _suffix(item) not in media_module.VIDEO_EXTENSIONS]
+    if len(images) == 1:
+        _probe_into(row, images[0], cache, timeline_rate)
+    elif images:
+        _resolve_media(exr_name or file_name, _only(index, images), row)  # says QC-013
+    else:
+        row.qc.append(
+            QCResult(
+                "QC-086",
+                "warning",
+                "row",
+                f"HDRI EXR File Missing from turnover folder, omitted from delivery: {exr_name or file_name}",
+            )
+        )
+
+    found = index.media_matching(Path(file_name).stem)
+    renders = [item for item in found if _suffix(item) in media_module.VIDEO_EXTENSIONS]
+    if len(renders) == 1:
+        try:
+            row.hdri_render = media_module.probe_cached(renders[0], cache, fallback_rate=timeline_rate)
+        except (ffmpeg.FFprobeError, ffmpeg.FFmpegNotFound) as exc:
+            row.qc.append(QCResult("QC-014", "error", "row", f"media unreadable: {exc}"))
+        return
+    why = (
+        f"two or more files in the turnover folder are named {file_name}"
+        if renders
+        else f"the timeline's pre-render {file_name} is not in the turnover folder: it was rendered "
+        "somewhere else, or the timeline event points at a file in another folder"
+    )
+    shown = "the HDRI EXR held still" if row.media is not None else "black"
+    row.qc.append(QCResult("QC-083", "warning", "row", f"{why}, so its stringout event is {shown}"))
+
+
+def _resolve_hdri(
+    file_name: str,
+    index: media_module.DirectoryIndex,
+    row: ShotRow,
+    cache: dict[str, MediaInfo],
+    timeline_rate: FrameRate,
+) -> None:
+    """An HDRI's EXR, which is delivered, and its pre-render, which the stringout shows.
+
+    The two share a name and differ by extension (`xxxx_001.exr` and `xxxx_001.mp4`, user
+    2026-10-07), so the one stem resolves to both rather than being ambiguous (QC-013).
+    """
+    matches = index.media_matching(Path(file_name).stem)
+    renders = [item for item in matches if _suffix(item) in media_module.VIDEO_EXTENSIONS]
+    images = [item for item in matches if item not in renders]
+    if len(images) == 1:
+        _probe_into(row, images[0], cache, timeline_rate)
+    else:
+        _resolve_media(file_name, _only(index, images), row)  # says QC-012 or QC-013
+    if len(renders) == 1:
+        try:
+            row.hdri_render = media_module.probe_cached(renders[0], cache, fallback_rate=timeline_rate)
+        except (ffmpeg.FFprobeError, ffmpeg.FFmpegNotFound) as exc:
+            row.qc.append(QCResult("QC-014", "error", "row", f"media unreadable: {exc}"))
+        return
+    stem = Path(file_name).stem
+    why = "two or more files are" if renders else "no file is"
+    row.qc.append(
+        QCResult(
+            "QC-083",
+            "warning",
+            "row",
+            f"{why} the pre-render of HDRI {file_name} (a video named {stem}, such as {stem}.mp4), "
+            "so the stringout shows the HDRI held still",
+        )
+    )
+
+
+def _suffix(item: media_module.Sequence | media_module.FileEntry) -> str:
+    return item.ext if isinstance(item, media_module.Sequence) else item.suffix
+
+
+def _only(
+    index: media_module.DirectoryIndex, items: list[media_module.Sequence | media_module.FileEntry]
+) -> media_module.DirectoryIndex:
+    """The index narrowed to `items`, so `_resolve_media` reports them as it would any clip."""
+    singles = [item for item in items if isinstance(item, media_module.FileEntry)]
+    sequences = [item for item in items if isinstance(item, media_module.Sequence)]
+    return media_module.DirectoryIndex(root=index.root, sequences=sequences, singles=singles)
 
 
 def read_session(
@@ -468,8 +604,9 @@ def _conform_by_use(rows: list[ShotRow], events: list[clf.ConformEvent], grades:
 
 
 def _refuse_retimes(rows: list[ShotRow], events: list[clf.ConformEvent], rate: FrameRate) -> None:
-    """QC-073: a clip the EDL retimes or reverses. Only a freeze is rendered (OQ-63): any
-    other speed means the frames shown are not the frames in the range, silently."""
+    """QC-073: a clip the EDL retimes or reverses, a warning. Only a freeze is rendered as
+    cut (OQ-63); any other speed renders the range at normal speed, and Ben sees the retime
+    on his timeline (user, 2026-10-07: never a block)."""
     for event in events:
         if not event.clip_name or not event.retimed(rate):
             continue
@@ -478,10 +615,10 @@ def _refuse_retimes(rows: list[ShotRow], events: list[clf.ConformEvent], rate: F
                 row.qc.append(
                     QCResult(
                         "QC-073",
-                        "error",
+                        "warning",
                         "row",
                         f"EDL event {event.event_id} plays {row.clip_name} at {event.speed:g} fps; "
-                        f"the tool renders a freeze but not a retime or a reversal",
+                        f"the tool renders its range at normal speed",
                     )
                 )
 
@@ -537,29 +674,75 @@ def _conform(row: ShotRow, event: clf.ConformEvent, grades: _Grades) -> None:
     """The approved cut off this row's one EDL event, and the colour off that event's AMF."""
 
     row.record_in, row.record_out = event.record_in, event.record_out
-    # An HDRI is shown as it is and never graded (QC-080), so a missing AMF says nothing.
-    # Nor does it for a file that is not there (QC-012): its AMF is checked once it is.
-    if not qc.is_shooter_delivered(row) and row.media is not None:
+    # A file that is not there (QC-012) has its AMF checked once it is. A pre-render on the
+    # timeline is graded by its own AMF whether or not the HDRI EXR is there (QC-086).
+    if row.media is not None or row.hdri_render is not None:
+        before = len(row.qc)
         grades.attach(row, event)
-    approved = clf.approved_in_out(event, row.media) if row.media else None
-    if approved is None:
-        _whole_media(row)
+        if qc.is_hdri(row) or qc.is_style_frame(row):
+            # An HDRI's grade colours the pre-render on the stringout and a style frame is
+            # shown as it is; no check runs on either (user, 2026-10-07), so what is wrong
+            # with its AMF goes unsaid.
+            del row.qc[before:]
+    media = row.media
+    if media is None:
         return
+    approved = clf.approved_in_out(event, media)
+    unchecked = qc.is_hdri(row) or qc.is_style_frame(row)
+    if not unchecked and not _fits(approved, media):
+        approved = _outside(row, event, media, approved)
     row.approved = approved
     row.snapshot = approved
     row.current = approved
-    if row.media is not None and (
-        approved.in_frame < row.media.start_frame or approved.out_frame > row.media.max_available_out
-    ):
-        row.qc.append(
-            QCResult(
-                "QC-029",
-                "error",
-                "row",
-                f"the EDL references frames {approved.in_frame}-{approved.out_frame} but the media "
-                f"holds {row.media.start_frame}-{row.media.max_available_out}",
-            )
+
+
+def _fits(cut: InOut, media: MediaInfo) -> bool:
+    return media.start_frame <= cut.in_frame and cut.out_frame <= media.max_available_out
+
+
+def _outside(row: ShotRow, event: clf.ConformEvent, media: MediaInfo, cut: InOut) -> InOut:
+    """A cut the file's own timecode puts outside it, taken at face value (user, 2026-10-07:
+    "take the timeline at face value"; Ben sees any gap on his timeline).
+
+    The EDL counts in Resolve's clock, which is the file's own timecode (Turnover199) or,
+    after Resolve's media management, the CSV's `Start TC` (turnover134's mirror balls). So
+    the file's is tried first and Resolve's second, with nothing said. When neither puts the
+    cut inside the file, the frames the file has are rendered and QC-029 notes it.
+    """
+    rate = (media.stated_rate or media.rate).as_float()
+    said = media.start_timecode or 0
+    resolve = _resolve_start(row, rate)
+    if resolve is not None and resolve != said:
+        moved = clf.approved_in_out(event, replace(media, start_timecode=resolve))
+        if _fits(moved, media):
+            return moved
+    first, last = media.start_frame, media.max_available_out
+    kept = InOut(max(cut.in_frame, first), min(cut.out_frame, last))
+    if kept.in_frame > kept.out_frame:
+        kept = InOut(first, min(first + cut.duration - 1, last))
+    own, edl = _span(said, media.frame_count, rate), _span(event.source_in, event.duration, rate)
+    row.qc.append(
+        QCResult(
+            "QC-029",
+            "info",
+            "row",
+            f"the EDL cuts {edl}, but {row.clip_name} runs {own}; rendered the {kept.duration} "
+            "frames the file has",
         )
+    )
+    return kept
+
+
+def _span(first: int, count: int, rate: float) -> str:
+    """`15:13:40:00 to 15:13:40:09`: frames as Resolve shows them, never as a file index."""
+    return f"{frames.frames_to_timecode(first, rate)} to {frames.frames_to_timecode(first + count - 1, rate)}"
+
+
+def _resolve_start(row: ShotRow, rate: float) -> int | None:
+    try:
+        return frames.timecode_to_frames(row.resolve_start_tc, rate) if row.resolve_start_tc else None
+    except ValueError:
+        return None
 
 
 def _whole_media(row: ShotRow) -> None:
@@ -642,7 +825,8 @@ def _attach_audio(row: ShotRow, index: media_module.DirectoryIndex, settings: Sc
     try:
         row.audio = media_module.probe_audio(row.audio_path)
     except (ffmpeg.FFprobeError, ffmpeg.FFmpegNotFound) as exc:
-        row.qc.append(QCResult("QC-042", "error", "row", f"audio unreadable: {exc}"))
+        row.qc.append(QCResult("QC-042", "warning", "row", f"audio unreadable, so none is delivered: {exc}"))
+        row.audio_path = None
 
 
 TURNOVER_ID_PATTERN = re.compile(r"t(\d+)")
@@ -700,8 +884,8 @@ def carry_over(old: Turnover, old_rows: list[ShotRow], new: Turnover, new_rows: 
     editor's: a trim, but only one the editor made, so an EDL that moved the cut is not
     overridden by the cut it replaced; the shot code correction, the skip and its reason,
     the notes, the delivered state, and the mark Re-scan puts on a row for the next Run,
-    since that mark is set just before this rescan (user, 2026-09-25). The turnover keeps its stringout
-    and its Accept As Is (QC-074, user 2026-09-28). Everything else is the new scan's.
+    since that mark is set just before this rescan (user, 2026-09-25). The turnover keeps its stringout.
+    Everything else is the new scan's.
 
     A changed EDL or CSV is a warning on the turnover, QC-070: the edits carried over
     were made against the old one.
@@ -723,7 +907,6 @@ def carry_over(old: Turnover, old_rows: list[ShotRow], new: Turnover, new_rows: 
         row.delivered_range = before.delivered_range
         row.rerun = before.rerun
     new.stringout = old.stringout
-    qc.set_qc_bypassed(new, old.qc_bypassed)
     changed = [
         name
         for name, was, now in (
@@ -766,7 +949,7 @@ class _Grades:
             try:
                 found = amf.read(path)
             except amf.AmfError as exc:
-                grades.qc.append(QCResult("QC-075", "error", "turnover", str(exc)))
+                grades.qc.append(QCResult("QC-075", "warning", "turnover", f"{exc}; ignored"))
                 continue
             if found.index is None:
                 grades.qc.append(
@@ -788,16 +971,17 @@ class _Grades:
         if not any(item.names(row.clip_name) for item in found):
             named = [item for items in self.by_index.values() for item in items if item.names(row.clip_name)]
             found = named if len(named) == 1 else found
-        if len(found) != 1:
+        if not found:
+            return  # ungraded in Resolve (user, 2026-10-07): QC-009 says so
+        if len(found) > 1:
             names = ", ".join(item.path.name for item in found)
-            why = f"two or more AMFs claim it ({names})" if found else "no AMF in the folder grades it"
             row.qc.append(
                 QCResult(
                     "QC-075",
                     "error",
                     "row",
-                    f"EDL event {event.event_id} ({row.clip_name}): {why}, so nothing names its input "
-                    "transform or its grade",
+                    f"EDL event {event.event_id} ({row.clip_name}): two or more AMFs claim it ({names}), "
+                    "so the tool cannot tell which grade is Ben's",
                 )
             )
             return
@@ -806,10 +990,10 @@ class _Grades:
             row.qc.append(
                 QCResult(
                     "QC-075",
-                    "error",
+                    "info",
                     "row",
                     f"{match.path.name} grades video clip {event.position + 1} of the EDL (event "
-                    f"{event.event_id}) but names {match.clip_file}, not {row.clip_name}",
+                    f"{event.event_id}) but names {match.clip_file}, not {row.clip_name}; read as ungraded",
                 )
             )
             return
@@ -862,10 +1046,10 @@ def _grade_of(found: amf.Amf, folder: Path) -> tuple[Grade, list[QCResult]]:
         findings.append(
             QCResult(
                 "QC-079",
-                "error",
+                "warning",
                 "row",
                 f"{found.path.name}: the output transform is for {shown[0]}, which an 8 bit Rec.709 "
-                "reference cannot be labelled for",
+                f"reference cannot be labelled for; the references use {color.DEFAULT_VIEW[1]}",
             )
         )
         shown = None
@@ -873,10 +1057,10 @@ def _grade_of(found: amf.Amf, folder: Path) -> tuple[Grade, list[QCResult]]:
         findings.append(
             QCResult(
                 "QC-079",
-                "error",
+                "warning",
                 "row",
                 f"{found.path.name}: the output transform {found.output_transform or '(none)'} is not one "
-                f"{color.BUILTIN_CONFIG} has, so the references cannot be viewed as the session was",
+                f"{color.BUILTIN_CONFIG} has; the references use {color.DEFAULT_VIEW[1]}",
             )
         )
     if found.preset.casefold() == amf.DAILIES_PRESET.casefold():

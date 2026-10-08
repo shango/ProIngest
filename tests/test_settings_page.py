@@ -19,7 +19,6 @@ from pathlib import Path
 import pytest
 from PySide6.QtWidgets import (
     QApplication,
-    QCheckBox,
     QComboBox,
     QDialog,
     QLineEdit,
@@ -172,12 +171,10 @@ class TestTheDialog:
         _, rules = dialog.result_settings()
         assert rules.target_resolution == qc.RuleSettings().target_resolution
 
-    def test_a_toggle_comes_back_out(self, dialog: SettingsDialog) -> None:
-        check = editor(dialog, "rules.allow_non_4k")
-        assert isinstance(check, QCheckBox)
-        check.setChecked(True)
-        _, rules = dialog.result_settings()
-        assert rules.allow_non_4k
+    def test_allow_other_resolutions_is_gone(self, dialog: SettingsDialog) -> None:
+        """Retired 2026-10-07: QC-023 is a warning that never blocks, so it had nothing to do."""
+        assert "rules.allow_non_4k" not in dialog._editors
+        assert qc.RuleSettings.from_dict({"allow_non_4k": True}) == qc.RuleSettings()
 
     def test_the_path_map_is_a_line_per_rewrite(self, dialog: SettingsDialog) -> None:
         block = editor(dialog, "app.path_map")

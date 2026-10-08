@@ -90,6 +90,7 @@ Scrolling: Source file, Res, FPS, In (editable), Out (editable), Duration, Max A
 - Secondary line: whichever representation is not primary sits under it in smaller text, so nothing is ever hidden, only demoted. In `Frames` the secondary is source TC; in either TC state it is the source frame number. Row height accommodates two lines.
 - The editor reads frames and timecode at different moments, which is why frames is a first-class state of this control rather than only the secondary line: a frame number is what gets typed into the In/Out cells and what a VFX vendor quotes back, and a timecode is what the AD and the edit talk in. Section 5 accepts both as input whatever this is set to.
 - Turnover group headers are rows in the same view (QTreeView with a flat two-level model), collapsible, showing counts and aggregate status.
+- **The last line under each turnover is its stringout** (user, 2026-10-07): `Stringout` in the Shot column, the file's name under Source, its version, and the bar and percentage in Progress while it builds (frames encoded of the total, from `stringout.build`'s `progress`). Its ball: **green** once written, **red** when the build failed (QC-142) or an event had nothing to show and is black (QC-144), blue while building, none before it is built. An event cut from a stand-in (QC-143) stays green; hovering the ball names those events. Its right-click menu is Build Stringout alone. The search box hides it like any line that does not match.
 - Sorting is fixed to the metadata CSV's row order within a turnover. A search box filters rows by shot code substring.
 
 ## 3. Row colors and status dot
@@ -185,9 +186,11 @@ he needs to change, in plain words, with no rule IDs (`core/fixit.py`). Per turn
 ("2 of 18 clips blocked", "Every clip blocked", "Nothing blocking"), then items grouped under
 **Fix in Resolve**, **Fix in the turnover folder** and **Worth a look**, those that stop delivery
 first. Each item is one rule's sentence (`fixit.ADVICE`) with every clip it applies to listed once
-under it, "Every clip in this turnover (N)" when that is all of them, and what is particular to a
-clip beside it (how far a cut misses its file, which side lacks handles). Two items are not rules:
-an HDRI row whose clip is the stitched EXR, and a shot with reference clips and no plate (the
+under it, **each named by its shot** (`SECA0009 plate`), even when it is every clip of the
+turnover (user, 2026-10-07: "If it's every clip, list each clip in the fixit item"); a clip whose
+Shot or Shot Type did not read is named by what the CSV says (`SECA0009 HDRI`, or "no Shot in the
+metadata"). What is particular to a clip goes beside it (how far a cut misses its file, which side lacks handles). One item is not a rule:
+a shot with reference clips and no plate (the
 check that would have caught turnover134's mirror ball typed SECA0001). The editor's own findings
 (In/Out edits, the delivery root, a run) are not Ben's and are left out. Built from the results
 the Issues dock shows; nothing re-runs. The page is self-contained, light or dark with the
@@ -196,11 +199,11 @@ system, and loads nothing from the network.
 ## 7. Run and progress
 
 - Run opens no dialog if the delivery root is set; otherwise it prompts once.
-- Each row shows a slim progress bar in the Progress column with job count (e.g. 3/5).
+- Each row shows a slim progress bar in the Progress column with job count (e.g. 3/5). The stringout line under each turnover shows its own, in percent, while the stringout builds (section 2), and its Notes cell says the time left ("About 2m 10s left"; "Estimating time left" before the first event is encoded). The estimate is made at each event from the build's average rate so far, and counts down each second between events (user, 2026-10-07).
 - Status bar shows overall percent, jobs running, throughput (frames/s), and ETA.
 - Stop finishes in-flight frames, discards `.part` outputs, and leaves rows in their previous state.
 - On completion a non-modal banner above the list reads "Batch complete: 27 done, 1 failed, 2 skipped. Exports written to ...". Click opens the folder.
-- **A run with anything to fix does not start** (2026-09-23, D8). Run opens one dialog listing every must-fix with where it is - the batch, a turnover folder, or a clip - capped at twenty and pointing at the Issues dock for the rest, and says to correct the folder, press Scan and run. The held-back turnover of 2026-09-17 is gone: one turnover waiting on a fix holds the batch.
+- **Nothing stops a run but the delivery root** (user, 2026-10-07). A shot with an error is held back and every other shot renders. A delivery root that is not writable or has too little space (QC-062, QC-063) opens a popup, "The run cannot start", and nothing is rendered. From 2026-09-23 (D8) to 2026-10-07 any must-fix anywhere stopped the run.
 
 **Two things about a stopped run that this list said too simply** (M5.5, 2026-09-12). The
 records of a stopped run **are** applied to the rows, because a job that finished before Stop
@@ -261,7 +264,9 @@ the wait is long enough for anyone to notice it.
 
 **The tool builds the stringout** (PRD FR-9, OQ-38, built 2026-09-25); Ben does not export one
 (user, 2026-09-29). It is built at the end of a Run for every turnover the Run delivered to, and
-on demand from **Build Stringout** on a turnover heading's right-click menu.
+on demand from **Build Stringout** on a turnover heading's right-click menu. **It is cut from the
+delivered EXRs** (user, 2026-10-07; no switch): the HD sequences and the stills' EXRs, **all
+graded** (a still's EXR gets its clip's looks; a plate's has them already), with an HDRI's pre-render the one exception (PRD FR-9).
 
 The burn-ins copy Ben's frame, `burn-ins.png`, measured at 1920x1080: Open Sans 42 px, white, no
 shadow (bundled in `proingest/resources/fonts`). **Each sits on a black rectangle at 30% opacity,
@@ -274,11 +279,14 @@ lower inside it than the measured y.
 - **Bottom left**, x 184: `Frame: <n>`, the delivered frame number, `1001 + (cut In - delivered
   In) + n`; held still on a freeze.
 - **Bottom centre**: `Primary Effect: <Scene>`, from the CSV's `Scene` column.
-- **Bottom right**: `SHOT_elem` (`MELT0001_pl01`).
+- **Bottom right**: `SHOT_elem` (`MELT0001_pl01`), then **` Take NN` when the CSV's `Take` is above 1**
+  (`SECA0009_pl01 Take 02`; user, 2026-10-07). Take 1 or a blank Take shows no take (`naming.take_label`).
 
 **Picture in picture on a plate** (`stringout.INSET_CORNERS`) (user, 2026-09-29): over each `pl` event, the shot's **cp top left** and **wit top right**, each 480x270 flush in its corner (Resolve's zoom 0.25 at X -720/+720, Y 405). The first cp and the first wit of the shot in EDL order, from their **delivered HD references**, each playing from its own cut In at the plate's first frame, and **gone** when it runs out or at the plate's Out, whichever is first. No cp or wit, or none delivered: no inset in that corner. The top centre name sits between them (x 499 to 1411 on turnover097). Each inset carries its own element (`cp01`, `wit01`) burned in bottom left inside it, Open Sans 32 px against the frame's 42 (user, 2026-09-29), and it goes when the inset does.
 
-**Any held frame plays for one second** (user, 2026-09-29): a reference still (a chart, ball or size ref, which is one frame of a video), a frame hold (`M2` at 0) or any one frame cut, held for 24 frames whatever the EDL gives it (**except a held HDRI clip, which keeps the EDL's length**, user 2026-09-30), so the stringout runs longer than the EDL by that much. Taken from the source, such a frame is **coloured through its AMF** (input transform, CLF nodes, output transform) as Resolve shows it; a still's delivered EXR stays ungraded. An event with no known source is black for the same second.
+**A reference clip plays** (user, 2026-10-07): a chart, ball or size ref is a video on the timeline, so its event plays its cut at full speed, graded, from the source; it is still delivered as one EXR frame. **Any held frame plays for one second** (user, 2026-09-29): a frame hold (`M2` at 0) or any one frame cut, held for 24 frames whatever the EDL gives it (**except an HDRI, which keeps the EDL's length** and plays its pre-render, user 2026-10-07), so the stringout runs longer than the EDL by that much. Taken from the source, such a frame is **coloured through its AMF** (input transform, CLF nodes, output transform) as Resolve shows it; a still's delivered EXR stays ungraded. An event with no known source is black for the same second.
+
+**A style frame** (user, 2026-10-07; QC-085): a pre-graded PNG or JPG, `Shot Type` `styleFrame`, cut before its shot's plate. It is held **as it is**, ungraded, **for the EDL's length**, never delivered. Bottom right reads `SECA0009 styleFrame`, and there is **no `Frame:` counter**, since it has no delivered frame to count. Its file missing is black for the event's length (QC-144).
 
 The bottom line sits at y 892. No source timecode is burned in. White text with no box is hard
 to read on a bright frame; that matches Ben's template and is not yet decided (PROGRESS).
@@ -402,7 +410,7 @@ it is hidden rather than shown empty.
 
 There is **no Side files section** since 2026-09-22: HDRI and camData carry no `Shot Type`, so
 the tool reads neither and the pane has nothing to show for them. An HDRI row with `Shot Type`
-`HDRI` (2026-09-28) is skipped at scan, with the reason `HDRI: delivered by the shooters` and QC-080.
+`HDRI` delivers its EXR byte for byte and carries QC-080 (user, 2026-10-07).
 
 ### 12.3 Empty and edge states
 
@@ -477,11 +485,6 @@ AMF, CLF or clip into the folder and re-scans.
 
 - **Scan re-scans every turnover in the batch.** Right-clicking a turnover's header offers
   **Re-scan** for that one turnover and **New Folder Location...** for one that has moved (D16).
-- **Accept As Is (Ignore QC)**, a checkbox on the same menu (user, 2026-09-28), lets a turnover
-  run whatever its QC says: its errors stay on the rows and in the Issues dock, the heading shows
-  QC-074, and neither the Run nor a row is held back by an error a render gets right. An error
-  that would write a wrong file still holds its row (QC_RULES QC-074 lists which). Saved in the
-  batch and kept across Re-scan; unticking it puts the errors back in charge.
 - **What the editor did is carried over by File Name** (`scan.carry_over`), in CSV order, so a
   clip used twice pairs first with first: a trim the editor made, the shot code correction, the
   skip and its reason, the notes, and the delivered state. A trim never made follows the new EDL.
@@ -498,8 +501,8 @@ replaced Reset and Re-run. The editor swaps a file in the folder with the batch 
 Re-scans: a shot for a replaced clip, the heading for a replaced EDL or CSV.
 
 - It reads the turnover again, keeping the editor's trims, skips and notes (D8), so every rule
-  checks what is in the folder now. A new warning or must-fix shows on the row, and a must-fix
-  stops the next Run as any other does.
+  checks what is in the folder now. A new warning or error shows on the row, and an error holds
+  that shot back from the next Run.
 - It puts the shot, or on a heading every shot in the turnover, back for the next Run: its
   progress bar and count empty and it stops reading as done or failed at once. A shot that was
   delivered before comes out at the next version, v02 after v01; one never run is simply

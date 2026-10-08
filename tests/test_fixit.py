@@ -7,7 +7,7 @@ from datetime import date
 from pathlib import Path
 
 from proingest.core import fixit, models, scan
-from proingest.core.models import Batch, QCResult
+from proingest.core.models import Batch, QCResult, ShotRow
 from tests.fixtures import media as fixtures
 
 FOLDER = "turnover134_09_29_26_sethcarroll"
@@ -39,27 +39,44 @@ class TestTheReport:
         report = only(batch)
         assert report.items == [] and report.blocked == 0
         page = fixit.render(batch, DAY)
-        assert fixit.NOTHING_TO_FIX in page and "Nothing blocking" in page
+        assert fixit.NOTHING_TO_FIX in page and "Nothing held back" in page
 
-    def test_missing_amfs_are_one_item_listing_each_clip_and_it_blocks(self, tmp_path: Path) -> None:
+    def test_a_clip_with_no_colour_at_all_is_one_item_and_it_holds_the_clip(self, tmp_path: Path) -> None:
+        """No AMF and no Input Color Space in the CSV: nothing says what colour it is in (QC-046)."""
         folder = turnover(tmp_path, shots=3)
         next(folder.glob("*_0_*.amf")).unlink()
         report = only(scanned(folder))
-        item = titled(report, fixit.ADVICE["QC-075"].title)
+        item = titled(report, fixit.ADVICE["QC-046"].title)
         assert item.blocks and item.advice.where == "resolve"
         assert [clip.name for clip in item.clips] == ["MELT0001_pl01"]
         assert item.clips[0].who == "MELT0001 plate"
-        assert report.blocked == 1 and fixit._status(report) == "1 of 3 clips blocked"
-        assert fixit.ADVICE["QC-046"].title not in {other.advice.title for other in report.items}
+        assert report.blocked == 1 and fixit._status(report) == "1 of 3 clips held back"
 
-    def test_a_list_of_every_clip_is_said_as_a_count(self, tmp_path: Path) -> None:
+    def test_a_clip_with_no_amf_but_a_colour_space_is_ungraded_not_an_item(self, tmp_path: Path) -> None:
+        """User, 2026-10-07: "If there is no CLF, AMF or CDL, assume ungraded". A note in the
+        QC log (QC-009), nothing for Ben to fix."""
+        folder = turnover(tmp_path, shots=3)
+        rows = [(f"MELT000{i}_pl01", f"MELT000{i}", "pl01") for i in (1, 2, 3)]
+        fixtures.make_meta_csv(folder / "metadata.csv", rows, input_color_space=fixtures.SOURCE_ENCODING)
+        next(folder.glob("*_0_*.amf")).unlink()
+        report = only(scanned(folder))
+        assert report.items == [] and report.blocked == 0
+
+    def test_every_clip_is_listed_even_when_it_is_every_clip(self, tmp_path: Path) -> None:
+        """User, 2026-10-07: "If it's every clip, list each clip in the fixit item." """
         folder = turnover(tmp_path, shots=3)
         for path in folder.glob("*.amf"):
             path.unlink()
         report = only(scanned(folder))
-        item = titled(report, fixit.ADVICE["QC-075"].title)
-        assert item.clips == [fixit.Clip(detail="Every clip in this turnover (3).")]
-        assert fixit._status(report) == "Every clip blocked"
+        item = titled(report, fixit.ADVICE["QC-046"].title)
+        assert [clip.who for clip in item.clips] == ["MELT0001 plate", "MELT0002 plate", "MELT0003 plate"]
+        assert fixit._status(report) == "Every clip held back"
+
+    def test_a_clip_whose_shot_did_not_read_is_named_by_the_metadata(self) -> None:
+        said = ShotRow(turnover_id="t1", clip_name="x.exr", csv_shot="SECA0009", csv_shot_type="HDRI")
+        blank = ShotRow(turnover_id="t1", clip_name="y.exr", csv_shot_type="HDRI")
+        assert fixit._who(said) == "SECA0009 HDRI"
+        assert fixit._who(blank) == "HDRI, no Shot in the metadata"
 
     def test_a_missing_file_is_a_folder_fix(self, tmp_path: Path) -> None:
         folder = turnover(tmp_path)
@@ -70,6 +87,28 @@ class TestTheReport:
         item = titled(report, fixit.ADVICE["QC-012"].title)
         assert item.advice.where == "folder" and item.blocks
         assert [clip.name for clip in item.clips] == ["GONE"]
+
+    def test_a_missing_file_says_where_it_was_looked_for_and_who_named_it(self, tmp_path: Path) -> None:
+        """User, 2026-10-07: "filename the tool is looking for along with the expected path ...
+        what is reporting the file. Is it the EDL, CSV etc?"."""
+        folder = turnover(tmp_path)
+        fixtures.make_meta_csv(
+            folder / "metadata.csv", [("MELT0001_pl01", "MELT0001", "pl01"), ("GONE", "MELT0002", "pl01")]
+        )
+        (clip,) = titled(only(scanned(folder)), fixit.ADVICE["QC-012"].title).clips
+        assert clip.looked_for == str(folder / "GONE")
+        assert clip.named_by.startswith("the metadata CSV (metadata.csv), File Name column")
+        page = fixit.render(scanned(folder))
+        assert f"Looking for <code>{folder / 'GONE'}</code>" in page
+        assert "Reported by the metadata CSV" in page
+
+    def test_a_missing_clf_names_the_clf_and_its_amf(self, tmp_path: Path) -> None:
+        folder = turnover(tmp_path)
+        clf = next(folder.glob("*.clf"))
+        clf.unlink()
+        item = titled(only(scanned(folder)), fixit.ADVICE["QC-076"].title)
+        clip = item.clips[0]
+        assert clip.looked_for == str(folder / clf.name) and clip.named_by.startswith("the AMF (")
 
     def test_a_shot_with_references_and_no_plate_is_worth_a_look(self, tmp_path: Path) -> None:
         """Turnover134's mirror ball typed SECA0001 rather than SECA0011."""
@@ -102,10 +141,6 @@ class TestDetails:
         assert fixit._handles_detail(message) == (
             "no spare frames before the cut and only 3 spare frames after the cut"
         )
-
-    def test_seconds_are_rounded_and_frames_counted(self) -> None:
-        assert fixit._seconds(131, 24.0) == "about 5 seconds"
-        assert fixit._seconds(1, 24.0) == "1 frame"
 
     def test_the_fix_in_resolve_prefix_is_not_repeated(self) -> None:
         assert fixit._plain(models.FIX_IN_RESOLVE + "no AMF") == "no AMF"

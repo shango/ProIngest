@@ -34,16 +34,24 @@ from __future__ import annotations
 import csv
 import io
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
-from proingest.core import naming
+from proingest.core import media, naming
 from proingest.core.models import QCResult
 
 FILE_NAME_COLUMN = "File Name"
 SHOT_COLUMN = "Shot"
 SHOT_TYPE_COLUMN = "Shot Type"
 SCENE_COLUMN = "Scene"
+TAKE_COLUMN = "Take"
+"""The clip's take, burned into the stringout after its label when above 1 (user, 2026-10-07)."""
+INPUT_COLOR_SPACE_COLUMN = "Input Color Space"
+"""Resolve's input colour space for the clip, `Apple Log` in turnovers 134 and 135. Read only
+for a clip no AMF grades, which renders ungraded from it (QC-009, user 2026-10-07)."""
+START_TC_COLUMN = "Start TC"
+"""Where the clip starts as Resolve has it, which the EDL's source timecodes count from.
+After media management it can differ from the file's own (QC-084, user 2026-10-07)."""
 """Burned into the stringout as its Primary Effect, as Ben's Resolve template does (2026-09-25)."""
 
 CSV_SUFFIX = ".csv"
@@ -69,9 +77,12 @@ class MetaRow:
     index: str | None
     scene: str = ""
     qc: tuple[QCResult, ...] = ()
-    shooter_delivered: bool = False
-    """An HDRI: the shooters deliver it by hand, so the tool delivers nothing for it and
-    the row is skipped at scan, kept only so the stringout shows its clip (QC-080)."""
+    start_tc: str = ""
+    take: str = ""
+    input_color_space: str = ""
+    hdri: bool = False
+    """An HDRI (QC-080): the tool copies its EXR as it is and runs no row rule on it, and
+    the stringout shows Ben's pre-render of its timeline event (user, 2026-10-07)."""
 
 
 @dataclass
@@ -224,6 +235,9 @@ def read(path: Path, show_pattern: str = naming.DEFAULT_SHOW_PATTERN) -> MetaCsv
     shot_positions = _columns(header, SHOT_COLUMN)
     type_positions = _columns(header, SHOT_TYPE_COLUMN)
     scene_positions = _columns(header, SCENE_COLUMN)
+    start_positions = _columns(header, START_TC_COLUMN)
+    take_positions = _columns(header, TAKE_COLUMN)
+    space_positions = _columns(header, INPUT_COLOR_SPACE_COLUMN)
 
     result = MetaCsv(path=path)
     for record in records[1:]:
@@ -237,7 +251,13 @@ def read(path: Path, show_pattern: str = naming.DEFAULT_SHOW_PATTERN) -> MetaCsv
         shot = _shot(_value(record, shot_positions), show_pattern)
         scene = _value(record, scene_positions)
         if _HDRI.fullmatch(shot_type.strip()):
-            result.rows.append(_hdri(file_name, shot, shot_type, scene))
+            named = naming.parse_shot_code(shot, show_pattern) is not None
+            hdri = _hdri(file_name, shot, shot_type, scene, named)
+            result.rows.append(replace(hdri, take=_value(record, take_positions)))
+            continue
+        if _STYLE_FRAME.fullmatch(shot_type.strip()):
+            named = naming.parse_shot_code(shot, show_pattern) is not None
+            result.rows.append(_style_frame(file_name, shot, shot_type, scene, named))
             continue
         result.rows.append(
             MetaRow(
@@ -247,26 +267,53 @@ def read(path: Path, show_pattern: str = naming.DEFAULT_SHOW_PATTERN) -> MetaCsv
                 kind=kind,
                 index=index,
                 scene=scene,
+                start_tc=_value(record, start_positions),
+                take=_value(record, take_positions),
+                input_color_space=_value(record, space_positions),
                 qc=tuple(type_qc + _row_qc(file_name, shot, shot_type, kind, show_pattern)),
             )
         )
     return result
 
 
-_HDRI = re.compile(r"hdri\d*", re.IGNORECASE)
+_HDRI = re.compile(r"hdri(?P<index>\d{1,2})?", re.IGNORECASE)
 """`HDRI`, as turnover097's CSV writes it, with or without an index."""
 
 
-def _hdri(file_name: str, shot: str, shot_type: str, scene: str) -> MetaRow:
-    """An HDRI row: delivered by the shooters, never by the tool (user, 2026-09-28)."""
+def _hdri(file_name: str, shot: str, shot_type: str, scene: str, named: bool) -> MetaRow:
+    """An HDRI row (user, 2026-10-07): its EXR is delivered as it is, with no checks, and
+    the stringout shows the pre-render of its timeline event. One whose `Shot` is no shot
+    code has nowhere to be delivered, and only the stringout shows it."""
+    what = (
+        f"{file_name} is an HDRI's pre-render: the stringout shows it, and the tool delivers the "
+        "HDRI EXR it is named after as it is, with no checks"
+        if Path(file_name).suffix.lower() in media.VIDEO_EXTENSIONS
+        else f"{file_name} is an HDRI: the tool delivers it as it is, with no checks, and the "
+        "stringout shows its pre-render"
+    )
+    note = QCResult("QC-080", "info", "row", what)
+    match = _HDRI.fullmatch(shot_type.strip())
+    index = ((match["index"] if match else None) or "1").zfill(2)
+    kind = naming.HDRI_KIND if named else None
+    return MetaRow(file_name, shot, shot_type, kind, index if named else None, scene, (note,), hdri=True)
+
+
+_STYLE_FRAME = re.compile(r"styleframe(?P<index>\d{1,2})?", re.IGNORECASE)
+
+
+def _style_frame(file_name: str, shot: str, shot_type: str, scene: str, named: bool) -> MetaRow:
+    """A style frame row (QC-085, user 2026-10-07): a pre-graded still the stringout holds
+    before its shot's plate, as it is. Nothing is delivered and no check runs on it."""
     note = QCResult(
-        "QC-080",
+        "QC-085",
         "info",
         "row",
-        f"{file_name} is an HDRI, which the shooters deliver by hand; the tool delivers nothing "
-        "for it and shows its clip in the stringout only",
+        f"{file_name} is a style frame: the stringout shows it as it is, and nothing is delivered",
     )
-    return MetaRow(file_name, shot, shot_type, None, None, scene, (note,), shooter_delivered=True)
+    match = _STYLE_FRAME.fullmatch(shot_type.strip())
+    index = ((match["index"] if match else None) or "1").zfill(2)
+    kind = naming.STYLE_FRAME_KIND if named else None
+    return MetaRow(file_name, shot, shot_type, kind, index if named else None, scene, (note,))
 
 
 def find(folder: Path) -> list[Path]:

@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from proingest.core import clf, naming, planner
+from proingest.core import color, naming, planner
 from proingest.core.models import (
     Batch,
     FrameRate,
@@ -307,41 +307,39 @@ class TestShotCodeCorrection:
         assert planner.plan_row(row(shot_code_override="melt1"), ROOT, 1).jobs == []
 
 
-class TestAcceptAsIs:
-    """A turnover accepted as it is renders past the errors that give a correct file only."""
+class TestAnErrorHoldsOneShot:
+    """User, 2026-10-07: "nothing prevents rendering an entire batch or turnover". A row's
+    error holds that row back until it is fixed and re-scanned; every other row renders."""
 
-    def batch(
-        self, *rows: ShotRow, bypassed: bool = True, turnover_qc: list[QCResult] | None = None
-    ) -> Batch:
-        turnover = Turnover("t1", Path("/turnover"), qc_bypassed=bypassed, qc=turnover_qc or [])
-        return Batch(turnovers=[turnover], rows=list(rows))
+    def batch(self, *rows: ShotRow, turnover_qc: list[QCResult] | None = None) -> Batch:
+        return Batch(turnovers=[Turnover("t1", Path("/turnover"), qc=turnover_qc or [])], rows=list(rows))
 
-    def test_a_row_too_short_renders_when_its_turnover_is_bypassed(self, tmp_path: Path) -> None:
-        short = row(qc=[QCResult("QC-033", "error", "row", "too short")])
-        assert planner.plan_batch(self.batch(short), tmp_path)
-        assert not planner.plan_batch(self.batch(short, bypassed=False), tmp_path)
+    def test_a_warning_renders(self, tmp_path: Path) -> None:
+        long = row(qc=[QCResult("QC-034", "warning", "row", "Plate was 260 frames on the timeline")])
+        assert planner.plan_batch(self.batch(long), tmp_path)
 
-    @pytest.mark.parametrize("rule_id", ["QC-011", "QC-026", "QC-046", "QC-066", "QC-999"])
-    def test_an_error_that_would_write_a_wrong_file_still_holds_the_row(
-        self, rule_id: str, tmp_path: Path
-    ) -> None:
-        """QC-999 stands for a rule nobody has traced: an allowlist holds it back."""
-        wrong = row(qc=[QCResult(rule_id, "error", "row", "wrong")])
-        assert planner.plan_batch(self.batch(wrong), tmp_path) == []
+    @pytest.mark.parametrize("rule_id", ["QC-012", "QC-046", "QC-075", "QC-999"])
+    def test_an_error_holds_its_row(self, rule_id: str, tmp_path: Path) -> None:
+        held = row(qc=[QCResult(rule_id, "error", "row", "held")])
+        assert planner.holding_errors(held) == held.errors()
+        assert planner.plan_batch(self.batch(held), tmp_path) == []
 
-    def test_one_held_error_holds_the_row_even_beside_a_waived_one(self, tmp_path: Path) -> None:
-        both = row(qc=[QCResult("QC-033", "error", "row", "short"), QCResult("QC-027", "error", "row", "df")])
-        assert planner.plan_batch(self.batch(both), tmp_path) == []
+    def test_one_held_row_holds_back_no_other(self, tmp_path: Path) -> None:
+        held = row(clip_name="MELT0002_pl01", qc=[QCResult("QC-012", "error", "row", "no file")])
+        assert {job.shot_code for job in planner.plan_batch(self.batch(row(), held), tmp_path)} == {
+            "MELT0001"
+        }
 
-    def test_a_missing_turnover_folder_holds_every_row(self, tmp_path: Path) -> None:
+    def test_a_missing_turnover_folder_holds_every_row_of_it(self, tmp_path: Path) -> None:
+        """QC-069 is missing media for every row of that turnover."""
         moved = [QCResult("QC-069", "error", "turnover", "the folder is gone")]
-        assert planner.plan_batch(self.batch(row(), turnover_qc=moved), tmp_path) == []
+        batch = self.batch(row(), turnover_qc=moved)
+        assert planner.held_turnovers(batch) == {"t1"}
+        assert planner.plan_batch(batch, tmp_path) == []
 
-    def test_no_amf_anywhere_is_not_waived(self, tmp_path: Path) -> None:
-        """QC-008 left the list on 2026-09-28: no AMF means no input transform at all."""
-        assert "QC-008" not in planner.QC_BYPASSABLE and "QC-009" not in planner.QC_BYPASSABLE
-        missing = [QCResult("QC-008", "error", "turnover", "no AMF")]
-        assert planner.plan_batch(self.batch(row(), turnover_qc=missing), tmp_path) == []
+    def test_any_other_turnover_error_holds_nothing(self, tmp_path: Path) -> None:
+        said = [QCResult("QC-071", "error", "turnover", "the ALE does not match")]
+        assert planner.plan_batch(self.batch(row(), turnover_qc=said), tmp_path)
 
 
 class TestRowsThatOweNothing:
@@ -349,7 +347,7 @@ class TestRowsThatOweNothing:
         assert planner.plan_row(row(skipped=True), ROOT, 1).jobs == []
 
     def test_a_row_carrying_an_error(self) -> None:
-        blocked = row(qc=[QCResult("QC-023", "error", "row", "not 4k")])
+        blocked = row(qc=[QCResult("QC-012", "error", "row", "no file")])
         assert planner.plan_row(blocked, ROOT, 1).jobs == []
 
     def test_a_warning_does_not_block(self) -> None:
@@ -460,10 +458,13 @@ class TestShotColourOnJobs:
         assert still.shot_color.source_encoding == "ACEScc"
 
     def test_without_an_ingest_every_job_plans_ungraded(self) -> None:
-        """The same files in the same places; the grade is the only difference."""
+        """The same files in the same places; the grade is the only difference. With no
+        AMF the references are seen through Ben's session's own output (2026-10-07)."""
         batch = Batch(name="b", rows=[row()], delivery_root=ROOT)
         jobs = planner.plan_batch(batch)
-        assert all(job.shot_color == clf.DEFAULT_SHOT_COLOR for job in jobs)
+        pictures = [job for job in jobs if job.kind != "audio"]
+        assert pictures and all(not job.shot_color.looks and not job.shot_color.amf for job in pictures)
+        assert {(job.shot_color.display, job.shot_color.view) for job in pictures} == {color.DEFAULT_VIEW}
 
     def test_the_source_encoding_reaches_every_job_from_its_own_row(self) -> None:
         """Per clip, off the row the clip's metadata was read into (M4.6.1)."""

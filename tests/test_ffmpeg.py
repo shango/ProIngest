@@ -428,6 +428,23 @@ class TestEncodeCommand:
             "setparams=color_primaries=bt709:color_trc=iec61966-2-1:colorspace=bt709:range=tv",
         ]
 
+    def test_a_shaper_runs_just_before_the_cube(self) -> None:
+        """A linear source (an HDRI's pre-render) reaches its cube through a 1D shaper."""
+        command = ffmpeg.encode_command(
+            "render.mp4",
+            Path("out.mp4.part"),
+            0,
+            3,
+            is_sequence=False,
+            rate="24/1",
+            lut=Path("/tmp/lut/view.cube"),
+            shaper=Path("/tmp/lut/shaper.cube"),
+        )
+        filters = command[command.index("-vf") + 1].split(",")
+        at = filters.index("lut1d=/tmp/lut/shaper.cube:interp=linear")
+        assert filters[at - 1] == "format=gbrpf32le"
+        assert filters[at + 1] == "lut3d=/tmp/lut/view.cube:interp=tetrahedral"
+
     def test_the_lut_is_applied_tetrahedrally(self) -> None:
         """`lut3d` defaults to it. Stated anyway: trilinear is one word and looks wrong."""
         assert "interp=tetrahedral" in ffmpeg.lut_filter(Path("/tmp/a.cube"))

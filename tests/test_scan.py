@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from proingest.core import qc, scan
+from proingest.core import planner, qc, scan
 from proingest.core.models import Batch, Deliverable, InOut, ShotRow, Turnover
 from tests.fixtures import color as color_fixtures
 from tests.fixtures import media as fixtures
@@ -391,13 +391,6 @@ class TestCarryOver:
         scan.carry_over(was, [], now, [])
         assert now.stringout == was.stringout
 
-    def test_accept_as_is_survives_a_rescan_and_qc_074_with_it(self) -> None:
-        was, now = Turnover("t1", Path("/a")), Turnover("t1", Path("/a"))
-        qc.set_qc_bypassed(was, True)
-        scan.carry_over(was, [], now, [])
-        assert now.qc_bypassed
-        assert [result.rule_id for result in now.qc] == ["QC-074"]
-
     def test_a_trim_never_made_follows_the_new_edl(self) -> None:
         old, new = self.rows("C0145.MP4"), self.rows("C0145.MP4")
         new[0].snapshot = new[0].current = InOut(14, 24)
@@ -568,19 +561,52 @@ class TestTheAmf:
         assert row.grade is not None
         assert [look.kind for look in row.grade.looks] == ["look", "clf"]
 
-    def test_an_event_with_no_amf_is_qc_075(self, tmp_path: Path) -> None:
+    def test_an_event_with_no_amf_and_no_csv_colour_space_is_held_by_qc_046(self, tmp_path: Path) -> None:
+        """Nothing says what colour it is in, so the tool cannot recreate it."""
         folder = self.folder(tmp_path)
         self.amf(folder).unlink()
         _, row = self.scanned(folder)
-        assert "QC-075" in rules(row) and "QC-046" not in rules(row), "one cause, one error"
+        assert "QC-075" not in rules(row)
+        assert [result.rule_id for result in row.errors()] == ["QC-046"]
         assert row.grade is None and row.source_encoding is None
 
-    def test_an_amf_naming_another_file_is_qc_075_not_a_match(self, tmp_path: Path) -> None:
+    def test_an_event_with_no_amf_renders_ungraded_from_the_csv(self, tmp_path: Path) -> None:
+        """User, 2026-10-07: "If there is no CLF, AMF or CDL, assume ungraded". Resolve's
+        `Input Color Space` (Apple Log in turnovers 134 and 135) is what it is read as."""
+        folder = self.folder(tmp_path)
+        rows = [("MELT0001_pl01", "MELT0001", "pl01")]
+        fixtures.make_meta_csv(folder / "metadata.csv", rows, input_color_space="Apple Log")
+        self.amf(folder).unlink()
+        _, row = self.scanned(folder)
+        assert not row.errors() and row.grade is None
+        assert (row.source_encoding, row.source_encoding_origin) == ("Apple Log", "CSV")
+        (said,) = [result for result in row.qc if result.rule_id == "QC-009"]
+        assert said.severity == "info" and said.message.startswith("Clip ungraded in Resolve project")
+        assert planner.plannable_identity(row) is not None
+
+    def test_the_amf_wins_over_the_csv_colour_space(self, tmp_path: Path) -> None:
+        folder = self.folder(tmp_path)
+        rows = [("MELT0001_pl01", "MELT0001", "pl01")]
+        fixtures.make_meta_csv(folder / "metadata.csv", rows, input_color_space="Apple Log")
+        _, row = self.scanned(folder)
+        assert (row.source_encoding, row.source_encoding_origin) == (fixtures.SOURCE_ENCODING, "AMF")
+
+    def test_an_amf_naming_another_file_is_qc_075_info_and_ungraded(self, tmp_path: Path) -> None:
         folder = self.folder(tmp_path)
         path = self.amf(folder)
         path.write_text(path.read_text().replace("<aces:file>MELT0001_pl01<", "<aces:file>MELT0009_pl01<"))
         _, row = self.scanned(folder)
-        assert "QC-075" in rules(row) and row.grade is None
+        assert row.grade is None
+        assert [result.severity for result in row.qc if result.rule_id == "QC-075"] == ["info"]
+
+    def test_two_amfs_claiming_one_event_hold_it(self, tmp_path: Path) -> None:
+        """The tool cannot tell which grade is Ben's."""
+        folder = self.folder(tmp_path)
+        path = self.amf(folder)
+        stamp = path.name.rsplit("_", 1)[-1]
+        (folder / path.name.replace(stamp, "235959Z.amf")).write_text(path.read_text())
+        turnover, row = self.scanned(folder)
+        assert [result.rule_id for result in row.errors()] == ["QC-075"], turnover.qc
 
     def test_an_audio_only_event_does_not_shift_the_amfs(self, tmp_path: Path) -> None:
         """Turnover134 (2026-10-05): its EDL numbers audio-only events of its own and every
@@ -723,12 +749,35 @@ class TestTheAmf:
         assert [(r.rule_id, r.severity) for r in row.qc if r.rule_id == "QC-009"] == [("QC-009", "info")]
         assert not qc.must_fix(batch)
 
-    def test_an_hdri_row_is_skipped_as_the_shooters_and_blocks_nothing(self, tmp_path: Path) -> None:
+    def test_an_hdri_row_is_delivered_and_blocks_nothing(self, tmp_path: Path) -> None:
+        """User, 2026-10-07: its EXR is copied as it is; no pre-render beside it is QC-083."""
         folder = fixtures.make_turnover(tmp_path / GOOD_FOLDER, shots=1, frames=4, shot_types=["HDRI"])
         turnover, row = self.scanned(folder)
-        assert row.skipped and row.skip_reason == "HDRI: delivered by the shooters"
-        assert "QC-080" in rules(row)
+        assert not row.skipped and row.identity is not None and row.identity.is_hdri
+        assert {"QC-080", "QC-083"} <= set(rules(row)) and not row.errors()
         assert not qc.must_fix(Batch(delivery_root=tmp_path, turnovers=[turnover], rows=[row]))
+
+    def test_a_style_frame_blocks_nothing_and_delivers_nothing(self, tmp_path: Path) -> None:
+        """User, 2026-10-07: a pre-graded PNG or JPG held on the stringout, and that is all."""
+        folder = fixtures.make_turnover(tmp_path / GOOD_FOLDER, shots=1, frames=4, shot_types=["styleFrame"])
+        for path in (folder / "media").iterdir():
+            path.unlink()
+        fixtures.make_still(folder / "media" / "MELT0001_pl01.png")
+        turnover, row = self.scanned(folder)
+        assert row.identity is not None and row.identity.is_style_frame and qc.is_style_frame(row)
+        assert row.media is not None and row.media.frame_count == 1
+        assert rules(row) == {"QC-085"}, "no rule runs on it, and its AMF's findings go unsaid"
+        batch = Batch(delivery_root=tmp_path, turnovers=[turnover], rows=[row])
+        qc.preflight(batch)
+        assert not qc.must_fix(batch) and planner.plannable_identity(row) is None
+
+    def test_an_hdri_and_its_pre_render_are_not_ambiguous(self, tmp_path: Path) -> None:
+        folder = fixtures.make_turnover(tmp_path / GOOD_FOLDER, shots=1, frames=4, shot_types=["HDRI"])
+        fixtures.make_mp4(folder / "media" / "MELT0001_pl01.mp4", count=4)
+        _, row = self.scanned(folder)
+        assert row.media is not None and row.media.path.suffix == ".exr"
+        assert row.hdri_render is not None and row.hdri_render.path.suffix == ".mp4"
+        assert "QC-013" not in rules(row) and "QC-083" not in rules(row)
 
     def test_an_hdri_with_no_amf_is_not_an_error(self, tmp_path: Path) -> None:
         """Turnover135 (2026-10-05): QC-075 on each HDRI, which is never graded (QC-080)."""
@@ -736,3 +785,102 @@ class TestTheAmf:
         self.amf(folder).unlink()
         _, row = self.scanned(folder)
         assert "QC-080" in rules(row) and not row.errors()
+
+
+class TestAPreRenderOnTheTimeline:
+    """Turnover134 and 135 (2026-10-07): the timeline cuts Ben's pre-render, named
+    `<HDRI EXR> Render 1.mov`, typed HDRI; the EXR is off the cut. The pre-render is the
+    stringout's event, and the EXR it is named after is delivered when it is in the folder
+    (user: "If the EXR isn't in the turnover folder ... do nothing for the HDRI delivery")."""
+
+    RENDER = "MELT0001_pl01_HDRI_01_v01.exr Render 1.mp4"
+    EXR = "MELT0001_pl01_HDRI_01_v01.exr"
+
+    def folder(self, tmp_path: Path, exr: bool, render: bool = True, exr_row: bool = False) -> Path:
+        root = tmp_path / GOOD_FOLDER
+        if render:
+            fixtures.make_mp4(root / self.RENDER, count=4)
+        if exr:
+            fixtures.make_exr_sequence(root / "x", count=1)
+            next((root / "x").glob("*.exr")).rename(root / self.EXR)
+        rows = [(self.RENDER, "MELT0001", "HDRI")] + ([(self.EXR, "MELT0001", "HDRI")] if exr_row else [])
+        fixtures.make_meta_csv(root / "metadata.csv", rows)
+        fixtures.make_final_edl(root / "FINAL_v01.edl", [self.RENDER], duration=4)
+        return root
+
+    def scanned(self, folder: Path) -> list[ShotRow]:
+        _, rows = scan.scan_turnover(folder, "t1", scan.ScanSettings(rules=fixtures.SMALL_RULES))
+        return rows
+
+    def test_the_exr_it_is_named_after_is_delivered(self, tmp_path: Path) -> None:
+        (row,) = self.scanned(self.folder(tmp_path, exr=True))
+        assert row.media is not None and row.media.path.name == self.EXR
+        assert row.hdri_render is not None and row.hdri_render.path.name == self.RENDER
+        assert not row.errors() and not rules(row) & {"QC-083", "QC-086"}
+        jobs = planner.plan_row(row, tmp_path / "out", 1).jobs
+        assert [job.kind for job in jobs] == ["hdri"] and jobs[0].source.name == self.EXR
+
+    def test_no_exr_is_qc_086_and_nothing_is_delivered(self, tmp_path: Path) -> None:
+        (row,) = self.scanned(self.folder(tmp_path, exr=False))
+        (note,) = [result for result in row.qc if result.rule_id == "QC-086"]
+        assert note.severity == "warning"
+        assert note.message.startswith("HDRI EXR File Missing from turnover folder, omitted from delivery")
+        assert row.hdri_render is not None and not row.errors()
+        assert planner.plan_row(row, tmp_path / "out", 1).jobs == []
+
+    def test_the_csv_s_own_exr_row_folds_into_the_pre_render(self, tmp_path: Path) -> None:
+        """Turnover135 lists the EXR too, which no EDL event cuts: not a second HDRI (QC-066)."""
+        rows = self.scanned(self.folder(tmp_path, exr=True, exr_row=True))
+        assert [row.clip_name for row in rows] == [self.RENDER]
+        assert "QC-066" not in rules(rows[0])
+
+    def test_a_pre_render_not_in_the_folder_is_qc_083(self, tmp_path: Path) -> None:
+        """Rendered somewhere else, or the timeline points at another folder."""
+        (row,) = self.scanned(self.folder(tmp_path, exr=True, render=False))
+        (note,) = [result for result in row.qc if result.rule_id == "QC-083"]
+        assert note.severity == "warning" and "not in the turnover folder" in note.message
+        assert row.media is not None and not row.errors()
+
+    def test_with_no_color_files_it_is_shown_as_it_is(self, tmp_path: Path) -> None:
+        """User, 2026-10-07: "If there's not color files, you can skip any color correction"."""
+        (row,) = self.scanned(self.folder(tmp_path, exr=True))
+        (note,) = [result for result in row.qc if result.rule_id == "QC-009"]
+        assert note.severity == "info" and "no color correction" in note.message
+
+
+class TestACutOutsideItsFile:
+    """User, 2026-10-07: the timeline at face value. A cut the file's own timecode puts
+    outside it is read by Resolve's clock, the CSV's `Start TC`, with nothing said; when
+    neither fits, the frames the file has are rendered and QC-029 notes it."""
+
+    def folder(self, tmp_path: Path, start_tc: str | None) -> Path:
+        folder = fixtures.make_turnover(tmp_path / GOOD_FOLDER, shots=1, frames=4)
+        edl = folder / "FINAL_v01.edl"
+        edl.write_text(edl.read_text().replace("01:00:00:00 01:00:00:04 ", "00:59:50:00 00:59:50:04 ", 1))
+        if start_tc is not None:
+            csv = folder / "metadata.csv"
+            lines = csv.read_bytes().decode("utf-16").splitlines()
+            lines = [f'{lines[0]},"Start TC"'] + [f'{line},"{start_tc}"' for line in lines[1:]]
+            csv.write_bytes(("\r\n".join(lines) + "\r\n").encode("utf-16"))
+        return folder
+
+    def scanned(self, folder: Path) -> ShotRow:
+        _, rows = scan.scan_turnover(folder, "t1", scan.ScanSettings(rules=fixtures.SMALL_RULES))
+        return rows[0]
+
+    def test_resolve_s_clock_puts_it_inside_and_nothing_is_said(self, tmp_path: Path) -> None:
+        """Turnover134's mirror balls: probe noise from media management, not a fault."""
+        row = self.scanned(self.folder(tmp_path, "00:59:50:00"))
+        assert row.media is not None
+        assert not rules(row) & {"QC-029", "QC-084"} and not row.errors()
+        assert row.current == InOut(row.media.start_frame, row.media.start_frame + 3)
+
+    def test_with_no_clock_that_fits_it_renders_what_the_file_has_with_a_note(self, tmp_path: Path) -> None:
+        row = self.scanned(self.folder(tmp_path, None))
+        assert row.media is not None and not row.errors()
+        (said,) = [result for result in row.qc if result.rule_id == "QC-029"]
+        assert said.severity == "info"
+        assert "00:59:50:00 to 00:59:50:03" in said.message
+        assert "rendered the 4 frames the file has" in said.message
+        assert row.current == InOut(row.media.start_frame, row.media.start_frame + 3)
+        assert planner.plannable_identity(row) is not None

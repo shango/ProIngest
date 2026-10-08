@@ -288,14 +288,16 @@ class TestTurnover:
             stringout=Deliverable(
                 kind="stringout", name="so.mp4", path=Path("/d/so.mp4"), version=1, status="done"
             ),
-            qc_bypassed=True,
         )
         assert Turnover.from_dict(turnover.to_dict()) == turnover
 
-    def test_a_turnover_saved_before_the_bypass_is_not_bypassed(self) -> None:
+    def test_a_turnover_saved_with_accept_as_is_loads_without_it(self) -> None:
+        """Accept As Is went on 2026-10-07: its flag and its QC-074 are dropped on load."""
         data = Turnover("t1", Path("/t")).to_dict()
-        del data["qc_bypassed"]
-        assert Turnover.from_dict(data).qc_bypassed is False
+        data["qc_bypassed"] = True
+        data["qc"] = [QCResult("QC-074", "warning", "turnover", "bypassed").to_dict()]
+        loaded = Turnover.from_dict(data)
+        assert loaded.qc == [] and loaded == Turnover("t1", Path("/t"))
 
     def test_a_turnover_saved_before_the_session_existed_has_ingested_nothing(self) -> None:
         """Additive, so the schema version does not move (M5.7.1)."""

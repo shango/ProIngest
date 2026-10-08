@@ -284,6 +284,38 @@ class TestDeliveryLayout:
     def test_reports_sit_beside_shots(self) -> None:
         assert naming.reports_dir(Path("/d"), "MELT") == Path("/d/MELT/_reports")
 
+    def test_an_hdri_is_named_as_the_tracker_names_it_and_reads_back(self) -> None:
+        hdri = naming.ShotIdentity("SECA0009", naming.HDRI_KIND, "01")
+        name = naming.hdri_exr(hdri, 2)
+        assert name == "SECA0009_pl01_HDRI_01_v02.exr"
+        parsed = naming.parse_output_name(name)
+        assert parsed is not None and (parsed.kind, parsed.version, parsed.shot_code) == (
+            "hdri",
+            2,
+            "SECA0009",
+        )
+        assert naming.shot_label(hdri) == "SECA0009_pl01_HDRI_01"
+        assert naming.next_version([name]) == 3
+
+    def test_a_style_frame_is_labelled_by_its_shot_and_has_no_element_stem(self) -> None:
+        """User, 2026-10-07: the burn-in reads `SECA0009 styleFrame`."""
+        style = naming.ShotIdentity("SECA0009", naming.STYLE_FRAME_KIND, "01")
+        assert naming.shot_label(style) == "SECA0009 styleFrame"
+        with pytest.raises(ValueError):
+            _ = style.stem
+
+    def test_an_hdri_has_no_element_stem(self) -> None:
+        with pytest.raises(ValueError):
+            _ = naming.ShotIdentity("SECA0009", naming.HDRI_KIND, "01").stem
+
+    @pytest.mark.parametrize(
+        ("take", "shown"),
+        [("2", "SECA0009_pl01 Take 02"), ("12", "SECA0009_pl01 Take 12"), ("1", "SECA0009_pl01"),
+         ("", "SECA0009_pl01"), ("A", "SECA0009_pl01")],
+    )  # fmt: skip
+    def test_a_take_above_1_follows_the_burn_in_label(self, take: str, shown: str) -> None:
+        assert naming.take_label("SECA0009_pl01", take) == shown
+
     def test_the_user_folders_sit_at_the_delivery_root(self) -> None:
         assert naming.user_dirs(Path("/d")) == [Path("/d/User_Generated"), Path("/d/User_Uploads")]
 
