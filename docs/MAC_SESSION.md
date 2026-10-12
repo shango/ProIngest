@@ -55,6 +55,10 @@ chunk 7 of `docs/TO_A_WORKING_BUILD.md`, in the order that wastes least.
       in. Open `SECA0009_pl01_ref_HD_v01.mp4` beside Ben's own Resolve playback of the same frame:
       the brightness and colour should match. The tool applies the CDL in ACEScg, unclamped, as
       the AMF states; CI proves the maths, only Ben's screen says it is what Resolve does.
+- [ ] **The Fix-it report by clip name (2026-10-12, 0.5.39).** Open turnover134's Fix-it report in
+      Safari: each clip line starts with its timeline name in code type, then its shot and
+      `at <timecode> on the timeline`, and a message shared by several clips appears once above
+      them. Jump Resolve's playhead to one of the timecodes: that clip is there.
 - [ ] **The LDRI (2026-10-08, 0.5.37).** Once Ben sends a turnover with an LDRI (`Shot Type`
       `LDRI`, a JPG or PNG, its pre-render `<image> Render 1.mov` on the timeline), scan and run it.
       Its stringout event plays the pre-render exactly as Ben's Resolve timeline shows it, with no

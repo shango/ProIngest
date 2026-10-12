@@ -72,6 +72,37 @@ class TestTheReport:
         assert [clip.who for clip in item.clips] == ["MELT0001 plate", "MELT0002 plate", "MELT0003 plate"]
         assert fixit._status(report) == "Every clip held back"
 
+    def test_an_unknown_colour_space_from_the_csv_is_reported_by_the_csv(self, tmp_path: Path) -> None:
+        """INCA6010 (2026-10-12): no AMF, and the CSV's Input Color Space is 'Rec.709 (Scene)',
+        which the config lacks. It is the clip's input colour space, not its grade, and the
+        CSV said it, not an AMF."""
+        folder = turnover(tmp_path, shots=2)
+        rows = [("MELT0001_pl01", "MELT0001", "pl01"), ("MELT0002_pl01", "MELT0002", "pl01")]
+        fixtures.make_meta_csv(folder / "metadata.csv", rows, input_color_space="Rec.709 (Scene)")
+        for path in folder.glob("*.amf"):
+            path.unlink()
+        batch = scanned(folder)
+        item = titled(only(batch), fixit.ADVICE["QC-047"].title)
+        assert [clip.name for clip in item.clips] == ["MELT0001_pl01", "MELT0002_pl01"]
+        assert all(clip.named_by.endswith("Input Color Space column") for clip in item.clips)
+        page = fixit.render(batch, DAY)
+        assert page.count("Rec.709 (Scene)") == 1, "the message once, every clip under it"
+        assert "<code>MELT0001_pl01</code> - MELT0001 plate, at 01:00:00:00 on the timeline" in page
+        assert "<code>MELT0002_pl01</code> - MELT0002 plate, at 01:00:00:04 on the timeline" in page
+
+    def test_clips_are_grouped_under_each_detail_they_share(self) -> None:
+        clips = [
+            fixit.Clip("A plate", "a.mov", "said once"),
+            fixit.Clip("B plate", "b.mov", "said apart"),
+            fixit.Clip("C plate", "c.mov", "said once"),
+            fixit.Clip(detail="a turnover's own message"),
+        ]
+        assert [(detail, [clip.name for clip in group]) for detail, group in fixit.clip_groups(clips)] == [
+            ("said once", ["a.mov", "c.mov"]),
+            ("said apart", ["b.mov"]),
+            ("", [""]),
+        ]
+
     def test_a_clip_whose_shot_did_not_read_is_named_by_the_metadata(self) -> None:
         said = ShotRow(turnover_id="t1", clip_name="x.exr", csv_shot="SECA0009", csv_shot_type="HDRI")
         blank = ShotRow(turnover_id="t1", clip_name="y.exr", csv_shot_type="HDRI")

@@ -8,7 +8,7 @@ commit.
 
 ## 1. Resume here
 
-**State at 2026-10-12, version 0.5.38 on branch `ldri`, PR #20 open** (0.5.38: an HDRI's or LDRI's number is its take; 0.5.37: the LDRI; 0.5.36 and before merged to `main` with PR #19 as `a85cd53`; 0.5.36: the stringout from 26 minutes to 3 on turnover135; 0.5.35: the stringout's time left on its line; 0.5.34: the HDRI pre-render on the timeline; 0.5.33: the QC overhaul, nothing stops a batch or a turnover; 0.5.32: style frames on the stringout, the stringout line in the shot list; 0.5.31: every Fix-it line names its shot; 0.5.30: the take on the burn-in; 0.5.29: reference clips play in the stringout; 0.5.28: everything in the stringout graded; 0.5.27: the stringout from the EXRs; 0.5.26: the HDRI pre-render and delivery, QC-084, Accept As Is runs what it can; 0.5.25, merged to `main` with PR #18: `User_Generated` and `User_Uploads` at the delivery root; 0.5.24: the Fix-it
+**State at 2026-10-12, version 0.5.39 on branch `ldri`, PR #20 open** (0.5.39: the Fix-it report by timeline clip name, each message once; 0.5.38: an HDRI's or LDRI's number is its take; 0.5.37: the LDRI; 0.5.36 and before merged to `main` with PR #19 as `a85cd53`; 0.5.36: the stringout from 26 minutes to 3 on turnover135; 0.5.35: the stringout's time left on its line; 0.5.34: the HDRI pre-render on the timeline; 0.5.33: the QC overhaul, nothing stops a batch or a turnover; 0.5.32: style frames on the stringout, the stringout line in the shot list; 0.5.31: every Fix-it line names its shot; 0.5.30: the take on the burn-in; 0.5.29: reference clips play in the stringout; 0.5.28: everything in the stringout graded; 0.5.27: the stringout from the EXRs; 0.5.26: the HDRI pre-render and delivery, QC-084, Accept As Is runs what it can; 0.5.25, merged to `main` with PR #18: `User_Generated` and `User_Uploads` at the delivery root; 0.5.24: the Fix-it
 report, one error per cause, a lone EXR read as one frame, AMFs falling back to the clip they name) (`HANDOFF.md` is the short version, with the session's open items); 0.5.22 went to `main` earlier (PR #17 merged as `70e1160` at the user's request, after its CI
 run 37276656318 built the 0.5.22 dmg). The 2026-09-23 review is built (chunks A
 to H of `docs/REVIEW_2026-09-23.md`), and so are the fixes that a second official turnover,
@@ -17,6 +17,22 @@ renders; Turnover121, every clip 8 bit 4:2:0, runs again with a QC-020 warning o
 since 2026-09-28 (user). What is left is the Mac: `docs/MAC_SESSION.md`, from "The 0.5.0 build, in
 order" down, and Ben's 4.886 slope. Entries are newest first; anything older than 2026-09-22
 describes the tool before the review and is history.
+
+**2026-10-12, 0.5.39: the Fix-it report names every clip, says each message once (user).**
+From a Fix-it item on INCA6010 (QC-047, `DJI_0293_S005.mov`, 'Rec.709 (Scene)'): "You'll need to
+list, by name, every clip involved. Don't repeat the message though", then "Please use the clip
+name on the timeline. The user needs to refer back to the clips by name to fix the issues."
+**Built**: each clip line leads with the clip's timeline name (the EDL's `FROM CLIP NAME`, which
+the scan pairs with the CSV's `File Name`, so the two are one name), then its shot and its record
+timecode: `A001_C003.mov - SECA0009 clean plate, at 01:00:07:21 on the timeline`
+(`fixit.Clip.at`). An item's clips are grouped under each message they share, said once above
+them (`fixit.clip_groups`). **Found and fixed on the way**: that QC-047 came from the CSV's `Input
+Color Space` (the clip had no AMF), yet the item was titled for the AMF and said "Reported by the
+clip's AMF"; it is now "A clip's input colour space is one the tool does not know", explains it
+is the colour space Resolve reads the footage as and not its grade, and is reported by the CSV's
+Input Color Space column. 'Rec.709 (Scene)' (Resolve's name) is not a colour space in the pinned
+OCIO config, so the clip is held; whether to map it is open (not asked yet). **Verified**:
+`test_fixit.py` (the CSV case, the grouping); turnover134's report read through.
 
 **2026-10-12, 0.5.38: the number in an HDRI's or LDRI's name is its take (user).**
 "SECA0009_pl01_LDRI_01_v01.jpg - in this name, _01_ is the take number." Asked, and answered: the

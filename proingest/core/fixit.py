@@ -104,9 +104,11 @@ ADVICE: dict[str, Advice] = {
     ),
     "QC-047": Advice(
         "resolve",
-        "A clip's colour file (AMF) names a camera colour space the tool does not know.",
-        "Please check the clip's input colour space in Resolve. If it is right, let the editor know "
-        "which camera this is.",
+        "A clip's input colour space is one the tool does not know.",
+        "This is the colour space Resolve reads the camera footage as, not its grade. It comes from "
+        "the clip's colour file (AMF), or from the metadata's Input Color Space when the clip has no "
+        "AMF. Please check the clip's input colour space in Resolve. If it is right, let the editor "
+        "know which camera this is.",
         "message",
     ),
     "QC-065": Advice(
@@ -301,16 +303,23 @@ KIND_WORDS = {
 
 
 class Clip(NamedTuple):
-    """One line under an item: who it is, the file, and what is particular to it."""
+    """One line under an item: the clip's name, its shot, where it is on the timeline, and
+    what is particular to it."""
 
     who: str = ""
     name: str = ""
+    """The clip's name as the timeline has it. The EDL's `FROM CLIP NAME` is paired with the
+    CSV's `File Name` (`clf.ColorSession.candidates`), so the two are one name."""
+
     detail: str = ""
     looked_for: str = ""
     """The full path of the file the tool looked for and did not find, or found wrong."""
 
     named_by: str = ""
     """Which of Ben's files names it or says what is wrong: the EDL, the CSV, an AMF."""
+
+    at: str = ""
+    """The record timecode of the clip's event, so it can be found on the timeline."""
 
 
 @dataclass
@@ -422,6 +431,7 @@ def _clip(row: ShotRow, result: QCResult, turnover: Turnover, rate: int) -> Clip
         _detail(row, result),
         _looked_for(row, result, turnover),
         _named_by(row, result, turnover, rate),
+        frames.frames_to_timecode(row.record_in, rate) if row.record_out > row.record_in else "",
     )
 
 
@@ -471,6 +481,8 @@ def _named_by(row: ShotRow, result: QCResult, turnover: Turnover, rate: int) -> 
         return f"{edl} and {csv}"
     if rule == "QC-046":
         return f"no AMF, and no Input Color Space in {csv}"
+    if rule == "QC-047" and row.grade is None and row.source_encoding_origin == "CSV":
+        return f"{csv}, Input Color Space column"
     if rule in ("QC-047", "QC-082"):
         return amf
     if rule == "QC-075":
@@ -598,8 +610,7 @@ _TAGS: dict[Where, str] = {
 
 def _item_html(item: Item) -> str:
     advice = item.advice
-    clips = "".join(f"<li>{_clip_html(clip)}</li>" for clip in item.clips)
-    listed = f'<ul class="clips">{clips}</ul>' if clips else ""
+    listed = "".join(_group_html(detail, clips) for detail, clips in clip_groups(item.clips))
     effect = (
         '<p class="blocks">Stops these clips from being delivered.</p>'
         if item.blocks
@@ -611,16 +622,31 @@ def _item_html(item: Item) -> str:
     )
 
 
+def clip_groups(clips: list[Clip]) -> list[tuple[str, list[Clip]]]:
+    """The item's clips under each detail they share, in the order first seen (user,
+    2026-10-12: "list, by name, every clip involved. Don't repeat the message though").
+    A line that names no clip, a turnover's own message, is a group of its own."""
+    groups: dict[str, list[Clip]] = {}
+    for clip in clips:
+        groups.setdefault(clip.detail if clip.who or clip.name else "", []).append(clip)
+    return list(groups.items())
+
+
+def _group_html(detail: str, clips: list[Clip]) -> str:
+    """The detail once, then every clip it is about."""
+    said = f'<p class="detail">{_e(detail)}</p>' if detail else ""
+    return said + '<ul class="clips">' + "".join(f"<li>{_clip_html(clip)}</li>" for clip in clips) + "</ul>"
+
+
 def _clip_html(clip: Clip) -> str:
-    """Who in prose, the file in code type, the detail after it."""
-    parts = []
-    if clip.who:
-        parts.append(_e(clip.who) + (":" if clip.name else ""))
+    """The clip by its timeline name first, which is how Ben finds it (user, 2026-10-12: "use
+    the clip name on the timeline"), then its shot and where it is cut. A line naming no clip
+    is its detail."""
+    where = ", ".join(part for part in (clip.who, f"at {clip.at} on the timeline" if clip.at else "") if part)
     if clip.name:
-        parts.append(f"<code>{_e(clip.name)}</code>")
-    if clip.detail:
-        parts.append(f"({_e(clip.detail)})" if parts else _e(clip.detail))
-    line = " ".join(parts)
+        line = f"<code>{_e(clip.name)}</code>" + (f" - {_e(where)}" if where else "")
+    else:
+        line = _e(where or clip.detail)
     if clip.looked_for:
         line += f'<span class="source">Looking for <code>{_e(clip.looked_for)}</code></span>'
     if clip.named_by:
@@ -661,6 +687,7 @@ li.note{border-left-color:var(--note)}
 .what{font-weight:600}
 li p{margin:0}
 ul.clips{margin:0;padding-left:20px;font-size:15px}
+p.detail{margin:6px 0 2px;font-size:15px}
 .source{display:block;color:var(--muted);font-size:14px}
 .blocks{font-size:13px;font-weight:600;color:var(--resolve)}
 .ok{font-size:13px;color:var(--muted)}
