@@ -55,6 +55,9 @@ chunk 7 of `docs/TO_A_WORKING_BUILD.md`, in the order that wastes least.
       in. Open `SECA0009_pl01_ref_HD_v01.mp4` beside Ben's own Resolve playback of the same frame:
       the brightness and colour should match. The tool applies the CDL in ACEScg, unclamped, as
       the AMF states; CI proves the maths, only Ben's screen says it is what Resolve does.
+- [ ] **No unverified Fix-it claims (2026-10-12, 0.5.40).** Rescan the INCA turnover with
+      `DJI_0293_S005.mov`: its line says which file gave 'Rec.709 (Scene)' (the CSV's Input Color
+      Space column, naming any AMF it passed over), and never "Reported by the clip's AMF".
 - [ ] **The Fix-it report by clip name (2026-10-12, 0.5.39).** Open turnover134's Fix-it report in
       Safari: each clip line starts with its timeline name in code type, then its shot and
       `at <timecode> on the timeline`, and a message shared by several clips appears once above

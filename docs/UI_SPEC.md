@@ -496,8 +496,12 @@ AMF, CLF or clip into the folder and re-scans.
 
 ## 15b. Re-scan, on a shot or a turnover (D11, D12)
 
-**One right-click entry, Re-scan, on a shot and on a turnover heading** (user, 2026-09-25). It
-replaced Reset and Re-run. The editor swaps a file in the folder with the batch still open, then
+**Re-scan is a right-click entry on a shot and on a turnover heading** (user, 2026-09-25). It
+replaced Reset and Re-run. A shot's menu also has **Skip Shot**, the same as Ctrl+K, which reads
+**Unskip Shot** on a shot already skipped (user, 2026-10-12). A turnover heading's menu has **Skip
+Turnover**: every shot in it is skipped with one reason, asked once, and a shot skipped before
+keeps its own. Once every shot in it is skipped it reads **Unskip Turnover** and puts them all
+back. The editor swaps a file in the folder with the batch still open, then
 Re-scans: a shot for a replaced clip, the heading for a replaced EDL or CSV.
 
 - It reads the turnover again, keeping the editor's trims, skips and notes (D8), so every rule

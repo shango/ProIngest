@@ -7,7 +7,7 @@ Then read `docs/WORKFLOW.md`, and `CLAUDE.md` for the ground rules.
 
 ## State
 
-- **Version 0.5.39 on branch `ldri`, PR #20 (2026-10-12): the Fix-it report by clip name; the LDRI, an HDRI whose file is a JPG or
+- **Version 0.5.40 on branch `ldri`, PR #20 (2026-10-12): Fix-it lines say only what the tool verified, by clip name; Skip Shot and Skip Turnover on the right-click menu; the LDRI, an HDRI whose file is a JPG or
   PNG, and an HDRI's or LDRI's number is its CSV Take** (`PROGRESS.md`, OQ-85, QC-087). Merge only when the user asks. `main` has 0.5.36 (PR #19, `a85cd53`).
 - **0.5.36's CI run** is given in the last commit on the branch; check it with
   `gh run list -R shango/ProIngest --branch hdri/prerender -L 3`, and if green hand over

@@ -91,7 +91,7 @@ def check_encoding(name: str) -> None:
     inside a render.
     """
     if config().getColorSpace(name) is None:
-        raise ColorError(f"{name!r} is not a colour space in {BUILTIN_CONFIG}")
+        raise ColorError(f"{name!r} is not a colour space the tool knows")
 
 
 def resolve_encoding(name: str) -> str:
@@ -104,7 +104,7 @@ def resolve_encoding(name: str) -> str:
     """
     known = config().getColorSpace(" ".join(name.split()))
     if known is None:
-        raise ColorError(f"{name!r} is not a colour space in {BUILTIN_CONFIG}")
+        raise ColorError(f"{name!r} is not a colour space the tool knows")
     return str(known.getName())
 
 
@@ -132,7 +132,7 @@ def to_plate() -> ocio.ColorSpaceTransform:
 def look_transform(name: str) -> ocio.LookTransform:
     """A look the config defines, applied in ACES2065-1 and staying there."""
     if config().getLook(name) is None:
-        raise ColorError(f"{name!r} is not a look in {BUILTIN_CONFIG}")
+        raise ColorError(f"{name!r} is not a look the tool knows")
     return ocio.LookTransform(src=ACES, dst=ACES, looks=name)
 
 

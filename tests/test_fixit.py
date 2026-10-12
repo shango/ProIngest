@@ -6,8 +6,10 @@ import re
 from datetime import date
 from pathlib import Path
 
+import pytest
+
 from proingest.core import fixit, models, scan
-from proingest.core.models import Batch, QCResult, ShotRow
+from proingest.core.models import Batch, QCResult, ShotRow, Turnover
 from tests.fixtures import media as fixtures
 
 FOLDER = "turnover134_09_29_26_sethcarroll"
@@ -89,6 +91,75 @@ class TestTheReport:
         assert page.count("Rec.709 (Scene)") == 1, "the message once, every clip under it"
         assert "<code>MELT0001_pl01</code> - MELT0001 plate, at 01:00:00:00 on the timeline" in page
         assert "<code>MELT0002_pl01</code> - MELT0002 plate, at 01:00:00:04 on the timeline" in page
+
+    def test_the_csv_s_colour_space_says_so_and_names_no_amf(self, tmp_path: Path) -> None:
+        folder = turnover(tmp_path, shots=1)
+        fixtures.make_meta_csv(
+            folder / "metadata.csv",
+            [("MELT0001_pl01", "MELT0001", "pl01")],
+            input_color_space="Rec.709 (Scene)",
+        )
+        for path in folder.glob("*.amf"):
+            path.unlink()
+        batch = scanned(folder)
+        (clip,) = titled(only(batch), fixit.ADVICE["QC-047"].title).clips
+        assert clip.detail.startswith(
+            "No AMF was matched to this clip, so the metadata CSV's Input Color Space"
+        )
+        assert "'Rec.709 (Scene)'" in clip.detail
+        assert "the clip's AMF" not in fixit.render(batch, DAY)
+
+    def test_an_amf_passed_over_is_named_with_the_csv_s_colour_space(self) -> None:
+        """An AMF at the clip's index that names another clip is not used (QC-075, info)."""
+        passed = QCResult(
+            "QC-075", "info", "row", "x_3.amf grades video clip 4 of the EDL (event 004) but names B.mov"
+        )
+        row = ShotRow(turnover_id="t1", clip_name="A.mov", source_encoding="Rec.709 (Scene)", qc=[passed])
+        row.source_encoding_origin = "CSV"
+        said = fixit._colour_space_detail(row, QCResult("QC-047", "error", "row", "source encoding"))
+        assert said.startswith(
+            "x_3.amf grades video clip 4 of the EDL (event 004) but names B.mov. So the metadata"
+        )
+
+    def test_a_colour_space_from_nowhere_the_tool_can_show_asks_for_a_look(self) -> None:
+        """User, 2026-10-12: "This clip is appearing as a rec709, please investigate why"."""
+        row = ShotRow(turnover_id="t1", clip_name="A.mov", source_encoding="Rec.709 (Scene)")
+        result = QCResult("QC-047", "error", "row", "source encoding")
+        said = fixit._colour_space_detail(row, result)
+        assert said == "This clip is appearing as 'Rec.709 (Scene)', please investigate why."
+        assert fixit._named_by(row, result, Turnover(turnover_id="t1", folder=Path("/t")), 24) == ""
+
+    def test_an_amf_with_no_input_transform_is_not_called_missing(self, tmp_path: Path) -> None:
+        """QC-046 fires for an AMF naming no input transform too: the item must not say "no AMF"."""
+        folder = turnover(tmp_path, shots=1)
+        (amf,) = folder.glob("*.amf")
+        text = amf.read_text()
+        start, end = text.index("<aces:inputTransform"), text.index("</aces:inputTransform>")
+        amf.write_text(text[:start] + text[end + len("</aces:inputTransform>") :])
+        item = titled(only(scanned(folder)), fixit.ADVICE["QC-046"].title)
+        assert "no AMF" not in item.advice.explain and "It has no AMF" not in item.advice.explain
+        assert item.clips[0].detail == f"{amf.name} names no input transform"
+
+    @pytest.mark.parametrize(
+        "rule",
+        [
+            "QC-011",
+            "QC-014",
+            "QC-027",
+            "QC-028",
+            "QC-041",
+            "QC-042",
+            "QC-043",
+            "QC-046",
+            "QC-067",
+            "QC-073",
+            "QC-075",
+        ],
+    )
+    def test_a_rule_whose_message_names_things_shows_it(self, rule: str) -> None:
+        """User, 2026-10-12: "This fixit tool is useless if it's not very specific". Each of these
+        messages names events, files or the reason, which the heading alone does not."""
+        assert fixit.ADVICE[rule].detail == "message"
 
     def test_clips_are_grouped_under_each_detail_they_share(self) -> None:
         clips = [

@@ -8,7 +8,7 @@ commit.
 
 ## 1. Resume here
 
-**State at 2026-10-12, version 0.5.39 on branch `ldri`, PR #20 open** (0.5.39: the Fix-it report by timeline clip name, each message once; 0.5.38: an HDRI's or LDRI's number is its take; 0.5.37: the LDRI; 0.5.36 and before merged to `main` with PR #19 as `a85cd53`; 0.5.36: the stringout from 26 minutes to 3 on turnover135; 0.5.35: the stringout's time left on its line; 0.5.34: the HDRI pre-render on the timeline; 0.5.33: the QC overhaul, nothing stops a batch or a turnover; 0.5.32: style frames on the stringout, the stringout line in the shot list; 0.5.31: every Fix-it line names its shot; 0.5.30: the take on the burn-in; 0.5.29: reference clips play in the stringout; 0.5.28: everything in the stringout graded; 0.5.27: the stringout from the EXRs; 0.5.26: the HDRI pre-render and delivery, QC-084, Accept As Is runs what it can; 0.5.25, merged to `main` with PR #18: `User_Generated` and `User_Uploads` at the delivery root; 0.5.24: the Fix-it
+**State at 2026-10-12, version 0.5.40 on branch `ldri`, PR #20 open** (0.5.40: no Fix-it line claims what the tool did not verify; 0.5.39: the Fix-it report by timeline clip name, each message once; 0.5.38: an HDRI's or LDRI's number is its take; 0.5.37: the LDRI; 0.5.36 and before merged to `main` with PR #19 as `a85cd53`; 0.5.36: the stringout from 26 minutes to 3 on turnover135; 0.5.35: the stringout's time left on its line; 0.5.34: the HDRI pre-render on the timeline; 0.5.33: the QC overhaul, nothing stops a batch or a turnover; 0.5.32: style frames on the stringout, the stringout line in the shot list; 0.5.31: every Fix-it line names its shot; 0.5.30: the take on the burn-in; 0.5.29: reference clips play in the stringout; 0.5.28: everything in the stringout graded; 0.5.27: the stringout from the EXRs; 0.5.26: the HDRI pre-render and delivery, QC-084, Accept As Is runs what it can; 0.5.25, merged to `main` with PR #18: `User_Generated` and `User_Uploads` at the delivery root; 0.5.24: the Fix-it
 report, one error per cause, a lone EXR read as one frame, AMFs falling back to the clip they name) (`HANDOFF.md` is the short version, with the session's open items); 0.5.22 went to `main` earlier (PR #17 merged as `70e1160` at the user's request, after its CI
 run 37276656318 built the 0.5.22 dmg). The 2026-09-23 review is built (chunks A
 to H of `docs/REVIEW_2026-09-23.md`), and so are the fixes that a second official turnover,
@@ -17,6 +17,36 @@ renders; Turnover121, every clip 8 bit 4:2:0, runs again with a QC-020 warning o
 since 2026-09-28 (user). What is left is the Mac: `docs/MAC_SESSION.md`, from "The 0.5.0 build, in
 order" down, and Ben's 4.886 slope. Entries are newest first; anything older than 2026-09-22
 describes the tool before the review and is history.
+
+**2026-10-12, 0.5.40: no Fix-it line claims what the tool did not verify (user).** The old
+QC-047 item said an AMF named 'Rec.709 (Scene)' when no AMF was used, and the user read it that way:
+"This fixit tool is useless if it's not very specific. If there are other generalities this is an
+issue. If an issue is not coming from somewhere the tool can verify, I'd rather it say, "This clip
+is appearing as a rec709, please investigate why." **Audited every `fixit.ADVICE` entry** and
+fixed: QC-047's line now says per clip which file gave the colour space (the AMF, named; or "No
+AMF was matched to this clip, so the metadata CSV's Input Color Space column was used. It says
+...", naming the passed-over AMF when QC-075's info says one named another clip), and "This clip
+is appearing as '...', please investigate why" when neither can be shown
+(`fixit._colour_space_detail`); `_named_by` never says "the clip's AMF" without an AMF. QC-046
+said "It has no AMF" though it also fires for an AMF naming no input transform: heading "Nothing
+says what colour space a clip was recorded in", per-clip message. QC-075's heading ("Two colour
+files claim the same clip") was wrong for its turnover warnings (an AMF that will not parse, or
+has no index): now "A colour file (AMF) cannot be used", per-line message. QC-042 said "missing or
+cannot be read" but is only raised for unreadable. QC-076 and QC-067 headings no longer guess
+between causes; their lines say which. QC-011, 014, 027, 028, 041, 042, 043, 046, 067, 073 and 075
+showed the heading alone and dropped the message's events, files and reasons; each now shows it.
+QC-083 keeps "probably rendered into another folder", which is the user's own word for the usual
+cause (2026-10-07). **Verified**: `test_fixit.py` (36), turnover134 and 135 reports read through.
+Then, same day (user): **no line names the ACES config** ("we know what ACES presets we're
+working with already"): QC-047, QC-077, QC-079 and `color.ColorError` say "not one the tool
+knows" with the value, and the Fix-it colour-space lines lose their second sentence ("It's not
+informative. It's already the obvious"). **QC-082's item is "A clip is missing a CLF file.
+Defaulting to the CDL in its AMF for colour."**, the user's wording; the log message keeps the
+slope. **Skip from the right-click menu**: a shot's menu has Skip Shot (Unskip Shot once
+skipped), the same as Ctrl+K; a turnover heading's has Skip Turnover, every shot with one reason
+asked once, a shot skipped before keeping its own, and Unskip Turnover once all are skipped
+(`docs/UI_SPEC.md` 15b). Skipping several selected shots at once is not built. **Verified**: full
+suite before the skip work (1998 passed), `test_shot_list.py` and `test_ui_shell.py` after it.
 
 **2026-10-12, 0.5.39: the Fix-it report names every clip, says each message once (user).**
 From a Fix-it item on INCA6010 (QC-047, `DJI_0293_S005.mov`, 'Rec.709 (Scene)'): "You'll need to

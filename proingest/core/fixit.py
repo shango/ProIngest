@@ -82,6 +82,7 @@ ADVICE: dict[str, Advice] = {
         "Two clips would be delivered under the same name.",
         "They have the same Shot and Shot Type. Please give one of them the next number (pl02 instead "
         "of pl01, for example).",
+        "message",
     ),
     "QC-033": Advice(
         "look",
@@ -97,18 +98,18 @@ ADVICE: dict[str, Advice] = {
     ),
     "QC-046": Advice(
         "resolve",
-        "A clip has no colour information.",
-        "It has no AMF, and the metadata gives no Input Color Space, so the tool cannot tell what colour "
-        "space the camera recorded in and holds the clip back. Please set its input colour space in "
-        "Resolve and export the metadata (or its AMF) again.",
+        "Nothing says what colour space a clip was recorded in.",
+        "Without it the tool cannot convert the clip, so it holds the clip back. Each clip below says "
+        "what the tool found. Please set its input colour space in Resolve and export its AMF (or the "
+        "metadata) again.",
+        "message",
     ),
     "QC-047": Advice(
         "resolve",
         "A clip's input colour space is one the tool does not know.",
-        "This is the colour space Resolve reads the camera footage as, not its grade. It comes from "
-        "the clip's colour file (AMF), or from the metadata's Input Color Space when the clip has no "
-        "AMF. Please check the clip's input colour space in Resolve. If it is right, let the editor "
-        "know which camera this is.",
+        "This is the colour space Resolve reads the camera footage as, not its grade. Each clip below "
+        "says which of the exported files gave it. Please check the clip's input colour space in "
+        "Resolve. If it is right, let the editor know which camera this is.",
         "message",
     ),
     "QC-065": Advice(
@@ -126,8 +127,9 @@ ADVICE: dict[str, Advice] = {
     "QC-067": Advice(
         "resolve",
         "The tool cannot tell which cut belongs to which clip.",
-        "Either this clip is used twice in overlapping places, or two clips share the same timecode. "
-        "Please make sure each clip is used once on the timeline.",
+        "Each clip below names the EDL events involved. Please make sure each clip is used once on the "
+        "timeline, and that no two clips share the same timecode.",
+        "message",
     ),
     "QC-071": Advice(
         "resolve",
@@ -138,18 +140,21 @@ ADVICE: dict[str, Advice] = {
         "look",
         "A clip is sped up, slowed down or reversed.",
         "It was delivered at normal speed, as VFX plates are. Fine if intended.",
+        "message",
     ),
     "QC-075": Advice(
         "resolve",
-        "Two colour files (AMF) claim the same clip.",
-        "The tool cannot tell which grade is the right one, so it holds the clip back. Please export the "
-        "AMFs again from the timeline, one per clip.",
+        "A colour file (AMF) cannot be used.",
+        "Each line below names the AMF and why. Where two AMFs claim one clip the tool cannot tell which "
+        "grade is right, so it holds that clip back. Please export the AMFs again from the timeline, one "
+        "per clip.",
+        "message",
     ),
     "QC-076": Advice(
         "resolve",
-        "A grade file (CLF) is missing or was changed after export.",
-        "The clip's AMF points at a CLF that is not in the folder, or no longer matches. Please export "
-        "the clip's AMF and CLFs again, together.",
+        "A grade file (CLF) that an AMF names cannot be used.",
+        "Each clip below names the AMF, the CLF, and whether the CLF is missing or was changed after "
+        "export. Please export the clip's AMF and CLFs again, together.",
         "message",
     ),
     "QC-077": Advice(
@@ -168,9 +173,8 @@ ADVICE: dict[str, Advice] = {
     ),
     "QC-082": Advice(
         "resolve",
-        "The grade came without its CLF file.",
-        "The tool uses the simpler colour correction (a CDL) stored in the AMF instead, so the shot is "
-        "still graded. Please export the CLFs with the AMFs next time.",
+        "A clip is missing a CLF file.",
+        "Defaulting to the CDL in its AMF for colour.",
     ),
     "QC-012": Advice(
         "folder",
@@ -187,7 +191,9 @@ ADVICE: dict[str, Advice] = {
     "QC-014": Advice(
         "folder",
         "A file in the folder cannot be opened.",
-        "It may be damaged or only partly copied. Please copy it into the folder again.",
+        "Each file below gives the reason the tool got. A damaged or partly copied file is the usual "
+        "cause; please copy it into the folder again.",
+        "message",
     ),
     "QC-015": Advice(
         "folder",
@@ -238,22 +244,26 @@ ADVICE: dict[str, Advice] = {
         "look",
         "A clip has drop-frame timecode.",
         "The project is 24 fps non-drop. It was delivered anyway; please check its timecode.",
+        "message",
     ),
     "QC-041": Advice(
         "folder",
         "More than one sound file matches a plate.",
         "Please keep one sound file per plate in the folder.",
+        "message",
     ),
     "QC-042": Advice(
         "look",
-        "A plate's sound file is missing or cannot be read.",
+        "A plate's sound file cannot be read.",
         "The plate was delivered without sound. Please copy the sound file into the folder again.",
+        "message",
     ),
     "QC-028": Advice(
         "look",
         "A clip has no timecode.",
         "The tool can still deliver it, but the cut is placed less reliably. Fine if the camera did not "
         "record any.",
+        "message",
     ),
     "QC-030": Advice(
         "look",
@@ -271,6 +281,7 @@ ADVICE: dict[str, Advice] = {
         "look",
         "A plate's sound is a different length from the cut.",
         "Please check the sound file is the right one for this plate.",
+        "message",
     ),
     "QC-064": Advice(
         "look",
@@ -483,7 +494,7 @@ def _named_by(row: ShotRow, result: QCResult, turnover: Turnover, rate: int) -> 
         return f"no AMF, and no Input Color Space in {csv}"
     if rule == "QC-047" and row.grade is None and row.source_encoding_origin == "CSV":
         return f"{csv}, Input Color Space column"
-    if rule in ("QC-047", "QC-082"):
+    if rule in ("QC-047", "QC-082") and row.grade is not None:
         return amf
     if rule == "QC-075":
         return f"the AMFs in the turnover folder, for {edl}{at}"
@@ -505,12 +516,31 @@ def _who(row: ShotRow) -> str:
 
 
 def _detail(row: ShotRow, result: QCResult) -> str:
+    if result.rule_id == "QC-047":
+        return _colour_space_detail(row, result)
     kind = ADVICE[result.rule_id].detail
     if kind == "message":
         return _plain(result.message)
     if kind == "handles":
         return _handles_detail(result.message)
     return ""
+
+
+def _colour_space_detail(row: ShotRow, result: QCResult) -> str:
+    """Where the unknown input colour space came from, as far as the tool can show it (user,
+    2026-10-12: "If an issue is not coming from somewhere the tool can verify, I'd rather it
+    say, This clip is appearing as a rec709, please investigate why")."""
+    space = row.source_encoding
+    if row.grade is not None:
+        return _plain(result.message)  # the AMF's own input transform, which `_named_by` names
+    if space is not None and row.source_encoding_origin == "CSV":
+        # An AMF at the clip's timeline index that names another clip is passed over (QC-075, info).
+        passed = next((r.message for r in row.qc if r.rule_id == "QC-075"), None)
+        why = f"{passed}. So the" if passed else "No AMF was matched to this clip, so the"
+        return f"{why} metadata CSV's Input Color Space column was used. It says {space!r}."
+    if space is not None:
+        return f"This clip is appearing as {space!r}, please investigate why."
+    return _plain(result.message)
 
 
 def _plain(message: str) -> str:

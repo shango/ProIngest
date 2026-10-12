@@ -720,7 +720,7 @@ def check_source_encoding(row: ShotRow) -> list[QCResult]:
                 "QC-047",
                 "error" if blocking else "warning",
                 "row",
-                f"the AMF's input transform {grade.input_transform} is not one {color.BUILTIN_CONFIG} has",
+                f"the AMF's input transform {grade.input_transform} is not one the tool knows",
             )
         ]
     said = (

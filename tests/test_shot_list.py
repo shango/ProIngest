@@ -11,7 +11,7 @@ from collections.abc import Iterator
 
 import pytest
 from PySide6.QtCore import QEvent, QModelIndex, QRect, Qt
-from PySide6.QtGui import QImage, QKeyEvent, QPainter, QPixmap
+from PySide6.QtGui import QAction, QImage, QKeyEvent, QPainter, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
@@ -19,7 +19,16 @@ from PySide6.QtWidgets import (
     QStyleOptionViewItem,
 )
 
-from proingest.ui.shot_list import BAR_HEIGHT, ERROR_COLOR, ShotListView, TwoLineDelegate
+from proingest.ui.shot_list import (
+    BAR_HEIGHT,
+    ERROR_COLOR,
+    SKIP_TEXT,
+    SKIP_TURNOVER_TEXT,
+    UNSKIP_TEXT,
+    UNSKIP_TURNOVER_TEXT,
+    ShotListView,
+    TwoLineDelegate,
+)
 from proingest.ui.shot_model import (
     COLUMNS,
     DOT_COLORS,
@@ -380,6 +389,76 @@ class TestSkippingFromTheList:
         view.setCurrentIndex(view.proxy.index(0, 0))
         view.toggle_skip()
         assert not any(shot.skipped for shot in view.shot_model.batch.rows)
+
+    def skip_entry(self, view: ShotListView) -> QAction:
+        menu = view.menu_for(view.proxy.index(0, SHOT, view.proxy.index(0, 0)))
+        assert menu is not None
+        return next(a for a in menu.actions() if a.text() in (SKIP_TEXT, UNSKIP_TEXT))
+
+    def test_the_right_click_menu_skips_and_unskips_the_shot_under_it(self, view: ShotListView) -> None:
+        """User, 2026-10-12: "Please add a right click exclude for list items"."""
+        view.ask_skip_reason = lambda row: "not in the cut"  # type: ignore[method-assign]
+        entry = self.skip_entry(view)
+        assert entry.text() == SKIP_TEXT
+        entry.trigger()
+        shot = view.shot_model.batch.rows[0]
+        assert shot.skipped and shot.skip_reason == "not in the cut"
+        entry = self.skip_entry(view)
+        assert entry.text() == UNSKIP_TEXT
+        entry.trigger()
+        assert not shot.skipped
+
+    def test_the_right_click_skip_is_greyed_while_locked(self, view: ShotListView) -> None:
+        view.shot_model.set_locked(True)
+        assert not self.skip_entry(view).isEnabled()
+
+
+class TestSkippingATurnover:
+    """User, 2026-10-12: "turnover headings should have a right click to skip entire turnover"."""
+
+    def entry(self, view: ShotListView) -> QAction:
+        menu = view.menu_for(view.proxy.index(0, 0))
+        assert menu is not None
+        return next(a for a in menu.actions() if a.text() in (SKIP_TURNOVER_TEXT, UNSKIP_TURNOVER_TEXT))
+
+    def test_it_skips_every_shot_in_the_turnover_and_no_other(self, view: ShotListView) -> None:
+        asked: list[object] = []
+
+        def ask(turnover: object) -> str:
+            asked.append(turnover)
+            return "late"
+
+        view.ask_turnover_skip_reason = ask  # type: ignore[method-assign]
+        self.entry(view).trigger()
+        first, second, other = view.shot_model.batch.rows
+        assert len(asked) == 1
+        assert first.skipped and second.skipped and first.skip_reason == second.skip_reason == "late"
+        assert not other.skipped
+
+    def test_a_shot_already_skipped_keeps_its_own_reason(self, view: ShotListView) -> None:
+        first = view.shot_model.batch.rows[0]
+        first.skipped, first.skip_reason = True, "reshoot"
+        view.ask_turnover_skip_reason = lambda turnover: "late"  # type: ignore[method-assign]
+        self.entry(view).trigger()
+        assert first.skip_reason == "reshoot"
+        assert view.shot_model.batch.rows[1].skip_reason == "late"
+
+    def test_escape_skips_nothing(self, view: ShotListView) -> None:
+        view.ask_turnover_skip_reason = lambda turnover: None  # type: ignore[method-assign]
+        self.entry(view).trigger()
+        assert not any(shot.skipped for shot in view.shot_model.batch.rows)
+
+    def test_once_every_shot_is_skipped_it_unskips_them_all(self, view: ShotListView) -> None:
+        view.ask_turnover_skip_reason = lambda turnover: "late"  # type: ignore[method-assign]
+        self.entry(view).trigger()
+        entry = self.entry(view)
+        assert entry.text() == UNSKIP_TURNOVER_TEXT
+        entry.trigger()
+        assert not any(shot.skipped for shot in view.shot_model.batch.rows)
+
+    def test_it_is_greyed_while_locked(self, view: ShotListView) -> None:
+        view.shot_model.set_locked(True)
+        assert not self.entry(view).isEnabled()
 
 
 @pytest.fixture

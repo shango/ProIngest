@@ -1032,7 +1032,7 @@ def _grade_of(found: amf.Amf, folder: Path) -> tuple[Grade, list[QCResult]]:
             name = amf.look_for(look.transform_id)
             if name is None:
                 findings.append(
-                    _ignored(found, f"the look {look.transform_id}, which {color.BUILTIN_CONFIG} lacks")
+                    _ignored(found, f"the look {look.transform_id}, which the tool does not know")
                 )
             else:
                 looks.append(GradeLook("look", name))
@@ -1069,7 +1069,7 @@ def _grade_of(found: amf.Amf, folder: Path) -> tuple[Grade, list[QCResult]]:
                 "warning",
                 "row",
                 f"{found.path.name}: the output transform {found.output_transform or '(none)'} is not one "
-                f"{color.BUILTIN_CONFIG} has; the references use {color.DEFAULT_VIEW[1]}",
+                f"the tool knows; the references use {color.DEFAULT_VIEW[1]}",
             )
         )
     if found.preset.casefold() == amf.DAILIES_PRESET.casefold():
@@ -1095,7 +1095,7 @@ def _cdl_finding(found: amf.Amf, cdl: amf.AmfCdl, looks: list[GradeLook], names_
     working = amf.colour_space_for(cdl.working) if cdl.working else None
     if working is None:
         return _ignored(
-            found, f"a CDL in a working space {color.BUILTIN_CONFIG} lacks ({cdl.working or 'none stated'})"
+            found, f"a CDL in a working space the tool does not know ({cdl.working or 'none stated'})"
         )
     looks.append(GradeLook("cdl", working, (*cdl.slope, *cdl.offset, *cdl.power, cdl.saturation)))
     numbers = " ".join(f"{value:g}" for value in cdl.slope)

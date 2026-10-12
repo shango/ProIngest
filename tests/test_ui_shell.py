@@ -61,7 +61,7 @@ from proingest.ui.run_controller import (
 from proingest.ui.run_strip import LINK_COLOR, RunStrip
 from proingest.ui.runner import RENDERING
 from proingest.ui.settings_dialog import SettingsDialog
-from proingest.ui.shot_list import CANCEL_RERUN_TEXT, RELOCATE_TEXT, RESCAN_TEXT, STRINGOUT_TEXT
+from proingest.ui.shot_list import CANCEL_RERUN_TEXT, RELOCATE_TEXT, RESCAN_TEXT, SKIP_TEXT, STRINGOUT_TEXT
 from proingest.ui.shot_model import IN, NOTES, PROGRESS, SHOT, DisplayMode, RowState
 from tests.fixtures.batches import (
     batch,
@@ -985,13 +985,13 @@ class TestAddingAndScanningTurnovers:
         assert [a.text() for a in menu.actions() if a.text() == RESCAN_TEXT] == [RESCAN_TEXT]
         return next(a for a in menu.actions() if a.text() == RESCAN_TEXT)
 
-    def test_a_shot_s_menu_is_re_scan_alone(self, window: DrivenWindow) -> None:
-        """User, 2026-09-25: one entry replaced Reset and Re-run."""
+    def test_a_shot_s_menu_is_re_scan_and_skip(self, window: DrivenWindow) -> None:
+        """User, 2026-09-25: one entry replaced Reset and Re-run. Skip Shot joined it 2026-10-12."""
         window.set_batch(batch(delivered(row(turnover_id="t1")), turnovers=[Turnover("t1", Path("/s/t1"))]))
         shot = window.shot_list.proxy.index(0, 0, window.shot_list.proxy.index(0, 0))
         menu = window.shot_list.menu_for(shot)
         assert menu is not None
-        assert [a.text() for a in menu.actions()] == [RESCAN_TEXT]
+        assert [a.text() for a in menu.actions()] == [RESCAN_TEXT, SKIP_TEXT]
 
     @pytest.mark.parametrize("status", ["done", "failed"])
     def test_re_scanning_a_shot_puts_it_back_for_the_next_run(
