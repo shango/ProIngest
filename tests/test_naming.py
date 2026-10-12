@@ -325,9 +325,11 @@ class TestDeliveryLayout:
         ("written", "kind"),
         [
             ("HDRI", "HDRI"),
-            ("hdri2", "HDRI"),
+            ("hdri", "HDRI"),
             ("LDRI", "LDRI"),
-            (" ldri3 ", "LDRI"),
+            (" ldri ", "LDRI"),
+            ("HDRI2", None),
+            ("LDRI3", None),
             ("LDRIref", None),
             ("pl01", None),
         ],
@@ -353,6 +355,13 @@ class TestDeliveryLayout:
     )  # fmt: skip
     def test_a_take_above_1_follows_the_burn_in_label(self, take: str, shown: str) -> None:
         assert naming.take_label("SECA0009_pl01", take) == shown
+
+    @pytest.mark.parametrize("kind", [naming.HDRI_KIND, naming.LDRI_KIND])
+    def test_an_hdri_or_ldri_carries_its_take_in_its_name_alone(self, kind: str) -> None:
+        """User, 2026-10-12: `SECA0009_pl01_LDRI_02`, with no word "Take" after it."""
+        identity = naming.ShotIdentity("SECA0009", kind, "02")
+        label = naming.shot_label(identity)
+        assert naming.take_label(label, "2", identity) == f"SECA0009_pl01_{kind}_02"
 
     def test_the_user_folders_sit_at_the_delivery_root(self) -> None:
         assert naming.user_dirs(Path("/d")) == [Path("/d/User_Generated"), Path("/d/User_Uploads")]

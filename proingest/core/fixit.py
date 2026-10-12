@@ -201,6 +201,13 @@ ADVICE: dict[str, Advice] = {
         "another folder. Please render it into the turnover folder and relink the timeline event to it.",
         "message",
     ),
+    "QC-087": Advice(
+        "resolve",
+        "An HDRI or LDRI has no take number.",
+        "Its delivered name carries its Take (SECA0009_pl01_HDRI_01_v01.exr), and the clip's Take is "
+        "blank or not a number, so it was numbered 01. Please fill in the Take in the clip's metadata.",
+        "message",
+    ),
     "QC-086": Advice(
         "folder",
         "HDRI EXR or LDRI File Missing from turnover folder, omitted from delivery.",

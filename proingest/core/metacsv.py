@@ -34,7 +34,7 @@ from __future__ import annotations
 import csv
 import io
 import re
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from proingest.core import media, naming
@@ -252,8 +252,9 @@ def read(path: Path, show_pattern: str = naming.DEFAULT_SHOW_PATTERN) -> MetaCsv
         scene = _value(record, scene_positions)
         if naming.hdri_kind(shot_type) is not None:
             named = naming.parse_shot_code(shot, show_pattern) is not None
-            hdri = _hdri(file_name, shot, shot_type, scene, named)
-            result.rows.append(replace(hdri, take=_value(record, take_positions)))
+            result.rows.append(
+                _hdri(file_name, shot, shot_type, scene, named, _value(record, take_positions))
+            )
             continue
         if _STYLE_FRAME.fullmatch(shot_type.strip()):
             named = naming.parse_shot_code(shot, show_pattern) is not None
@@ -276,10 +277,13 @@ def read(path: Path, show_pattern: str = naming.DEFAULT_SHOW_PATTERN) -> MetaCsv
     return result
 
 
-def _hdri(file_name: str, shot: str, shot_type: str, scene: str, named: bool) -> MetaRow:
+def _hdri(file_name: str, shot: str, shot_type: str, scene: str, named: bool, take: str) -> MetaRow:
     """An HDRI or LDRI row (user, 2026-10-07 and 2026-10-08): its file is delivered as it is,
     with no checks, and the stringout shows the pre-render of its timeline event. One whose
-    `Shot` is no shot code has nowhere to be delivered, and only the stringout shows it."""
+    `Shot` is no shot code has nowhere to be delivered, and only the stringout shows it.
+
+    Its number (`SECA0009_pl01_LDRI_01_v01.jpg`) is the CSV's `Take` (user, 2026-10-12); a
+    blank Take, or one that is not a number, is `01` and QC-087 says so."""
     hdri = naming.hdri_kind(shot_type) or naming.HDRI_KIND
     image = "HDRI EXR" if hdri == naming.HDRI_KIND else "LDRI image"
     what = (
@@ -289,11 +293,24 @@ def _hdri(file_name: str, shot: str, shot_type: str, scene: str, named: bool) ->
         else f"{file_name} is an {hdri}: the tool delivers it as it is, with no checks, and the "
         "stringout shows its pre-render"
     )
-    note = QCResult("QC-080", "info", "row", what)
-    match = naming.HDRI_SHOT_TYPE.fullmatch(shot_type.strip())
-    index = ((match["index"] if match else None) or "1").zfill(2)
+    notes = [QCResult("QC-080", "info", "row", what)]
+    written = take.strip()
+    index = f"{int(written):02d}" if written.isdigit() else "01"
+    if named and not written.isdigit():
+        said = f"its Take is {written!r}" if written else "it has no Take"
+        notes.append(
+            QCResult(
+                "QC-087",
+                "warning",
+                "row",
+                f"{file_name} is an {hdri} and {said}, so it is numbered 01: "
+                f"{shot}_{naming.HDRI_ELEMENT}_{hdri}_01",
+            )
+        )
     kind = hdri if named else None
-    return MetaRow(file_name, shot, shot_type, kind, index if named else None, scene, (note,), hdri=True)
+    return MetaRow(
+        file_name, shot, shot_type, kind, index if named else None, scene, tuple(notes), take=take, hdri=True
+    )
 
 
 _STYLE_FRAME = re.compile(r"styleframe(?P<index>\d{1,2})?", re.IGNORECASE)

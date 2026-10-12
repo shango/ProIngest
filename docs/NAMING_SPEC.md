@@ -83,8 +83,8 @@ Tokens: `{shotcode}` `{elem}` `{kind}` `{res}` `{ver}` `{frame}` `{aux}` `{auxid
 | raw exr folder | `{shotcode}_{elem}_raw_{res}_v{ver}` | `MELT0001_pl01_raw_4k_v01` |
 | ref mp4 | `{shotcode}_{elem}_ref_{res}_v{ver}.mp4` | `MELT0001_pl01_ref_HD_v01.mp4` |
 | audio | `{shotcode}_{elem}_audio_v{ver}.wav` | `MELT0001_pl01_audio_v01.wav` |
-| HDRI exr | `{shotcode}_pl01_HDRI_{idx}_v{ver}.exr` | `SECA0009_pl01_HDRI_01_v01.exr`. As the tracker writes it (`BACH0002_pl01_HDRI_01_v01.exr`); the shooters' spec drops the index. `naming.hdri_exr` (2026-10-07) |
-| LDRI image | `{shotcode}_pl01_LDRI_{idx}_v{ver}.{jpg\|jpeg\|png}` | `SECA0009_pl01_LDRI_01_v01.jpg`. The HDRI's name mirrored, with the source's own extension, lowercased (user, 2026-10-08). The tracker has no LDRI column. `naming.ldri_image` |
+| HDRI exr | `{shotcode}_pl01_HDRI_{take}_v{ver}.exr` | `SECA0009_pl01_HDRI_01_v01.exr`. **`01` is the CSV's `Take`**, two digits, `01` when blank (QC-087) (user, 2026-10-12). As the tracker writes it (`BACH0002_pl01_HDRI_01_v01.exr`); the shooters' spec drops the index. `naming.hdri_exr` (2026-10-07) |
+| LDRI image | `{shotcode}_pl01_LDRI_{take}_v{ver}.{jpg\|jpeg\|png}` | `SECA0009_pl01_LDRI_01_v01.jpg`. The HDRI's name mirrored, with the source's own extension, lowercased (user, 2026-10-08). The tracker has no LDRI column. `naming.ldri_image` |
 | aux still exr | `{shotcode}_{aux}_{auxidx}_4k_v{ver}.exr` | `MELT0001_colorChart_01_4k_v01.exr`. **No element segment** (shooters' spec, 2026-09-21): a reference still is keyed to the shot code |
 | stringout mp4 | `turnover{num:03}_{MM}_{DD}_{YY}_{shooter}_SO_v{ver}.mp4`, in `<show>/_reports/` | `turnover121_09_23_26_danielluckett_SO_v01.mp4`. Dated as the turnover folder, not the render; month, day and year are always two digits each (user, 2026-10-05; a folder's four digit year is written as its last two). A stringout written earlier with a four digit year still counts as a version. `naming.stringout_stem` (2026-09-25) |
 

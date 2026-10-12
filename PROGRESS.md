@@ -8,7 +8,7 @@ commit.
 
 ## 1. Resume here
 
-**State at 2026-10-08, version 0.5.37 on branch `ldri`** (0.5.37: the LDRI; 0.5.36 and before merged to `main` with PR #19 as `a85cd53`; 0.5.36: the stringout from 26 minutes to 3 on turnover135; 0.5.35: the stringout's time left on its line; 0.5.34: the HDRI pre-render on the timeline; 0.5.33: the QC overhaul, nothing stops a batch or a turnover; 0.5.32: style frames on the stringout, the stringout line in the shot list; 0.5.31: every Fix-it line names its shot; 0.5.30: the take on the burn-in; 0.5.29: reference clips play in the stringout; 0.5.28: everything in the stringout graded; 0.5.27: the stringout from the EXRs; 0.5.26: the HDRI pre-render and delivery, QC-084, Accept As Is runs what it can; 0.5.25, merged to `main` with PR #18: `User_Generated` and `User_Uploads` at the delivery root; 0.5.24: the Fix-it
+**State at 2026-10-12, version 0.5.38 on branch `ldri`, PR #20 open** (0.5.38: an HDRI's or LDRI's number is its take; 0.5.37: the LDRI; 0.5.36 and before merged to `main` with PR #19 as `a85cd53`; 0.5.36: the stringout from 26 minutes to 3 on turnover135; 0.5.35: the stringout's time left on its line; 0.5.34: the HDRI pre-render on the timeline; 0.5.33: the QC overhaul, nothing stops a batch or a turnover; 0.5.32: style frames on the stringout, the stringout line in the shot list; 0.5.31: every Fix-it line names its shot; 0.5.30: the take on the burn-in; 0.5.29: reference clips play in the stringout; 0.5.28: everything in the stringout graded; 0.5.27: the stringout from the EXRs; 0.5.26: the HDRI pre-render and delivery, QC-084, Accept As Is runs what it can; 0.5.25, merged to `main` with PR #18: `User_Generated` and `User_Uploads` at the delivery root; 0.5.24: the Fix-it
 report, one error per cause, a lone EXR read as one frame, AMFs falling back to the clip they name) (`HANDOFF.md` is the short version, with the session's open items); 0.5.22 went to `main` earlier (PR #17 merged as `70e1160` at the user's request, after its CI
 run 37276656318 built the 0.5.22 dmg). The 2026-09-23 review is built (chunks A
 to H of `docs/REVIEW_2026-09-23.md`), and so are the fixes that a second official turnover,
@@ -17,6 +17,19 @@ renders; Turnover121, every clip 8 bit 4:2:0, runs again with a QC-020 warning o
 since 2026-09-28 (user). What is left is the Mac: `docs/MAC_SESSION.md`, from "The 0.5.0 build, in
 order" down, and Ben's 4.886 slope. Entries are newest first; anything older than 2026-09-22
 describes the tool before the review and is history.
+
+**2026-10-12, 0.5.38: the number in an HDRI's or LDRI's name is its take (user).**
+"SECA0009_pl01_LDRI_01_v01.jpg - in this name, _01_ is the take number." Asked, and answered: the
+HDRI the same; a blank Take is `01`, with a warning; "There should not be HDRI2, or LDRI2. That's a
+mistake."; the burn-in drops the word "Take". **Built**: `metacsv._hdri` numbers the row from the
+CSV's `Take` (two digits); a blank or non-numeric Take is `01` and QC-087 (new, warning, Fix in
+Resolve); `naming.HDRI_SHOT_TYPE` no longer takes a number, so `HDRI2` or `LDRI2` falls to QC-010
+like `HDRIref`; `naming.take_label` takes the identity and adds no `Take` to an HDRI or LDRI (its
+burn-in is `SECA0009_pl01_LDRI_02`). Two HDRIs on one shot are now told apart by their takes
+(QC-011 only for one take twice). "Yes" to question 2 ("I'd write 01 ... Or would you rather have
+a warning?") was read as both: `01` and a warning. **Verified**: metacsv and naming tests (take
+numbering, QC-087, QC-010 for `HDRI2`/`LDRI2`/`hdri02`, the burn-in); turnover134 and 135 (every
+HDRI Take 1) unchanged, 0 errors, 135 still delivering `SECA0012/13/14_pl01_HDRI_01_v01.exr`.
 
 **2026-10-08, 0.5.37: the LDRI (user).** "In some turnovers, there won't be an HDRI on the
 stringout. Instead it will be LDRI shot type. Treated the same as the HDRI in regards to the

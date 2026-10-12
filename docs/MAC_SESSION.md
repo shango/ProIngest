@@ -61,6 +61,8 @@ chunk 7 of `docs/TO_A_WORKING_BUILD.md`, in the order that wastes least.
       grade; the shot folder gets `<shotcode>_pl01_LDRI_01_v01.jpg` (or `.png`), byte identical to
       the source (`cmp`); the tracker's HDRI cell for that shot is empty. Move the pre-render
       out and re-scan: QC-083, and the event holds the image as it is. No sample has one yet.
+      Since 2026-10-12 the `_01_` is the clip's Take: set an LDRI's Take to 2 in Resolve, re-export
+      the CSV and re-scan, and it delivers `..._LDRI_02_v01.jpg` and burns in `..._LDRI_02` alone.
 - [ ] **The stringout optimised (2026-10-08, 0.5.36).** Build turnover135's stringout from the
       app with Workers at 4 and time it: 3m00s on the Linux dev box (26m15s in 0.5.35). Activity
       Monitor shows several ProIngest processes busy at once early on, then several ffmpeg. Open it

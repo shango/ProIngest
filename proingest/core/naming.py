@@ -51,8 +51,9 @@ or its pre-render, as it is, with no grade."""
 LDRI_EXTENSIONS = (".jpg", ".jpeg", ".png")
 """What an LDRI's file is, and so what its delivered copy ends with."""
 
-HDRI_SHOT_TYPE = re.compile(r"(?P<kind>hdri|ldri)(?P<index>\d{1,2})?", re.IGNORECASE)
-"""`HDRI` or `LDRI`, as the CSV writes it, with or without an index (`HDRI2` is 02)."""
+HDRI_SHOT_TYPE = re.compile(r"(?P<kind>hdri|ldri)", re.IGNORECASE)
+"""`HDRI` or `LDRI`, as the CSV writes it, in any case. Never with a number: `HDRI2` is a
+mistake (user, 2026-10-12) and QC-010, since an HDRI's number is its take."""
 
 
 def hdri_kind(shot_type: str) -> str | None:
@@ -253,7 +254,8 @@ def ldri_image(identity: ShotIdentity, version: int, suffix: str) -> str:
 
 
 def hdri_label(identity: ShotIdentity) -> str:
-    """`SECA0009_pl01_HDRI_01` or `SECA0009_pl01_LDRI_01`: the name without its version."""
+    """`SECA0009_pl01_HDRI_01` or `SECA0009_pl01_LDRI_01`: the name without its version.
+    The number is the CSV's `Take` (user, 2026-10-12), carried as the identity's index."""
     return f"{identity.shot_code}_{HDRI_ELEMENT}_{identity.kind}_{identity.index}"
 
 
@@ -305,11 +307,13 @@ def shot_label(identity: ShotIdentity) -> str:
     return identity.stem
 
 
-def take_label(label: str, take: str) -> str:
+def take_label(label: str, take: str, identity: ShotIdentity | None = None) -> str:
     """`SECA0009_pl01 Take 02`: the burn-in with its take, when the CSV's `Take` is above 1.
-    Take 1, a blank or anything not a number leaves the label as it is (user, 2026-10-07)."""
+    Take 1, a blank or anything not a number leaves the label as it is (user, 2026-10-07).
+    An HDRI or LDRI carries its take in its name already (`SECA0009_pl01_LDRI_02`), so it
+    gets no `Take` after it (user, 2026-10-12)."""
     written = take.strip()
-    if not written.isdigit() or int(written) <= 1:
+    if (identity is not None and identity.is_hdri) or not written.isdigit() or int(written) <= 1:
         return label
     return f"{label} Take {int(written):02d}"
 

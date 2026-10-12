@@ -120,6 +120,7 @@ RESOLVE_FIX_RULES = frozenset(
         "QC-076",  # a CLF the AMF names is missing or changed
         "QC-079",  # the AMF's output transform is not one the config knows
         "QC-082",  # the grade came as a CDL in the AMF rather than a CLF
+        "QC-087",  # an HDRI or LDRI with no Take, numbered 01
     }
 )
 """Errors and warnings fixed in Resolve: in Ben's timeline, metadata, or the EDL, CSV, AMF
