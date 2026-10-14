@@ -69,6 +69,11 @@ STYLE_FRAME_KIND = "styleFrame"
 timeline before its shot's plate. Not in `CLIP_TYPES` and never delivered: the stringout
 shows it as it is, for the event's length."""
 
+PREVIS_KIND = "preVis"
+"""A previs render's `Shot Type`, `preVis01`, `preVis02` (QC-088, user 2026-10-14): treated as a
+style frame is. Not in `CLIP_TYPES`, never delivered and never graded: the stringout plays its
+cut as it is."""
+
 HDRI_ELEMENT = "pl01"
 """Every HDRI and LDRI is named under the plate: `[SHOTCODE]_pl01_HDRI_v01.exr` in the shooters'
 spec, `BACH0002_pl01_HDRI_01_v01.exr` in the tracker."""
@@ -134,6 +139,11 @@ class ShotIdentity:
     def is_style_frame(self) -> bool:
         """A style frame: shown on the stringout, never delivered."""
         return self.kind == STYLE_FRAME_KIND
+
+    @property
+    def is_previs(self) -> bool:
+        """A previs render (user, 2026-10-14): shown on the stringout, never delivered (QC-088)."""
+        return self.kind == PREVIS_KIND
 
     @property
     def elem(self) -> str:

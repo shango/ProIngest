@@ -16,7 +16,7 @@ from pathlib import Path
 
 import pytest
 
-from proingest.core import qc, render
+from proingest.core import naming, qc, render
 from proingest.core.models import (
     AudioInfo,
     Batch,
@@ -1509,3 +1509,13 @@ class TestCancelRerunRefusal:
         target.identity = identity_of("MELT0001_pl02")
         refusal = qc.cancel_rerun_refusal(target)
         assert refusal is not None and "pl02" in refusal
+
+
+class TestAPreVis:
+    """QC-088 (user, 2026-10-14): a preVis is treated as a style frame is; no rule runs on it."""
+
+    def test_no_row_rule_runs_on_it(self) -> None:
+        previs = row(source_encoding=None, grade=None)
+        previs.identity = naming.ShotIdentity("MELT0001", naming.PREVIS_KIND, "01")
+        previs.qc = [QCResult("QC-088", "info", "row", "a preVis")]
+        assert qc.is_stringout_only(previs) and qc.run_row_rules(previs, RATE_24) == []

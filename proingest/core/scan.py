@@ -693,16 +693,16 @@ def _conform(row: ShotRow, event: clf.ConformEvent, grades: _Grades) -> None:
     if row.media is not None or row.hdri_render is not None:
         before = len(row.qc)
         grades.attach(row, event)
-        if qc.is_hdri(row) or qc.is_style_frame(row):
-            # An HDRI's grade colours the pre-render on the stringout and a style frame is
-            # shown as it is; no check runs on either (user, 2026-10-07), so what is wrong
+        if qc.is_hdri(row) or qc.is_stringout_only(row):
+            # An HDRI's grade colours the pre-render on the stringout and a style frame or a
+            # preVis is shown as it is; no check runs on any (user, 2026-10-07), so what is wrong
             # with its AMF goes unsaid.
             del row.qc[before:]
     media = row.media
     if media is None:
         return
     approved = clf.approved_in_out(event, media)
-    unchecked = qc.is_hdri(row) or qc.is_style_frame(row)
+    unchecked = qc.is_hdri(row) or qc.is_stringout_only(row)
     if not unchecked and not _fits(approved, media):
         approved = _outside(row, event, media, approved)
     row.approved = approved

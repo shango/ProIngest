@@ -42,7 +42,8 @@ ffmpeg. The user's decisions, all in OQ-38:
   length, as a style frame is.
 - **A style frame is held as it is** (user, 2026-10-07): a pre-graded PNG or JPG, `Shot Type`
   `styleFrame`, cut before its shot's plate. It keeps the EDL's length, takes no grade and
-  no `Frame:` counter, and is never delivered (QC-085). Its file missing is the card.
+  no `Frame:` counter, and is never delivered (QC-085). Its file missing is the card. **A preVis
+  is treated the same** (user, 2026-10-14, QC-088), except that it plays its cut.
 - **Only a plate has sound**, from its delivered wav; every other segment carries silence of
   the same length.
 - **A plate carries its shot's cp top left and wit top right** (user, 2026-09-29), each at
@@ -325,7 +326,7 @@ def _segment(
     hdri = next((row for row in claimed if qc.is_hdri(row) and row.hdri_render is not None), None)
     if hdri is not None:
         return _prerender(event, hdri, length, show_pattern)
-    style = next((row for row in claimed if qc.is_style_frame(row)), None)
+    style = next((row for row in claimed if qc.is_stringout_only(row)), None)
     if style is not None:
         return _style_frame(event, style, length, show_pattern, folder)
     known = next((row for row in claimed if row.media is not None), None)
@@ -482,18 +483,22 @@ def _style_frame(
     event: clf.ConformEvent, row: ShotRow, length: int, show_pattern: str, folder: Path
 ) -> Segment:
     """A style frame's event: its still held as it is for the event's length (user,
-    2026-10-07), or the missing media card when the file is not there (user, 2026-10-14)."""
+    2026-10-07), or the missing media card when the file is not there (user, 2026-10-14).
+    A preVis is treated the same, except that it is a render and plays its cut (user,
+    2026-10-14)."""
     identity = effective_identity(row, show_pattern)
     media = row.media
+    plays = media is not None and identity is not None and identity.is_previs
+    start = 0 if media is None else _cut(event, media).in_frame if plays else media.start_frame
     return Segment(
         kind="black" if media is None else "source",
         length=length,
         event_id=event.event_id,
-        freeze=True,
+        freeze=not plays,
         label=naming.shot_label(identity) if identity is not None else Path(row.clip_name).stem,
         effect=row.scene,
         path=None if media is None else media.path,
-        start=0 if media is None else media.start_frame,
+        start=start,
         media=media,
         identity=identity,
         style_frame=True,

@@ -275,8 +275,10 @@ def plannable_identity(row: ShotRow, show_pattern: str = naming.DEFAULT_SHOW_PAT
     if row.skipped or holding_errors(row) or row.media is None or row.current is None:
         return None
     identity = effective_identity(row, show_pattern)
-    # A style frame is only ever on the stringout (QC-085).
-    return None if identity is not None and identity.is_style_frame else identity
+    # A style frame and a preVis are only ever on the stringout (QC-085, QC-088).
+    if identity is not None and (identity.is_style_frame or identity.is_previs):
+        return None
+    return identity
 
 
 def resolve_version(directory: Path, show_pattern: str = naming.DEFAULT_SHOW_PATTERN) -> int:

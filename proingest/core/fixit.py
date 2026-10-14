@@ -377,9 +377,9 @@ def reports(batch: Batch) -> list[TurnoverReport]:
 
 def _turnover_report(batch: Batch, turnover: Turnover) -> TurnoverReport:
     rows = [row for row in batch.rows if row.turnover_id == turnover.turnover_id]
-    # What "every clip" and "no plate" count: an HDRI or a style frame is neither a clip of a
-    # shot nor its plate.
-    delivered = [row for row in rows if not qc.is_hdri(row) and not qc.is_style_frame(row)]
+    # What "every clip" and "no plate" count: an HDRI, a style frame or a preVis is neither a
+    # clip of a shot nor its plate.
+    delivered = [row for row in rows if not qc.is_hdri(row) and not qc.is_stringout_only(row)]
     items: dict[str, Item] = {}
     for result in turnover.qc:
         if result.rule_id not in ADVICE or result.severity == "info":

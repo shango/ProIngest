@@ -260,6 +260,10 @@ def read(path: Path, show_pattern: str = naming.DEFAULT_SHOW_PATTERN) -> MetaCsv
             named = naming.parse_shot_code(shot, show_pattern) is not None
             result.rows.append(_style_frame(file_name, shot, shot_type, scene, named))
             continue
+        if _PREVIS.fullmatch(shot_type.strip()):
+            named = naming.parse_shot_code(shot, show_pattern) is not None
+            result.rows.append(_previs(file_name, shot, shot_type, scene, named))
+            continue
         result.rows.append(
             MetaRow(
                 file_name=file_name,
@@ -328,6 +332,24 @@ def _style_frame(file_name: str, shot: str, shot_type: str, scene: str, named: b
     match = _STYLE_FRAME.fullmatch(shot_type.strip())
     index = ((match["index"] if match else None) or "1").zfill(2)
     kind = naming.STYLE_FRAME_KIND if named else None
+    return MetaRow(file_name, shot, shot_type, kind, index if named else None, scene, (note,))
+
+
+_PREVIS = re.compile(r"previs(?P<index>\d{1,2})?", re.IGNORECASE)
+
+
+def _previs(file_name: str, shot: str, shot_type: str, scene: str, named: bool) -> MetaRow:
+    """A preVis row (QC-088, user 2026-10-14): treated as a style frame is. No colour
+    correction and no delivery; the stringout plays its cut as it is."""
+    note = QCResult(
+        "QC-088",
+        "info",
+        "row",
+        f"{file_name} is a preVis: the stringout shows it as it is, and nothing is delivered",
+    )
+    match = _PREVIS.fullmatch(shot_type.strip())
+    index = ((match["index"] if match else None) or "1").zfill(2)
+    kind = naming.PREVIS_KIND if named else None
     return MetaRow(file_name, shot, shot_type, kind, index if named else None, scene, (note,))
 
 

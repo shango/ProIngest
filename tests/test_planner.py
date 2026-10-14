@@ -85,6 +85,16 @@ def kinds(jobs: list[planner.DeliverableJob]) -> list[str]:
     return [job.kind for job in jobs]
 
 
+class TestAPreVis:
+    """User, 2026-10-14: "preVis type is treated just like styleframe type. No cc needed, no
+    delivery, only lives in the stringout"."""
+
+    def test_it_delivers_nothing_even_graded(self) -> None:
+        graded = Grade(amf=Path("/t/x.amf"), input_transform="", looks=(GradeLook("clf", "/t/x.clf"),))
+        previs = row(identity=naming.ShotIdentity("MELT0001", naming.PREVIS_KIND, "01"), grade=graded)
+        assert planner.plan_row(previs, ROOT, 1).jobs == []
+
+
 class TestTypeTable:
     def test_plate_delivers_two_sequences_two_refs_and_audio(self) -> None:
         plan = planner.plan_row(row(audio_path=Path("/turnover/MELT0001_pl01.wav")), ROOT, 1)

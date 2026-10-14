@@ -286,7 +286,7 @@ def _checksum(item: Deliverable) -> str:
 
 ISSUES_HEADERS = ("Turnover", "Shot code", "Clip name", "Rule", "Level", "Effect", "Message")
 
-RECORD_ONLY_RULES = frozenset({"QC-048", "QC-060", "QC-061", "QC-080", "QC-085"})
+RECORD_ONLY_RULES = frozenset({"QC-048", "QC-060", "QC-061", "QC-080", "QC-085", "QC-088"})
 """Results that record what the tool did rather than anything about the clip: the colour
 chain, the version, an HDRI or style frame being what it is. Kept off the Issues sheet."""
 

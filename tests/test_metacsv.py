@@ -252,6 +252,17 @@ class TestStyleFrame:
         assert row.kind is None and [q.rule_id for q in row.qc] == ["QC-085"]
 
 
+class TestAPreVis:
+    """Treated as a style frame is (user, 2026-10-14): QC-088, never delivered."""
+
+    @pytest.mark.parametrize(("written", "index"), [("preVis01", "01"), ("previs", "01"), ("PREVIS02", "02")])
+    def test_a_previs_row_carries_only_info(self, tmp_path: Path, written: str, index: str) -> None:
+        result = read(tmp_path, ["File Name", "Shot", "Shot Type"], [["pv.mov", "INCA5002", written]])
+        (row,) = result.rows
+        assert (row.kind, row.index) == ("preVis", index) and not row.hdri
+        assert [(q.rule_id, q.severity) for q in row.qc] == [("QC-088", "info")]
+
+
 class TestFileShape:
     def test_short_rows_do_not_raise(self, tmp_path: Path) -> None:
         """Resolve pads with empty cells; nothing guarantees every row is full width."""

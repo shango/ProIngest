@@ -18,6 +18,23 @@ since 2026-09-28 (user). What is left is the Mac: `docs/MAC_SESSION.md`, from "T
 order" down, and Ben's 4.886 slope. Entries are newest first; anything older than 2026-09-22
 describes the tool before the review and is history.
 
+**2026-10-14, 0.5.44: preVis is a Shot Type (user), and the Shot Type workbook.** "preVis type
+is treated just like styleframe type. No cc needed, no delivery, only lives in the stringout."
+`preVis01`, `preVis02` (any case, bare means 01) are read by `metacsv._previs` as a style frame is,
+with QC-088 (info). `qc.is_stringout_only` (QC-085 or QC-088) replaces the style frame test in the
+scan, preflight, row rules and Fix-it report; the planner plans nothing for `ShotIdentity.is_previs`.
+On the stringout it is shown as it is, no grade, no counter, burned in `INCA5002_preVis01`, and
+**plays its cut** rather than holding a frame (assumed, OQ-86). Earlier the same day it was an
+element type delivered when graded; superseded before release. Turnover144's preVis is now QC-088
+alone. **Verified**: tests in `test_metacsv.py`, `test_planner.py`, `test_qc.py`, `test_naming.py`
+and `test_stringout.py` (the stringout plan for a preVis).
+**`docs/Shot_Types.xlsx`** (user: "a place for new types to be added with all the relavant data
+necessary to incoporate into a new version of the app"): one row per type, 33 columns read off the
+code (identity, colour, delivery, stringout, QC, spreadsheets, decision), five Proposed rows to fill
+in, a column guide naming where each behaviour lives in the code, the rules true of every type, and
+how a Shot Type is read. Hand kept from here: a new type is added there first. Update a row when a
+type's behaviour changes.
+
 **2026-10-14, 0.5.43: a missing file is a card on the stringout (user).** "Put a card that
 reads "missing media" with a path to where it's supposed to be, in on the timeline and don't deliver
 the missing clip." An event whose clip a CSV row names and whose file the scan did not find
