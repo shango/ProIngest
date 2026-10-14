@@ -541,6 +541,28 @@ class TestTheAleNamesTheEvents:
         plate = next(row for row in rows if row.clip_name == "A")
         assert "QC-073" in rules(plate)
 
+    def test_a_retime_is_said_on_its_own_cut_of_a_clip_only(self, tmp_path: Path) -> None:
+        """Turnover142's C2041, cut three times, carried event 017's retime on every row."""
+        folder = overlapping_turnover(tmp_path / GOOD_FOLDER, ALE_ORDER)
+        fixtures.make_meta_csv(
+            folder / "metadata.csv",
+            [
+                ("A", "MELT0001", "pl01"),
+                ("B", "MELT0001", "pl02"),
+                ("B", "MELT0001", "pl03"),
+                ("C", "MELT0001", "cp01"),
+                ("C", "MELT0001", "cp01"),
+            ],
+        )
+        edl = folder / "FINAL.edl"
+        lines = edl.read_text().split("\n")
+        at = next(i for i, line in enumerate(lines) if line.startswith("004 "))
+        lines.insert(at + 1, f"M2   AX             048.0                {fixtures.timecode(86404)}")
+        edl.write_text("\n".join(lines))
+        _, rows = scan.scan_turnover(folder, "t1", scan.ScanSettings(rules=fixtures.SMALL_RULES))
+        warned = {row.csv_shot_type: "QC-073" in rules(row) for row in rows if row.clip_name == "B"}
+        assert warned == {"pl02": False, "pl03": True}, "event 004 is B's second use"
+
 
 class TestTheAmf:
     """Each event's AMF is the clip's colour (user, 2026-09-28). QC-075 to QC-080."""

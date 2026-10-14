@@ -152,8 +152,7 @@ def scan_turnover(
     rows = [_build_row(entry, index, turnover_id, settings, cache) for entry in _fold_hdri_exrs(meta.rows)]
     grades = _Grades.read(folder)
     turnover.qc.extend(grades.qc)
-    turnover.qc.extend(_conform_all(rows, session, grades))
-    _refuse_retimes(rows, session.events, settings.project_rate)
+    turnover.qc.extend(_conform_all(rows, session, grades, settings.project_rate))
     rows = _collapse(rows)
     for row in rows:
         # Only the plate has an associated audio clip (user, 2026-09-23).
@@ -478,7 +477,9 @@ def _named_events(folder: Path, events: list[clf.ConformEvent], turnover: Turnov
     ]
 
 
-def _conform_all(rows: list[ShotRow], session: clf.ColorSession, grades: _Grades) -> list[QCResult]:
+def _conform_all(
+    rows: list[ShotRow], session: clf.ColorSession, grades: _Grades, rate: FrameRate
+) -> list[QCResult]:
     """Pair every row with its EDL event, and return what the turnover should hear.
 
     A row with no event (QC-066) or with a match that could go two ways (QC-067) gets
@@ -488,7 +489,7 @@ def _conform_all(rows: list[ShotRow], session: clf.ColorSession, grades: _Grades
     editor can see what arrived. An event no row claims is QC-068, for the record.
     """
     if session.events and all(event.clip_name for event in session.events):
-        return _conform_by_use(rows, session.events, grades)
+        return _conform_by_use(rows, session.events, grades, rate)
     found = [session.candidates(row) for row in rows]
     claims: dict[int, list[str]] = {}
     for row, events in zip(rows, found, strict=True):
@@ -533,6 +534,7 @@ def _conform_all(rows: list[ShotRow], session: clf.ColorSession, grades: _Grades
             _whole_media(row)
         else:
             _conform(row, events[0], grades)
+            _refuse_retimes(row, events, rate)
 
     unclaimed = [event.event_id for event in session.events if id(event) not in claims]
     if not unclaimed:
@@ -547,7 +549,9 @@ def _conform_all(rows: list[ShotRow], session: clf.ColorSession, grades: _Grades
     ]
 
 
-def _conform_by_use(rows: list[ShotRow], events: list[clf.ConformEvent], grades: _Grades) -> list[QCResult]:
+def _conform_by_use(
+    rows: list[ShotRow], events: list[clf.ConformEvent], grades: _Grades, rate: FrameRate
+) -> list[QCResult]:
     """Pair rows with events by name, one CSV row per use of a clip.
 
     Resolve's CSV carries a row for each **distinct source range** a clip is cut at
@@ -598,6 +602,7 @@ def _conform_by_use(rows: list[ShotRow], events: list[clf.ConformEvent], grades:
             for row, group in zip(clip_rows, uses.values(), strict=True):
                 _conform(row, group[0], grades)
                 row.freeze = group[0].freeze
+                _refuse_retimes(row, group, rate)
 
     unclaimed = [event.event_id for event in events if id(event) not in claimed]
     if not unclaimed:
@@ -612,24 +617,24 @@ def _conform_by_use(rows: list[ShotRow], events: list[clf.ConformEvent], grades:
     ]
 
 
-def _refuse_retimes(rows: list[ShotRow], events: list[clf.ConformEvent], rate: FrameRate) -> None:
+def _refuse_retimes(row: ShotRow, events: list[clf.ConformEvent], rate: FrameRate) -> None:
     """QC-073: a clip the EDL retimes or reverses, a warning. Only a freeze is rendered as
     cut (OQ-63); any other speed renders the range at normal speed, and Ben sees the retime
-    on his timeline (user, 2026-10-07: never a block)."""
+    on his timeline (user, 2026-10-07: never a block).
+
+    On the row paired with the retimed event only: a clip cut three times is three rows,
+    and one retimed cut said nothing about the other two (turnover142, C2041, 2026-10-13)."""
     for event in events:
-        if not event.clip_name or not event.retimed(rate):
-            continue
-        for row in rows:
-            if Path(row.clip_name).stem.casefold() == event.clip_stem.casefold():
-                row.qc.append(
-                    QCResult(
-                        "QC-073",
-                        "warning",
-                        "row",
-                        f"EDL event {event.event_id} plays {row.clip_name} at {event.speed:g} fps; "
-                        f"the tool renders its range at normal speed",
-                    )
+        if event.retimed(rate):
+            row.qc.append(
+                QCResult(
+                    "QC-073",
+                    "warning",
+                    "row",
+                    f"EDL event {event.event_id} plays {row.clip_name} at {event.speed:g} fps; "
+                    f"the tool renders its range at normal speed",
                 )
+            )
 
 
 def _collapse(rows: list[ShotRow]) -> list[ShotRow]:

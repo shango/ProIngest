@@ -338,9 +338,9 @@ class TestDeliveryLayout:
         assert naming.hdri_kind(written) == kind
 
     def test_a_style_frame_is_labelled_by_its_shot_and_has_no_element_stem(self) -> None:
-        """User, 2026-10-07: the burn-in reads `SECA0009 styleFrame`."""
+        """User, 2026-10-07: the burn-in reads `SECA0009_styleFrame` (an underscore since 2026-10-13)."""
         style = naming.ShotIdentity("SECA0009", naming.STYLE_FRAME_KIND, "01")
-        assert naming.shot_label(style) == "SECA0009 styleFrame"
+        assert naming.shot_label(style) == "SECA0009_styleFrame"
         with pytest.raises(ValueError):
             _ = style.stem
 
@@ -350,7 +350,7 @@ class TestDeliveryLayout:
 
     @pytest.mark.parametrize(
         ("take", "shown"),
-        [("2", "SECA0009_pl01 Take 02"), ("12", "SECA0009_pl01 Take 12"), ("1", "SECA0009_pl01"),
+        [("2", "SECA0009_pl01_Take_02"), ("12", "SECA0009_pl01_Take_12"), ("1", "SECA0009_pl01"),
          ("", "SECA0009_pl01"), ("A", "SECA0009_pl01")],
     )  # fmt: skip
     def test_a_take_above_1_follows_the_burn_in_label(self, take: str, shown: str) -> None:

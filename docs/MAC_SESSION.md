@@ -101,7 +101,7 @@ chunk 7 of `docs/TO_A_WORKING_BUILD.md`, in the order that wastes least.
 - [ ] **Style frames and the stringout line (2026-10-07, 0.5.32).** Once Ben sends a turnover
       with a `styleFrame` PNG or JPG before a plate, build its stringout: the frame holds for its
       EDL length before the plate, looks as it does in Preview (no grade, no colour shift), and
-      reads `SECA0009 styleFrame` bottom right with no `Frame:` at bottom left. In the shot list,
+      reads `SECA0009_styleFrame` bottom right with no `Frame:` at bottom left. In the shot list,
       the `Stringout` line under the turnover shows a moving bar and a percentage while it builds,
       then a green ball; move the PNG out of the folder, Scan, build again: red, and hovering the
       ball says which event is black.

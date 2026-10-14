@@ -80,9 +80,10 @@ class TestPlan:
         assert made.timecode == "01:00:00:00", "the EDL's record start"
 
     def test_a_take_above_1_follows_the_label(self, batch: Batch) -> None:
-        """User, 2026-10-07: `SECA0009_pl01 Take 02`; take 1 or none shows no take."""
+        """User, 2026-10-07: `SECA0009_pl01_Take_02` (underscores since 2026-10-13); take 1 or
+        none shows no take."""
         batch.rows[0].take, batch.rows[1].take = "1", "2"
-        assert [s.label for s in planned(batch).segments] == ["MELT0001_pl01", "MELT0002_pl01 Take 02"]
+        assert [s.label for s in planned(batch).segments] == ["MELT0001_pl01", "MELT0002_pl01_Take_02"]
 
     def test_with_no_hd_exr_the_reference_stands_in(self, batch: Batch) -> None:
         for item in batch.rows[1].deliverables:
@@ -565,7 +566,7 @@ class TestAnLdri:
 
 class TestAStyleFrame:
     """User, 2026-10-07: a pre-graded PNG or JPG before its shot's plate, held as it is for the
-    EDL's length, burned in `SECA0009 styleFrame` with no counter, and never delivered."""
+    EDL's length, burned in `SECA0009_styleFrame` with no counter, and never delivered."""
 
     @pytest.fixture
     def folder(self, tmp_path: Path) -> Path:
@@ -592,15 +593,15 @@ class TestAStyleFrame:
             True,
             True,
         )
-        assert segment.color is None and segment.label == "MELT0001 styleFrame"
+        assert segment.color is None and segment.label == "MELT0001_styleFrame"
 
     def test_its_burn_in_has_no_frame_counter(self, tmp_path: Path) -> None:
         held = stringout.Segment(
-            kind="source", length=48, freeze=True, label="X styleFrame", style_frame=True
+            kind="source", length=48, freeze=True, label="X_styleFrame", style_frame=True
         )
         stringout._burn_ins("so", held, tmp_path / "0000")
         texts = [path.read_text() for path in sorted(tmp_path.glob("0000_*.txt"))]
-        assert not any(text.startswith("Frame:") for text in texts) and "X styleFrame" in texts
+        assert not any(text.startswith("Frame:") for text in texts) and "X_styleFrame" in texts
 
     def test_the_stringout_is_written_with_it_and_it_is_no_stand_in(self, with_style: Batch) -> None:
         assert with_style.delivery_root is not None

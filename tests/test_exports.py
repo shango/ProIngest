@@ -354,14 +354,21 @@ class TestShotTracker:
         """Every one of the 782 real values in the studio sheet is the HD one."""
         assert sheet_rows(tracker, "Shots")[1][4] == "MELT0001_pl01_ref_HD_v01.mp4"
 
-    def test_the_plate_marks_read_like_the_sheet_s_own(self, tracker: Path) -> None:
-        assert sheet_rows(tracker, "Shots")[1][7] == "4K ✓\nHD ✓"
+    def test_the_plates_cell_names_each_resolution_that_landed(self, tracker: Path) -> None:
+        assert sheet_rows(tracker, "Shots")[1][7] == "4K\nHD"
 
-    def test_a_missing_plate_is_marked_rather_than_blank(self, tmp_path: Path) -> None:
+    def test_a_shot_with_only_4k_says_only_4k(self, tmp_path: Path) -> None:
+        """No tick and no mark for the one that is missing (user, 2026-10-13)."""
         target = row()
         target.deliverables = [d for d in target.deliverables if d.res != "HD"]
         written = exports.write_shot_tracker(batch_of(target), tmp_path / "t.xlsx")
-        assert sheet_rows(written, "Shots")[1][7] == "4K ✓\nHD \u2014"
+        assert sheet_rows(written, "Shots")[1][7] == "4K"
+
+    def test_a_shot_with_only_hd_says_only_hd(self, tmp_path: Path) -> None:
+        target = row()
+        target.deliverables = [d for d in target.deliverables if d.res != "4k"]
+        written = exports.write_shot_tracker(batch_of(target), tmp_path / "t.xlsx")
+        assert sheet_rows(written, "Shots")[1][7] == "HD"
 
     def test_the_stringout_column_is_empty_until_one_is_written(self, tracker: Path) -> None:
         assert sheet_rows(tracker, "Shots")[1][34] is None
@@ -395,7 +402,7 @@ class TestShotTracker:
         written = exports.write_shot_tracker(batch_of(clean), tmp_path / "t.xlsx")
         line = sheet_rows(written, "Shots")[1]
         assert line[4] is None
-        assert line[7] == "4K \u2014\nHD \u2014"
+        assert line[7] is None
         assert line[9] is None
 
     def test_a_blocked_row_is_not_offered_for_pasting(self, tmp_path: Path) -> None:

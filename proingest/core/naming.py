@@ -296,26 +296,26 @@ def stringout_version(name: str, number: int, month: int, day: int, year: int, s
 
 def shot_label(identity: ShotIdentity) -> str:
     """What the stringout burns in at bottom right: `TIME1001_pl01`, or a still's
-    `SECA0002_colorChart_01`, the way its own file names it, or `SECA0009 styleFrame`
-    (user, 2026-10-07)."""
+    `SECA0002_colorChart_01`, the way its own file names it, or `SECA0009_styleFrame`
+    (user, 2026-10-07). Underscores between every part, never a space (user, 2026-10-13)."""
     if identity.is_still:
         return f"{identity.shot_code}_{identity.kind}_{identity.index}"
     if identity.is_hdri:
         return hdri_label(identity)
     if identity.is_style_frame:
-        return f"{identity.shot_code} {STYLE_FRAME_KIND}"
+        return f"{identity.shot_code}_{STYLE_FRAME_KIND}"
     return identity.stem
 
 
 def take_label(label: str, take: str, identity: ShotIdentity | None = None) -> str:
-    """`SECA0009_pl01 Take 02`: the burn-in with its take, when the CSV's `Take` is above 1.
+    """`SECA0009_pl01_Take_02`: the burn-in with its take, when the CSV's `Take` is above 1.
     Take 1, a blank or anything not a number leaves the label as it is (user, 2026-10-07).
     An HDRI or LDRI carries its take in its name already (`SECA0009_pl01_LDRI_02`), so it
     gets no `Take` after it (user, 2026-10-12)."""
     written = take.strip()
     if (identity is not None and identity.is_hdri) or not written.isdigit() or int(written) <= 1:
         return label
-    return f"{label} Take {int(written):02d}"
+    return f"{label}_Take_{int(written):02d}"
 
 
 # --- Delivery folder layout, NAMING_SPEC.md section 5. ---

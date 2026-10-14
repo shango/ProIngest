@@ -18,6 +18,25 @@ since 2026-09-28 (user). What is left is the Mac: `docs/MAC_SESSION.md`, from "T
 order" down, and Ben's 4.886 slope. Entries are newest first; anything older than 2026-09-22
 describes the tool before the review and is history.
 
+**2026-10-13, 0.5.41: QC-073 on its own cut, no space in a burn-in, and a plain PLATES cell (user).** Turnover142
+(Ben, 2026-10-12) was read through: its AMFs and CLFs parse, every CLF named is there with its md5,
+and the four INCA3002 clips (C2045, C2048, C2050, C2051) are graded on Ben's timeline (`.drt`
+`HasCorrection=true`) yet exported only an identity CDL and no CLF, so they deliver ungraded.
+**Not a tool fault; asked of Ben.** Also asked: INCA3010 is S-Gamut3 and INCA3002 S-Gamut3.Cine
+on one FX30, and event 017 has an M2 of 3172.9 fps at equal source and record lengths. **QC-073
+named every row of a clip** whose one cut was retimed (C2041, cut three times, carried event
+017's retime on all three): `scan._refuse_retimes` now runs per pairing, in `_conform_all` and
+`_conform_by_use`, on the row paired with the event; a row whose pairing failed (QC-066, QC-067)
+no longer gets it. **Burn-ins use underscores between every part, never a space** ("There should
+never be a space in the burnins, underscore always, between sections of the name"):
+`SECA0009_styleFrame` and `SECA0009_pl01_Take_02` (`naming.shot_label`, `naming.take_label`).
+**Verified**: the new `test_a_retime_is_said_on_its_own_cut_of_a_clip_only` fails without the fix;
+full suite 2006 passed before the burn-in change, `test_naming.py` and `test_stringout.py` after it.
+**The shot sheet's PLATES cell names only what landed** ("if the Available Resolution is 4K only
+put a 4K in the field, same for if it's HD. Dont cram both with a checkmark next to one"): `4K`,
+`HD`, or both on two lines, empty for none; no tick and no dash (`exports._plate_marks`). Both
+landing is written `4K` and `HD` on two lines, an assumption.
+
 **2026-10-12, 0.5.40: no Fix-it line claims what the tool did not verify (user).** The old
 QC-047 item said an AMF named 'Rec.709 (Scene)' when no AMF was used, and the user read it that way:
 "This fixit tool is useless if it's not very specific. If there are other generalities this is an

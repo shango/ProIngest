@@ -372,12 +372,8 @@ TRACKER_FPS = "24"
 """Every deliverable is written at 24, frame for frame (user, 2026-09-23), whatever the
 source file states, so that is the rate the tracker records."""
 
-_MISSING = "\u2014"
-"""The sheet's own mark for a plate that is not there: `4K \u2014`. Written as an escape
-so the source carries no em dash; the studio's cells do."""
-
 _TICK = "✓"
-"""The sheet's mark for a plate or a sound that is there."""
+"""The sheet's mark for a sound that is there."""
 
 _LANDED = ("done", "exists")
 """A deliverable that is on disk and passed: written this run, or already complete."""
@@ -403,10 +399,11 @@ def _delivered(row: ShotRow, kind: str, res: str | None = None) -> Deliverable |
 
 
 def _plate_marks(row: ShotRow | None) -> str:
-    """`4K ✓` and `HD ✓` on two lines, the way the tracker's own cells are written."""
+    """`4K`, `HD`, or both on two lines: only the resolutions that landed (user, 2026-10-13)."""
     return "\n".join(
-        f"{label} {_TICK if row is not None and _delivered(row, 'raw_dir', res) else _MISSING}"
+        label
         for label, res in (("4K", "4k"), ("HD", "HD"))
+        if row is not None and _delivered(row, "raw_dir", res)
     )
 
 
