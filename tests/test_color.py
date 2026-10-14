@@ -126,6 +126,35 @@ class TestInputTransform:
             color.input_transform("Arri LogC9")
 
 
+class TestAnInverseView:
+    """A display referred render, which Resolve's AMF brings in through the inverse of an
+    output transform (turnover144's colour chart, 2026-10-13)."""
+
+    VIEW = color.DEFAULT_VIEW
+
+    def test_it_is_an_encoding_the_tool_knows(self) -> None:
+        encoding = color.inverse_view(*self.VIEW)
+        assert color.resolve_encoding(encoding) == encoding
+
+    def test_the_session_s_view_gives_back_the_code_values(self) -> None:
+        """Into ACEScg through the inverse, out through the same view: the render as Ben saw it."""
+        pixels = grey_frame(0.5)
+        pixels[0, 0] = [0.9, 0.4, 0.1]
+        expected = pixels.copy()
+        inverse = color.input_transform(color.inverse_view(*self.VIEW))
+        color.apply(pixels, color.processor(inverse, color.output_transform(*self.VIEW)))
+        assert pixels == pytest.approx(expected, abs=1e-3)
+
+    def test_display_white_is_scene_linear_above_one(self) -> None:
+        pixels = grey_frame(1.0)
+        color.apply(pixels, color.processor(color.input_transform(color.inverse_view(*self.VIEW))))
+        assert pixels[0, 0, 1] > 1.0
+
+    def test_a_view_the_display_does_not_carry_is_refused(self) -> None:
+        with pytest.raises(color.ColorError, match="No Such View"):
+            color.to_aces(color.inverse_view(self.VIEW[0], "No Such View"))
+
+
 class TestTheLegsAroundTheLooks:
     """Into ACES2065-1, each look there, and out to ACEScg (user, 2026-09-28)."""
 

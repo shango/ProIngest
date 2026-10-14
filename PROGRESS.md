@@ -18,6 +18,22 @@ since 2026-09-28 (user). What is left is the Mac: `docs/MAC_SESSION.md`, from "T
 order" down, and Ben's 4.886 slope. Entries are newest first; anything older than 2026-09-22
 describes the tool before the review and is history.
 
+**2026-10-14, 0.5.42: turnover144 read through, and an inverse output transform is an input
+transform.** Turnover144 (Michael Crigler, Ben's export 2026-10-13, `TEST MATERIAL` on the Drive):
+six events, INCA5002's style frame, pl01 to pl03 (iPhone 17 Pro Max, Apple Log, H.264 4:2:0 with
+no timecode, cut whole so no handles), `colorChart Render.mov` and `split diopter michael test
+Render.mov`. **Tool fault, fixed:** both renders' AMFs bring them in through
+`<aces:inverseOutputTransform>` (the Gamma 2.2 Rec.709 view undone), which `amf.read` did not look
+inside, so the chart was QC-046 "names no input transform" and held. Now read
+(`Amf.input_inverse_output`, `amf.input_encoding_for`) and converted by an inverse
+`DisplayViewTransform` (`color.inverse_view`). **Verified**: the chart renders, its EXR header
+names the inverse, and seen back through the view it matches the render to 0.16/255 on average;
+new tests in `test_amf.py` and `test_color.py` failed before the fix. **Asked of the user, not
+changed:** `preVis01` on the split diopter render is not a Shot Type the tool delivers (QC-010,
+held); the folder name prefills the shooter as `[michaelcrigler]-footage`, brackets and suffix
+included (the CSV's Clip Directory shows it is a subfolder of `turnover144_10_06_26_michaelcrigler`);
+`el01.mp4` and `el02.mp4` are byte for byte `pl02.mp4` and `pl03.mp4` and no CSV row names them.
+
 **2026-10-13, 0.5.41: QC-073 on its own cut, no space in a burn-in, and a plain PLATES cell (user).** Turnover142
 (Ben, 2026-10-12) was read through: its AMFs and CLFs parse, every CLF named is there with its md5,
 and the four INCA3002 clips (C2045, C2048, C2050, C2051) are graded on Ben's timeline (`.drt`

@@ -1013,7 +1013,7 @@ class _Grades:
             return
         row.grade, findings = _grade_of(match, self.folder)
         row.qc.extend(findings)
-        space = color.ACES if match.input_applied else amf.colour_space_for(match.input_transform)
+        space = color.ACES if match.input_applied else amf.input_encoding_for(match)
         row.source_encoding = space
         row.source_encoding_origin = "AMF" if space else None
 

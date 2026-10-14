@@ -90,8 +90,33 @@ def check_encoding(name: str) -> None:
     is a setting a human typed and OCIO's own failure for an unknown space arrives deep
     inside a render.
     """
+    inverse = _inverse_parts(name)
+    if inverse is not None:
+        display, view = inverse
+        if view not in config().getViews(display):
+            raise ColorError(f"{view!r} is not a view of {display!r} the tool knows")
+        return
     if config().getColorSpace(name) is None:
         raise ColorError(f"{name!r} is not a colour space the tool knows")
+
+
+_INVERSE_VIEW = ", inverse of "
+
+
+def inverse_view(display: str, view: str) -> str:
+    """The encoding of a display referred render: `display` seen through `view`, undone.
+
+    Resolve's AMF says so with an `inverseOutputTransform` for its input transform
+    (turnover144's colour chart, 2026-10-13). It is not a colour space in the config, which
+    has no colour space for an inverse tone map, so it is written as one name here and only
+    this module reads it back (`to_aces`, `input_transform`).
+    """
+    return f"{display}{_INVERSE_VIEW}{view}"
+
+
+def _inverse_parts(name: str) -> tuple[str, str] | None:
+    display, separator, view = name.partition(_INVERSE_VIEW)
+    return (display, view) if separator else None
 
 
 def resolve_encoding(name: str) -> str:
@@ -102,25 +127,36 @@ def resolve_encoding(name: str) -> str:
     saved batch still names something the pinned config has, not a lookup of what a
     shooter typed.
     """
+    if _inverse_parts(name) is not None:
+        check_encoding(name)
+        return name
     known = config().getColorSpace(" ".join(name.split()))
     if known is None:
         raise ColorError(f"{name!r} is not a colour space the tool knows")
     return str(known.getName())
 
 
-def to_aces(source_encoding: str) -> ocio.ColorSpaceTransform:
+def to_aces(source_encoding: str) -> ocio.Transform:
     """The source encoding to ACES2065-1: the AMF's input transform, as the config has it."""
     check_encoding(source_encoding)
+    inverse = _inverse_parts(source_encoding)
+    if inverse is not None:
+        display, view = inverse
+        return ocio.DisplayViewTransform(
+            src=ACES, display=display, view=view, direction=ocio.TRANSFORM_DIR_INVERSE
+        )
     return ocio.ColorSpaceTransform(src=source_encoding, dst=ACES)
 
 
-def input_transform(source_encoding: str) -> ocio.ColorSpaceTransform:
+def input_transform(source_encoding: str) -> ocio.Transform:
     """The source encoding to linear ACEScg in one leg, for a chain with no look in it.
 
     An aux still, which is delivered ungraded by design, and a clip whose AMF lists no
     look. The same pixels as `to_aces` then `to_plate`, in one transform.
     """
     check_encoding(source_encoding)
+    if _inverse_parts(source_encoding) is not None:
+        return ocio.GroupTransform([to_aces(source_encoding), to_plate()])
     return ocio.ColorSpaceTransform(src=source_encoding, dst=PLATE_SPACE)
 
 
