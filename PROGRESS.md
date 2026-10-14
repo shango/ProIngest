@@ -18,6 +18,15 @@ since 2026-09-28 (user). What is left is the Mac: `docs/MAC_SESSION.md`, from "T
 order" down, and Ben's 4.886 slope. Entries are newest first; anything older than 2026-09-22
 describes the tool before the review and is history.
 
+**2026-10-14, 0.5.45: the stringout-only type is `pl##_avidref`, not `preVis` (user).** "It
+will appear like this pl01_avidref. pl##_avidref is the shot type, just replacing the naming on
+preVis." Same behaviour as 0.5.44's preVis: `metacsv._avidref` reads `pl01_avidref` (any case,
+`pl_avidref` is 01) as `naming.AVIDREF_KIND`, QC-088 (info), nothing delivered, no checks, shown as
+it is and playing its cut, burned in `INCA5002_pl01_avidref` (`naming.shot_label`). `preVis01` is
+QC-010 now, so **turnover144's split diopter row needs retyping** in Resolve. QC-088 keeps its
+number, revised the same day it was written. The workbook's row is renamed. **Verified**: the
+renamed tests and a new one that `preVis01` is QC-010.
+
 **2026-10-14, 0.5.44: preVis is a Shot Type (user), and the Shot Type workbook.** "preVis type
 is treated just like styleframe type. No cc needed, no delivery, only lives in the stringout."
 `preVis01`, `preVis02` (any case, bare means 01) are read by `metacsv._previs` as a style frame is,

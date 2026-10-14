@@ -1511,11 +1511,11 @@ class TestCancelRerunRefusal:
         assert refusal is not None and "pl02" in refusal
 
 
-class TestAPreVis:
-    """QC-088 (user, 2026-10-14): a preVis is treated as a style frame is; no rule runs on it."""
+class TestAnAvidRef:
+    """QC-088 (user, 2026-10-14): `pl01_avidref` is treated as a style frame is; no rule runs on it."""
 
     def test_no_row_rule_runs_on_it(self) -> None:
-        previs = row(source_encoding=None, grade=None)
-        previs.identity = naming.ShotIdentity("MELT0001", naming.PREVIS_KIND, "01")
-        previs.qc = [QCResult("QC-088", "info", "row", "a preVis")]
-        assert qc.is_stringout_only(previs) and qc.run_row_rules(previs, RATE_24) == []
+        avidref = row(source_encoding=None, grade=None)
+        avidref.identity = naming.ShotIdentity("MELT0001", naming.AVIDREF_KIND, "01")
+        avidref.qc = [QCResult("QC-088", "info", "row", "an Avid reference")]
+        assert qc.is_stringout_only(avidref) and qc.run_row_rules(avidref, RATE_24) == []

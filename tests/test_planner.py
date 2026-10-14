@@ -85,14 +85,14 @@ def kinds(jobs: list[planner.DeliverableJob]) -> list[str]:
     return [job.kind for job in jobs]
 
 
-class TestAPreVis:
-    """User, 2026-10-14: "preVis type is treated just like styleframe type. No cc needed, no
-    delivery, only lives in the stringout"."""
+class TestAnAvidRef:
+    """User, 2026-10-14: treated just like a style frame ("No cc needed, no delivery, only lives
+    in the stringout"), typed `pl01_avidref`."""
 
     def test_it_delivers_nothing_even_graded(self) -> None:
         graded = Grade(amf=Path("/t/x.amf"), input_transform="", looks=(GradeLook("clf", "/t/x.clf"),))
-        previs = row(identity=naming.ShotIdentity("MELT0001", naming.PREVIS_KIND, "01"), grade=graded)
-        assert planner.plan_row(previs, ROOT, 1).jobs == []
+        avidref = row(identity=naming.ShotIdentity("MELT0001", naming.AVIDREF_KIND, "01"), grade=graded)
+        assert planner.plan_row(avidref, ROOT, 1).jobs == []
 
 
 class TestTypeTable:

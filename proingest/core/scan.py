@@ -694,8 +694,8 @@ def _conform(row: ShotRow, event: clf.ConformEvent, grades: _Grades) -> None:
         before = len(row.qc)
         grades.attach(row, event)
         if qc.is_hdri(row) or qc.is_stringout_only(row):
-            # An HDRI's grade colours the pre-render on the stringout and a style frame or a
-            # preVis is shown as it is; no check runs on any (user, 2026-10-07), so what is wrong
+            # An HDRI's grade colours the pre-render on the stringout and a style frame or an
+            # Avid reference is shown as it is; no check runs on any (user, 2026-10-07), so what is wrong
             # with its AMF goes unsaid.
             del row.qc[before:]
     media = row.media

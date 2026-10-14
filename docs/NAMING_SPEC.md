@@ -37,7 +37,7 @@ The two fields are read separately (show prefix configurable, default `[A-Z]{2,6
 Shot        ^(?P<show>[A-Z]{2,6})(?P<shot>\d{4})$
 Shot Type   ^(?P<kind>[A-Za-z]+)(?P<index>\d{1,2})?$   kind, casefolded, one of
             pl cp el wit re colorChart mirrorBall greyBall sizeRef   (cl accepted as cp)
-            HDRI, LDRI, styleFrame and preVis are read on their own, outside this list
+            HDRI, LDRI, styleFrame and pl##_avidref are read on their own, outside this list
 ```
 
 - `show` + `shot` = shot code (`MELT0001`).

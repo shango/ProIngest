@@ -252,15 +252,23 @@ class TestStyleFrame:
         assert row.kind is None and [q.rule_id for q in row.qc] == ["QC-085"]
 
 
-class TestAPreVis:
-    """Treated as a style frame is (user, 2026-10-14): QC-088, never delivered."""
+class TestAnAvidRef:
+    """`pl01_avidref`, treated as a style frame is (user, 2026-10-14): QC-088, never delivered."""
 
-    @pytest.mark.parametrize(("written", "index"), [("preVis01", "01"), ("previs", "01"), ("PREVIS02", "02")])
-    def test_a_previs_row_carries_only_info(self, tmp_path: Path, written: str, index: str) -> None:
-        result = read(tmp_path, ["File Name", "Shot", "Shot Type"], [["pv.mov", "INCA5002", written]])
+    @pytest.mark.parametrize(
+        ("written", "index"),
+        [("pl01_avidref", "01"), ("pl_avidref", "01"), ("PL02_AVIDREF", "02"), ("pl3_avidref", "03")],
+    )
+    def test_an_avidref_row_carries_only_info(self, tmp_path: Path, written: str, index: str) -> None:
+        result = read(tmp_path, ["File Name", "Shot", "Shot Type"], [["ref.mov", "INCA5002", written]])
         (row,) = result.rows
-        assert (row.kind, row.index) == ("preVis", index) and not row.hdri
+        assert (row.kind, row.index) == ("avidref", index) and not row.hdri
         assert [(q.rule_id, q.severity) for q in row.qc] == [("QC-088", "info")]
+
+    def test_previs_is_no_longer_a_shot_type(self, tmp_path: Path) -> None:
+        """It was `preVis01` in 0.5.44, renamed the same day (user, 2026-10-14)."""
+        result = read(tmp_path, ["File Name", "Shot", "Shot Type"], [["ref.mov", "INCA5002", "preVis01"]])
+        assert [q.rule_id for q in result.rows[0].qc] == ["QC-010"]
 
 
 class TestFileShape:

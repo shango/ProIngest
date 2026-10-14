@@ -817,7 +817,7 @@ def is_style_frame(row: ShotRow) -> bool:
 
 
 def is_stringout_only(row: ShotRow) -> bool:
-    """A style frame (QC-085) or a preVis (QC-088): shown on the stringout as it is, never
+    """A style frame (QC-085) or an Avid reference (QC-088): shown on the stringout as it is, never
     delivered, and no rule runs on it (user, 2026-10-07 and 2026-10-14)."""
     return any(result.rule_id in ("QC-085", "QC-088") for result in row.qc)
 

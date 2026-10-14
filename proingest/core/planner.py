@@ -275,8 +275,8 @@ def plannable_identity(row: ShotRow, show_pattern: str = naming.DEFAULT_SHOW_PAT
     if row.skipped or holding_errors(row) or row.media is None or row.current is None:
         return None
     identity = effective_identity(row, show_pattern)
-    # A style frame and a preVis are only ever on the stringout (QC-085, QC-088).
-    if identity is not None and (identity.is_style_frame or identity.is_previs):
+    # A style frame and an Avid reference are only ever on the stringout (QC-085, QC-088).
+    if identity is not None and (identity.is_style_frame or identity.is_avidref):
         return None
     return identity
 
