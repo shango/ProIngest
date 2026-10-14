@@ -67,6 +67,11 @@ class TestNaming:
         )
 
 
+def _position(path: Path) -> int:
+    """A burn-in's text file in the order it was written: `0000_12.txt` after `0000_2.txt`."""
+    return int(path.stem.rsplit("_", 1)[1])
+
+
 class TestPlan:
     def test_every_event_is_cut_from_its_delivered_exrs(self, batch: Batch) -> None:
         """User, 2026-10-07: the stringout is from the EXRs, the HD sequence of each plate."""
@@ -157,6 +162,30 @@ class TestPlan:
         batch.rows = [batch.rows[0]]
         second = planned(batch).segments[1]
         assert second.kind == "black" and second.length == FRAMES
+        assert second.missing is None, "no row names a file, so there is no path to give"
+
+    def test_a_clip_whose_file_is_missing_is_a_card_naming_where_it_should_be(self, batch: Batch) -> None:
+        """User, 2026-10-14: "Put a card that reads "missing media" with a path to where it's
+        supposed to be"."""
+        row = batch.rows[1]
+        row.media = None
+        second = planned(batch).segments[1]
+        assert second.kind == "black" and second.length == FRAMES
+        assert second.missing == batch.turnovers[0].folder / row.clip_name
+        assert second.label == naming.shot_label(row.identity) if row.identity else False
+        assert second.effect == row.scene
+
+    def test_the_card_burns_in_missing_media_and_the_path(self, tmp_path: Path) -> None:
+        path = Path("/Volumes/GoogleDrive/Shared drives/VFX_Ingest/turnover144/" + "INCA5002/" * 12)
+        path = path / "pl01.mp4"
+        card = stringout.Segment(kind="black", length=24, label="pl01", missing=path)
+        filters = stringout._burn_ins("so", card, tmp_path / "0000")
+        texts = [written.read_text() for written in sorted(tmp_path.glob("0000_*.txt"), key=_position)]
+        assert "MISSING MEDIA" in texts
+        lines = texts[texts.index("MISSING MEDIA") + 1 :]
+        assert "".join(lines) == str(path) and len(lines) > 1
+        assert all(len(line) <= stringout.CARD_LINE for line in lines), "wrapped to fit"
+        assert len(filters) == len(texts)
 
     def test_a_gap_in_the_record_timeline_is_black_with_only_the_name(self, batch: Batch) -> None:
         edl = batch.turnovers[0].edl_path
@@ -622,6 +651,7 @@ class TestAStyleFrame:
         assert batch.delivery_root is not None
         segment = planned(batch).segments[0]
         assert (segment.kind, segment.length) == ("black", FRAMES)
+        assert segment.missing is not None and segment.missing.parent == batch.turnovers[0].folder
         made = stringout.build(batch, batch.turnovers[0], batch.delivery_root)
         assert made is not None
         said = [(q.rule_id, q.severity) for q in batch.turnovers[0].qc]

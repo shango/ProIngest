@@ -18,6 +18,20 @@ since 2026-09-28 (user). What is left is the Mac: `docs/MAC_SESSION.md`, from "T
 order" down, and Ben's 4.886 slope. Entries are newest first; anything older than 2026-09-22
 describes the tool before the review and is history.
 
+**2026-10-14, 0.5.43: a missing file is a card on the stringout (user).** "Put a card that
+reads "missing media" with a path to where it's supposed to be, in on the timeline and don't deliver
+the missing clip." An event whose clip a CSV row names and whose file the scan did not find
+(QC-012, which already holds the row) is black with `MISSING MEDIA` and the turnover folder joined
+with the `File Name`, wrapped after a `/` at 90 characters, centred, with the clip's own label and
+Primary Effect (`stringout._missing`). QC-144 says these on their own line. The CSV's `Clip
+Directory` is not used for the path: `metacsv` documents it as the pre-consolidation originals.
+**Verified**: a copy of turnover144 without `pl02.mp4` renders the card on event 003 (looked at,
+frame 380). **Open with the user**: what a `preVis##` delivers (Ben's hand delivery in
+`VFX_Ingest/turnover144_10_06_26_michaelcrigler` has `INCA5002_preVis01_raw_4k_v01`, 236 frames,
+4K raw only). Answered: a wrong folder name passes through as it is (it already did); `el01.mp4`
+and `el02.mp4` are not in the EDL, so they are not delivered (already so); Ben's `INCA5002` folder
+was inside the turnover folder, and the media scan already walks subfolders.
+
 **2026-10-14, 0.5.42: turnover144 read through, and an inverse output transform is an input
 transform.** Turnover144 (Michael Crigler, Ben's export 2026-10-13, `TEST MATERIAL` on the Drive):
 six events, INCA5002's style frame, pl01 to pl03 (iPhone 17 Pro Max, Apple Log, H.264 4:2:0 with

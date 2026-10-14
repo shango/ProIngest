@@ -13,7 +13,7 @@ files.
 
 ## Putting it on
 
-You are handed one file, `ProIngest-0.5.42.dmg`. The version is in the name so two builds can
+You are handed one file, `ProIngest-0.5.43.dmg`. The version is in the name so two builds can
 sit in the same folder.
 
 1. Double-click the dmg. It opens on a window with the app and a shortcut to Applications.

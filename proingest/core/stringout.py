@@ -15,7 +15,9 @@ ffmpeg. The user's decisions, all in OQ-38:
   small DWAA frame black (measured on ffmpeg 6.1.1, 2026-10-07).
 - **An event with no delivered EXR** falls back to its HD reference, then **the source
   through its AMF** (a skipped or failed shot; a clip with no AMF, such as one the CSV gives
-  no `Shot Type`, stays as it is), and black when not even that is known.
+  no `Shot Type`, stays as it is), and black when not even that is known. **A clip whose file
+  is not in the turnover folder is a card** (user, 2026-10-14): black, `MISSING MEDIA` and the
+  path it should be at, for the event's length; the clip is not delivered (QC-012).
 - **Burn-ins copy Ben's frame** (`burn-ins.png`): the stringout's own name top centre,
   `Frame:` bottom left, `Primary Effect:` (the CSV's `Scene`) bottom centre, and the
   shot and element bottom right. White, Open Sans, no box. No camera timecode: the
@@ -40,7 +42,7 @@ ffmpeg. The user's decisions, all in OQ-38:
   length, as a style frame is.
 - **A style frame is held as it is** (user, 2026-10-07): a pre-graded PNG or JPG, `Shot Type`
   `styleFrame`, cut before its shot's plate. It keeps the EDL's length, takes no grade and
-  no `Frame:` counter, and is never delivered (QC-085). Its file missing is black.
+  no `Frame:` counter, and is never delivered (QC-085). Its file missing is the card.
 - **Only a plate has sound**, from its delivered wav; every other segment carries silence of
   the same length.
 - **A plate carries its shot's cp top left and wit top right** (user, 2026-09-29), each at
@@ -105,6 +107,15 @@ BOTTOM_Y = "892"
 LEFT_X = "184"
 RIGHT_X = "w-150-text_w"
 CENTRE_X = "(w-text_w)/2"
+
+MISSING_MEDIA = "MISSING MEDIA"
+CARD_Y = "(h-text_h)/2-90"
+CARD_PATH_Y = "(h-text_h)/2+30"
+CARD_PATH_SIZE = 30
+CARD_PATH_LEADING = 42
+CARD_LINE = 90
+"""Characters on one line of the card's path, broken after a `/`: about 1600 pixels of Open
+Sans at 30, inside the HD frame with the burn-ins' own margins."""
 
 STILL_LENGTH = 24
 """A reference still's time on the stringout: one second at 24, whatever the EDL cut."""
@@ -196,6 +207,10 @@ class Segment:
     style_frame: bool = False
     """A style frame (QC-085): held as it is, with no counter, and no stand-in either."""
 
+    missing: Path | None = None
+    """Where the event's file should be, when a row names it and it is not there: the
+    missing media card (user, 2026-10-14)."""
+
 
 @dataclass
 class Plan:
@@ -260,7 +275,7 @@ def plan(
     for event in events:
         if event.record_in > cursor:
             result.segments.append(Segment(kind="black", length=event.record_in - cursor, gap=True))
-        result.segments.append(_segment(event, session, rows, show_pattern))
+        result.segments.append(_segment(event, session, rows, show_pattern, turnover.folder))
         cursor = max(cursor, event.record_out + 1)
     result.segments = _with_insets(result.segments)
     return result
@@ -303,7 +318,7 @@ def _next_version(folder: Path, number: int, month: int, day: int, year: int, sh
 
 
 def _segment(
-    event: clf.ConformEvent, session: clf.ColorSession, rows: list[ShotRow], show_pattern: str
+    event: clf.ConformEvent, session: clf.ColorSession, rows: list[ShotRow], show_pattern: str, folder: Path
 ) -> Segment:
     length = frames.duration(event.record_in, event.record_out)
     claimed = [row for row in rows if event in session.candidates(row)]
@@ -312,18 +327,19 @@ def _segment(
         return _prerender(event, hdri, length, show_pattern)
     style = next((row for row in claimed if qc.is_style_frame(row)), None)
     if style is not None:
-        return _style_frame(event, style, length, show_pattern)
+        return _style_frame(event, style, length, show_pattern, folder)
     known = next((row for row in claimed if row.media is not None), None)
     cut = _cut(event, known.media) if known is not None and known.media is not None else None
     if known is None or cut is None:
-        name = event.clip_stem or event.reel or f"event {event.event_id}"
         held = event.freeze or length == 1
+        if claimed:
+            return _missing(event, claimed[0], STILL_LENGTH if held else length, held, show_pattern, folder)
         return Segment(
             kind="black",
             length=STILL_LENGTH if held else length,
             event_id=event.event_id,
             freeze=held,
-            label=name,
+            label=event.clip_stem or event.reel or f"event {event.event_id}",
         )
 
     exr = next((row for row in claimed if _exr(row, cut, event) is not None), None)
@@ -400,6 +416,25 @@ def _segment(
     )
 
 
+def _missing(
+    event: clf.ConformEvent, row: ShotRow, length: int, held: bool, show_pattern: str, folder: Path
+) -> Segment:
+    """The missing media card: a row names the event's clip and its file is not in the
+    turnover folder (QC-012), so the card says where it should be (user, 2026-10-14)."""
+    identity = effective_identity(row, show_pattern)
+    named = naming.shot_label(identity) if identity is not None else Path(row.clip_name).stem
+    return Segment(
+        kind="black",
+        length=length,
+        event_id=event.event_id,
+        freeze=held,
+        label=naming.take_label(named, row.take, identity),
+        effect=row.scene,
+        identity=identity,
+        missing=folder / row.clip_name,
+    )
+
+
 def _hdri_exr(row: ShotRow) -> ExrView | None:
     """An HDRI with no pre-render (QC-083): its EXR, read as linear Rec.709 like its
     pre-render, through its AMF's grade. None when the AMF names no output transform."""
@@ -443,9 +478,11 @@ def _prerender_color(row: ShotRow) -> clf.ShotColor | None:
     return replace(clf.shot_color(row), source_encoding=color.HDRI_RENDER_ENCODING)
 
 
-def _style_frame(event: clf.ConformEvent, row: ShotRow, length: int, show_pattern: str) -> Segment:
-    """A style frame's event: its still held as it is for the event's length, or black
-    when the file is not there (user, 2026-10-07)."""
+def _style_frame(
+    event: clf.ConformEvent, row: ShotRow, length: int, show_pattern: str, folder: Path
+) -> Segment:
+    """A style frame's event: its still held as it is for the event's length (user,
+    2026-10-07), or the missing media card when the file is not there (user, 2026-10-14)."""
     identity = effective_identity(row, show_pattern)
     media = row.media
     return Segment(
@@ -460,6 +497,7 @@ def _style_frame(event: clf.ConformEvent, row: ShotRow, length: int, show_patter
         media=media,
         identity=identity,
         style_frame=True,
+        missing=folder / row.clip_name if media is None else None,
     )
 
 
@@ -552,7 +590,8 @@ def build(
         return None
     turnover.stringout = deliverable
     events = [s for s in made.segments if not s.gap and not s.prerender]
-    black = [f"{s.event_id} ({s.label})" for s in events if s.kind == "black"]
+    black = [f"{s.event_id} ({s.label})" for s in events if s.kind == "black" and s.missing is None]
+    missing = [f"{s.event_id} ({s.label})" for s in events if s.missing is not None]
     stand_ins = [
         f"{s.event_id} ({s.label})"
         for s in events
@@ -565,6 +604,16 @@ def build(
                 "warning",
                 "turnover",
                 f"{deliverable.name}: events {', '.join(black)} have nothing to show and are black",
+            )
+        )
+    if missing:
+        turnover.qc.append(
+            QCResult(
+                "QC-144",
+                "warning",
+                "turnover",
+                f"{deliverable.name}: events {', '.join(missing)} show a missing media card: "
+                f"their files are not in the turnover folder",
             )
         )
     if stand_ins:
@@ -910,9 +959,25 @@ def _burn_ins(stem: str, segment: Segment, base: Path) -> list[str]:
             (ffmpeg.drawtext_literal(f"Primary Effect: {segment.effect}"), CENTRE_X, BOTTOM_Y),
             (ffmpeg.drawtext_literal(segment.label), RIGHT_X, BOTTOM_Y),
         ]
+    sized = [(text, x, y, FONT_SIZE) for text, x, y in texts]
+    if segment.missing is not None:
+        sized.append((MISSING_MEDIA, CENTRE_X, CARD_Y, FONT_SIZE))
+        for line, part in enumerate(_wrapped(str(segment.missing))):
+            y = f"{CARD_PATH_Y}+{line * CARD_PATH_LEADING}"
+            sized.append((ffmpeg.drawtext_literal(part), CENTRE_X, y, CARD_PATH_SIZE))
     filters = []
-    for position, (text, x, y) in enumerate(texts):
+    for position, (text, x, y, size) in enumerate(sized):
         textfile = base.with_name(f"{base.name}_{position}.txt")
         textfile.write_text(text, encoding="utf-8")
-        filters.append(ffmpeg.drawtext_filter(textfile, FONT, FONT_SIZE, x, y))
+        filters.append(ffmpeg.drawtext_filter(textfile, FONT, size, x, y))
     return filters
+
+
+def _wrapped(path: str) -> list[str]:
+    """The card's path in lines of at most `CARD_LINE`, each broken after a `/` where it can be."""
+    lines: list[str] = []
+    while len(path) > CARD_LINE:
+        cut = path.rfind("/", 0, CARD_LINE) + 1 or CARD_LINE
+        lines.append(path[:cut])
+        path = path[cut:]
+    return [*lines, path]
