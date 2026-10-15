@@ -286,7 +286,7 @@ def _checksum(item: Deliverable) -> str:
 
 ISSUES_HEADERS = ("Turnover", "Shot code", "Clip name", "Rule", "Level", "Effect", "Message")
 
-RECORD_ONLY_RULES = frozenset({"QC-048", "QC-060", "QC-061", "QC-080", "QC-085"})
+RECORD_ONLY_RULES = frozenset({"QC-048", "QC-060", "QC-061", "QC-080", "QC-085", "QC-088"})
 """Results that record what the tool did rather than anything about the clip: the colour
 chain, the version, an HDRI or style frame being what it is. Kept off the Issues sheet."""
 
@@ -372,12 +372,8 @@ TRACKER_FPS = "24"
 """Every deliverable is written at 24, frame for frame (user, 2026-09-23), whatever the
 source file states, so that is the rate the tracker records."""
 
-_MISSING = "\u2014"
-"""The sheet's own mark for a plate that is not there: `4K \u2014`. Written as an escape
-so the source carries no em dash; the studio's cells do."""
-
 _TICK = "✓"
-"""The sheet's mark for a plate or a sound that is there."""
+"""The sheet's mark for a sound that is there."""
 
 _LANDED = ("done", "exists")
 """A deliverable that is on disk and passed: written this run, or already complete."""
@@ -403,10 +399,11 @@ def _delivered(row: ShotRow, kind: str, res: str | None = None) -> Deliverable |
 
 
 def _plate_marks(row: ShotRow | None) -> str:
-    """`4K ✓` and `HD ✓` on two lines, the way the tracker's own cells are written."""
+    """`4K`, `HD`, or both on two lines: only the resolutions that landed (user, 2026-10-13)."""
     return "\n".join(
-        f"{label} {_TICK if row is not None and _delivered(row, 'raw_dir', res) else _MISSING}"
+        label
         for label, res in (("4K", "4k"), ("HD", "HD"))
+        if row is not None and _delivered(row, "raw_dir", res)
     )
 
 
@@ -438,8 +435,11 @@ def tracker_row(shot_code: str, rows: list[ShotRow], stringout: str = "") -> lis
     cells[2] = shot_code
     cells[3] = shot_code
     cells[4] = reference.name if reference is not None else ""
-    hdri = next((item for row in rows if (item := _delivered(row, "hdri")) is not None), None)
-    # The HDRI the tool copied (user, 2026-10-07). CAM Data stays the studio's column.
+    hdri = next(
+        (item for row in rows if not qc.is_ldri(row) and (item := _delivered(row, "hdri")) is not None), None
+    )
+    # The HDRI the tool copied (user, 2026-10-07). CAM Data stays the studio's column. An LDRI
+    # has no column: the HDRI cell is left empty, which says there is no HDRI (user, 2026-10-08).
     cells[5] = hdri.name if hdri is not None else ""
     cells[7] = _plate_marks(plate)
     cells[8] = TRACKER_FPS

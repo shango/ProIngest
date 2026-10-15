@@ -6,7 +6,8 @@ files each one names. The EDL is the cut and the CSV is the identity; neither ca
 colour any more. An AMF is Academy S-2019-001 XML:
 
     clipId            the file the clip is, or the sequence pattern of an EXR sequence
-    inputTransform    a transform ID: the camera encoding to ACES2065-1
+    inputTransform    a transform ID: the camera encoding to ACES2065-1, or for a display
+                      referred render an inverseOutputTransform holding one
     lookTransform...  in order: a transform ID (the Reference Gamut Compress) or a CLF
     outputTransform   a transform ID: ACES to the display the session was viewed on
 
@@ -109,6 +110,9 @@ class Amf:
 
     input_transform: str
     input_applied: bool
+    input_inverse_output: bool
+    """The input transform is an `inverseOutputTransform`: a display referred render, such
+    as turnover144's colour chart, brought back through the session's view undone."""
     looks: tuple[AmfLook, ...]
     output_transform: str
 
@@ -143,6 +147,7 @@ def read(path: Path) -> Amf:
         raise AmfError(f"{path.name} has no pipeline")
     clip_file, sequence_range = _clip(clip)
     source = _child(pipeline, "inputTransform")
+    inverse = _child(source, "inverseOutputTransform")
     output = _child(pipeline, "outputTransform")
     return Amf(
         path=path,
@@ -150,8 +155,9 @@ def read(path: Path) -> Amf:
         preset=_preset(root),
         clip_file=clip_file,
         sequence_range=sequence_range,
-        input_transform=_text(source, "transformId"),
+        input_transform=_text(source if inverse is None else inverse, "transformId"),
         input_applied=_applied(source),
+        input_inverse_output=inverse is not None,
         looks=tuple(_look(item) for item in pipeline if _local(item.tag) == "lookTransform"),
         output_transform=_text(output, "transformId"),
     )
@@ -259,6 +265,19 @@ def _index() -> _Index:
 def colour_space_for(transform_id: str) -> str | None:
     """The config colour space an input transform ID converts from, or None."""
     return _index().colour_spaces.get(transform_id)
+
+
+def input_encoding_for(found: Amf) -> str | None:
+    """What the AMF's input transform converts from, or None when the config lacks it.
+
+    An inverse output transform is listed on the same display and view transform as the
+    forward one, so it resolves the way `display_view_for` does and comes back as that
+    view undone (`color.inverse_view`).
+    """
+    if not found.input_inverse_output:
+        return colour_space_for(found.input_transform)
+    display_view = display_view_for(found.input_transform)
+    return color.inverse_view(*display_view) if display_view is not None else None
 
 
 def look_for(transform_id: str) -> str | None:

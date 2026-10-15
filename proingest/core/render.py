@@ -171,7 +171,7 @@ def _record_file(deliverable: Deliverable, path: Path) -> None:
 
 
 def _copy_hdri(job: DeliverableJob, deliverable: Deliverable) -> None:
-    """The HDRI as it is, byte for byte, to the temp the envelope renames (user, 2026-10-07)."""
+    """The HDRI or LDRI as it is, byte for byte, to the temp the envelope renames (user, 2026-10-07)."""
     shutil.copyfile(job.source, job.temp)
     _record_file(deliverable, job.temp)
     deliverable.frame_count = 1

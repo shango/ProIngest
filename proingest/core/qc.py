@@ -720,7 +720,7 @@ def check_source_encoding(row: ShotRow) -> list[QCResult]:
                 "QC-047",
                 "error" if blocking else "warning",
                 "row",
-                f"the AMF's input transform {grade.input_transform} is not one {color.BUILTIN_CONFIG} has",
+                f"the AMF's input transform {grade.input_transform} is not one the tool knows",
             )
         ]
     said = (
@@ -770,9 +770,15 @@ def check_duplicate_name(row: ShotRow, counts: dict[str, int]) -> list[QCResult]
 
 
 def is_hdri(row: ShotRow) -> bool:
-    """An HDRI row (QC-080): its EXR is copied as it is and no row rule runs on it
+    """An HDRI or LDRI row (QC-080): its file is copied as it is and no row rule runs on it
     (user, 2026-10-07). Its source fps or range said as errors was noise (2026-09-29)."""
     return any(result.rule_id == "QC-080" for result in row.qc)
+
+
+def is_ldri(row: ShotRow) -> bool:
+    """An LDRI row (user, 2026-10-08): an HDRI row whose file is a JPG or PNG, shown on the
+    stringout as it is. From the CSV's `Shot Type`, so a row with no shot code knows it too."""
+    return is_hdri(row) and naming.hdri_kind(row.csv_shot_type) == naming.LDRI_KIND
 
 
 def is_prerender_name(file_name: str) -> bool:
@@ -810,6 +816,12 @@ def is_style_frame(row: ShotRow) -> bool:
     return any(result.rule_id == "QC-085" for result in row.qc)
 
 
+def is_stringout_only(row: ShotRow) -> bool:
+    """A style frame (QC-085) or an Avid reference (QC-088): shown on the stringout as it is, never
+    delivered, and no rule runs on it (user, 2026-10-07 and 2026-10-14)."""
+    return any(result.rule_id in ("QC-085", "QC-088") for result in row.qc)
+
+
 def run_row_rules(
     row: ShotRow,
     project_rate: FrameRate,
@@ -819,7 +831,7 @@ def run_row_rules(
     """Every row rule that is a pure function of the model, in rule ID order."""
     if is_hdri(row):
         return check_prerender_color(row)
-    if is_style_frame(row):
+    if is_stringout_only(row):
         return []
     results: list[QCResult] = []
     results.extend(check_duplicate_name(row, name_counts or {}))
@@ -1191,7 +1203,7 @@ def preflight(batch: Batch, decoders: frozenset[str] | None = None) -> None:
         turnover.qc.extend(check_turnover_folder(turnover))
     for row in batch.rows:
         row.qc = [result for result in row.qc if result.rule_id not in OWNED_PREFLIGHT_RULES]
-        if is_hdri(row) or is_style_frame(row):
+        if is_hdri(row) or is_stringout_only(row):
             continue  # copied as it is, or not delivered, with no checks (user, 2026-10-07)
         row.qc.extend(check_source_codec(row, decoders))
         row.qc.extend(check_color_chain(row))

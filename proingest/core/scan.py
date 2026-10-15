@@ -152,8 +152,7 @@ def scan_turnover(
     rows = [_build_row(entry, index, turnover_id, settings, cache) for entry in _fold_hdri_exrs(meta.rows)]
     grades = _Grades.read(folder)
     turnover.qc.extend(grades.qc)
-    turnover.qc.extend(_conform_all(rows, session, grades))
-    _refuse_retimes(rows, session.events, settings.project_rate)
+    turnover.qc.extend(_conform_all(rows, session, grades, settings.project_rate))
     rows = _collapse(rows)
     for row in rows:
         # Only the plate has an associated audio clip (user, 2026-09-23).
@@ -274,10 +273,11 @@ def _build_row(
     if entry.kind is not None and entry.index is not None and not row.errors():
         row.identity = naming.ShotIdentity(shot_code=entry.shot, kind=entry.kind, index=entry.index)
 
+    hdri = naming.hdri_kind(entry.shot_type) or naming.HDRI_KIND
     if entry.hdri and qc.is_prerender_name(entry.file_name):
-        _resolve_prerender(entry.file_name, index, row, cache, settings.project_rate)
+        _resolve_prerender(entry.file_name, hdri, index, row, cache, settings.project_rate)
     elif entry.hdri:
-        _resolve_hdri(entry.file_name, index, row, cache, settings.project_rate)
+        _resolve_hdri(entry.file_name, hdri, index, row, cache, settings.project_rate)
     else:
         item = _resolve_media(entry.file_name, index, row)
         if item is not None:
@@ -301,34 +301,41 @@ def _fold_hdri_exrs(entries: list[metacsv.MetaRow]) -> list[metacsv.MetaRow]:
         exr.casefold()
         for entry in entries
         if entry.hdri
-        and (exr := hdri_exr_name(entry.file_name)) is not None
+        and (exr := hdri_source_name(entry.file_name)) is not None
         and qc.is_prerender_name(entry.file_name)
     }
     return [entry for entry in entries if not (entry.hdri and entry.file_name.casefold() in named)]
 
 
-def hdri_exr_name(prerender: str) -> str | None:
-    """The HDRI EXR a pre-render is named after: its name up to `.exr`, as Resolve names a
-    render of a clip (`SECA0009_pl01_HDRI_01_v01.exr Render 1.mov`, turnover134 and 135,
-    2026-10-07). None when the name carries no `.exr`."""
-    end = prerender.casefold().find(".exr")
-    return prerender[: end + len(".exr")] if end >= 0 else None
+_HDRI_SOURCE = re.compile(r"^(?P<name>.+?\.(?:exr|jpe?g|png))(?![A-Za-z0-9])", re.IGNORECASE)
+
+
+def hdri_source_name(prerender: str) -> str | None:
+    """The HDRI EXR or LDRI image a pre-render is named after: its name up to `.exr`, `.jpg`,
+    `.jpeg` or `.png`, as Resolve names a render of a clip (`SECA0009_pl01_HDRI_01_v01.exr
+    Render 1.mov`, turnover134 and 135, 2026-10-07; an LDRI the same, user 2026-10-08). None
+    when the name carries none of them."""
+    match = _HDRI_SOURCE.match(prerender)
+    return match["name"] if match else None
 
 
 def _resolve_prerender(
     file_name: str,
+    hdri: str,
     index: media_module.DirectoryIndex,
     row: ShotRow,
     cache: dict[str, MediaInfo],
     timeline_rate: FrameRate,
 ) -> None:
-    """An HDRI whose timeline event is Ben's pre-render (user, 2026-10-07).
+    """An HDRI or LDRI whose timeline event is Ben's pre-render (user, 2026-10-07).
 
     The pre-render is found by the name the timeline uses, and is only ever the stringout's
-    event. The EXR it is named after is what is delivered; when the turnover folder lacks
-    it, nothing is delivered and QC-086 says so. Neither is ever a block.
+    event. The EXR (or an LDRI's JPG or PNG) it is named after is what is delivered; when the
+    turnover folder lacks it, nothing is delivered and QC-086 says so. Neither is ever a block.
     """
-    exr_name = hdri_exr_name(file_name)
+    exr_name = hdri_source_name(file_name)
+    # "HDRI EXR", the user's own words for QC-086, and "LDRI JPG" or "LDRI PNG" the same way.
+    what = f"{hdri} {Path(exr_name).suffix.lstrip('.').upper()}" if exr_name else hdri
     matches = index.media_matching(Path(exr_name).stem) if exr_name else []
     images = [item for item in matches if _suffix(item) not in media_module.VIDEO_EXTENSIONS]
     if len(images) == 1:
@@ -341,7 +348,7 @@ def _resolve_prerender(
                 "QC-086",
                 "warning",
                 "row",
-                f"HDRI EXR File Missing from turnover folder, omitted from delivery: {exr_name or file_name}",
+                f"{what} File Missing from turnover folder, omitted from delivery: {exr_name or file_name}",
             )
         )
 
@@ -359,12 +366,13 @@ def _resolve_prerender(
         else f"the timeline's pre-render {file_name} is not in the turnover folder: it was rendered "
         "somewhere else, or the timeline event points at a file in another folder"
     )
-    shown = "the HDRI EXR held still" if row.media is not None else "black"
+    shown = f"the {what} held still" if row.media is not None else "black"
     row.qc.append(QCResult("QC-083", "warning", "row", f"{why}, so its stringout event is {shown}"))
 
 
 def _resolve_hdri(
     file_name: str,
+    hdri: str,
     index: media_module.DirectoryIndex,
     row: ShotRow,
     cache: dict[str, MediaInfo],
@@ -395,8 +403,8 @@ def _resolve_hdri(
             "QC-083",
             "warning",
             "row",
-            f"{why} the pre-render of HDRI {file_name} (a video named {stem}, such as {stem}.mp4), "
-            "so the stringout shows the HDRI held still",
+            f"{why} the pre-render of {hdri} {file_name} (a video named {stem}, such as {stem}.mp4), "
+            f"so the stringout shows the {hdri} held still",
         )
     )
 
@@ -469,7 +477,9 @@ def _named_events(folder: Path, events: list[clf.ConformEvent], turnover: Turnov
     ]
 
 
-def _conform_all(rows: list[ShotRow], session: clf.ColorSession, grades: _Grades) -> list[QCResult]:
+def _conform_all(
+    rows: list[ShotRow], session: clf.ColorSession, grades: _Grades, rate: FrameRate
+) -> list[QCResult]:
     """Pair every row with its EDL event, and return what the turnover should hear.
 
     A row with no event (QC-066) or with a match that could go two ways (QC-067) gets
@@ -479,7 +489,7 @@ def _conform_all(rows: list[ShotRow], session: clf.ColorSession, grades: _Grades
     editor can see what arrived. An event no row claims is QC-068, for the record.
     """
     if session.events and all(event.clip_name for event in session.events):
-        return _conform_by_use(rows, session.events, grades)
+        return _conform_by_use(rows, session.events, grades, rate)
     found = [session.candidates(row) for row in rows]
     claims: dict[int, list[str]] = {}
     for row, events in zip(rows, found, strict=True):
@@ -524,6 +534,7 @@ def _conform_all(rows: list[ShotRow], session: clf.ColorSession, grades: _Grades
             _whole_media(row)
         else:
             _conform(row, events[0], grades)
+            _refuse_retimes(row, events, rate)
 
     unclaimed = [event.event_id for event in session.events if id(event) not in claims]
     if not unclaimed:
@@ -538,7 +549,9 @@ def _conform_all(rows: list[ShotRow], session: clf.ColorSession, grades: _Grades
     ]
 
 
-def _conform_by_use(rows: list[ShotRow], events: list[clf.ConformEvent], grades: _Grades) -> list[QCResult]:
+def _conform_by_use(
+    rows: list[ShotRow], events: list[clf.ConformEvent], grades: _Grades, rate: FrameRate
+) -> list[QCResult]:
     """Pair rows with events by name, one CSV row per use of a clip.
 
     Resolve's CSV carries a row for each **distinct source range** a clip is cut at
@@ -589,6 +602,7 @@ def _conform_by_use(rows: list[ShotRow], events: list[clf.ConformEvent], grades:
             for row, group in zip(clip_rows, uses.values(), strict=True):
                 _conform(row, group[0], grades)
                 row.freeze = group[0].freeze
+                _refuse_retimes(row, group, rate)
 
     unclaimed = [event.event_id for event in events if id(event) not in claimed]
     if not unclaimed:
@@ -603,24 +617,24 @@ def _conform_by_use(rows: list[ShotRow], events: list[clf.ConformEvent], grades:
     ]
 
 
-def _refuse_retimes(rows: list[ShotRow], events: list[clf.ConformEvent], rate: FrameRate) -> None:
+def _refuse_retimes(row: ShotRow, events: list[clf.ConformEvent], rate: FrameRate) -> None:
     """QC-073: a clip the EDL retimes or reverses, a warning. Only a freeze is rendered as
     cut (OQ-63); any other speed renders the range at normal speed, and Ben sees the retime
-    on his timeline (user, 2026-10-07: never a block)."""
+    on his timeline (user, 2026-10-07: never a block).
+
+    On the row paired with the retimed event only: a clip cut three times is three rows,
+    and one retimed cut said nothing about the other two (turnover142, C2041, 2026-10-13)."""
     for event in events:
-        if not event.clip_name or not event.retimed(rate):
-            continue
-        for row in rows:
-            if Path(row.clip_name).stem.casefold() == event.clip_stem.casefold():
-                row.qc.append(
-                    QCResult(
-                        "QC-073",
-                        "warning",
-                        "row",
-                        f"EDL event {event.event_id} plays {row.clip_name} at {event.speed:g} fps; "
-                        f"the tool renders its range at normal speed",
-                    )
+        if event.retimed(rate):
+            row.qc.append(
+                QCResult(
+                    "QC-073",
+                    "warning",
+                    "row",
+                    f"EDL event {event.event_id} plays {row.clip_name} at {event.speed:g} fps; "
+                    f"the tool renders its range at normal speed",
                 )
+            )
 
 
 def _collapse(rows: list[ShotRow]) -> list[ShotRow]:
@@ -679,16 +693,16 @@ def _conform(row: ShotRow, event: clf.ConformEvent, grades: _Grades) -> None:
     if row.media is not None or row.hdri_render is not None:
         before = len(row.qc)
         grades.attach(row, event)
-        if qc.is_hdri(row) or qc.is_style_frame(row):
-            # An HDRI's grade colours the pre-render on the stringout and a style frame is
-            # shown as it is; no check runs on either (user, 2026-10-07), so what is wrong
+        if qc.is_hdri(row) or qc.is_stringout_only(row):
+            # An HDRI's grade colours the pre-render on the stringout and a style frame or an
+            # Avid reference is shown as it is; no check runs on any (user, 2026-10-07), so what is wrong
             # with its AMF goes unsaid.
             del row.qc[before:]
     media = row.media
     if media is None:
         return
     approved = clf.approved_in_out(event, media)
-    unchecked = qc.is_hdri(row) or qc.is_style_frame(row)
+    unchecked = qc.is_hdri(row) or qc.is_stringout_only(row)
     if not unchecked and not _fits(approved, media):
         approved = _outside(row, event, media, approved)
     row.approved = approved
@@ -999,7 +1013,7 @@ class _Grades:
             return
         row.grade, findings = _grade_of(match, self.folder)
         row.qc.extend(findings)
-        space = color.ACES if match.input_applied else amf.colour_space_for(match.input_transform)
+        space = color.ACES if match.input_applied else amf.input_encoding_for(match)
         row.source_encoding = space
         row.source_encoding_origin = "AMF" if space else None
 
@@ -1023,7 +1037,7 @@ def _grade_of(found: amf.Amf, folder: Path) -> tuple[Grade, list[QCResult]]:
             name = amf.look_for(look.transform_id)
             if name is None:
                 findings.append(
-                    _ignored(found, f"the look {look.transform_id}, which {color.BUILTIN_CONFIG} lacks")
+                    _ignored(found, f"the look {look.transform_id}, which the tool does not know")
                 )
             else:
                 looks.append(GradeLook("look", name))
@@ -1060,7 +1074,7 @@ def _grade_of(found: amf.Amf, folder: Path) -> tuple[Grade, list[QCResult]]:
                 "warning",
                 "row",
                 f"{found.path.name}: the output transform {found.output_transform or '(none)'} is not one "
-                f"{color.BUILTIN_CONFIG} has; the references use {color.DEFAULT_VIEW[1]}",
+                f"the tool knows; the references use {color.DEFAULT_VIEW[1]}",
             )
         )
     if found.preset.casefold() == amf.DAILIES_PRESET.casefold():
@@ -1086,7 +1100,7 @@ def _cdl_finding(found: amf.Amf, cdl: amf.AmfCdl, looks: list[GradeLook], names_
     working = amf.colour_space_for(cdl.working) if cdl.working else None
     if working is None:
         return _ignored(
-            found, f"a CDL in a working space {color.BUILTIN_CONFIG} lacks ({cdl.working or 'none stated'})"
+            found, f"a CDL in a working space the tool does not know ({cdl.working or 'none stated'})"
         )
     looks.append(GradeLook("cdl", working, (*cdl.slope, *cdl.offset, *cdl.power, cdl.saturation)))
     numbers = " ".join(f"{value:g}" for value in cdl.slope)

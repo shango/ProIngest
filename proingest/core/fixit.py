@@ -74,7 +74,7 @@ ADVICE: dict[str, Advice] = {
         "A clip's Shot or Shot Type cannot be used.",
         "The Shot needs to look like SECA0012, and the Shot Type has to be one the tool delivers: "
         + ", ".join(t + "01" if t in naming.ELEMENT_TYPES else t for t in naming.CLIP_TYPES)
-        + " or HDRI. Please correct it in the clip's metadata.",
+        + ", HDRI or LDRI. Please correct it in the clip's metadata.",
         "message",
     ),
     "QC-011": Advice(
@@ -82,6 +82,7 @@ ADVICE: dict[str, Advice] = {
         "Two clips would be delivered under the same name.",
         "They have the same Shot and Shot Type. Please give one of them the next number (pl02 instead "
         "of pl01, for example).",
+        "message",
     ),
     "QC-033": Advice(
         "look",
@@ -97,16 +98,18 @@ ADVICE: dict[str, Advice] = {
     ),
     "QC-046": Advice(
         "resolve",
-        "A clip has no colour information.",
-        "It has no AMF, and the metadata gives no Input Color Space, so the tool cannot tell what colour "
-        "space the camera recorded in and holds the clip back. Please set its input colour space in "
-        "Resolve and export the metadata (or its AMF) again.",
+        "Nothing says what colour space a clip was recorded in.",
+        "Without it the tool cannot convert the clip, so it holds the clip back. Each clip below says "
+        "what the tool found. Please set its input colour space in Resolve and export its AMF (or the "
+        "metadata) again.",
+        "message",
     ),
     "QC-047": Advice(
         "resolve",
-        "A clip's colour file (AMF) names a camera colour space the tool does not know.",
-        "Please check the clip's input colour space in Resolve. If it is right, let the editor know "
-        "which camera this is.",
+        "A clip's input colour space is one the tool does not know.",
+        "This is the colour space Resolve reads the camera footage as, not its grade. Each clip below "
+        "says which of the exported files gave it. Please check the clip's input colour space in "
+        "Resolve. If it is right, let the editor know which camera this is.",
         "message",
     ),
     "QC-065": Advice(
@@ -124,8 +127,9 @@ ADVICE: dict[str, Advice] = {
     "QC-067": Advice(
         "resolve",
         "The tool cannot tell which cut belongs to which clip.",
-        "Either this clip is used twice in overlapping places, or two clips share the same timecode. "
-        "Please make sure each clip is used once on the timeline.",
+        "Each clip below names the EDL events involved. Please make sure each clip is used once on the "
+        "timeline, and that no two clips share the same timecode.",
+        "message",
     ),
     "QC-071": Advice(
         "resolve",
@@ -136,18 +140,21 @@ ADVICE: dict[str, Advice] = {
         "look",
         "A clip is sped up, slowed down or reversed.",
         "It was delivered at normal speed, as VFX plates are. Fine if intended.",
+        "message",
     ),
     "QC-075": Advice(
         "resolve",
-        "Two colour files (AMF) claim the same clip.",
-        "The tool cannot tell which grade is the right one, so it holds the clip back. Please export the "
-        "AMFs again from the timeline, one per clip.",
+        "A colour file (AMF) cannot be used.",
+        "Each line below names the AMF and why. Where two AMFs claim one clip the tool cannot tell which "
+        "grade is right, so it holds that clip back. Please export the AMFs again from the timeline, one "
+        "per clip.",
+        "message",
     ),
     "QC-076": Advice(
         "resolve",
-        "A grade file (CLF) is missing or was changed after export.",
-        "The clip's AMF points at a CLF that is not in the folder, or no longer matches. Please export "
-        "the clip's AMF and CLFs again, together.",
+        "A grade file (CLF) that an AMF names cannot be used.",
+        "Each clip below names the AMF, the CLF, and whether the CLF is missing or was changed after "
+        "export. Please export the clip's AMF and CLFs again, together.",
         "message",
     ),
     "QC-077": Advice(
@@ -166,9 +173,8 @@ ADVICE: dict[str, Advice] = {
     ),
     "QC-082": Advice(
         "resolve",
-        "The grade came without its CLF file.",
-        "The tool uses the simpler colour correction (a CDL) stored in the AMF instead, so the shot is "
-        "still graded. Please export the CLFs with the AMFs next time.",
+        "A clip is missing a CLF file.",
+        "Defaulting to the CDL in its AMF for colour.",
     ),
     "QC-012": Advice(
         "folder",
@@ -185,7 +191,9 @@ ADVICE: dict[str, Advice] = {
     "QC-014": Advice(
         "folder",
         "A file in the folder cannot be opened.",
-        "It may be damaged or only partly copied. Please copy it into the folder again.",
+        "Each file below gives the reason the tool got. A damaged or partly copied file is the usual "
+        "cause; please copy it into the folder again.",
+        "message",
     ),
     "QC-015": Advice(
         "folder",
@@ -195,17 +203,24 @@ ADVICE: dict[str, Advice] = {
     ),
     "QC-083": Advice(
         "folder",
-        "An HDRI's render is missing.",
-        "The timeline's HDRI render is not in the turnover folder, so the stringout cannot show it. It was "
-        "probably rendered into another folder, or the timeline event points at a file in another folder. "
-        "Please render it into the turnover folder and relink the timeline event to it.",
+        "An HDRI's or LDRI's render is missing.",
+        "The timeline's HDRI or LDRI render is not in the turnover folder, so the stringout cannot show "
+        "it. It was probably rendered into another folder, or the timeline event points at a file in "
+        "another folder. Please render it into the turnover folder and relink the timeline event to it.",
+        "message",
+    ),
+    "QC-087": Advice(
+        "resolve",
+        "An HDRI or LDRI has no take number.",
+        "Its delivered name carries its Take (SECA0009_pl01_HDRI_01_v01.exr), and the clip's Take is "
+        "blank or not a number, so it was numbered 01. Please fill in the Take in the clip's metadata.",
         "message",
     ),
     "QC-086": Advice(
         "folder",
-        "HDRI EXR File Missing from turnover folder, omitted from delivery.",
-        "The timeline's HDRI render is named after an HDRI EXR that is not in the folder, so no HDRI "
-        "was delivered. Please copy the EXR in.",
+        "HDRI EXR or LDRI File Missing from turnover folder, omitted from delivery.",
+        "The timeline's HDRI or LDRI render is named after an EXR, JPG or PNG that is not in the folder, "
+        "so nothing was delivered for it. Please copy the file in.",
     ),
     "QC-022": Advice(
         "folder",
@@ -229,22 +244,26 @@ ADVICE: dict[str, Advice] = {
         "look",
         "A clip has drop-frame timecode.",
         "The project is 24 fps non-drop. It was delivered anyway; please check its timecode.",
+        "message",
     ),
     "QC-041": Advice(
         "folder",
         "More than one sound file matches a plate.",
         "Please keep one sound file per plate in the folder.",
+        "message",
     ),
     "QC-042": Advice(
         "look",
-        "A plate's sound file is missing or cannot be read.",
+        "A plate's sound file cannot be read.",
         "The plate was delivered without sound. Please copy the sound file into the folder again.",
+        "message",
     ),
     "QC-028": Advice(
         "look",
         "A clip has no timecode.",
         "The tool can still deliver it, but the cut is placed less reliably. Fine if the camera did not "
         "record any.",
+        "message",
     ),
     "QC-030": Advice(
         "look",
@@ -262,6 +281,7 @@ ADVICE: dict[str, Advice] = {
         "look",
         "A plate's sound is a different length from the cut.",
         "Please check the sound file is the right one for this plate.",
+        "message",
     ),
     "QC-064": Advice(
         "look",
@@ -294,16 +314,23 @@ KIND_WORDS = {
 
 
 class Clip(NamedTuple):
-    """One line under an item: who it is, the file, and what is particular to it."""
+    """One line under an item: the clip's name, its shot, where it is on the timeline, and
+    what is particular to it."""
 
     who: str = ""
     name: str = ""
+    """The clip's name as the timeline has it. The EDL's `FROM CLIP NAME` is paired with the
+    CSV's `File Name` (`clf.ColorSession.candidates`), so the two are one name."""
+
     detail: str = ""
     looked_for: str = ""
     """The full path of the file the tool looked for and did not find, or found wrong."""
 
     named_by: str = ""
     """Which of Ben's files names it or says what is wrong: the EDL, the CSV, an AMF."""
+
+    at: str = ""
+    """The record timecode of the clip's event, so it can be found on the timeline."""
 
 
 @dataclass
@@ -350,9 +377,9 @@ def reports(batch: Batch) -> list[TurnoverReport]:
 
 def _turnover_report(batch: Batch, turnover: Turnover) -> TurnoverReport:
     rows = [row for row in batch.rows if row.turnover_id == turnover.turnover_id]
-    # What "every clip" and "no plate" count: an HDRI or a style frame is neither a clip of a
-    # shot nor its plate.
-    delivered = [row for row in rows if not qc.is_hdri(row) and not qc.is_style_frame(row)]
+    # What "every clip" and "no plate" count: an HDRI, a style frame or an Avid reference is neither a
+    # clip of a shot nor its plate.
+    delivered = [row for row in rows if not qc.is_hdri(row) and not qc.is_stringout_only(row)]
     items: dict[str, Item] = {}
     for result in turnover.qc:
         if result.rule_id not in ADVICE or result.severity == "info":
@@ -415,6 +442,7 @@ def _clip(row: ShotRow, result: QCResult, turnover: Turnover, rate: int) -> Clip
         _detail(row, result),
         _looked_for(row, result, turnover),
         _named_by(row, result, turnover, rate),
+        frames.frames_to_timecode(row.record_in, rate) if row.record_out > row.record_in else "",
     )
 
 
@@ -431,7 +459,7 @@ def _looked_for(row: ShotRow, result: QCResult, turnover: Turnover) -> str:
     if rule in ("QC-012", "QC-013", "QC-014", "QC-022", "QC-083"):
         return str(folder / row.clip_name)
     if rule == "QC-086":
-        return str(folder / (scan.hdri_exr_name(row.clip_name) or row.clip_name))
+        return str(folder / (scan.hdri_source_name(row.clip_name) or row.clip_name))
     if rule == "QC-076" and (named := _CLF_NAMED.match(_plain(result.message))):
         return str(folder / named["clf"])
     return ""
@@ -450,7 +478,8 @@ def _named_by(row: ShotRow, result: QCResult, turnover: Turnover, rate: int) -> 
     if rule == "QC-083":
         return f"{edl}{at}, and {csv}, File Name column"
     if rule == "QC-086":
-        return f"the name of the HDRI render {row.clip_name}, in {edl}{at}, and in {csv}"
+        hdri = "LDRI" if qc.is_ldri(row) else "HDRI"
+        return f"the name of the {hdri} render {row.clip_name}, in {edl}{at}, and in {csv}"
     if rule == "QC-076" and (named := _CLF_NAMED.match(_plain(result.message))):
         return f"the AMF ({named['amf']})"
     if rule in ("QC-010", "QC-065"):
@@ -463,7 +492,9 @@ def _named_by(row: ShotRow, result: QCResult, turnover: Turnover, rate: int) -> 
         return f"{edl} and {csv}"
     if rule == "QC-046":
         return f"no AMF, and no Input Color Space in {csv}"
-    if rule in ("QC-047", "QC-082"):
+    if rule == "QC-047" and row.grade is None and row.source_encoding_origin == "CSV":
+        return f"{csv}, Input Color Space column"
+    if rule in ("QC-047", "QC-082") and row.grade is not None:
         return amf
     if rule == "QC-075":
         return f"the AMFs in the turnover folder, for {edl}{at}"
@@ -485,12 +516,31 @@ def _who(row: ShotRow) -> str:
 
 
 def _detail(row: ShotRow, result: QCResult) -> str:
+    if result.rule_id == "QC-047":
+        return _colour_space_detail(row, result)
     kind = ADVICE[result.rule_id].detail
     if kind == "message":
         return _plain(result.message)
     if kind == "handles":
         return _handles_detail(result.message)
     return ""
+
+
+def _colour_space_detail(row: ShotRow, result: QCResult) -> str:
+    """Where the unknown input colour space came from, as far as the tool can show it (user,
+    2026-10-12: "If an issue is not coming from somewhere the tool can verify, I'd rather it
+    say, This clip is appearing as a rec709, please investigate why")."""
+    space = row.source_encoding
+    if row.grade is not None:
+        return _plain(result.message)  # the AMF's own input transform, which `_named_by` names
+    if space is not None and row.source_encoding_origin == "CSV":
+        # An AMF at the clip's timeline index that names another clip is passed over (QC-075, info).
+        passed = next((r.message for r in row.qc if r.rule_id == "QC-075"), None)
+        why = f"{passed}. So the" if passed else "No AMF was matched to this clip, so the"
+        return f"{why} metadata CSV's Input Color Space column was used. It says {space!r}."
+    if space is not None:
+        return f"This clip is appearing as {space!r}, please investigate why."
+    return _plain(result.message)
 
 
 def _plain(message: str) -> str:
@@ -590,8 +640,7 @@ _TAGS: dict[Where, str] = {
 
 def _item_html(item: Item) -> str:
     advice = item.advice
-    clips = "".join(f"<li>{_clip_html(clip)}</li>" for clip in item.clips)
-    listed = f'<ul class="clips">{clips}</ul>' if clips else ""
+    listed = "".join(_group_html(detail, clips) for detail, clips in clip_groups(item.clips))
     effect = (
         '<p class="blocks">Stops these clips from being delivered.</p>'
         if item.blocks
@@ -603,16 +652,31 @@ def _item_html(item: Item) -> str:
     )
 
 
+def clip_groups(clips: list[Clip]) -> list[tuple[str, list[Clip]]]:
+    """The item's clips under each detail they share, in the order first seen (user,
+    2026-10-12: "list, by name, every clip involved. Don't repeat the message though").
+    A line that names no clip, a turnover's own message, is a group of its own."""
+    groups: dict[str, list[Clip]] = {}
+    for clip in clips:
+        groups.setdefault(clip.detail if clip.who or clip.name else "", []).append(clip)
+    return list(groups.items())
+
+
+def _group_html(detail: str, clips: list[Clip]) -> str:
+    """The detail once, then every clip it is about."""
+    said = f'<p class="detail">{_e(detail)}</p>' if detail else ""
+    return said + '<ul class="clips">' + "".join(f"<li>{_clip_html(clip)}</li>" for clip in clips) + "</ul>"
+
+
 def _clip_html(clip: Clip) -> str:
-    """Who in prose, the file in code type, the detail after it."""
-    parts = []
-    if clip.who:
-        parts.append(_e(clip.who) + (":" if clip.name else ""))
+    """The clip by its timeline name first, which is how Ben finds it (user, 2026-10-12: "use
+    the clip name on the timeline"), then its shot and where it is cut. A line naming no clip
+    is its detail."""
+    where = ", ".join(part for part in (clip.who, f"at {clip.at} on the timeline" if clip.at else "") if part)
     if clip.name:
-        parts.append(f"<code>{_e(clip.name)}</code>")
-    if clip.detail:
-        parts.append(f"({_e(clip.detail)})" if parts else _e(clip.detail))
-    line = " ".join(parts)
+        line = f"<code>{_e(clip.name)}</code>" + (f" - {_e(where)}" if where else "")
+    else:
+        line = _e(where or clip.detail)
     if clip.looked_for:
         line += f'<span class="source">Looking for <code>{_e(clip.looked_for)}</code></span>'
     if clip.named_by:
@@ -653,6 +717,7 @@ li.note{border-left-color:var(--note)}
 .what{font-weight:600}
 li p{margin:0}
 ul.clips{margin:0;padding-left:20px;font-size:15px}
+p.detail{margin:6px 0 2px;font-size:15px}
 .source{display:block;color:var(--muted);font-size:14px}
 .blocks{font-size:13px;font-weight:600;color:var(--resolve)}
 .ok{font-size:13px;color:var(--muted)}

@@ -275,8 +275,10 @@ def plannable_identity(row: ShotRow, show_pattern: str = naming.DEFAULT_SHOW_PAT
     if row.skipped or holding_errors(row) or row.media is None or row.current is None:
         return None
     identity = effective_identity(row, show_pattern)
-    # A style frame is only ever on the stringout (QC-085).
-    return None if identity is not None and identity.is_style_frame else identity
+    # A style frame and an Avid reference are only ever on the stringout (QC-085, QC-088).
+    if identity is not None and (identity.is_style_frame or identity.is_avidref):
+        return None
+    return identity
 
 
 def resolve_version(directory: Path, show_pattern: str = naming.DEFAULT_SHOW_PATTERN) -> int:
@@ -548,14 +550,21 @@ def _audio_job(shot: _Shot) -> DeliverableJob | None:
 
 
 def _hdri_plan(shot: _Shot) -> RowPlan:
-    """An HDRI delivers its EXR, copied byte for byte (user, 2026-10-07). A copy has no
-    frame range and no colour."""
+    """An HDRI delivers its EXR, copied byte for byte (user, 2026-10-07), and an LDRI its JPG
+    or PNG, under the extension it came with (user, 2026-10-08). A copy has no frame range
+    and no colour."""
+    identity, source = shot.identity, shot.media.path
+    name = (
+        naming.ldri_image(identity, shot.version, source.suffix)
+        if identity.is_ldri
+        else naming.hdri_exr(identity, shot.version)
+    )
     return RowPlan(
         jobs=[
             DeliverableJob(
                 kind="hdri",
-                source=shot.media.path,
-                destination=shot.directory / naming.hdri_exr(shot.identity, shot.version),
+                source=source,
+                destination=shot.directory / name,
                 version=shot.version,
                 shot_code=shot.identity.shot_code,
                 elem=naming.HDRI_ELEMENT,

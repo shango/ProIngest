@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from proingest.core import metacsv
+from proingest.core import metacsv, naming
 from proingest.core.metacsv import MetaCsvError
 
 REAL_HEADER = ["File Name", "Shot", "Shot Type", "Gamma Notes", "Color Space Notes", "Shot Code", "Shot Type"]
@@ -168,26 +168,55 @@ class TestColumnsNotRead:
 class TestHdri:
     """Its EXR is copied as it is and no check runs on it (user, 2026-10-07)."""
 
-    @pytest.mark.parametrize(("written", "index"), [("HDRI", "01"), ("hdri", "01"), ("HDRI2", "02")])
-    def test_an_hdri_row_is_marked_and_carries_only_info(
-        self, tmp_path: Path, written: str, index: str
+    HEADER = ("File Name", "Shot", "Shot Type", "Take")
+
+    @pytest.mark.parametrize(("written", "take", "index"), [("HDRI", "1", "01"), ("hdri", "2", "02")])
+    def test_an_hdri_row_is_numbered_by_its_take_and_carries_only_info(
+        self, tmp_path: Path, written: str, take: str, index: str
     ) -> None:
-        result = read(
-            tmp_path, ["File Name", "Shot", "Shot Type"], [["DALU0012_pl01_02_HDRI.exr", "TEST0013", written]]
-        )
+        """User, 2026-10-12: in `SECA0009_pl01_HDRI_01_v01.exr`, `01` is the take."""
+        result = read(tmp_path, list(self.HEADER), [["DALU0012_pl01_02_HDRI.exr", "TEST0013", written, take]])
         (row,) = result.rows
         assert row.hdri and (row.kind, row.index) == ("HDRI", index)
         assert [(q.rule_id, q.severity) for q in row.qc] == [("QC-080", "info")]
+
+    @pytest.mark.parametrize("take", ["", "A"])
+    def test_no_take_is_01_and_qc_087(self, tmp_path: Path, take: str) -> None:
+        result = read(tmp_path, list(self.HEADER), [["x.exr", "TEST0013", "HDRI", take]])
+        (row,) = result.rows
+        assert row.index == "01"
+        assert [(q.rule_id, q.severity) for q in row.qc] == [("QC-080", "info"), ("QC-087", "warning")]
+        assert "TEST0013_pl01_HDRI_01" in row.qc[1].message
+
+    @pytest.mark.parametrize("written", ["HDRI2", "LDRI2", "hdri02"])
+    def test_a_numbered_hdri_or_ldri_is_a_mistake_and_qc_010(self, tmp_path: Path, written: str) -> None:
+        """User, 2026-10-12: "There should not be HDRI2, or LDRI2. That's a mistake."."""
+        result = read(tmp_path, list(self.HEADER), [["x.exr", "TEST0013", written, "1"]])
+        (row,) = result.rows
+        assert not row.hdri and [q.rule_id for q in row.qc] == ["QC-010"]
 
     def test_one_with_no_shot_code_has_no_kind_to_deliver(self, tmp_path: Path) -> None:
         result = read(tmp_path, ["File Name", "Shot", "Shot Type"], [["x.exr", "", "HDRI"]])
         (row,) = result.rows
         assert row.hdri and row.kind is None
+        assert [q.rule_id for q in row.qc] == ["QC-080"], "nothing is named, so no number is asked for"
 
     def test_an_hdri_keeps_its_take(self, tmp_path: Path) -> None:
         header = ["File Name", "Shot", "Shot Type", "Take"]
         result = read(tmp_path, header, [["x.exr", "TEST0013", "HDRI", "2"]])
         assert result.rows[0].take == "2"
+
+    @pytest.mark.parametrize(("written", "take", "index"), [("LDRI", "1", "01"), ("ldri", "3", "03")])
+    def test_an_ldri_row_is_an_hdri_of_kind_ldri(
+        self, tmp_path: Path, written: str, take: str, index: str
+    ) -> None:
+        """User, 2026-10-08: an LDRI is treated as an HDRI, its file a JPG or PNG."""
+        name = "SECA0009_pl01_LDRI_01_v01.jpg Render 1.mov"
+        result = read(tmp_path, list(self.HEADER), [[name, "TEST0013", written, take]])
+        (row,) = result.rows
+        assert row.hdri and (row.kind, row.index) == ("LDRI", index)
+        (note,) = row.qc
+        assert note.rule_id == "QC-080" and "LDRI image" in note.message and "HDRI" not in note.message
 
     def test_a_type_merely_containing_hdri_is_still_qc_010(self, tmp_path: Path) -> None:
         result = read(tmp_path, ["File Name", "Shot", "Shot Type"], [["x.exr", "TEST0013", "HDRIref"]])
@@ -221,6 +250,26 @@ class TestStyleFrame:
         result = read(tmp_path, ["File Name", "Shot", "Shot Type"], [["sf.jpg", "", "styleFrame"]])
         (row,) = result.rows
         assert row.kind is None and [q.rule_id for q in row.qc] == ["QC-085"]
+
+
+class TestAnAvidRef:
+    """`avidRef01`, treated as a style frame is (user, 2026-10-15): QC-088, never delivered."""
+
+    @pytest.mark.parametrize(
+        ("written", "index"),
+        [("avidRef01", "01"), ("avidRef", "01"), ("AVIDREF02", "02"), ("avidref3", "03")],
+    )
+    def test_an_avidref_row_carries_only_info(self, tmp_path: Path, written: str, index: str) -> None:
+        result = read(tmp_path, ["File Name", "Shot", "Shot Type"], [["ref.mov", "INCA5002", written]])
+        (row,) = result.rows
+        assert (row.kind, row.index) == (naming.AVIDREF_KIND, index) and not row.hdri
+        assert [(q.rule_id, q.severity) for q in row.qc] == [("QC-088", "info")]
+
+    @pytest.mark.parametrize("written", ["preVis01", "pl01_avidref"])
+    def test_the_old_spellings_are_no_longer_a_shot_type(self, tmp_path: Path, written: str) -> None:
+        """It was `preVis01` in 0.5.44 and `pl01_avidref` in 0.5.45 (user, 2026-10-14 and 15)."""
+        result = read(tmp_path, ["File Name", "Shot", "Shot Type"], [["ref.mov", "INCA5002", written]])
+        assert [q.rule_id for q in result.rows[0].qc] == ["QC-010"]
 
 
 class TestFileShape:

@@ -63,6 +63,12 @@ class TestParseShotType:
     def test_output_spelling_is_the_specs_not_the_shooters(self) -> None:
         assert naming.parse_shot_type("colorchart") == ("colorChart", "01")
 
+    def test_an_avidref_is_no_clip_type_and_is_burned_in_as_it_is_typed(self) -> None:
+        """User, 2026-10-15: `avidRef01`, treated as a style frame is (metacsv reads it, QC-088)."""
+        assert naming.parse_shot_type("avidRef01") is None
+        identity = naming.ShotIdentity("INCA5002", naming.AVIDREF_KIND, "02")
+        assert naming.shot_label(identity) == "INCA5002_avidRef02"
+
     @pytest.mark.parametrize("written", ["pl", "cp", "colorChart", "greyBall"])
     def test_a_bare_code_means_01(self, written: str) -> None:
         """Load bearing: three of the five real sample rows are bare."""
@@ -297,10 +303,50 @@ class TestDeliveryLayout:
         assert naming.shot_label(hdri) == "SECA0009_pl01_HDRI_01"
         assert naming.next_version([name]) == 3
 
+    @pytest.mark.parametrize("suffix", [".jpg", ".JPEG", ".png"])
+    def test_an_ldri_mirrors_the_hdri_under_its_own_extension(self, suffix: str) -> None:
+        """User, 2026-10-08: an LDRI is named as the HDRI is, its file copied as it came."""
+        ldri = naming.ShotIdentity("SECA0009", naming.LDRI_KIND, "01")
+        name = naming.ldri_image(ldri, 2, suffix)
+        assert name == f"SECA0009_pl01_LDRI_01_v02{suffix.lower()}"
+        parsed = naming.parse_output_name(name)
+        assert parsed is not None and (parsed.kind, parsed.aux, parsed.version) == ("hdri", "LDRI", 2)
+        assert naming.shot_label(ldri) == "SECA0009_pl01_LDRI_01"
+        assert ldri.is_hdri and ldri.is_ldri and naming.next_version([name]) == 3
+        with pytest.raises(ValueError):
+            _ = ldri.stem
+
+    def test_an_ldri_is_never_an_exr_and_an_hdri_never_a_jpg(self) -> None:
+        hdri = naming.ShotIdentity("SECA0009", naming.HDRI_KIND, "01")
+        ldri = naming.ShotIdentity("SECA0009", naming.LDRI_KIND, "01")
+        with pytest.raises(ValueError):
+            naming.hdri_exr(ldri, 1)
+        with pytest.raises(ValueError):
+            naming.ldri_image(hdri, 1, ".jpg")
+        with pytest.raises(ValueError):
+            naming.ldri_image(ldri, 1, ".exr")
+        assert naming.parse_output_name("SECA0009_pl01_LDRI_01_v01.exr") is None
+
+    @pytest.mark.parametrize(
+        ("written", "kind"),
+        [
+            ("HDRI", "HDRI"),
+            ("hdri", "HDRI"),
+            ("LDRI", "LDRI"),
+            (" ldri ", "LDRI"),
+            ("HDRI2", None),
+            ("LDRI3", None),
+            ("LDRIref", None),
+            ("pl01", None),
+        ],
+    )
+    def test_hdri_kind_reads_the_shot_type(self, written: str, kind: str | None) -> None:
+        assert naming.hdri_kind(written) == kind
+
     def test_a_style_frame_is_labelled_by_its_shot_and_has_no_element_stem(self) -> None:
-        """User, 2026-10-07: the burn-in reads `SECA0009 styleFrame`."""
+        """User, 2026-10-07: the burn-in reads `SECA0009_styleFrame` (an underscore since 2026-10-13)."""
         style = naming.ShotIdentity("SECA0009", naming.STYLE_FRAME_KIND, "01")
-        assert naming.shot_label(style) == "SECA0009 styleFrame"
+        assert naming.shot_label(style) == "SECA0009_styleFrame"
         with pytest.raises(ValueError):
             _ = style.stem
 
@@ -310,11 +356,18 @@ class TestDeliveryLayout:
 
     @pytest.mark.parametrize(
         ("take", "shown"),
-        [("2", "SECA0009_pl01 Take 02"), ("12", "SECA0009_pl01 Take 12"), ("1", "SECA0009_pl01"),
+        [("2", "SECA0009_pl01_Take_02"), ("12", "SECA0009_pl01_Take_12"), ("1", "SECA0009_pl01"),
          ("", "SECA0009_pl01"), ("A", "SECA0009_pl01")],
     )  # fmt: skip
     def test_a_take_above_1_follows_the_burn_in_label(self, take: str, shown: str) -> None:
         assert naming.take_label("SECA0009_pl01", take) == shown
+
+    @pytest.mark.parametrize("kind", [naming.HDRI_KIND, naming.LDRI_KIND])
+    def test_an_hdri_or_ldri_carries_its_take_in_its_name_alone(self, kind: str) -> None:
+        """User, 2026-10-12: `SECA0009_pl01_LDRI_02`, with no word "Take" after it."""
+        identity = naming.ShotIdentity("SECA0009", kind, "02")
+        label = naming.shot_label(identity)
+        assert naming.take_label(label, "2", identity) == f"SECA0009_pl01_{kind}_02"
 
     def test_the_user_folders_sit_at_the_delivery_root(self) -> None:
         assert naming.user_dirs(Path("/d")) == [Path("/d/User_Generated"), Path("/d/User_Uploads")]

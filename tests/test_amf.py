@@ -10,12 +10,20 @@ from pathlib import Path
 
 import pytest
 
-from proingest.core import amf
+from proingest.core import amf, color
 
 URN = "urn:ampas:aces:transformId:v2.0:"
 SLOG3 = URN + "CSC.Sony.SLog3_SGamut3Cine_to_ACES.a2.v1"
 RGC = URN + "Look.Academy.ReferenceGamutCompress.a2.v1"
 GAMMA22 = URN + "Output.Academy.Rec709-D65_100nit_in_Rec709-D65_Gamma2pt2.a2.v1"
+INV_GAMMA22 = URN + "InvOutput.Academy.Rec709-D65_100nit_in_Rec709-D65_Gamma2pt2.a2.v1"
+INVERSE_SOURCE = (
+    '<aces:inputTransform applied="false"><aces:inverseOutputTransform>'
+    f"<aces:transformId>{INV_GAMMA22}</aces:transformId>"
+    "</aces:inverseOutputTransform></aces:inputTransform>"
+)
+"""A display referred render's input transform, as turnover144's colour chart AMF has it
+(Resolve 20, 2026-10-13): the inverse of the session's output transform."""
 NAME = "Tool_Test2_turnover097_DailiesRequest_C4261_1_2026-09-28_180306Z.amf"
 
 
@@ -88,6 +96,13 @@ class TestReading:
         ]
         assert read.output_transform == GAMMA22
 
+    def test_an_inverse_output_transform_is_the_input_transform(self, tmp_path: Path) -> None:
+        read = amf.read(written(tmp_path, source=INVERSE_SOURCE))
+        assert read.input_transform == INV_GAMMA22 and read.input_inverse_output
+
+    def test_a_camera_input_transform_is_not_an_inverse(self, tmp_path: Path) -> None:
+        assert not amf.read(written(tmp_path)).input_inverse_output
+
     def test_the_index_is_the_one_before_the_timestamp(self, tmp_path: Path) -> None:
         """`DALU0012_pl01_02_02_7`: the clip name is full of numbers, the index is the last."""
         name = "Tool_Test2_turnover097_DailiesRequest_DALU0012_pl01_02_02_7_2026-09-28_180306Z.amf"
@@ -149,6 +164,17 @@ class TestResolvingThroughTheConfig:
             "Gamma 2.2 Rec.709 - Display",
             "ACES 2.0 - SDR 100 nits (Rec.709)",
         )
+
+    def test_a_camera_input_transform_is_its_colour_space(self, tmp_path: Path) -> None:
+        assert amf.input_encoding_for(amf.read(written(tmp_path))) == "S-Log3 S-Gamut3.Cine"
+
+    def test_an_inverse_output_transform_is_that_view_undone(self, tmp_path: Path) -> None:
+        encoding = amf.input_encoding_for(amf.read(written(tmp_path, source=INVERSE_SOURCE)))
+        assert encoding == color.inverse_view(*color.DEFAULT_VIEW)
+
+    def test_an_inverse_the_config_does_not_list_is_none(self, tmp_path: Path) -> None:
+        unknown = INVERSE_SOURCE.replace(INV_GAMMA22, URN + "InvOutput.Unknown.a2.v1")
+        assert amf.input_encoding_for(amf.read(written(tmp_path, source=unknown))) is None
 
     @pytest.mark.parametrize("lookup", [amf.colour_space_for, amf.look_for, amf.display_view_for])
     def test_an_id_the_config_does_not_list_is_none(self, lookup: object) -> None:
