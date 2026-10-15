@@ -1512,7 +1512,7 @@ class TestCancelRerunRefusal:
 
 
 class TestAnAvidRef:
-    """QC-088 (user, 2026-10-14): `pl01_avidref` is treated as a style frame is; no rule runs on it."""
+    """QC-088 (user, 2026-10-14): `avidRef01` is treated as a style frame is; no rule runs on it."""
 
     def test_no_row_rule_runs_on_it(self) -> None:
         avidref = row(source_encoding=None, grade=None)

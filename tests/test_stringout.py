@@ -594,12 +594,12 @@ class TestAnLdri:
 
 
 class TestAnAvidRef:
-    """User, 2026-10-14: `pl01_avidref` is "treated just like styleframe type. No cc needed, no
-    delivery, only lives in the stringout". A video, so it plays its cut as it is."""
+    """User, 2026-10-14: an Avid reference, `avidRef01`, is "treated just like styleframe type. No
+    cc needed, no delivery, only lives in the stringout". A video, so it plays its cut as it is."""
 
     def test_it_plays_its_cut_as_it_is_and_is_never_delivered(self, tmp_path: Path) -> None:
         folder = fixtures.make_turnover(
-            tmp_path / FOLDER, shots=2, frames=FRAMES, shot_types=["pl01_avidref", "pl01"]
+            tmp_path / FOLDER, shots=2, frames=FRAMES, shot_types=["avidRef01", "pl01"]
         )
         batch = TestAnHdri.scanned(folder, Batch(delivery_root=tmp_path / "delivery"))
         avidref = batch.rows[0]
@@ -613,7 +613,7 @@ class TestAnAvidRef:
             False,
             True,
         )
-        assert segment.color is None and segment.label == "MELT0001_pl01_avidref"
+        assert segment.color is None and segment.label == "MELT0001_avidRef01"
 
 
 class TestAStyleFrame:

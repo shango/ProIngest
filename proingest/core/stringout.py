@@ -484,7 +484,7 @@ def _style_frame(
 ) -> Segment:
     """A style frame's event: its still held as it is for the event's length (user,
     2026-10-07), or the missing media card when the file is not there (user, 2026-10-14).
-    An Avid reference (`pl01_avidref`) is treated the same, except that it plays its cut (user,
+    An Avid reference (`avidRef01`) is treated the same, except that it plays its cut (user,
     2026-10-14)."""
     identity = effective_identity(row, show_pattern)
     media = row.media

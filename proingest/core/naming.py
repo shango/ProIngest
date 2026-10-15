@@ -69,10 +69,11 @@ STYLE_FRAME_KIND = "styleFrame"
 timeline before its shot's plate. Not in `CLIP_TYPES` and never delivered: the stringout
 shows it as it is, for the event's length."""
 
-AVIDREF_KIND = "avidref"
-"""An Avid reference's `Shot Type`, `pl01_avidref`, `pl02_avidref` (QC-088, user 2026-10-14):
-treated as a style frame is. Not in `CLIP_TYPES`, never delivered and never graded: the
-stringout plays its cut as it is. Its index is the plate number. It was `preVis01` in 0.5.44."""
+AVIDREF_KIND = "avidRef"
+"""An Avid reference's `Shot Type`, `avidRef01`, `avidRef02` (QC-088, user 2026-10-15): treated
+as a style frame is. Not in `CLIP_TYPES`, never delivered and never graded: the stringout plays
+its cut as it is. The one place the spelling lives, since it may change again: it was `preVis01`
+in 0.5.44 and `pl01_avidref` in 0.5.45."""
 
 HDRI_ELEMENT = "pl01"
 """Every HDRI and LDRI is named under the plate: `[SHOTCODE]_pl01_HDRI_v01.exr` in the shooters'
@@ -315,7 +316,7 @@ def shot_label(identity: ShotIdentity) -> str:
     if identity.is_style_frame:
         return f"{identity.shot_code}_{STYLE_FRAME_KIND}"
     if identity.is_avidref:
-        return f"{identity.shot_code}_pl{identity.index}_{AVIDREF_KIND}"
+        return f"{identity.shot_code}_{AVIDREF_KIND}{identity.index}"
     return identity.stem
 
 

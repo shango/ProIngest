@@ -63,11 +63,11 @@ class TestParseShotType:
     def test_output_spelling_is_the_specs_not_the_shooters(self) -> None:
         assert naming.parse_shot_type("colorchart") == ("colorChart", "01")
 
-    def test_an_avidref_is_no_clip_type_and_is_burned_in_under_its_plate(self) -> None:
-        """User, 2026-10-14: `pl01_avidref`, treated as a style frame is (metacsv reads it, QC-088)."""
-        assert naming.parse_shot_type("pl01_avidref") is None
+    def test_an_avidref_is_no_clip_type_and_is_burned_in_as_it_is_typed(self) -> None:
+        """User, 2026-10-15: `avidRef01`, treated as a style frame is (metacsv reads it, QC-088)."""
+        assert naming.parse_shot_type("avidRef01") is None
         identity = naming.ShotIdentity("INCA5002", naming.AVIDREF_KIND, "02")
-        assert naming.shot_label(identity) == "INCA5002_pl02_avidref"
+        assert naming.shot_label(identity) == "INCA5002_avidRef02"
 
     @pytest.mark.parametrize("written", ["pl", "cp", "colorChart", "greyBall"])
     def test_a_bare_code_means_01(self, written: str) -> None:

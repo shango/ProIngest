@@ -87,7 +87,7 @@ def kinds(jobs: list[planner.DeliverableJob]) -> list[str]:
 
 class TestAnAvidRef:
     """User, 2026-10-14: treated just like a style frame ("No cc needed, no delivery, only lives
-    in the stringout"), typed `pl01_avidref`."""
+    in the stringout"), typed `avidRef01`."""
 
     def test_it_delivers_nothing_even_graded(self) -> None:
         graded = Grade(amf=Path("/t/x.amf"), input_transform="", looks=(GradeLook("clf", "/t/x.clf"),))

@@ -335,11 +335,11 @@ def _style_frame(file_name: str, shot: str, shot_type: str, scene: str, named: b
     return MetaRow(file_name, shot, shot_type, kind, index if named else None, scene, (note,))
 
 
-_AVIDREF = re.compile(r"pl(?P<index>\d{1,2})?_avidref", re.IGNORECASE)
+_AVIDREF = re.compile(rf"{naming.AVIDREF_KIND}(?P<index>\d{{1,2}})?", re.IGNORECASE)
 
 
 def _avidref(file_name: str, shot: str, shot_type: str, scene: str, named: bool) -> MetaRow:
-    """An Avid reference row, `pl01_avidref` (QC-088, user 2026-10-14): treated as a style frame
+    """An Avid reference row, `avidRef01` (QC-088, user 2026-10-15): treated as a style frame
     is. No colour correction and no delivery; the stringout plays its cut as it is."""
     note = QCResult(
         "QC-088",

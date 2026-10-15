@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from proingest.core import metacsv
+from proingest.core import metacsv, naming
 from proingest.core.metacsv import MetaCsvError
 
 REAL_HEADER = ["File Name", "Shot", "Shot Type", "Gamma Notes", "Color Space Notes", "Shot Code", "Shot Type"]
@@ -253,21 +253,22 @@ class TestStyleFrame:
 
 
 class TestAnAvidRef:
-    """`pl01_avidref`, treated as a style frame is (user, 2026-10-14): QC-088, never delivered."""
+    """`avidRef01`, treated as a style frame is (user, 2026-10-15): QC-088, never delivered."""
 
     @pytest.mark.parametrize(
         ("written", "index"),
-        [("pl01_avidref", "01"), ("pl_avidref", "01"), ("PL02_AVIDREF", "02"), ("pl3_avidref", "03")],
+        [("avidRef01", "01"), ("avidRef", "01"), ("AVIDREF02", "02"), ("avidref3", "03")],
     )
     def test_an_avidref_row_carries_only_info(self, tmp_path: Path, written: str, index: str) -> None:
         result = read(tmp_path, ["File Name", "Shot", "Shot Type"], [["ref.mov", "INCA5002", written]])
         (row,) = result.rows
-        assert (row.kind, row.index) == ("avidref", index) and not row.hdri
+        assert (row.kind, row.index) == (naming.AVIDREF_KIND, index) and not row.hdri
         assert [(q.rule_id, q.severity) for q in row.qc] == [("QC-088", "info")]
 
-    def test_previs_is_no_longer_a_shot_type(self, tmp_path: Path) -> None:
-        """It was `preVis01` in 0.5.44, renamed the same day (user, 2026-10-14)."""
-        result = read(tmp_path, ["File Name", "Shot", "Shot Type"], [["ref.mov", "INCA5002", "preVis01"]])
+    @pytest.mark.parametrize("written", ["preVis01", "pl01_avidref"])
+    def test_the_old_spellings_are_no_longer_a_shot_type(self, tmp_path: Path, written: str) -> None:
+        """It was `preVis01` in 0.5.44 and `pl01_avidref` in 0.5.45 (user, 2026-10-14 and 15)."""
+        result = read(tmp_path, ["File Name", "Shot", "Shot Type"], [["ref.mov", "INCA5002", written]])
         assert [q.rule_id for q in result.rows[0].qc] == ["QC-010"]
 
 

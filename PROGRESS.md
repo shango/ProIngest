@@ -8,7 +8,7 @@ commit.
 
 ## 1. Resume here
 
-**State at 2026-10-12, version 0.5.40 on branch `ldri`, PR #20 open** (0.5.40: no Fix-it line claims what the tool did not verify; 0.5.39: the Fix-it report by timeline clip name, each message once; 0.5.38: an HDRI's or LDRI's number is its take; 0.5.37: the LDRI; 0.5.36 and before merged to `main` with PR #19 as `a85cd53`; 0.5.36: the stringout from 26 minutes to 3 on turnover135; 0.5.35: the stringout's time left on its line; 0.5.34: the HDRI pre-render on the timeline; 0.5.33: the QC overhaul, nothing stops a batch or a turnover; 0.5.32: style frames on the stringout, the stringout line in the shot list; 0.5.31: every Fix-it line names its shot; 0.5.30: the take on the burn-in; 0.5.29: reference clips play in the stringout; 0.5.28: everything in the stringout graded; 0.5.27: the stringout from the EXRs; 0.5.26: the HDRI pre-render and delivery, QC-084, Accept As Is runs what it can; 0.5.25, merged to `main` with PR #18: `User_Generated` and `User_Uploads` at the delivery root; 0.5.24: the Fix-it
+**State at 2026-10-15, version 0.5.46 on branch `ldri`, PR #20 open** (0.5.46: the Avid reference typed `avidRef##`; 0.5.40: no Fix-it line claims what the tool did not verify; 0.5.39: the Fix-it report by timeline clip name, each message once; 0.5.38: an HDRI's or LDRI's number is its take; 0.5.37: the LDRI; 0.5.36 and before merged to `main` with PR #19 as `a85cd53`; 0.5.36: the stringout from 26 minutes to 3 on turnover135; 0.5.35: the stringout's time left on its line; 0.5.34: the HDRI pre-render on the timeline; 0.5.33: the QC overhaul, nothing stops a batch or a turnover; 0.5.32: style frames on the stringout, the stringout line in the shot list; 0.5.31: every Fix-it line names its shot; 0.5.30: the take on the burn-in; 0.5.29: reference clips play in the stringout; 0.5.28: everything in the stringout graded; 0.5.27: the stringout from the EXRs; 0.5.26: the HDRI pre-render and delivery, QC-084, Accept As Is runs what it can; 0.5.25, merged to `main` with PR #18: `User_Generated` and `User_Uploads` at the delivery root; 0.5.24: the Fix-it
 report, one error per cause, a lone EXR read as one frame, AMFs falling back to the clip they name) (`HANDOFF.md` is the short version, with the session's open items); 0.5.22 went to `main` earlier (PR #17 merged as `70e1160` at the user's request, after its CI
 run 37276656318 built the 0.5.22 dmg). The 2026-09-23 review is built (chunks A
 to H of `docs/REVIEW_2026-09-23.md`), and so are the fixes that a second official turnover,
@@ -17,6 +17,14 @@ renders; Turnover121, every clip 8 bit 4:2:0, runs again with a QC-020 warning o
 since 2026-09-28 (user). What is left is the Mac: `docs/MAC_SESSION.md`, from "The 0.5.0 build, in
 order" down, and Ben's 4.886 slope. Entries are newest first; anything older than 2026-09-22
 describes the tool before the review and is history.
+
+**2026-10-15, 0.5.46: the Avid reference is typed `avidRef##` (user).** "Ben will put avidRef## in
+the metadata. Tool will need to use that. Later they might change it." `avidRef01`, `avidRef02`
+(any case, bare `avidRef` is 01) is QC-088 as before; the burn-in is `INCA5002_avidRef01`
+(assumed, OQ-86). `pl01_avidref` and `preVis01` are QC-010. Since the name may change again, the
+spelling is one constant, `naming.AVIDREF_KIND`, and `metacsv._AVIDREF` is built from it: a rename
+is that line plus the tests. The workbook's row is renamed. **Verified**: the avidref tests, with
+`pl01_avidref` added to the old-spelling test.
 
 **2026-10-14, 0.5.45: the stringout-only type is `pl##_avidref`, not `preVis` (user).** "It
 will appear like this pl01_avidref. pl##_avidref is the shot type, just replacing the naming on
