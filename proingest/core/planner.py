@@ -18,7 +18,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Literal
 
-from proingest.core import clf, frames, naming, resize
+from proingest.core import clf, frames, media, naming, resize
 from proingest.core.models import (
     Batch,
     Deliverable,
@@ -36,7 +36,7 @@ TEMP_SUFFIX = ".part"
 RESOLUTIONS: dict[Resolution, tuple[int, int]] = {"4k": (3840, 2160), "HD": (1920, 1080)}
 """Exact target sizes, docs/COLOR_AND_FORMAT.md section 4. Never derived from the source."""
 
-JobKind = Literal["raw_dir", "ref_mp4", "audio", "aux_still", "hdri"]
+JobKind = Literal["raw_dir", "ref_mp4", "audio", "aux_still", "hdri", "avidref"]
 
 PICTURE_DELIVERABLES: tuple[tuple[JobKind, Resolution], ...] = (
     ("raw_dir", "4k"),
@@ -275,8 +275,8 @@ def plannable_identity(row: ShotRow, show_pattern: str = naming.DEFAULT_SHOW_PAT
     if row.skipped or holding_errors(row) or row.media is None or row.current is None:
         return None
     identity = effective_identity(row, show_pattern)
-    # A style frame and an Avid reference are only ever on the stringout (QC-085, QC-088).
-    if identity is not None and (identity.is_style_frame or identity.is_avidref):
+    # A style frame is only ever on the stringout (QC-085).
+    if identity is not None and identity.is_style_frame:
         return None
     return identity
 
@@ -319,6 +319,8 @@ def plan_row(
         plan = _aux_plan(shot)
     elif identity.is_hdri:
         plan = _hdri_plan(shot)
+    elif identity.is_avidref:
+        plan = _avidref_plan(shot)
     else:
         plan = RowPlan(jobs=[_picture_job(shot, kind, res) for kind, res in TYPE_TABLE[identity.kind]])
         audio = _audio_job(shot)
@@ -568,6 +570,46 @@ def _hdri_plan(shot: _Shot) -> RowPlan:
                 version=shot.version,
                 shot_code=shot.identity.shot_code,
                 elem=naming.HDRI_ELEMENT,
+            )
+        ]
+    )
+
+
+def _avidref_plan(shot: _Shot) -> RowPlan:
+    """An Avid reference, never an EXR (user, 2026-10-22). Its colour is baked in, so nothing
+    is graded. A movie (an mp4, a `.mov` pre-render, or an image sequence) is encoded to an
+    mp4 over its cut at 24, the size it is; a held still, one image file, is copied byte for
+    byte when it is a JPG or PNG and otherwise becomes a JPG. No audio: only a plate
+    delivers any."""
+    source = shot.media
+    extension = source.path.suffix.lower()
+    movie = source.is_sequence or extension in media.VIDEO_EXTENSIONS
+    if movie:
+        suffix = ".mp4"
+    elif extension in naming.AVIDREF_STILL_EXTENSIONS:
+        suffix = source.path.suffix
+    else:
+        suffix = ".jpg"
+    first = shot.current.in_frame
+    return RowPlan(
+        jobs=[
+            DeliverableJob(
+                kind="avidref",
+                source=source.path,
+                destination=shot.directory / naming.avidref_file(shot.identity, shot.version, suffix),
+                version=shot.version,
+                shot_code=shot.identity.shot_code,
+                elem=shot.identity.elem,
+                in_frame=first,
+                out_frame=shot.current.out_frame if movie else first,
+                source_is_sequence=source.is_sequence,
+                source_size=source.resolution,
+                rate=source.rate,
+                source_color_space=source.color_space,
+                source_color_range=source.color_range,
+                source_start_frame=source.start_frame,
+                # The display only, which labels the mp4; no grade and no input transform.
+                shot_color=clf.ShotColor(display=shot.color.display),
             )
         ]
     )

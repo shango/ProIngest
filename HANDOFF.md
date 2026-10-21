@@ -1,3 +1,11 @@
+# Handoff, 22 October 2026
+
+**22 October, 0.5.47**: an `avidRef##` is now delivered, never as an EXR: a movie or an image
+sequence as `<shot>_avidRef01_v01.mp4` with no colour transform (its colour is baked in), a held
+JPG or PNG as it is, any other still as a JPG; not on the tracker. Frame rate confirmed as already
+24 throughout. `PROGRESS.md` has the entry and OQ-86 the assumptions. The rest of this file is
+the 15 October handoff and still stands, except where it says an avidRef is never delivered.
+
 # Handoff, 15 October 2026 (end of session)
 
 **Start here after a cleared context.** This is the short version. `PROGRESS.md` section 1 is the

@@ -8,7 +8,7 @@ commit.
 
 ## 1. Resume here
 
-**State at 2026-10-15, version 0.5.46 on branch `ldri`, PR #20 open** (0.5.46: the Avid reference typed `avidRef##`; 0.5.40: no Fix-it line claims what the tool did not verify; 0.5.39: the Fix-it report by timeline clip name, each message once; 0.5.38: an HDRI's or LDRI's number is its take; 0.5.37: the LDRI; 0.5.36 and before merged to `main` with PR #19 as `a85cd53`; 0.5.36: the stringout from 26 minutes to 3 on turnover135; 0.5.35: the stringout's time left on its line; 0.5.34: the HDRI pre-render on the timeline; 0.5.33: the QC overhaul, nothing stops a batch or a turnover; 0.5.32: style frames on the stringout, the stringout line in the shot list; 0.5.31: every Fix-it line names its shot; 0.5.30: the take on the burn-in; 0.5.29: reference clips play in the stringout; 0.5.28: everything in the stringout graded; 0.5.27: the stringout from the EXRs; 0.5.26: the HDRI pre-render and delivery, QC-084, Accept As Is runs what it can; 0.5.25, merged to `main` with PR #18: `User_Generated` and `User_Uploads` at the delivery root; 0.5.24: the Fix-it
+**State at 2026-10-22, version 0.5.47 on branch `ldri`, PR #20 open** (0.5.47: the Avid reference delivered, never an EXR; 0.5.46: the Avid reference typed `avidRef##`; 0.5.40: no Fix-it line claims what the tool did not verify; 0.5.39: the Fix-it report by timeline clip name, each message once; 0.5.38: an HDRI's or LDRI's number is its take; 0.5.37: the LDRI; 0.5.36 and before merged to `main` with PR #19 as `a85cd53`; 0.5.36: the stringout from 26 minutes to 3 on turnover135; 0.5.35: the stringout's time left on its line; 0.5.34: the HDRI pre-render on the timeline; 0.5.33: the QC overhaul, nothing stops a batch or a turnover; 0.5.32: style frames on the stringout, the stringout line in the shot list; 0.5.31: every Fix-it line names its shot; 0.5.30: the take on the burn-in; 0.5.29: reference clips play in the stringout; 0.5.28: everything in the stringout graded; 0.5.27: the stringout from the EXRs; 0.5.26: the HDRI pre-render and delivery, QC-084, Accept As Is runs what it can; 0.5.25, merged to `main` with PR #18: `User_Generated` and `User_Uploads` at the delivery root; 0.5.24: the Fix-it
 report, one error per cause, a lone EXR read as one frame, AMFs falling back to the clip they name) (`HANDOFF.md` is the short version, with the session's open items); 0.5.22 went to `main` earlier (PR #17 merged as `70e1160` at the user's request, after its CI
 run 37276656318 built the 0.5.22 dmg). The 2026-09-23 review is built (chunks A
 to H of `docs/REVIEW_2026-09-23.md`), and so are the fixes that a second official turnover,
@@ -17,6 +17,30 @@ renders; Turnover121, every clip 8 bit 4:2:0, runs again with a QC-020 warning o
 since 2026-09-28 (user). What is left is the Mac: `docs/MAC_SESSION.md`, from "The 0.5.0 build, in
 order" down, and Ben's 4.886 slope. Entries are newest first; anything older than 2026-09-22
 describes the tool before the review and is history.
+
+**2026-10-22, 0.5.47: the Avid reference is delivered, never as an EXR (user).** "avidRef types
+are never processed to exr files. If they appear on the EDL as an mp4 file, then they should be
+rendered as an mp4, named correctly and placed in the delivery location. If they appear on the EDL
+as a still that was held for some frames, then that still should be named correctly and be
+delivered." Asked, and answered: named `INCA5002_avidRef01_v01.mp4`, no size tag; a movie marked
+`Render` is Ben's pre-render on the Resolve timeline, "the color is baked in and you don't need to
+touch color", mp4 or mov alike; a still that is not a JPG or PNG becomes a JPG; "avidRef doesn't
+get listed on the sheet". **Built**: `planner._avidref_plan`, one `avidref` job per row. A movie
+or an image sequence is encoded by the reference path over its cut at 24, the size it is, with no
+cube (`render._render_reference` passes `lut=None` for it) and no audio, labelled for its AMF's
+display, and checked as a reference is except QC-112 (no target size); one image file that is a
+JPG or PNG is copied byte for byte; any other image file becomes a JPG (`ffmpeg.write_still_jpg`).
+`naming.avidref_file` names it and `parse_output_name` reads it back as kind `avidref`, so it
+versions like the rest. `exports.tracker_rows` leaves avidRef rows out. The stringout is
+unchanged. **Assumed, told the user (OQ-86)**: ungraded whether or not `Render` is in its name;
+silent; the EDL's cut with no handles; an image sequence is a movie; an EXR still goes to JPG with
+no view transform (no sample has one). **Frame rate (user, same day): "everything is 24fps and the
+tool should expect 24"**: already so, nothing changed (the project rate is asserted 24, every file
+read at it, QC-026 warns on another rate, audio follows the picture). **Verified**: planner,
+render (a 24000/1001 mov comes out a silent 24/1 mp4 of its cut; a flat Rec.709 frame comes out at
+the same code values, max difference 1), exports (fails without the fix), naming read-back, the
+stringout test now expecting the mp4; ruff, format and mypy clean. **Not yet run on turnover144**,
+whose render is still typed `preVis01`. Workbook row updated.
 
 **2026-10-15, 0.5.46: the Avid reference is typed `avidRef##` (user).** "Ben will put avidRef## in
 the metadata. Tool will need to use that. Later they might change it." `avidRef01`, `avidRef02`

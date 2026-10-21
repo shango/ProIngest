@@ -70,10 +70,14 @@ timeline before its shot's plate. Not in `CLIP_TYPES` and never delivered: the s
 shows it as it is, for the event's length."""
 
 AVIDREF_KIND = "avidRef"
-"""An Avid reference's `Shot Type`, `avidRef01`, `avidRef02` (QC-088, user 2026-10-15): treated
-as a style frame is. Not in `CLIP_TYPES`, never delivered and never graded: the stringout plays
-its cut as it is. The one place the spelling lives, since it may change again: it was `preVis01`
-in 0.5.44 and `pl01_avidref` in 0.5.45."""
+"""An Avid reference's `Shot Type`, `avidRef01`, `avidRef02` (QC-088, user 2026-10-15). Not in
+`CLIP_TYPES` and never graded: its colour is baked in. Delivered as it is, never as an EXR (user,
+2026-10-22): a movie as an mp4, a still as itself (`avidref_file`); the stringout plays its cut as
+it is. The one place the spelling lives, since it may change again: it was `preVis01` in 0.5.44
+and `pl01_avidref` in 0.5.45."""
+
+AVIDREF_STILL_EXTENSIONS = (".jpg", ".jpeg", ".png")
+"""A held still delivered under its own extension. Any other still becomes a `.jpg`."""
 
 HDRI_ELEMENT = "pl01"
 """Every HDRI and LDRI is named under the plate: `[SHOTCODE]_pl01_HDRI_v01.exr` in the shooters'
@@ -143,7 +147,7 @@ class ShotIdentity:
 
     @property
     def is_avidref(self) -> bool:
-        """An Avid reference (user, 2026-10-14): shown on the stringout, never delivered (QC-088)."""
+        """An Avid reference (QC-088): delivered as it is, never as an EXR (user, 2026-10-22)."""
         return self.kind == AVIDREF_KIND
 
     @property
@@ -264,6 +268,16 @@ def ldri_image(identity: ShotIdentity, version: int, suffix: str) -> str:
     return f"{hdri_label(identity)}_{_ver(version)}{suffix.lower()}"
 
 
+def avidref_file(identity: ShotIdentity, version: int, suffix: str) -> str:
+    """`INCA5002_avidRef01_v01.mp4`, or `.png` or `.jpg` for a held still: no size tag (user,
+    2026-10-22)."""
+    if not identity.is_avidref:
+        raise ValueError(f"an Avid reference must have kind {AVIDREF_KIND!r}, got {identity.kind!r}")
+    if suffix.lower() not in (".mp4", *AVIDREF_STILL_EXTENSIONS):
+        raise ValueError(f"an Avid reference is an mp4, a JPG or a PNG, got {suffix!r}")
+    return f"{shot_label(identity)}_{_ver(version)}{suffix.lower()}"
+
+
 def hdri_label(identity: ShotIdentity) -> str:
     """`SECA0009_pl01_HDRI_01` or `SECA0009_pl01_LDRI_01`: the name without its version.
     The number is the CSV's `Take` (user, 2026-10-12), carried as the identity's index."""
@@ -360,6 +374,7 @@ OutputKind = Literal[
     "audio",
     "aux_still",
     "hdri",
+    "avidref",
 ]
 
 
@@ -396,6 +411,10 @@ def _output_patterns(show_pattern: str) -> list[tuple[OutputKind, re.Pattern[str
             re.compile(
                 rf"^{shot}_{HDRI_ELEMENT}_(?P<aux>{LDRI_KIND})_(?P<auxidx>\d{{2}})_{v}\.(?P<ext>jpe?g|png)$"
             ),
+        ),
+        (
+            "avidref",
+            re.compile(rf"^{shot}_(?P<aux>{AVIDREF_KIND})(?P<auxidx>\d{{2}})_{v}\.(?P<ext>mp4|jpe?g|png)$"),
         ),
     ]
 

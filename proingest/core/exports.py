@@ -452,7 +452,8 @@ def tracker_rows(batch: Batch) -> list[list[str]]:
     """One line per shot code that delivered anything, in the order the batch lists them."""
     shots: dict[str, list[ShotRow]] = {}
     for row in batch.rows:
-        if row.shot_code and _landed(row):
+        # An Avid reference is delivered but never on the sheet (user, 2026-10-22).
+        if row.shot_code and _landed(row) and not (row.identity is not None and row.identity.is_avidref):
             shots.setdefault(row.shot_code, []).append(row)
     written = {t.turnover_id: t.stringout.name for t in batch.turnovers if t.stringout is not None}
     return [tracker_row(code, rows, written.get(rows[0].turnover_id, "")) for code, rows in shots.items()]

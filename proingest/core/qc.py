@@ -817,8 +817,9 @@ def is_style_frame(row: ShotRow) -> bool:
 
 
 def is_stringout_only(row: ShotRow) -> bool:
-    """A style frame (QC-085) or an Avid reference (QC-088): shown on the stringout as it is, never
-    delivered, and no rule runs on it (user, 2026-10-07 and 2026-10-14)."""
+    """A style frame (QC-085) or an Avid reference (QC-088): shown on the stringout as it is, and
+    no rule runs on it (user, 2026-10-07 and 2026-10-14). A style frame is never delivered; an
+    Avid reference is, as it is (user, 2026-10-22)."""
     return any(result.rule_id in ("QC-085", "QC-088") for result in row.qc)
 
 
@@ -1270,6 +1271,7 @@ def run_phase_b(job: DeliverableJob, deliverable: Deliverable) -> list[QCResult]
         "raw_dir": _verify_sequence,
         "aux_still": _verify_still,
         "hdri": _no_checks,
+        "avidref": _verify_avidref,
         "ref_mp4": _verify_reference,
         "audio": _verify_audio,
     }.get(job.kind)
@@ -1282,6 +1284,14 @@ def run_phase_b(job: DeliverableJob, deliverable: Deliverable) -> list[QCResult]
 
 def _no_checks(job: DeliverableJob, deliverable: Deliverable) -> list[QCResult]:
     """An HDRI is copied as it is, and no check runs on it (user, 2026-10-07)."""
+    return []
+
+
+def _verify_avidref(job: DeliverableJob, deliverable: Deliverable) -> list[QCResult]:
+    """An Avid reference's mp4 is checked as a reference is (QC-110 to QC-114); a still is not
+    checked, as an HDRI is not."""
+    if job.destination.suffix.lower() == ".mp4":
+        return _verify_reference(job, deliverable)
     return []
 
 
@@ -1704,6 +1714,7 @@ DELIVERABLE_RULES_BY_KIND: dict[str, tuple[str, ...]] = {
     "raw_dir": ("QC-101", "QC-102", "QC-103", "QC-104", "QC-105", "QC-106", "QC-107"),
     "aux_still": ("QC-103", "QC-104", "QC-105", "QC-106"),
     "hdri": (),
+    "avidref": ("QC-110", "QC-111", "QC-113", "QC-114", "QC-115"),
     "ref_mp4": ("QC-110", "QC-111", "QC-112", "QC-113", "QC-114", "QC-115"),
     "audio": ("QC-120", "QC-121"),
 }
@@ -1711,7 +1722,8 @@ DELIVERABLE_RULES_BY_KIND: dict[str, tuple[str, ...]] = {
 
 This is what makes NA mean something in the log: an mp4 has no opinion about EXR
 compression, so QC-105 against a reference reads NA rather than a PASS it never
-earned. QC-100 is not here because every kind owes it.
+earned. QC-100 is not here because every kind owes it. An Avid reference's mp4 owes the
+reference rules but the size, which is its own; its still owes none (`_verify_avidref`).
 """
 
 
@@ -1728,6 +1740,8 @@ def deliverable_rule_state(deliverable: Deliverable, rule_id: str) -> str:
         return "FAIL" if rule_id == RENDER_FAILED else "NA"
     if rule_id == RENDER_FAILED:
         return "PASS"
+    if deliverable.kind == "avidref" and deliverable.path.suffix.lower() != ".mp4":
+        return "NA"
     return "PASS" if rule_id in DELIVERABLE_RULES_BY_KIND.get(deliverable.kind, ()) else "NA"
 
 

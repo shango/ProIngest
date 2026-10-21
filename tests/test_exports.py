@@ -343,6 +343,17 @@ class TestShotTracker:
         assert values[8] == "24"
         assert values[9] == "✓"
 
+    def test_an_avid_reference_is_delivered_but_not_on_the_sheet(self, tmp_path: Path) -> None:
+        """User, 2026-10-22: "avidRef doesn't get listed on the sheet." A shot whose only landed
+        row is one gets no line."""
+        avidref = row(
+            "MELT0002_avidRef01_v01.mp4",
+            identity=naming.ShotIdentity("MELT0002", naming.AVIDREF_KIND, "01"),
+            deliverables=[deliverable("avidref", "MELT0002_avidRef01_v01.mp4", checksum="ee")],
+        )
+        tracker = exports.write_shot_tracker(batch_of(row(), avidref), tmp_path / "tracker.xlsx")
+        assert [values[2] for values in sheet_rows(tracker, "Shots")[1:]] == ["MELT0001"]
+
     def test_every_other_column_is_empty(self, tracker: Path) -> None:
         """The whole point: 30 columns belong to the vendor and a paste must not touch them."""
         values = sheet_rows(tracker, "Shots")[1]

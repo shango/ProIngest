@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from proingest.core import color, naming, planner
+from proingest.core import clf, color, naming, planner
 from proingest.core.models import (
     Batch,
     FrameRate,
@@ -33,6 +33,7 @@ GRADE = Grade(
     display="Gamma 2.2 Rec.709 - Display",
     view="ACES 2.0 - SDR 100 nits (Rec.709)",
 )
+GRADE_COLOR = clf.ShotColor(source_encoding="Apple Log", display="Gamma 2.2 Rec.709 - Display")
 SHOT_DIR = ROOT / "MELT" / "MELT0001"
 RATE = FrameRate(24)
 
@@ -86,13 +87,46 @@ def kinds(jobs: list[planner.DeliverableJob]) -> list[str]:
 
 
 class TestAnAvidRef:
-    """User, 2026-10-14: treated just like a style frame ("No cc needed, no delivery, only lives
-    in the stringout"), typed `avidRef01`."""
+    """User, 2026-10-22: "avidRef types are never processed to exr files." A movie is an mp4, a
+    held still is delivered as it is, and neither is graded ("color is baked in")."""
 
-    def test_it_delivers_nothing_even_graded(self) -> None:
+    def avidref(self, path: str, is_sequence: bool = False) -> ShotRow:
         graded = Grade(amf=Path("/t/x.amf"), input_transform="", looks=(GradeLook("clf", "/t/x.clf"),))
-        avidref = row(identity=naming.ShotIdentity("MELT0001", naming.AVIDREF_KIND, "01"), grade=graded)
-        assert planner.plan_row(avidref, ROOT, 1).jobs == []
+        return row(
+            identity=naming.ShotIdentity("MELT0001", naming.AVIDREF_KIND, "01"),
+            grade=graded,
+            media=media(path, is_sequence=is_sequence),
+        )
+
+    def test_a_mov_render_is_one_ungraded_mp4_over_its_cut(self) -> None:
+        mov = self.avidref("/t/split diopter Render.mov")
+        jobs = planner.plan_row(mov, ROOT, 1, shot_color=GRADE_COLOR).jobs
+        assert names(jobs) == ["MELT0001_avidRef01_v01.mp4"]
+        job = jobs[0]
+        assert (job.kind, job.destination.parent, job.res) == ("avidref", SHOT_DIR, None)
+        assert (job.in_frame, job.out_frame, job.audio_source) == (1001, 1240, None)
+        assert job.shot_color == clf.ShotColor(display=GRADE_COLOR.display)
+
+    def test_a_held_png_is_copied_under_its_own_extension(self) -> None:
+        jobs = planner.plan_row(self.avidref("/t/frame.PNG"), ROOT, 1).jobs
+        assert names(jobs) == ["MELT0001_avidRef01_v01.png"]
+        assert (jobs[0].in_frame, jobs[0].out_frame) == (1001, 1001)
+
+    @pytest.mark.parametrize("path", ["/t/frame.tif", "/t/frame.1001.exr"])
+    def test_any_other_still_is_a_jpg_never_an_exr(self, path: str) -> None:
+        jobs = planner.plan_row(self.avidref(path), ROOT, 1).jobs
+        assert names(jobs) == ["MELT0001_avidRef01_v01.jpg"]
+
+    def test_an_image_sequence_is_a_movie(self) -> None:
+        jobs = planner.plan_row(self.avidref("/t/frame.1001.exr", is_sequence=True), ROOT, 1).jobs
+        assert names(jobs) == ["MELT0001_avidRef01_v01.mp4"]
+        assert (jobs[0].in_frame, jobs[0].out_frame) == (1001, 1240)
+
+    def test_its_name_reads_back(self) -> None:
+        for name in ("MELT0001_avidRef01_v03.mp4", "MELT0001_avidRef02_v01.jpg"):
+            parsed = naming.parse_output_name(name)
+            assert parsed is not None and parsed.kind == "avidref"
+        assert naming.next_version(["MELT0001_avidRef01_v03.mp4"]) == 4
 
 
 class TestTypeTable:

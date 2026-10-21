@@ -339,13 +339,14 @@ _AVIDREF = re.compile(rf"{naming.AVIDREF_KIND}(?P<index>\d{{1,2}})?", re.IGNOREC
 
 
 def _avidref(file_name: str, shot: str, shot_type: str, scene: str, named: bool) -> MetaRow:
-    """An Avid reference row, `avidRef01` (QC-088, user 2026-10-15): treated as a style frame
-    is. No colour correction and no delivery; the stringout plays its cut as it is."""
+    """An Avid reference row, `avidRef01` (QC-088, user 2026-10-15). No colour correction, since
+    its colour is baked in, and delivered as it is, never as an EXR (user, 2026-10-22); the
+    stringout plays its cut as it is."""
     note = QCResult(
         "QC-088",
         "info",
         "row",
-        f"{file_name} is an Avid reference: the stringout shows it as it is, and nothing is delivered",
+        f"{file_name} is an Avid reference: delivered and shown on the stringout as it is, never graded",
     )
     match = _AVIDREF.fullmatch(shot_type.strip())
     index = ((match["index"] if match else None) or "1").zfill(2)
