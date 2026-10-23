@@ -80,6 +80,8 @@ class MetaRow:
     start_tc: str = ""
     take: str = ""
     input_color_space: str = ""
+    plate: str = ""
+    """The plate a witness cam covers, `pl02` for `pl02_wit01` (user, 2026-10-23)."""
     hdri: bool = False
     """An HDRI or LDRI (QC-080): the tool copies its file as it is and runs no row rule on it, and
     the stringout shows Ben's pre-render of its timeline event (user, 2026-10-07)."""
@@ -179,6 +181,10 @@ def _shot(typed: str, show_pattern: str) -> str:
     return typed
 
 
+_BARE_WITNESS = re.compile(rf"{naming.WITNESS_KIND}\d{{0,2}}", re.IGNORECASE)
+"""`wit01` with no plate before it, QC-010 since the plate became part of the name (user, 2026-10-23)."""
+
+
 def _row_qc(file_name: str, shot: str, shot_type: str, kind: str | None, show_pattern: str) -> list[QCResult]:
     """QC-010: the half-filled row.
 
@@ -186,6 +192,16 @@ def _row_qc(file_name: str, shot: str, shot_type: str, kind: str | None, show_pa
     this catches is a row that says it is a deliverable and then cannot be named: a
     `Shot Type` nothing resolves to, or a blank or malformed `Shot`.
     """
+    if kind is None and _BARE_WITNESS.fullmatch(shot_type.strip()):
+        return [
+            QCResult(
+                "QC-010",
+                "error",
+                "row",
+                f"{file_name} has Shot Type {shot_type!r}, which names no plate: a witness cam is "
+                f"pl01_{shot_type.strip()} or pl02_{shot_type.strip()}, for the plate it covers",
+            )
+        ]
     if kind is None:
         return [
             QCResult(
@@ -275,6 +291,7 @@ def read(path: Path, show_pattern: str = naming.DEFAULT_SHOW_PATTERN) -> MetaCsv
                 start_tc=_value(record, start_positions),
                 take=_value(record, take_positions),
                 input_color_space=_value(record, space_positions),
+                plate=naming.witness_plate(shot_type),
                 qc=tuple(type_qc + _row_qc(file_name, shot, shot_type, kind, show_pattern)),
             )
         )

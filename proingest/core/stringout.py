@@ -283,17 +283,20 @@ def plan(
 
 
 def _with_insets(segments: list[Segment]) -> list[Segment]:
-    """Each plate with its shot's first cp and first wit in EDL order laid over it."""
-    first: dict[tuple[str, str], Segment] = {}
+    """Each plate with its shot's first cp, and the first wit that names it, in EDL order
+    laid over it: `pl02_wit01` goes over pl02 (user, 2026-10-23)."""
+    first: dict[tuple[str, str, str], Segment] = {}
     for segment in segments:
         if segment.identity is not None:
-            first.setdefault((segment.identity.shot_code, segment.identity.kind), segment)
+            identity = segment.identity
+            first.setdefault((identity.shot_code, identity.kind, identity.plate), segment)
     placed = []
     for segment in segments:
         if segment.identity is not None and segment.identity.kind == "pl":
-            code = segment.identity.shot_code
+            code, plate = segment.identity.shot_code, segment.identity.elem
+            covers = {kind: plate if kind == naming.WITNESS_KIND else "" for kind in INSET_CORNERS}
             found = (
-                _inset(first.get((code, kind)), segment.length, corner)
+                _inset(first.get((code, kind, covers[kind])), segment.length, corner)
                 for kind, corner in INSET_CORNERS.items()
             )
             segment = replace(segment, insets=tuple(inset for inset in found if inset is not None))

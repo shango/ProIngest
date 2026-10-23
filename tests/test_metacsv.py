@@ -272,6 +272,23 @@ class TestAnAvidRef:
         assert [q.rule_id for q in result.rows[0].qc] == ["QC-010"]
 
 
+class TestAWitness:
+    """`pl01_wit01` or `pl02_wit01`, naming the plate it covers (user, 2026-10-23)."""
+
+    @pytest.mark.parametrize(("written", "plate"), [("pl01_wit01", "pl01"), ("pl02_wit01", "pl02")])
+    def test_the_plate_is_read_from_the_shot_type(self, tmp_path: Path, written: str, plate: str) -> None:
+        result = read(tmp_path, ["File Name", "Shot", "Shot Type"], [["wit.mov", "INCA5002", written]])
+        (row,) = result.rows
+        assert (row.kind, row.index, row.plate) == ("wit", "01", plate)
+        assert row.qc == ()
+
+    def test_a_bare_wit_is_qc_010_and_says_how_to_write_it(self, tmp_path: Path) -> None:
+        result = read(tmp_path, ["File Name", "Shot", "Shot Type"], [["wit.mov", "INCA5002", "wit01"]])
+        (finding,) = result.rows[0].qc
+        assert finding.rule_id == "QC-010"
+        assert "pl01_wit01 or pl02_wit01" in finding.message
+
+
 class TestFileShape:
     def test_short_rows_do_not_raise(self, tmp_path: Path) -> None:
         """Resolve pads with empty cells; nothing guarantees every row is full width."""

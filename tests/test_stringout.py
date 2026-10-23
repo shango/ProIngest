@@ -295,8 +295,8 @@ class TestInsets:
     """A plate carries its shot's cp top left and wit top right (user, 2026-09-29)."""
 
     @staticmethod
-    def as_kind(batch: Batch, index: int, shot: str, kind: str) -> None:
-        batch.rows[index].identity = naming.ShotIdentity(shot, kind, "01")
+    def as_kind(batch: Batch, index: int, shot: str, kind: str, plate: str = "") -> None:
+        batch.rows[index].identity = naming.ShotIdentity(shot, kind, "01", plate=plate)
 
     def test_a_plate_carries_its_shots_cp_top_left(self, batch: Batch) -> None:
         self.as_kind(batch, 1, "MELT0001", "cp")
@@ -310,9 +310,14 @@ class TestInsets:
         assert clean.insets == (), "only a plate carries insets"
 
     def test_a_wit_goes_top_right(self, batch: Batch) -> None:
-        self.as_kind(batch, 1, "MELT0001", "wit")
+        self.as_kind(batch, 1, "MELT0001", "wit", plate="pl01")
         (inset,) = planned(batch).segments[0].insets
-        assert (inset.picture.x, inset.picture.y, inset.label) == (1440, 0, "wit01")
+        assert (inset.picture.x, inset.picture.y, inset.label) == (1440, 0, "pl01_wit01")
+
+    def test_a_wit_goes_over_the_plate_it_names_only(self, batch: Batch) -> None:
+        """User, 2026-10-23: `pl02_wit01` covers pl02, so pl01 carries no inset of it."""
+        self.as_kind(batch, 1, "MELT0001", "wit", plate="pl02")
+        assert planned(batch).segments[0].insets == ()
 
     def test_another_shots_cp_is_not_inset(self, batch: Batch) -> None:
         self.as_kind(batch, 1, "MELT0009", "cp")

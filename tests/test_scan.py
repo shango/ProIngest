@@ -779,6 +779,12 @@ class TestTheAmf:
         assert {"QC-080", "QC-083"} <= set(rules(row)) and not row.errors()
         assert not qc.must_fix(Batch(delivery_root=tmp_path, turnovers=[turnover], rows=[row]))
 
+    def test_a_witness_carries_the_plate_its_shot_type_names(self, tmp_path: Path) -> None:
+        """User, 2026-10-23: `pl02_wit01` is delivered as `MELT0001_pl02_wit01_...`."""
+        folder = fixtures.make_turnover(tmp_path / GOOD_FOLDER, shots=1, frames=4, shot_types=["pl02_wit01"])
+        _, row = self.scanned(folder)
+        assert row.identity is not None and row.identity.stem == "MELT0001_pl02_wit01"
+
     def test_a_style_frame_blocks_nothing_and_delivers_nothing(self, tmp_path: Path) -> None:
         """User, 2026-10-07: a pre-graded PNG or JPG held on the stringout, and that is all."""
         folder = fixtures.make_turnover(tmp_path / GOOD_FOLDER, shots=1, frames=4, shot_types=["styleFrame"])

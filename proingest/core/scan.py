@@ -271,7 +271,9 @@ def _build_row(
     )
     row.qc.extend(entry.qc)
     if entry.kind is not None and entry.index is not None and not row.errors():
-        row.identity = naming.ShotIdentity(shot_code=entry.shot, kind=entry.kind, index=entry.index)
+        row.identity = naming.ShotIdentity(
+            shot_code=entry.shot, kind=entry.kind, index=entry.index, plate=entry.plate
+        )
 
     hdri = naming.hdri_kind(entry.shot_type) or naming.HDRI_KIND
     if entry.hdri and qc.is_prerender_name(entry.file_name):

@@ -44,7 +44,7 @@ class TestParseShotType:
             ("pl01", ("pl", "01")),
             ("cp02", ("cp", "02")),
             ("el01", ("el", "01")),
-            ("wit01", ("wit", "01")),
+            ("pl01_wit01", ("wit", "01")),
             ("re01", ("re", "01")),
             ("colorChart", ("colorChart", "01")),
             ("mirrorBall", ("mirrorBall", "01")),
@@ -68,6 +68,34 @@ class TestParseShotType:
         assert naming.parse_shot_type("avidRef01") is None
         identity = naming.ShotIdentity("INCA5002", naming.AVIDREF_KIND, "02")
         assert naming.shot_label(identity) == "INCA5002_avidRef02"
+
+    @pytest.mark.parametrize(
+        ("written", "plate", "index"),
+        [
+            ("pl01_wit01", "pl01", "01"),
+            ("pl02_wit01", "pl02", "01"),
+            ("PL2_WIT3", "pl02", "03"),
+            ("pl_wit", "pl01", "01"),
+        ],
+    )
+    def test_a_witness_names_the_plate_it_covers(self, written: str, plate: str, index: str) -> None:
+        """User, 2026-10-23: Ben types `pl01_wit01` or `pl02_wit01`."""
+        assert naming.parse_shot_type(written) == ("wit", index)
+        assert naming.witness_plate(written) == plate
+
+    @pytest.mark.parametrize("written", ["wit01", "wit", "WIT2", "cp01_wit01", "pl01_wit01_x"])
+    def test_a_witness_with_no_plate_resolves_to_nothing(self, written: str) -> None:
+        assert naming.parse_shot_type(written) is None
+        assert naming.witness_plate(written) == ""
+
+    def test_a_witness_is_named_under_its_plate(self) -> None:
+        identity = ShotIdentity("INCA5002", "wit", "01", plate="pl02")
+        assert identity.elem == "pl02_wit01"
+        assert naming.raw_sequence_dir(identity, "4k", 1) == "INCA5002_pl02_wit01_raw_4k_v01"
+        assert naming.raw_frame(identity, "HD", 1, 1001) == "INCA5002_pl02_wit01_raw_HD_v01.1001.exr"
+        assert naming.ref_mp4(identity, "4k", 1) == "INCA5002_pl02_wit01_ref_4k_v01.mp4"
+        assert naming.ref_mp4(identity, "HD", 1) == "INCA5002_pl02_wit01_ref_HD_v01.mp4"
+        assert naming.shot_label(identity) == "INCA5002_pl02_wit01"
 
     @pytest.mark.parametrize("written", ["pl", "cp", "colorChart", "greyBall"])
     def test_a_bare_code_means_01(self, written: str) -> None:
@@ -166,6 +194,8 @@ class TestParseOutputName:
             ("MELT0001_pl01_ref_HD_v01.mp4", "ref_mp4"),
             ("MELT0001_pl01_audio_v01.wav", "audio"),
             ("MELT0001_colorChart_01_4k_v01.exr", "aux_still"),
+            ("MELT0001_pl02_wit01_raw_4k_v01.1001.exr", "raw_frame"),
+            ("MELT0001_pl02_wit01_ref_HD_v01.mp4", "ref_mp4"),
         ],
     )
     def test_each_example_parses_to_exactly_one_kind(self, name: str, kind: str) -> None:
@@ -182,6 +212,7 @@ class TestParseOutputName:
             "MELT0001_pl01_ref_HD_v01.mp4",
             "MELT0001_pl01_audio_v01.wav",
             "MELT0001_colorChart_01_4k_v01.exr",
+            "MELT0001_pl02_wit01_raw_4k_v01",
         ],
     )
     def test_patterns_are_mutually_exclusive(self, name: str) -> None:
@@ -212,6 +243,7 @@ class TestParseOutputName:
             "notes.txt",
             "MELT0001_pl01_raw_4k.exr",  # no version
             "MELT0001_pl01_raw_8k_v01",  # unknown resolution
+            "MELT0001_pl01_cp01_raw_4k_v01",  # only a witness has a plate before it
         ],
     )
     def test_rejects_non_deliverables(self, name: str) -> None:
@@ -243,6 +275,13 @@ class TestRoundTrip:
         assert parsed.shot_code == "MELT0042"
         assert parsed.elem == f"{elem_type}02"
         assert parsed.version == 5
+
+    def test_a_witness_reads_back_with_its_plate(self) -> None:
+        identity = ShotIdentity(shot_code="MELT0042", kind="wit", index="01", plate="pl02")
+        for built in (naming.raw_sequence_dir(identity, "HD", 3), naming.ref_mp4(identity, "4k", 3)):
+            parsed = naming.parse_output_name(built)
+            assert parsed is not None
+            assert (parsed.shot_code, parsed.elem, parsed.version) == ("MELT0042", "pl02_wit01", 3)
 
     def test_every_output_frame_of_a_sequence(self) -> None:
         duration = 240

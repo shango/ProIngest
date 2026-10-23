@@ -49,6 +49,13 @@ class Advice:
     of spare frames (QC-030)."""
 
 
+def _shot_type_example(kind: str) -> str:
+    """`pl01` for an element, `pl01_wit01` for a witness cam, a still's name as it is."""
+    if kind == naming.WITNESS_KIND:
+        return f"pl01_{kind}01"
+    return kind + "01" if kind in naming.ELEMENT_TYPES else kind
+
+
 ADVICE: dict[str, Advice] = {
     "QC-001": Advice(
         "resolve",
@@ -73,7 +80,7 @@ ADVICE: dict[str, Advice] = {
         "resolve",
         "A clip's Shot or Shot Type cannot be used.",
         "The Shot needs to look like SECA0012, and the Shot Type has to be one the tool delivers: "
-        + ", ".join(t + "01" if t in naming.ELEMENT_TYPES else t for t in naming.CLIP_TYPES)
+        + ", ".join(_shot_type_example(t) for t in naming.CLIP_TYPES)
         + ", HDRI or LDRI. Please correct it in the clip's metadata.",
         "message",
     ),

@@ -83,6 +83,12 @@ HDRI_ELEMENT = "pl01"
 """Every HDRI and LDRI is named under the plate: `[SHOTCODE]_pl01_HDRI_v01.exr` in the shooters'
 spec, `BACH0002_pl01_HDRI_01_v01.exr` in the tracker."""
 
+WITNESS_KIND = "wit"
+
+WITNESS_SHOT_TYPE = re.compile(r"(?P<plate>pl\d{0,2})_wit(?P<index>\d{1,2})?", re.IGNORECASE)
+"""A witness cam's `Shot Type` names the plate it covers: `pl01_wit01`, `pl02_wit01` (user,
+2026-10-23), and so does every deliverable. A bare `wit01` names no plate and is QC-010."""
+
 _SHOT_TYPE_INDEX = {name.casefold(): name for name in CLIP_TYPES}
 _SHOT_TYPE_PATTERN = re.compile(r"^(?P<kind>[A-Za-z]+)(?P<index>\d{1,2})?$")
 
@@ -109,11 +115,15 @@ class ShotIdentity:
     still therefore has no element, which is why `stem` refuses to build one for it.
 
     `index` stays a string so a leading zero survives the round trip.
+
+    `plate` is the plate a witness cam covers, `pl02` for `pl02_wit01`, and empty for
+    every other kind.
     """
 
     shot_code: str
     kind: str
     index: str
+    plate: str = ""
 
     @property
     def show(self) -> str:
@@ -152,7 +162,9 @@ class ShotIdentity:
 
     @property
     def elem(self) -> str:
-        """`pl01`, what a plate's deliverables are named for."""
+        """`pl01`, what a plate's deliverables are named for; `pl02_wit01` for a witness cam."""
+        if self.plate:
+            return f"{self.plate}_{self.kind}{self.index}"
         return f"{self.kind}{self.index}"
 
     @property
@@ -185,15 +197,30 @@ def parse_shot_type(written: str) -> tuple[str, str] | None:
 
     What comes back is always the spelling in NAMING_SPEC section 1, never the shooter's,
     so two deliverables cannot differ by capitalisation alone.
+
+    A witness cam is `pl02_wit01` (`witness_plate` reads the plate); a bare `wit01` is None.
     """
+    witness = WITNESS_SHOT_TYPE.fullmatch(written.strip())
+    if witness is not None:
+        return WITNESS_KIND, (witness["index"] or "1").zfill(2)
     match = _SHOT_TYPE_PATTERN.match(written.strip())
     if match is None:
         return None
     key = match["kind"].casefold()
+    if key == WITNESS_KIND:
+        return None
     kind = _SHOT_TYPE_INDEX.get(SHOT_TYPE_ALIASES.get(key, key))
     if kind is None:
         return None
     return kind, (match["index"] or "1").zfill(2)
+
+
+def witness_plate(written: str) -> str:
+    """`pl02` for a `Shot Type` of `pl02_wit01` (a bare `pl` is `pl01`), else empty."""
+    witness = WITNESS_SHOT_TYPE.fullmatch(written.strip())
+    if witness is None:
+        return ""
+    return "pl" + (witness["plate"][2:] or "1").zfill(2)
 
 
 def parse_shot_code(code: str, show_pattern: str = DEFAULT_SHOW_PATTERN) -> tuple[str, str] | None:
@@ -396,7 +423,7 @@ class ParsedOutput:
 def _output_patterns(show_pattern: str) -> list[tuple[OutputKind, re.Pattern[str]]]:
     """One anchored pattern per kind. Mutually exclusive on the literal kind segment."""
     shot = rf"(?P<show>{show_pattern})(?P<shot>\d{{4}})"
-    sc = rf"{shot}_(?P<type>{_TYPES})(?P<idx>\d{{2}})"
+    sc = rf"{shot}_(?:(?P<plate>pl\d{{2}})_(?={WITNESS_KIND}))?(?P<type>{_TYPES})(?P<idx>\d{{2}})"
     v = r"v(?P<ver>\d{2})"
     res = r"(?P<res>4k|HD)"
     return [
@@ -432,6 +459,8 @@ def parse_output_name(name: str, show_pattern: str = DEFAULT_SHOW_PATTERN) -> Pa
         groups = match.groupdict()
         shot_code = f"{groups['show']}{groups['shot']}" if "show" in groups else None
         elem = f"{groups['type']}{groups['idx']}" if "type" in groups else None
+        if elem is not None and groups.get("plate"):
+            elem = f"{groups['plate']}_{elem}"
         frame = groups.get("frame")
         raw_res = groups.get("res")
         return ParsedOutput(

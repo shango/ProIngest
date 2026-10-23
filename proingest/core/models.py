@@ -762,7 +762,8 @@ def _identity_from_dict(data: dict[str, Any] | None) -> ShotIdentity | None:
     if data is None:
         return None
     values: dict[str, Any] = {
-        f.name: str(data[f.name]) if f.default is MISSING else data.get(f.name) for f in fields(ShotIdentity)
+        f.name: str(data[f.name]) if f.default is MISSING else data.get(f.name, f.default)
+        for f in fields(ShotIdentity)
     }
     return ShotIdentity(**values)
 

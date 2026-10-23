@@ -24,6 +24,7 @@ from proingest.core.models import (
     ShotRow,
     Turnover,
 )
+from proingest.core.naming import ShotIdentity
 from tests.fixtures.names import identity_of
 
 ROOT = Path("/delivery")
@@ -154,6 +155,16 @@ class TestTypeTable:
         """
         plan = planner.plan_row(row("MELT0001_wit01"), ROOT, 1)
         assert "MELT0001_wit01_raw_4k_v01" in names(plan.jobs)
+
+    def test_a_witness_cam_is_named_under_the_plate_it_covers(self) -> None:
+        """User, 2026-10-23: `pl02_wit01` in the CSV, `_pl02_wit01_` in all four names."""
+        witness = row("MELT0001_wit01", identity=ShotIdentity("MELT0001", "wit", "01", plate="pl02"))
+        assert names(planner.plan_row(witness, ROOT, 1).jobs) == [
+            "MELT0001_pl02_wit01_raw_4k_v01",
+            "MELT0001_pl02_wit01_raw_HD_v01",
+            "MELT0001_pl02_wit01_ref_4k_v01.mp4",
+            "MELT0001_pl02_wit01_ref_HD_v01.mp4",
+        ]
 
     def test_resolutions_are_exact(self) -> None:
         plan = planner.plan_row(row(), ROOT, 1)

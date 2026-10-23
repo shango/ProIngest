@@ -8,7 +8,7 @@ commit.
 
 ## 1. Resume here
 
-**State at 2026-10-22, version 0.5.47 on branch `ldri`, PR #20 open** (0.5.47: the Avid reference delivered, never an EXR; 0.5.46: the Avid reference typed `avidRef##`; 0.5.40: no Fix-it line claims what the tool did not verify; 0.5.39: the Fix-it report by timeline clip name, each message once; 0.5.38: an HDRI's or LDRI's number is its take; 0.5.37: the LDRI; 0.5.36 and before merged to `main` with PR #19 as `a85cd53`; 0.5.36: the stringout from 26 minutes to 3 on turnover135; 0.5.35: the stringout's time left on its line; 0.5.34: the HDRI pre-render on the timeline; 0.5.33: the QC overhaul, nothing stops a batch or a turnover; 0.5.32: style frames on the stringout, the stringout line in the shot list; 0.5.31: every Fix-it line names its shot; 0.5.30: the take on the burn-in; 0.5.29: reference clips play in the stringout; 0.5.28: everything in the stringout graded; 0.5.27: the stringout from the EXRs; 0.5.26: the HDRI pre-render and delivery, QC-084, Accept As Is runs what it can; 0.5.25, merged to `main` with PR #18: `User_Generated` and `User_Uploads` at the delivery root; 0.5.24: the Fix-it
+**State at 2026-10-23, version 0.5.48 on branch `ldri`, PR #20 open** (0.5.48: a witness cam named under its plate, `pl02_wit01`; 0.5.47: the Avid reference delivered, never an EXR; 0.5.46: the Avid reference typed `avidRef##`; 0.5.40: no Fix-it line claims what the tool did not verify; 0.5.39: the Fix-it report by timeline clip name, each message once; 0.5.38: an HDRI's or LDRI's number is its take; 0.5.37: the LDRI; 0.5.36 and before merged to `main` with PR #19 as `a85cd53`; 0.5.36: the stringout from 26 minutes to 3 on turnover135; 0.5.35: the stringout's time left on its line; 0.5.34: the HDRI pre-render on the timeline; 0.5.33: the QC overhaul, nothing stops a batch or a turnover; 0.5.32: style frames on the stringout, the stringout line in the shot list; 0.5.31: every Fix-it line names its shot; 0.5.30: the take on the burn-in; 0.5.29: reference clips play in the stringout; 0.5.28: everything in the stringout graded; 0.5.27: the stringout from the EXRs; 0.5.26: the HDRI pre-render and delivery, QC-084, Accept As Is runs what it can; 0.5.25, merged to `main` with PR #18: `User_Generated` and `User_Uploads` at the delivery root; 0.5.24: the Fix-it
 report, one error per cause, a lone EXR read as one frame, AMFs falling back to the clip they name) (`HANDOFF.md` is the short version, with the session's open items); 0.5.22 went to `main` earlier (PR #17 merged as `70e1160` at the user's request, after its CI
 run 37276656318 built the 0.5.22 dmg). The 2026-09-23 review is built (chunks A
 to H of `docs/REVIEW_2026-09-23.md`), and so are the fixes that a second official turnover,
@@ -17,6 +17,26 @@ renders; Turnover121, every clip 8 bit 4:2:0, runs again with a QC-020 warning o
 since 2026-09-28 (user). What is left is the Mac: `docs/MAC_SESSION.md`, from "The 0.5.0 build, in
 order" down, and Ben's 4.886 slope. Entries are newest first; anything older than 2026-09-22
 describes the tool before the review and is history.
+
+**2026-10-23, 0.5.48: a witness cam is named under the plate it covers (user).** "It will appear
+in the metadata and csv as wit01, wit02, etc. It should appear in the resulting file names as
+_pl01_wit01_. This file will get color correction and become an exr sequence." Already graded and
+delivered as EXRs; only the name changed. Asked, and answered: "could be a pl02_wit01"; all four
+deliverables; the burn-in too; "Ben will add pl01_wit01 or pl02_wit01 to the metadata and the tool
+will read it in the csv"; the shooters' spec sheet (`MELT0001_wit01_...`) is out of date and wants
+remaking. **Built**: `naming.WITNESS_SHOT_TYPE` reads `pl02_wit01` (any case, bare `pl` or `wit`
+means 01) and `naming.witness_plate` its plate, carried as the new `ShotIdentity.plate` (empty for
+every other kind; `MetaRow.plate`, `scan`). `ShotIdentity.elem` is `pl02_wit01` for a witness, so
+`stem`, every builder, the burn-in, the exports' element column and QC-151 follow;
+`parse_output_name` reads the plate back before `wit` only. A bare `wit01` is QC-010 with a message
+saying how to write it (`metacsv._BARE_WITNESS`); the Fix-it QC-010 line lists `pl01_wit01`. The
+stringout lays a witness over the plate it names only (`stringout._with_insets`). A batch saved
+before this has no `plate` and loads as empty (`models._identity_from_dict` now takes the field's
+default). **Assumed, told the user (OQ-87)**: bare `wit01` refused rather than read as pl01; the
+inset follows the plate. **Verified**: tests in `test_naming.py`, `test_metacsv.py`,
+`test_planner.py` (all four names), `test_stringout.py` (inset over pl01 only for `pl01_wit01`),
+`test_scan.py`, `test_models.py` (round trip, old batch). Workbook row updated, NAMING_SPEC
+sections 1, 2 and 7.
 
 **2026-10-22, 0.5.47: the Avid reference is delivered, never as an EXR (user).** "avidRef types
 are never processed to exr files. If they appear on the EDL as an mp4 file, then they should be

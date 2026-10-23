@@ -1,3 +1,10 @@
+# Handoff, 23 October 2026
+
+**23 October, 0.5.48**: a witness cam names the plate it covers. Ben types `pl01_wit01` or
+`pl02_wit01`, and all four deliverables and the burn-in carry both (`INCA5002_pl02_wit01_raw_4k_v01`).
+A bare `wit01` is QC-010. Its inset goes over the plate it names. OQ-87 has the assumptions. The
+shooters' spec sheet is out of date (user) and wants remaking.
+
 # Handoff, 22 October 2026
 
 **22 October, 0.5.47**: an `avidRef##` is now delivered, never as an EXR: a movie or an image

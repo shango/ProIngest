@@ -36,12 +36,14 @@ The two fields are read separately (show prefix configurable, default `[A-Z]{2,6
 ```
 Shot        ^(?P<show>[A-Z]{2,6})(?P<shot>\d{4})$
 Shot Type   ^(?P<kind>[A-Za-z]+)(?P<index>\d{1,2})?$   kind, casefolded, one of
-            pl cp el wit re colorChart mirrorBall greyBall sizeRef   (cl accepted as cp)
+            pl cp el re colorChart mirrorBall greyBall sizeRef   (cl accepted as cp)
+Witness     ^(?P<plate>pl\d{0,2})_wit(?P<index>\d{1,2})?$   pl01_wit01, pl02_wit01
             HDRI, LDRI, styleFrame and avidRef## are read on their own, outside this list
 ```
 
 - `show` + `shot` = shot code (`MELT0001`).
 - `kind` + `index` = element id (`pl01`), the index zero-padded to two digits and `01` when bare.
+- **A witness cam names the plate it covers** (user, 2026-10-23): Ben types `pl01_wit01` or `pl02_wit01`, and every one of its deliverables carries both, `MELT0001_pl02_wit01_raw_4k_v01`. A bare `wit01` names no plate and is QC-010. Its stringout inset goes over the plate it names. This replaces the shooters' spec sheet's `MELT0001_wit01_...`, which is out of date.
 - A `kind` that is one of the four reference stills marks a single-frame reference still. **Changed 2026-09-21 by the shooters' updated spec**: a reference still is keyed to the **shot code**, not to an element, and its delivered name no longer carries one.
 
   ```
@@ -59,7 +61,7 @@ Shot Type   ^(?P<kind>[A-Za-z]+)(?P<index>\d{1,2})?$   kind, casefolded, one of
 | pl | main plate | raw 4k exr seq, raw HD exr seq, ref 4k mp4, ref HD mp4, audio wav |
 | cp | clean plate | raw 4k, raw HD, ref 4k, ref HD |
 | el | element plate | raw 4k, raw HD, ref 4k, ref HD |
-| wit | witness cam | raw 4k, raw HD, ref 4k, ref HD |
+| wit | witness cam, `Shot Type` `pl02_wit01` | raw 4k, raw HD, ref 4k, ref HD, named `{shotcode}_{plate}_wit{idx}_...` |
 | re | recon plate | raw 4k, raw HD, ref 4k, ref HD |
 | aux still | reference still, keyed to the shot code | single 4k exr, converted and never graded |
 | HDRI | the HDRI, `Shot Type` `HDRI` (QC-080) | the EXR, **copied byte for byte** and never checked (user, 2026-10-07) |
@@ -164,7 +166,7 @@ Shared fragments:
 
 ```
 shotcode  (?P<show>[A-Z]{2,6})(?P<shot>\d{4})
-elem      (?P<type>pl|cp|el|wit|re)(?P<idx>\d{2})
+elem      (?:(?P<plate>pl\d{2})_(?=wit))?(?P<type>pl|cp|el|wit|re)(?P<idx>\d{2})   the plate only before wit
 res       (?P<res>4k|HD)
 ver       v(?P<ver>\d{2})
 ```
