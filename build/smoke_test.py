@@ -43,6 +43,17 @@ STEP_TIMEOUT = 600
 four frame render is not the thing being timed."""
 
 
+FAKE_SPAWN = (
+    ["--multiprocessing-fork", "parent_pid=0", "pipe_handle=0"]
+    if sys.platform == "win32"
+    else ["--multiprocessing-fork", "tracker_fd=-1", "pipe_handle=-1"]
+)
+"""A worker's spawn arguments, in the form each platform's `multiprocessing` writes them,
+naming handles that are not real. **Not -1 on Windows**: there it is the pseudo handle for
+the current process, so the child read its own process forever and the check timed out
+(2026-10-28). Zero is no handle at all, so the child fails at once."""
+
+
 class SmokeFailure(RuntimeError):
     """The built app did not do what a working one does."""
 
@@ -75,8 +86,8 @@ def check_spawn_argument_is_intercepted(executable: Path) -> None:
     """The `freeze_support()` line in `build/entry.py` is still doing its job.
 
     A spawned worker is this same executable re-launched with `--multiprocessing-fork`
-    and two keyword arguments. Handed that by hand, a working bundle gets as far as
-    `spawn_main` and dies on the file descriptor, which is not real; a bundle that lost
+    and two keyword arguments. Handed that by hand (`FAKE_SPAWN`), a working bundle gets
+    as far as `spawn_main` and dies on the handle, which is not real; a bundle that lost
     the `freeze_support()` call hands it to the argument parser instead, which prints
     its usage and refuses. So the check is that the usage line is *absent*.
 
@@ -84,7 +95,7 @@ def check_spawn_argument_is_intercepted(executable: Path) -> None:
     someone who checked it against the standard library and concluded it was a no-op.
     """
     result = subprocess.run(
-        [str(executable), "--multiprocessing-fork", "tracker_fd=-1", "pipe_handle=-1"],
+        [str(executable), *FAKE_SPAWN],
         capture_output=True,
         text=True,
         timeout=STEP_TIMEOUT,
