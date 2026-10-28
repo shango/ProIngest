@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 import OpenEXR
@@ -234,6 +235,7 @@ class TestRunCommand:
         code = main(["run", str(batch_path), "--delivery-root", str(tmp_path / "delivery"), "--dry-run"])
         assert code == 0
 
+    @pytest.mark.skipif(sys.platform == "win32", reason="a Windows folder has no mode to make it read only")
     def test_an_unwritable_delivery_root_stops_the_run(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:

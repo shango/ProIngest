@@ -725,7 +725,7 @@ class TestTheTwoRoots:
 
     def test_the_bar_shows_the_delivery_root(self, window: DrivenWindow) -> None:
         window.set_batch(batch(row()))
-        assert window.batch_bar.delivery_root.text() == "/delivery"
+        assert window.batch_bar.delivery_root.text() == str(Path("/delivery"))
 
     def test_clicking_it_changes_it(self, window: DrivenWindow, tmp_path: Path) -> None:
         window.set_batch(batch(row()))
@@ -1437,6 +1437,7 @@ class TestRunningABatch:
         assert started and window.problems == []
         assert "QC-008" not in [result.rule_id for result in window.batch.turnovers[0].qc]
 
+    @pytest.mark.skipif(sys.platform == "win32", reason="a Windows folder has no mode to make it read only")
     def test_an_unwritable_delivery_root_stops_the_run_with_a_popup(
         self, window: DrivenWindow, tmp_path: Path
     ) -> None:

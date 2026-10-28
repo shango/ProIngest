@@ -365,7 +365,7 @@ class TestViewLut:
                 "-i",
                 str(source),
                 "-vf",
-                f"lut3d=file={cube}:interp=tetrahedral",
+                ffmpeg.lut_filter(cube),
                 "-f",
                 "rawvideo",
                 "-pix_fmt",

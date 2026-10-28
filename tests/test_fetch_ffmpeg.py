@@ -28,6 +28,8 @@ from proingest.core import ffmpeg as core_ffmpeg
 
 PAYLOAD = b"not really a video tool" * 100
 
+POSIX_MODES = pytest.mark.skipif(sys.platform == "win32", reason="Windows has no exec bit")
+
 
 def entry_for(payload: bytes, *, dest_name: str = "ffmpeg", member: str | None = "ffmpeg") -> dict[str, Any]:
     """A lock file entry describing `payload`, with or without an archive around it."""
@@ -117,6 +119,7 @@ class TestFindLocal:
 
 
 class TestInstallLocal:
+    @POSIX_MODES
     def test_a_bare_binary_lands_executable(self, tmp_path: Path) -> None:
         source = tmp_path / "src" / "ffmpeg"
         source.parent.mkdir()
@@ -178,6 +181,7 @@ class TestInstallLocal:
 
 
 class TestIsSatisfied:
+    @POSIX_MODES
     def test_the_right_bytes_without_the_exec_bit_are_not_enough(self, tmp_path: Path) -> None:
         dest = tmp_path / "ffmpeg"
         dest.write_bytes(PAYLOAD)

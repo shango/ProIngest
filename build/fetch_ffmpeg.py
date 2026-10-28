@@ -80,11 +80,12 @@ def is_satisfied(dest: Path, entry: dict[str, Any]) -> bool:
     """True when dest already holds exactly the pinned bytes, executable if it must be.
 
     The mode is part of the check because a binary that arrived without its exec bit is
-    useless and would otherwise look present forever.
+    useless and would otherwise look present forever. Windows has no exec bit: a file
+    runs by its extension, so there the bytes are the whole check.
     """
     if not dest.is_file() or dest.stat().st_size != entry["size"]:
         return False
-    if entry["executable"] and not dest.stat().st_mode & stat.S_IXUSR:
+    if entry["executable"] and os.name != "nt" and not dest.stat().st_mode & stat.S_IXUSR:
         return False
     return sha256_of(dest) == str(entry["sha256"])
 

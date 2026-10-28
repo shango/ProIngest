@@ -509,11 +509,11 @@ class TestTooltips:
         assert cell(model, 0, SHOT, Qt.ItemDataRole.ToolTipRole) == "MELT0001_pl01"
 
     def test_the_source_cell_carries_the_whole_path(self, model: ShotListModel) -> None:
-        assert cell(model, 0, SOURCE, Qt.ItemDataRole.ToolTipRole) == "/turnover/MELT0001_pl01.mov"
+        assert cell(model, 0, SOURCE, Qt.ItemDataRole.ToolTipRole) == str(Path("/turnover/MELT0001_pl01.mov"))
 
     def test_the_group_header_falls_back_to_its_folder(self, model: ShotListModel) -> None:
         tip = model.index(0, 0, QModelIndex()).data(Qt.ItemDataRole.ToolTipRole)
-        assert str(tip).startswith("/source/")
+        assert str(tip).startswith(str(Path("/source")))
 
 
 class TestReplacingTheBatch:

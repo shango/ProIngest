@@ -14,6 +14,7 @@ worker made.
 from __future__ import annotations
 
 import logging
+import shutil
 import sys
 import threading
 from collections.abc import Iterator
@@ -237,8 +238,10 @@ class TestTheFfmpegOverrideReachingAWorker:
         real = ffmpeg.resolve_tool("ffmpeg")
         elsewhere = tmp_path / "elsewhere"
         elsewhere.mkdir()
-        (elsewhere / "ffmpeg").symlink_to(real)
-        (elsewhere / "ffprobe").symlink_to(ffmpeg.resolve_tool("ffprobe"))
+        # Copied, not linked: a symlink on Windows needs a privilege the runner lacks.
+        shutil.copy(real, elsewhere / real.name)
+        probe = ffmpeg.resolve_tool("ffprobe")
+        shutil.copy(probe, elsewhere / probe.name)
         ffmpeg.set_override(elsewhere)
         try:
             source = fixtures.make_mov(tmp_path / "src.mov", count=3)

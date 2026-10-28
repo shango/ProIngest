@@ -423,7 +423,7 @@ class TestEncodeCommand:
         assert filters[-6:] == [
             "scale=1920:1080:flags=lanczos:in_color_matrix=bt709:in_range=limited",
             "format=gbrpf32le",
-            "lut3d=/tmp/lut/MELT0001_ref_HD_v01.cube:interp=tetrahedral",
+            ffmpeg.lut_filter(Path("/tmp/lut/MELT0001_ref_HD_v01.cube")),
             "scale=out_color_matrix=bt709:out_range=limited",
             "format=yuv420p",
             "setparams=color_primaries=bt709:color_trc=iec61966-2-1:colorspace=bt709:range=tv",
@@ -442,9 +442,9 @@ class TestEncodeCommand:
             shaper=Path("/tmp/lut/shaper.cube"),
         )
         filters = command[command.index("-vf") + 1].split(",")
-        at = filters.index("lut1d=/tmp/lut/shaper.cube:interp=linear")
+        at = filters.index(ffmpeg.shaper_filter(Path("/tmp/lut/shaper.cube")))
         assert filters[at - 1] == "format=gbrpf32le"
-        assert filters[at + 1] == "lut3d=/tmp/lut/view.cube:interp=tetrahedral"
+        assert filters[at + 1] == ffmpeg.lut_filter(Path("/tmp/lut/view.cube"))
 
     def test_the_lut_is_applied_tetrahedrally(self) -> None:
         """`lut3d` defaults to it. Stated anyway: trilinear is one word and looks wrong."""

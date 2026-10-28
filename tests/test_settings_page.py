@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import logging
 import re
+import sys
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -392,7 +393,7 @@ class TestPuttingThemInForce:
         assert logging.getLogger().getEffectiveLevel() == logsetup.DEFAULT_LEVEL
 
     def test_the_ffmpeg_override_reaches_resolve_tool(self, restore_process: None, tmp_path: Path) -> None:
-        binary = tmp_path / "ffmpeg"
+        binary = tmp_path / ("ffmpeg.exe" if sys.platform == "win32" else "ffmpeg")
         binary.write_text("#!/bin/sh\n")
         settings_form.apply_to_process(AppSettings(ffmpeg_path=str(tmp_path)))
         assert ffmpeg.resolve_tool("ffmpeg") == binary

@@ -183,7 +183,7 @@ class TestPlan:
         texts = [written.read_text() for written in sorted(tmp_path.glob("0000_*.txt"), key=_position)]
         assert "MISSING MEDIA" in texts
         lines = texts[texts.index("MISSING MEDIA") + 1 :]
-        assert "".join(lines) == str(path) and len(lines) > 1
+        assert "".join(lines) == ffmpeg.drawtext_literal(str(path)) and len(lines) > 1
         assert all(len(line) <= stringout.CARD_LINE for line in lines), "wrapped to fit"
         assert len(filters) == len(texts)
 
