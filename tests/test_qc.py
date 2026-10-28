@@ -449,7 +449,7 @@ class TestDuration:
         assert results[0].severity == "warning", "rendered as it is since 2026-10-07 (user)"
         assert results[0].message.startswith("Plate was 264 frames on the timeline")
 
-    @pytest.mark.parametrize("kind", ["cp01", "el01", "wit01", "re01"])
+    @pytest.mark.parametrize("kind", ["cp01", "el01", "wit01"])
     def test_only_a_plate_has_limits(self, kind: str) -> None:
         """User, 2026-09-29: no min or max for anything but the pl shot type."""
         for current in (InOut(1009, 1050), InOut(1001, 1264)):

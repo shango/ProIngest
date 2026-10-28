@@ -42,8 +42,9 @@ ffmpeg. The user's decisions, all in OQ-38:
   length, as a style frame is.
 - **A style frame is held as it is** (user, 2026-10-07): a pre-graded PNG or JPG, `Shot Type`
   `styleFrame`, cut before its shot's plate. It keeps the EDL's length, takes no grade and
-  no `Frame:` counter, and is never delivered (QC-085). Its file missing is the card. **An Avid reference
-  is treated the same** (user, 2026-10-14, QC-088), except that it plays its cut.
+  no `Frame:` counter, and is never delivered (QC-085). Its file missing is the card. **An Avid reference,
+  a measurement or a recon is treated the same** (user, 2026-10-14 and 2026-10-27, QC-088), except
+  that it plays its cut.
 - **Only a plate has sound**, from its delivered wav; every other segment carries silence of
   the same length.
 - **A plate carries its shot's cp top left and wit top right** (user, 2026-09-29), each at
@@ -88,7 +89,7 @@ from proingest.core.models import (
     ShotRow,
     Turnover,
 )
-from proingest.core.planner import effective_identity
+from proingest.core.planner import effective_identity, prerender_color
 
 log = logging.getLogger(__name__)
 
@@ -474,12 +475,8 @@ def _prerender(event: clf.ConformEvent, row: ShotRow, length: int, show_pattern:
 
 
 def _prerender_color(row: ShotRow) -> clf.ShotColor | None:
-    """None, the pre-render as it is, for an LDRI (user, 2026-10-08) or when it is on the
-    timeline and its AMF carries no grade (QC-009); otherwise the HDRI's grade over linear
-    Rec.709 (QC-083)."""
-    if qc.is_ldri(row) or (qc.is_hdri_prerender(row) and not clf.has_grade(row)):
-        return None
-    return replace(clf.shot_color(row), source_encoding=color.HDRI_RENDER_ENCODING)
+    """The pre-render's colour, as its delivered mp4 has it (`planner.prerender_color`)."""
+    return prerender_color(row, clf.shot_color(row))
 
 
 def _style_frame(
@@ -487,11 +484,11 @@ def _style_frame(
 ) -> Segment:
     """A style frame's event: its still held as it is for the event's length (user,
     2026-10-07), or the missing media card when the file is not there (user, 2026-10-14).
-    An Avid reference (`avidRef01`) is treated the same, except that it plays its cut (user,
-    2026-10-14)."""
+    An Avid reference (`avidRef01`), a measurement (`meas01`) or a recon (`recon01`) is treated
+    the same, except that it plays its cut (user, 2026-10-14 and 2026-10-27)."""
     identity = effective_identity(row, show_pattern)
     media = row.media
-    plays = media is not None and identity is not None and identity.is_avidref
+    plays = media is not None and identity is not None and identity.is_as_is
     start = 0 if media is None else _cut(event, media).in_frame if plays else media.start_frame
     return Segment(
         kind="black" if media is None else "source",

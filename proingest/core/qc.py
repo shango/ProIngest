@@ -1271,6 +1271,7 @@ def run_phase_b(job: DeliverableJob, deliverable: Deliverable) -> list[QCResult]
         "raw_dir": _verify_sequence,
         "aux_still": _verify_still,
         "hdri": _no_checks,
+        "hdri_ref": _verify_reference,
         "avidref": _verify_avidref,
         "ref_mp4": _verify_reference,
         "audio": _verify_audio,
@@ -1714,6 +1715,7 @@ DELIVERABLE_RULES_BY_KIND: dict[str, tuple[str, ...]] = {
     "raw_dir": ("QC-101", "QC-102", "QC-103", "QC-104", "QC-105", "QC-106", "QC-107"),
     "aux_still": ("QC-103", "QC-104", "QC-105", "QC-106"),
     "hdri": (),
+    "hdri_ref": ("QC-110", "QC-111", "QC-113", "QC-114", "QC-115"),
     "avidref": ("QC-110", "QC-111", "QC-113", "QC-114", "QC-115"),
     "ref_mp4": ("QC-110", "QC-111", "QC-112", "QC-113", "QC-114", "QC-115"),
     "audio": ("QC-120", "QC-121"),
@@ -1722,8 +1724,9 @@ DELIVERABLE_RULES_BY_KIND: dict[str, tuple[str, ...]] = {
 
 This is what makes NA mean something in the log: an mp4 has no opinion about EXR
 compression, so QC-105 against a reference reads NA rather than a PASS it never
-earned. QC-100 is not here because every kind owes it. An Avid reference's mp4 owes the
-reference rules but the size, which is its own; its still owes none (`_verify_avidref`).
+earned. QC-100 is not here because every kind owes it. An Avid reference's mp4, and an HDRI's
+pre-render's, owes the reference rules but the size, which is its own; an Avid reference's still
+owes none (`_verify_avidref`).
 """
 
 

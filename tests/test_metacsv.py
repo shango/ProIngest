@@ -170,30 +170,17 @@ class TestHdri:
 
     HEADER = ("File Name", "Shot", "Shot Type", "Take")
 
-    @pytest.mark.parametrize(("written", "take", "index"), [("HDRI", "1", "01"), ("hdri", "2", "02")])
-    def test_an_hdri_row_is_numbered_by_its_take_and_carries_only_info(
+    @pytest.mark.parametrize(
+        ("written", "take", "index"), [("HDRI", "3", "01"), ("hdri02", "1", "02"), ("HDRI3", "", "03")]
+    )
+    def test_an_hdri_row_is_numbered_by_its_shot_type_and_carries_only_info(
         self, tmp_path: Path, written: str, take: str, index: str
     ) -> None:
-        """User, 2026-10-12: in `SECA0009_pl01_HDRI_01_v01.exr`, `01` is the take."""
+        """User, 2026-10-27: `HDRI01`, `HDRI02`; a bare `HDRI` is `HDRI01`, whatever the Take."""
         result = read(tmp_path, list(self.HEADER), [["DALU0012_pl01_02_HDRI.exr", "TEST0013", written, take]])
         (row,) = result.rows
         assert row.hdri and (row.kind, row.index) == ("HDRI", index)
         assert [(q.rule_id, q.severity) for q in row.qc] == [("QC-080", "info")]
-
-    @pytest.mark.parametrize("take", ["", "A"])
-    def test_no_take_is_01_and_qc_087(self, tmp_path: Path, take: str) -> None:
-        result = read(tmp_path, list(self.HEADER), [["x.exr", "TEST0013", "HDRI", take]])
-        (row,) = result.rows
-        assert row.index == "01"
-        assert [(q.rule_id, q.severity) for q in row.qc] == [("QC-080", "info"), ("QC-087", "warning")]
-        assert "TEST0013_pl01_HDRI_01" in row.qc[1].message
-
-    @pytest.mark.parametrize("written", ["HDRI2", "LDRI2", "hdri02"])
-    def test_a_numbered_hdri_or_ldri_is_a_mistake_and_qc_010(self, tmp_path: Path, written: str) -> None:
-        """User, 2026-10-12: "There should not be HDRI2, or LDRI2. That's a mistake."."""
-        result = read(tmp_path, list(self.HEADER), [["x.exr", "TEST0013", written, "1"]])
-        (row,) = result.rows
-        assert not row.hdri and [q.rule_id for q in row.qc] == ["QC-010"]
 
     def test_one_with_no_shot_code_has_no_kind_to_deliver(self, tmp_path: Path) -> None:
         result = read(tmp_path, ["File Name", "Shot", "Shot Type"], [["x.exr", "", "HDRI"]])
@@ -206,7 +193,7 @@ class TestHdri:
         result = read(tmp_path, header, [["x.exr", "TEST0013", "HDRI", "2"]])
         assert result.rows[0].take == "2"
 
-    @pytest.mark.parametrize(("written", "take", "index"), [("LDRI", "1", "01"), ("ldri", "3", "03")])
+    @pytest.mark.parametrize(("written", "take", "index"), [("LDRI", "4", "01"), ("ldri03", "1", "03")])
     def test_an_ldri_row_is_an_hdri_of_kind_ldri(
         self, tmp_path: Path, written: str, take: str, index: str
     ) -> None:
@@ -270,6 +257,31 @@ class TestAnAvidRef:
         """It was `preVis01` in 0.5.44 and `pl01_avidref` in 0.5.45 (user, 2026-10-14 and 15)."""
         result = read(tmp_path, ["File Name", "Shot", "Shot Type"], [["ref.mov", "INCA5002", written]])
         assert [q.rule_id for q in result.rows[0].qc] == ["QC-010"]
+
+
+class TestAMeasurementOrRecon:
+    """`meas01` and `recon01`, delivered as an Avid reference is (user, 2026-10-27)."""
+
+    @pytest.mark.parametrize(
+        ("written", "kind", "index"),
+        [
+            ("meas", "meas", "01"),
+            ("MEAS02", "meas", "02"),
+            ("recon", "recon", "01"),
+            ("recon02", "recon", "02"),
+        ],
+    )
+    def test_each_carries_only_info(self, tmp_path: Path, written: str, kind: str, index: str) -> None:
+        result = read(tmp_path, ["File Name", "Shot", "Shot Type"], [["m.mov", "INCA5002", written]])
+        (row,) = result.rows
+        assert (row.kind, row.index) == (kind, index)
+        assert [(q.rule_id, q.severity) for q in row.qc] == [("QC-088", "info")]
+
+    @pytest.mark.parametrize("written", ["re", "re01", "RE02"])
+    def test_re_is_qc_010_and_says_to_write_recon(self, tmp_path: Path, written: str) -> None:
+        result = read(tmp_path, ["File Name", "Shot", "Shot Type"], [["r.mov", "INCA5002", written]])
+        (finding,) = result.rows[0].qc
+        assert finding.rule_id == "QC-010" and "recon01" in finding.message
 
 
 class TestAWitness:

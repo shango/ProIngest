@@ -185,6 +185,10 @@ _BARE_WITNESS = re.compile(rf"{naming.WITNESS_KIND}\d{{0,2}}", re.IGNORECASE)
 """`wit01` with no plate before it, QC-010 since the plate became part of the name (user, 2026-10-23)."""
 
 
+_RECON_PLATE = re.compile(r"re\d{0,2}", re.IGNORECASE)
+"""`re01`, the recon plate, QC-010 since `recon` replaced it (user, 2026-10-27)."""
+
+
 def _row_qc(file_name: str, shot: str, shot_type: str, kind: str | None, show_pattern: str) -> list[QCResult]:
     """QC-010: the half-filled row.
 
@@ -192,6 +196,15 @@ def _row_qc(file_name: str, shot: str, shot_type: str, kind: str | None, show_pa
     this catches is a row that says it is a deliverable and then cannot be named: a
     `Shot Type` nothing resolves to, or a blank or malformed `Shot`.
     """
+    if kind is None and _RECON_PLATE.fullmatch(shot_type.strip()):
+        return [
+            QCResult(
+                "QC-010",
+                "error",
+                "row",
+                f"{file_name} has Shot Type {shot_type!r}: re is now recon, so write it recon01",
+            )
+        ]
     if kind is None and _BARE_WITNESS.fullmatch(shot_type.strip()):
         return [
             QCResult(
@@ -276,9 +289,9 @@ def read(path: Path, show_pattern: str = naming.DEFAULT_SHOW_PATTERN) -> MetaCsv
             named = naming.parse_shot_code(shot, show_pattern) is not None
             result.rows.append(_style_frame(file_name, shot, shot_type, scene, named))
             continue
-        if _AVIDREF.fullmatch(shot_type.strip()):
+        if _AS_IS.fullmatch(shot_type.strip()):
             named = naming.parse_shot_code(shot, show_pattern) is not None
-            result.rows.append(_avidref(file_name, shot, shot_type, scene, named))
+            result.rows.append(_as_is(file_name, shot, shot_type, scene, named))
             continue
         result.rows.append(
             MetaRow(
@@ -303,8 +316,8 @@ def _hdri(file_name: str, shot: str, shot_type: str, scene: str, named: bool, ta
     with no checks, and the stringout shows the pre-render of its timeline event. One whose
     `Shot` is no shot code has nowhere to be delivered, and only the stringout shows it.
 
-    Its number (`SECA0009_pl01_LDRI_01_v01.jpg`) is the CSV's `Take` (user, 2026-10-12); a
-    blank Take, or one that is not a number, is `01` and QC-087 says so."""
+    Its number (`SECA0009_pl01_LDRI02_v01.jpg`) is its `Shot Type`'s, `LDRI02`, and a bare `LDRI`
+    is `01` (user, 2026-10-27). It was the CSV's `Take` from 2026-10-12."""
     hdri = naming.hdri_kind(shot_type) or naming.HDRI_KIND
     image = "HDRI EXR" if hdri == naming.HDRI_KIND else "LDRI image"
     what = (
@@ -315,19 +328,7 @@ def _hdri(file_name: str, shot: str, shot_type: str, scene: str, named: bool, ta
         "stringout shows its pre-render"
     )
     notes = [QCResult("QC-080", "info", "row", what)]
-    written = take.strip()
-    index = f"{int(written):02d}" if written.isdigit() else "01"
-    if named and not written.isdigit():
-        said = f"its Take is {written!r}" if written else "it has no Take"
-        notes.append(
-            QCResult(
-                "QC-087",
-                "warning",
-                "row",
-                f"{file_name} is an {hdri} and {said}, so it is numbered 01: "
-                f"{shot}_{naming.HDRI_ELEMENT}_{hdri}_01",
-            )
-        )
+    index = naming.hdri_index(shot_type)
     kind = hdri if named else None
     return MetaRow(
         file_name, shot, shot_type, kind, index if named else None, scene, tuple(notes), take=take, hdri=True
@@ -352,23 +353,32 @@ def _style_frame(file_name: str, shot: str, shot_type: str, scene: str, named: b
     return MetaRow(file_name, shot, shot_type, kind, index if named else None, scene, (note,))
 
 
-_AVIDREF = re.compile(rf"{naming.AVIDREF_KIND}(?P<index>\d{{1,2}})?", re.IGNORECASE)
+_AS_IS = re.compile(rf"(?P<kind>{'|'.join(naming.AS_IS_KINDS)})(?P<index>\d{{1,2}})?", re.IGNORECASE)
+_AS_IS_INDEX = {kind.casefold(): kind for kind in naming.AS_IS_KINDS}
+_AS_IS_WORDS = {
+    naming.AVIDREF_KIND: "an Avid reference",
+    naming.MEAS_KIND: "a measurement",
+    naming.RECON_KIND: "a recon",
+}
 
 
-def _avidref(file_name: str, shot: str, shot_type: str, scene: str, named: bool) -> MetaRow:
-    """An Avid reference row, `avidRef01` (QC-088, user 2026-10-15). No colour correction, since
-    its colour is baked in, and delivered as it is, never as an EXR (user, 2026-10-22); the
-    stringout plays its cut as it is."""
+def _as_is(file_name: str, shot: str, shot_type: str, scene: str, named: bool) -> MetaRow:
+    """An Avid reference, `avidRef01` (QC-088, user 2026-10-15), a measurement, `meas01`, or a
+    recon, `recon01` (user, 2026-10-27). No colour correction, and delivered as it is, never as
+    an EXR (user, 2026-10-22); the stringout plays its cut as it is."""
+    match = _AS_IS.fullmatch(shot_type.strip())
+    assert match is not None
+    kind = _AS_IS_INDEX[match["kind"].casefold()]
     note = QCResult(
         "QC-088",
         "info",
         "row",
-        f"{file_name} is an Avid reference: delivered and shown on the stringout as it is, never graded",
+        f"{file_name} is {_AS_IS_WORDS[kind]}: delivered and shown on the stringout as it is, never graded",
     )
-    match = _AVIDREF.fullmatch(shot_type.strip())
-    index = ((match["index"] if match else None) or "1").zfill(2)
-    kind = naming.AVIDREF_KIND if named else None
-    return MetaRow(file_name, shot, shot_type, kind, index if named else None, scene, (note,))
+    index = (match["index"] or "1").zfill(2)
+    return MetaRow(
+        file_name, shot, shot_type, kind if named else None, index if named else None, scene, (note,)
+    )
 
 
 def find(folder: Path) -> list[Path]:

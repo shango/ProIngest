@@ -354,6 +354,18 @@ class TestShotTracker:
         tracker = exports.write_shot_tracker(batch_of(row(), avidref), tmp_path / "tracker.xlsx")
         assert [values[2] for values in sheet_rows(tracker, "Shots")[1:]] == ["MELT0001"]
 
+    @pytest.mark.parametrize("kind", [naming.MEAS_KIND, naming.RECON_KIND])
+    def test_a_measurement_or_recon_is_not_on_the_sheet_either(self, tmp_path: Path, kind: str) -> None:
+        """The tracker has no column for either (assumed, OQ-88)."""
+        name = f"MELT0002_{kind}01_v01.mp4"
+        only = row(
+            name,
+            identity=naming.ShotIdentity("MELT0002", kind, "01"),
+            deliverables=[deliverable("avidref", name)],
+        )
+        tracker = exports.write_shot_tracker(batch_of(row(), only), tmp_path / "tracker.xlsx")
+        assert [values[2] for values in sheet_rows(tracker, "Shots")[1:]] == ["MELT0001"]
+
     def test_every_other_column_is_empty(self, tracker: Path) -> None:
         """The whole point: 30 columns belong to the vendor and a paste must not touch them."""
         values = sheet_rows(tracker, "Shots")[1]

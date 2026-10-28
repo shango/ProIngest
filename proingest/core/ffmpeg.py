@@ -1044,6 +1044,7 @@ def encode_reference(
     canvas: tuple[int, int] | None = None,
     hold: int = 0,
     display: str = DEFAULT_DISPLAY,
+    shaper: Path | None = None,
 ) -> None:
     """Run the reference encode, raising FFmpegError with ffmpeg's own complaint.
 
@@ -1070,6 +1071,7 @@ def encode_reference(
         canvas=canvas,
         hold=hold,
         display=display,
+        shaper=shaper,
     )
     result = run(command, timeout=ENCODE_TIMEOUT)
     if result.returncode != 0:

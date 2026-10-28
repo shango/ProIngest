@@ -846,7 +846,8 @@ class TestAPreRenderOnTheTimeline:
         assert row.hdri_render is not None and row.hdri_render.path.name == self.RENDER
         assert not row.errors() and not rules(row) & {"QC-083", "QC-086"}
         jobs = planner.plan_row(row, tmp_path / "out", 1).jobs
-        assert [job.kind for job in jobs] == ["hdri"] and jobs[0].source.name == self.EXR
+        assert [job.kind for job in jobs] == ["hdri", "hdri_ref"] and jobs[0].source.name == self.EXR
+        assert jobs[1].source.name == self.RENDER, "the pre-render is delivered as an mp4 (user, 2026-10-27)"
 
     def test_no_exr_is_qc_086_and_nothing_is_delivered(self, tmp_path: Path) -> None:
         (row,) = self.scanned(self.folder(tmp_path, exr=False))
@@ -905,8 +906,13 @@ class TestAnLdri:
         assert row.media is not None and row.media.path.name == self.IMAGE
         assert row.hdri_render is not None and row.hdri_render.path.name == self.RENDER
         assert not row.errors() and not rules(row) & {"QC-083", "QC-086"}
-        (job,) = planner.plan_row(row, tmp_path / "out", 1).jobs
-        assert (job.kind, job.source.name, job.destination.name) == ("hdri", self.IMAGE, self.IMAGE)
+        job, prerender = planner.plan_row(row, tmp_path / "out", 1).jobs
+        assert (job.kind, job.source.name, job.destination.name) == (
+            "hdri",
+            self.IMAGE,
+            "MELT0001_pl01_LDRI01_v01.jpg",
+        )
+        assert (prerender.kind, prerender.destination.name) == ("hdri_ref", "MELT0001_pl01_LDRI01_v01.mp4")
 
     def test_no_image_is_qc_086_in_ldri_words(self, tmp_path: Path) -> None:
         (row,) = self.scanned(self.folder(tmp_path, image=False))

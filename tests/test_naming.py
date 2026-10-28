@@ -45,7 +45,6 @@ class TestParseShotType:
             ("cp02", ("cp", "02")),
             ("el01", ("el", "01")),
             ("pl01_wit01", ("wit", "01")),
-            ("re01", ("re", "01")),
             ("colorChart", ("colorChart", "01")),
             ("mirrorBall", ("mirrorBall", "01")),
             ("greyBall", ("greyBall", "01")),
@@ -68,6 +67,17 @@ class TestParseShotType:
         assert naming.parse_shot_type("avidRef01") is None
         identity = naming.ShotIdentity("INCA5002", naming.AVIDREF_KIND, "02")
         assert naming.shot_label(identity) == "INCA5002_avidRef02"
+
+    @pytest.mark.parametrize("kind", [naming.MEAS_KIND, naming.RECON_KIND])
+    def test_a_measurement_or_recon_is_burned_in_with_its_number(self, kind: str) -> None:
+        """User, 2026-10-27: `INCA5002_meas01`, `INCA5002_recon01`."""
+        identity = naming.ShotIdentity("INCA5002", kind, "01")
+        assert naming.shot_label(identity) == f"INCA5002_{kind}01"
+        assert naming.as_is_file(identity, 1, ".mp4") == f"INCA5002_{kind}01_v01.mp4"
+
+    @pytest.mark.parametrize("written", ["re", "re01", "meas01", "recon01"])
+    def test_re_is_retired_and_meas_and_recon_are_read_by_metacsv(self, written: str) -> None:
+        assert naming.parse_shot_type(written) is None
 
     @pytest.mark.parametrize(
         ("written", "plate", "index"),
@@ -329,28 +339,43 @@ class TestDeliveryLayout:
     def test_reports_sit_beside_shots(self) -> None:
         assert naming.reports_dir(Path("/d"), "MELT") == Path("/d/MELT/_reports")
 
-    def test_an_hdri_is_named_as_the_tracker_names_it_and_reads_back(self) -> None:
+    def test_an_hdri_has_no_underscore_before_its_number_and_reads_back(self) -> None:
+        """User, 2026-10-27: "Lose the underscore. For consistency with all other numbering"."""
         hdri = naming.ShotIdentity("SECA0009", naming.HDRI_KIND, "01")
         name = naming.hdri_exr(hdri, 2)
-        assert name == "SECA0009_pl01_HDRI_01_v02.exr"
+        assert name == "SECA0009_pl01_HDRI01_v02.exr"
         parsed = naming.parse_output_name(name)
         assert parsed is not None and (parsed.kind, parsed.version, parsed.shot_code) == (
             "hdri",
             2,
             "SECA0009",
         )
-        assert naming.shot_label(hdri) == "SECA0009_pl01_HDRI_01"
+        assert naming.shot_label(hdri) == "SECA0009_pl01_HDRI01"
         assert naming.next_version([name]) == 3
+
+    def test_an_hdri_delivered_with_the_old_underscore_still_counts_as_a_version(self) -> None:
+        assert naming.next_version(["SECA0009_pl01_HDRI_01_v02.exr", "SECA0009_pl01_LDRI_01_v04.jpg"]) == 5
+
+    @pytest.mark.parametrize("kind", [naming.HDRI_KIND, naming.LDRI_KIND])
+    def test_a_pre_render_is_delivered_as_an_mp4_named_as_its_file(self, kind: str) -> None:
+        """User, 2026-10-27: the pre-render on the stringout also gets an mp4."""
+        identity = naming.ShotIdentity("SECA0009", kind, "02")
+        name = naming.hdri_prerender_mp4(identity, 1)
+        assert name == f"SECA0009_pl01_{kind}02_v01.mp4"
+        parsed = naming.parse_output_name(name)
+        assert parsed is not None and (parsed.kind, parsed.aux, parsed.aux_index) == ("hdri_ref", kind, "02")
+        with pytest.raises(ValueError):
+            naming.hdri_prerender_mp4(PLATE, 1)
 
     @pytest.mark.parametrize("suffix", [".jpg", ".JPEG", ".png"])
     def test_an_ldri_mirrors_the_hdri_under_its_own_extension(self, suffix: str) -> None:
         """User, 2026-10-08: an LDRI is named as the HDRI is, its file copied as it came."""
         ldri = naming.ShotIdentity("SECA0009", naming.LDRI_KIND, "01")
         name = naming.ldri_image(ldri, 2, suffix)
-        assert name == f"SECA0009_pl01_LDRI_01_v02{suffix.lower()}"
+        assert name == f"SECA0009_pl01_LDRI01_v02{suffix.lower()}"
         parsed = naming.parse_output_name(name)
         assert parsed is not None and (parsed.kind, parsed.aux, parsed.version) == ("hdri", "LDRI", 2)
-        assert naming.shot_label(ldri) == "SECA0009_pl01_LDRI_01"
+        assert naming.shot_label(ldri) == "SECA0009_pl01_LDRI01"
         assert ldri.is_hdri and ldri.is_ldri and naming.next_version([name]) == 3
         with pytest.raises(ValueError):
             _ = ldri.stem
@@ -364,7 +389,7 @@ class TestDeliveryLayout:
             naming.ldri_image(hdri, 1, ".jpg")
         with pytest.raises(ValueError):
             naming.ldri_image(ldri, 1, ".exr")
-        assert naming.parse_output_name("SECA0009_pl01_LDRI_01_v01.exr") is None
+        assert naming.parse_output_name("SECA0009_pl01_LDRI01_v01.exr") is None
 
     @pytest.mark.parametrize(
         ("written", "kind"),
@@ -373,14 +398,22 @@ class TestDeliveryLayout:
             ("hdri", "HDRI"),
             ("LDRI", "LDRI"),
             (" ldri ", "LDRI"),
-            ("HDRI2", None),
-            ("LDRI3", None),
+            ("HDRI2", "HDRI"),
+            ("LDRI03", "LDRI"),
+            ("HDRI001", None),
             ("LDRIref", None),
             ("pl01", None),
         ],
     )
     def test_hdri_kind_reads_the_shot_type(self, written: str, kind: str | None) -> None:
         assert naming.hdri_kind(written) == kind
+
+    @pytest.mark.parametrize(
+        ("written", "index"), [("HDRI", "01"), ("HDRI01", "01"), ("hdri2", "02"), ("LDRI03", "03")]
+    )
+    def test_the_shot_type_numbers_an_hdri_and_bare_is_01(self, written: str, index: str) -> None:
+        """User, 2026-10-27: "Bare HDRI is equal to HDRI01"."""
+        assert naming.hdri_index(written) == index
 
     def test_a_style_frame_is_labelled_by_its_shot_and_has_no_element_stem(self) -> None:
         """User, 2026-10-07: the burn-in reads `SECA0009_styleFrame` (an underscore since 2026-10-13)."""
@@ -402,11 +435,11 @@ class TestDeliveryLayout:
         assert naming.take_label("SECA0009_pl01", take) == shown
 
     @pytest.mark.parametrize("kind", [naming.HDRI_KIND, naming.LDRI_KIND])
-    def test_an_hdri_or_ldri_carries_its_take_in_its_name_alone(self, kind: str) -> None:
-        """User, 2026-10-12: `SECA0009_pl01_LDRI_02`, with no word "Take" after it."""
+    def test_an_hdri_or_ldri_carries_its_number_and_no_take(self, kind: str) -> None:
+        """User, 2026-10-27: `SECA0009_pl01_LDRI02`, with no Take after it."""
         identity = naming.ShotIdentity("SECA0009", kind, "02")
         label = naming.shot_label(identity)
-        assert naming.take_label(label, "2", identity) == f"SECA0009_pl01_{kind}_02"
+        assert naming.take_label(label, "3", identity) == f"SECA0009_pl01_{kind}02"
 
     def test_the_user_folders_sit_at_the_delivery_root(self) -> None:
         assert naming.user_dirs(Path("/d")) == [Path("/d/User_Generated"), Path("/d/User_Uploads")]

@@ -81,7 +81,8 @@ ADVICE: dict[str, Advice] = {
         "A clip's Shot or Shot Type cannot be used.",
         "The Shot needs to look like SECA0012, and the Shot Type has to be one the tool delivers: "
         + ", ".join(_shot_type_example(t) for t in naming.CLIP_TYPES)
-        + ", HDRI or LDRI. Please correct it in the clip's metadata.",
+        + ", HDRI01, LDRI01, styleFrame, avidRef01, meas01 or recon01. Please correct it in the clip's "
+        "metadata.",
         "message",
     ),
     "QC-011": Advice(
@@ -216,13 +217,6 @@ ADVICE: dict[str, Advice] = {
         "another folder. Please render it into the turnover folder and relink the timeline event to it.",
         "message",
     ),
-    "QC-087": Advice(
-        "resolve",
-        "An HDRI or LDRI has no take number.",
-        "Its delivered name carries its Take (SECA0009_pl01_HDRI_01_v01.exr), and the clip's Take is "
-        "blank or not a number, so it was numbered 01. Please fill in the Take in the clip's metadata.",
-        "message",
-    ),
     "QC-086": Advice(
         "folder",
         "HDRI EXR or LDRI File Missing from turnover folder, omitted from delivery.",
@@ -312,7 +306,9 @@ KIND_WORDS = {
     "cp": "clean plate",
     "el": "element",
     "wit": "witness",
-    "re": "reference",
+    "meas": "measurement",
+    "recon": "recon",
+    "avidRef": "Avid reference",
     "colorChart": "colour chart",
     "greyBall": "grey ball",
     "mirrorBall": "mirror ball",

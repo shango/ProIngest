@@ -57,7 +57,7 @@ QC-076,A: scan and pre-flight,row,Error,Holds the shot,That shot only,The shot s
 QC-077,A: scan and pre-flight,row,Warning,Info tier,No,Row coloured amber and logged; the run goes ahead,"A look in the AMF the tool does not apply, and ignores (unknown look ID, an embedded CDL beside a CLF, other)"
 QC-078,A: scan and pre-flight,row,Info,Info tier,No,Logged only,The AMF was exported with Resolve's Dailies Request preset
 QC-079,A: scan and pre-flight,row,Warning,Info tier,No,Row coloured amber and logged in the QC log's Issues sheet; it renders,"The AMF's output transform is not in the pinned config, or names a display a Rec.709 reference cannot be labelled for (P3, HDR)"
-QC-080,A: scan and pre-flight,row,Info,Info tier,No,Row delivers its EXR byte for byte; no check runs on it,Shot Type HDRI or LDRI: the EXR (an LDRI's JPG or PNG) is copied as it is and the stringout shows its pre-render (QC-083)
+QC-080,A: scan and pre-flight,row,Info,Info tier,No,Row delivers its EXR byte for byte and its pre-render as an mp4; no check runs on the EXR,Shot Type HDRI01 or LDRI01 (bare is 01): the EXR (an LDRI's JPG or PNG) is copied as it is and the stringout shows its pre-render (QC-083)
 QC-081,A: scan and pre-flight,turnover,Retired,,,,Retired 2026-10-05: a two digit year is the expected form
 QC-082,A: scan and pre-flight,row,Warning,Info tier,No,Row coloured amber and logged; the run goes ahead,"Fix in Resolve: the AMF names no CLF, so its embedded CDL is used as the grade"
 QC-083,A: scan and pre-flight,row,Warning,Info tier,No,Row coloured amber; the stringout holds the HDRI EXR still,An HDRI's pre-render (a video under its name) is not in the turnover folder
@@ -81,8 +81,8 @@ QC-120,B: after render,wav,Error,Deliverable fails,No,That deliverable is delete
 QC-121,B: after render,wav,Error; Warning on a byte-copied wav source,Deliverable fails / Info tier,No,Error: the wav is deleted and marked failed,16 bit PCM
 QC-142,B: after render,turnover,Error,Reported,No,Reported in the QC log; never blocks the next run,"The turnover's stringout was not written (no name, no EDL, a segment refused, or the join failed its check)"
 QC-143,B: after render,turnover,Info,Info tier,No,Logged only,"Stringout events with no delivered HD reference, shown as the ungraded source or black"
-QC-087,A: scan and pre-flight,row,Warning,Info tier,No,Numbered 01 in its delivered name,An HDRI or LDRI whose Take is blank or not a number
-QC-088,A: scan and pre-flight,row,Info,Info tier,No,"Shown on the stringout as it is, nothing delivered",Shot Type avidRef01 (an Avid reference)
+QC-087,A: scan and pre-flight,row,Retired,,,,Retired 2026-10-27: an HDRI is numbered by its Shot Type (HDRI02) rather than its Take
+QC-088,A: scan and pre-flight,row,Info,Info tier,No,"Delivered as it is, never an EXR; shown on the stringout as it is","Shot Type avidRef01, meas01 or recon01"
 QC-144,B: after render,turnover,Warning,Info tier,No,The stringout line's ball goes red,"Stringout events with nothing to show, black"
 QC-150,B: after render,row,Error,Row not done,No,Row reported not done,Every planned deliverable for the row exists and passed
 QC-151,B: after render,batch,Error,Reported,No,Reported in the QC log,"Every delivered filename re-parses to the shot, element, kind, res and version planned"

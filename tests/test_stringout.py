@@ -461,7 +461,7 @@ class TestAnHdri:
         hdri = with_hdri.rows[1]
         assert qc.is_hdri(hdri) and not hdri.skipped and hdri.media is not None
         (item,) = hdri.deliverables
-        assert (item.kind, item.name, item.status) == ("hdri", "MELT0002_pl01_HDRI_01_v01.exr", "done")
+        assert (item.kind, item.name, item.status) == ("hdri", "MELT0002_pl01_HDRI01_v01.exr", "done")
         assert item.path.read_bytes() == hdri.media.path.read_bytes()
 
     def test_with_no_pre_render_it_asks_for_one_and_holds_the_exr_graded(self, with_hdri: Batch) -> None:
@@ -488,6 +488,15 @@ class TestAnHdri:
         assert (segment.kind, segment.start, segment.length, segment.freeze) == ("source", 0, FRAMES, False)
         assert segment.color is not None and segment.color.source_encoding == "Linear Rec.709 (sRGB)"
         assert stringout._still_lut(segment, tmp_path / "hdri.cube") is not None, "graded, not as it is"
+
+    def test_its_pre_render_is_delivered_too_as_a_graded_mp4(self, with_render: Batch) -> None:
+        """User, 2026-10-27: the pre-render on the stringout "get[s] an mp4"; the EXR is the file."""
+        hdri = with_render.rows[1]
+        assert [(item.kind, item.name, item.status) for item in hdri.deliverables] == [
+            ("hdri", "MELT0002_pl01_HDRI01_v01.exr", "done"),
+            ("hdri_ref", "MELT0002_pl01_HDRI01_v01.mp4", "done"),
+        ]
+        assert hdri.deliverables[1].frame_count == FRAMES and not hdri.errors()
 
     def test_its_pre_render_is_held_on_a_frame_hold_too(self, with_render: Batch) -> None:
         """The EDL's event is an `M2` hold on the EXR; the pre-render plays, for the event's length."""
@@ -570,9 +579,10 @@ class TestAnLdri:
     def test_its_image_is_delivered_byte_for_byte(self, tmp_path: Path) -> None:
         ldri = self.batch(tmp_path, render=True).rows[1]
         assert qc.is_ldri(ldri) and ldri.media is not None
-        (item,) = ldri.deliverables
-        assert (item.kind, item.name, item.status) == ("hdri", self.IMAGE, "done")
+        item, prerender = ldri.deliverables
+        assert (item.kind, item.name, item.status) == ("hdri", "MELT0002_pl01_LDRI01_v01.jpg", "done")
         assert item.path.read_bytes() == ldri.media.path.read_bytes()
+        assert (prerender.name, prerender.status) == ("MELT0002_pl01_LDRI01_v01.mp4", "done")
 
     def test_its_pre_render_is_shown_as_it_is_though_graded(self, tmp_path: Path) -> None:
         batch = self.batch(tmp_path, render=True)
@@ -581,7 +591,7 @@ class TestAnLdri:
         segment = planned(batch).segments[1]
         assert segment.prerender and ldri.hdri_render is not None and segment.path == ldri.hdri_render.path
         assert segment.color is None and stringout._still_lut(segment, tmp_path / "x.cube") is None
-        assert segment.label == "MELT0002_pl01_LDRI_01"
+        assert segment.label == "MELT0002_pl01_LDRI01"
         assert batch.delivery_root is not None
         made = stringout.build(batch, batch.turnovers[0], batch.delivery_root)
         assert made is not None and made.frame_count == 2 * FRAMES

@@ -1,3 +1,11 @@
+# Handoff, 28 October 2026
+
+**28 October, 0.5.49**: `meas##` and `recon##` are delivered as an Avid reference is (a movie
+an mp4, a still as itself, never graded, never an EXR); `recon` replaces `re` (`re01` is QC-010).
+HDRIs and LDRIs are numbered by the Shot Type, `HDRI01`, `HDRI02` (bare is 01), with no
+underscore, `INCA5002_pl01_HDRI02_v01.exr`; QC-087 is retired. The pre-render is delivered too,
+`INCA5002_pl01_HDRI02_v01.mp4` (that name assumed, OQ-88).
+
 # Handoff, 23 October 2026
 
 **23 October, 0.5.48**: a witness cam names the plate it covers. Ben types `pl01_wit01` or

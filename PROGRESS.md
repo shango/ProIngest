@@ -8,7 +8,7 @@ commit.
 
 ## 1. Resume here
 
-**State at 2026-10-23, version 0.5.48 on branch `ldri`, PR #20 open** (0.5.48: a witness cam named under its plate, `pl02_wit01`; 0.5.47: the Avid reference delivered, never an EXR; 0.5.46: the Avid reference typed `avidRef##`; 0.5.40: no Fix-it line claims what the tool did not verify; 0.5.39: the Fix-it report by timeline clip name, each message once; 0.5.38: an HDRI's or LDRI's number is its take; 0.5.37: the LDRI; 0.5.36 and before merged to `main` with PR #19 as `a85cd53`; 0.5.36: the stringout from 26 minutes to 3 on turnover135; 0.5.35: the stringout's time left on its line; 0.5.34: the HDRI pre-render on the timeline; 0.5.33: the QC overhaul, nothing stops a batch or a turnover; 0.5.32: style frames on the stringout, the stringout line in the shot list; 0.5.31: every Fix-it line names its shot; 0.5.30: the take on the burn-in; 0.5.29: reference clips play in the stringout; 0.5.28: everything in the stringout graded; 0.5.27: the stringout from the EXRs; 0.5.26: the HDRI pre-render and delivery, QC-084, Accept As Is runs what it can; 0.5.25, merged to `main` with PR #18: `User_Generated` and `User_Uploads` at the delivery root; 0.5.24: the Fix-it
+**State at 2026-10-28, version 0.5.49 on branch `ldri`, PR #20 open** (0.5.49: `meas##` and `recon##` delivered as they are, `re` retired, `HDRI01`/`HDRI02` numbered by the Shot Type with no underscore, the pre-render delivered as an mp4; 0.5.48: a witness cam named under its plate, `pl02_wit01`; 0.5.47: the Avid reference delivered, never an EXR; 0.5.46: the Avid reference typed `avidRef##`; 0.5.40: no Fix-it line claims what the tool did not verify; 0.5.39: the Fix-it report by timeline clip name, each message once; 0.5.38: an HDRI's or LDRI's number is its take; 0.5.37: the LDRI; 0.5.36 and before merged to `main` with PR #19 as `a85cd53`; 0.5.36: the stringout from 26 minutes to 3 on turnover135; 0.5.35: the stringout's time left on its line; 0.5.34: the HDRI pre-render on the timeline; 0.5.33: the QC overhaul, nothing stops a batch or a turnover; 0.5.32: style frames on the stringout, the stringout line in the shot list; 0.5.31: every Fix-it line names its shot; 0.5.30: the take on the burn-in; 0.5.29: reference clips play in the stringout; 0.5.28: everything in the stringout graded; 0.5.27: the stringout from the EXRs; 0.5.26: the HDRI pre-render and delivery, QC-084, Accept As Is runs what it can; 0.5.25, merged to `main` with PR #18: `User_Generated` and `User_Uploads` at the delivery root; 0.5.24: the Fix-it
 report, one error per cause, a lone EXR read as one frame, AMFs falling back to the clip they name) (`HANDOFF.md` is the short version, with the session's open items); 0.5.22 went to `main` earlier (PR #17 merged as `70e1160` at the user's request, after its CI
 run 37276656318 built the 0.5.22 dmg). The 2026-09-23 review is built (chunks A
 to H of `docs/REVIEW_2026-09-23.md`), and so are the fixes that a second official turnover,
@@ -17,6 +17,33 @@ renders; Turnover121, every clip 8 bit 4:2:0, runs again with a QC-020 warning o
 since 2026-09-28 (user). What is left is the Mac: `docs/MAC_SESSION.md`, from "The 0.5.0 build, in
 order" down, and Ben's 4.886 slope. Entries are newest first; anything older than 2026-09-22
 describes the tool before the review and is history.
+
+**2026-10-28, 0.5.49: meas and recon, numbered HDRIs, and the pre-render delivered (user).**
+"2 new shot types. "meas" and "recon" both will not be color corrected"; asked, and answered: a
+still on the timeline is delivered as a still, a movie as an mp4, "Not color corrected is an
+indication that no exr is to be delivered"; numbered, bare is 01; burned in `INCA5002_meas01`;
+named `INCA5002_meas01_v01.mp4`; "It's now recon", so `re` is retired. "HDRI01, HDRI02 etc.
+Burnins should follow that naming", "Lose the underscore", "Bare HDRI is equal to HDRI01", and the
+pre-render on the timeline "get[s] an mp4", the EXR being the file; LDRI the same. **Built**:
+`naming.MEAS_KIND`, `RECON_KIND` and `AS_IS_KINDS` with the Avid reference; `is_avidref` is now
+`ShotIdentity.is_as_is`, `avidref_file` is `as_is_file`, and the job and deliverable kind stays
+`avidref` (a saved batch reads it). `metacsv._as_is` reads all three (QC-088, words per kind).
+`re` is gone from `ELEMENT_TYPES`; `re01` is QC-010 saying to write `recon01`
+(`metacsv._RECON_PLATE`). `naming.HDRI_SHOT_TYPE` takes a number and `naming.hdri_index` reads it
+(bare is 01); `hdri_label` drops the underscore, `SECA0009_pl01_HDRI02`; the Take no longer
+numbers an HDRI and **QC-087 is retired**; a name written `HDRI_01` still reads back, so it counts
+as a version. The pre-render (`row.hdri_render`) is a new `hdri_ref` job,
+`SECA0009_pl01_HDRI02_v01.mp4` (`naming.hdri_prerender_mp4`): the whole render, its own size,
+silent, coloured as the stringout shows it (`planner.prerender_color`, moved from `stringout`;
+the HDRI's grade over linear Rec.709 behind the shaper, `ffmpeg.encode_reference(shaper=)`, an
+LDRI as it is), checked as a reference is but for its size. The Fix-it QC-010 line lists the
+new spellings. **Assumed, told the user (OQ-88)**: the pre-render mp4's name (the message was cut
+off there); meas and recon off the tracker; no EXR (QC-086) delivers no mp4 either.
+**Verified**: tests in `test_naming.py`, `test_metacsv.py`, `test_planner.py` (meas, recon, the
+pre-render job graded and not), `test_exports.py`, `test_scan.py`, and `test_stringout.py`, where
+a real HDRI and LDRI turnover now delivers the EXR or image and its mp4, all rendered. Workbook:
+`re` Retired, HDRI and LDRI rows, new `meas##` and `recon##` rows; NAMING_SPEC, QC_RULES and its
+summary.
 
 **2026-10-23, 0.5.48: a witness cam is named under the plate it covers (user).** "It will appear
 in the metadata and csv as wit01, wit02, etc. It should appear in the resulting file names as
