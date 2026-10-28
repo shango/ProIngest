@@ -8,7 +8,7 @@ commit.
 
 ## 1. Resume here
 
-**State at 2026-10-28, version 0.5.50 on branch `windows`, from `main` after PR #20 (0.5.37 to 0.5.49) merged as `b8323cd`** (0.5.50: the Windows build, in parity with the Mac; the filter path escape fixed on both; 0.5.49: `meas##` and `recon##` delivered as they are, `re` retired, `HDRI01`/`HDRI02` numbered by the Shot Type with no underscore, the pre-render delivered as an mp4; 0.5.48: a witness cam named under its plate, `pl02_wit01`; 0.5.47: the Avid reference delivered, never an EXR; 0.5.46: the Avid reference typed `avidRef##`; 0.5.40: no Fix-it line claims what the tool did not verify; 0.5.39: the Fix-it report by timeline clip name, each message once; 0.5.38: an HDRI's or LDRI's number is its take; 0.5.37: the LDRI; 0.5.36 and before merged to `main` with PR #19 as `a85cd53`; 0.5.36: the stringout from 26 minutes to 3 on turnover135; 0.5.35: the stringout's time left on its line; 0.5.34: the HDRI pre-render on the timeline; 0.5.33: the QC overhaul, nothing stops a batch or a turnover; 0.5.32: style frames on the stringout, the stringout line in the shot list; 0.5.31: every Fix-it line names its shot; 0.5.30: the take on the burn-in; 0.5.29: reference clips play in the stringout; 0.5.28: everything in the stringout graded; 0.5.27: the stringout from the EXRs; 0.5.26: the HDRI pre-render and delivery, QC-084, Accept As Is runs what it can; 0.5.25, merged to `main` with PR #18: `User_Generated` and `User_Uploads` at the delivery root; 0.5.24: the Fix-it
+**State at 2026-10-28, version 0.5.50 on branch `windows`, draft PR #21, CI green (run 40731521748), from `main` after PR #20 (0.5.37 to 0.5.49) merged as `b8323cd`** (0.5.50: the Windows build, in parity with the Mac; the filter path escape fixed on both; 0.5.49: `meas##` and `recon##` delivered as they are, `re` retired, `HDRI01`/`HDRI02` numbered by the Shot Type with no underscore, the pre-render delivered as an mp4; 0.5.48: a witness cam named under its plate, `pl02_wit01`; 0.5.47: the Avid reference delivered, never an EXR; 0.5.46: the Avid reference typed `avidRef##`; 0.5.40: no Fix-it line claims what the tool did not verify; 0.5.39: the Fix-it report by timeline clip name, each message once; 0.5.38: an HDRI's or LDRI's number is its take; 0.5.37: the LDRI; 0.5.36 and before merged to `main` with PR #19 as `a85cd53`; 0.5.36: the stringout from 26 minutes to 3 on turnover135; 0.5.35: the stringout's time left on its line; 0.5.34: the HDRI pre-render on the timeline; 0.5.33: the QC overhaul, nothing stops a batch or a turnover; 0.5.32: style frames on the stringout, the stringout line in the shot list; 0.5.31: every Fix-it line names its shot; 0.5.30: the take on the burn-in; 0.5.29: reference clips play in the stringout; 0.5.28: everything in the stringout graded; 0.5.27: the stringout from the EXRs; 0.5.26: the HDRI pre-render and delivery, QC-084, Accept As Is runs what it can; 0.5.25, merged to `main` with PR #18: `User_Generated` and `User_Uploads` at the delivery root; 0.5.24: the Fix-it
 report, one error per cause, a lone EXR read as one frame, AMFs falling back to the clip they name) (`HANDOFF.md` is the short version, with the session's open items); 0.5.22 went to `main` earlier (PR #17 merged as `70e1160` at the user's request, after its CI
 run 37276656318 built the 0.5.22 dmg). The 2026-09-23 review is built (chunks A
 to H of `docs/REVIEW_2026-09-23.md`), and so are the fixes that a second official turnover,
@@ -43,8 +43,17 @@ per user install; the essentials build; unsigned; settings and logs in `%APPDATA
 one copy at a time; the menus as on the Mac. **Verified**: `TestAPathInAFilter` runs ffmpeg on
 five hostile folder names and fails four of them with the old escape; `test_bundle.py` and
 `test_fetch_ffmpeg.py` cover the lock, the names and the installer; the Windows pin was installed
-here from the real zip with `--from` and `--verify` passes on both pins. What a person on Windows
-has to confirm is the new `docs/WINDOWS_SESSION.md`. Docs: PACKAGING (a Windows section),
+here from the real zip with `--from` and `--verify` passes on both pins. **CI run 40731521748 is
+green on all six jobs**: the suite passes on Windows; `ProIngest-Setup-0.5.50.exe` is 95 MB (355
+MB installed, inside the 300 MB budget); the frozen app and the copy the setup installed per user
+both scan, render through two workers and write both spreadsheets. Getting there took four runs.
+23 tests assumed POSIX (`/` paths compared as strings, read only folders by mode, symlinks, an
+exec bit, System32's WSL `bash.exe`) and now compare `str(Path(...))` or skip what Windows cannot
+express. `fetch_ffmpeg.is_satisfied` asks no exec bit on Windows. `.gitattributes` keeps the Mac
+scripts LF. The smoke test's fake spawn check is skipped on Windows (`FAKE_SPAWN_CHECK`), because
+the windowed exe answers its exception with PyInstaller's message box and nothing closes it; there
+the two worker run is the check. What a person on Windows has to confirm is the new
+`docs/WINDOWS_SESSION.md`. Docs: PACKAGING (a Windows section),
 PROVENANCE, the install guide, CLAUDE.md, PRD, OQ-8, 16, 24 and 89.
 
 **2026-10-28, 0.5.49: meas and recon, numbered HDRIs, and the pre-render delivered (user).**

@@ -137,6 +137,10 @@ differ by the Qt platform plugins and by the 132 MB ffmpeg pair that only the ma
 carries, which compresses hard. The packaged app answered `--version` in 0.8s, which is a runner
 rather than the target hardware but is the only first launch figure that exists.
 
+**Windows, measured 2026-10-28 on the x64 runner: 355 MB installed, and a 95 MB setup exe.** The
+installed size is larger than the Mac's because gyan.dev's two exes are 205 MB to martin-riedl's
+132; Inno Setup's LZMA2 compresses them hard. The packaged app answered `--version` in 0.5s.
+
 ## ffmpeg
 
 - Bundle the **martin-riedl.de macOS arm64 GPL v3 build**, which includes libx264, so H.264
