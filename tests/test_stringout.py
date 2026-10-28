@@ -184,7 +184,8 @@ class TestPlan:
         assert "MISSING MEDIA" in texts
         lines = texts[texts.index("MISSING MEDIA") + 1 :]
         assert "".join(lines) == ffmpeg.drawtext_literal(str(path)) and len(lines) > 1
-        assert all(len(line) <= stringout.CARD_LINE for line in lines), "wrapped to fit"
+        # Measured as printed: drawtext's escape doubles a Windows path's backslashes.
+        assert all(len(line.replace("\\\\", "\\")) <= stringout.CARD_LINE for line in lines), "wrapped to fit"
         assert len(filters) == len(texts)
 
     def test_a_gap_in_the_record_timeline_is_black_with_only_the_name(self, batch: Batch) -> None:

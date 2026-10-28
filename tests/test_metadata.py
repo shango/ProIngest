@@ -416,7 +416,11 @@ class TestTheWidget:
         label.show()
         qt_app.processEvents()
         assert label.text() != label.full_text
-        assert label.text().endswith(".1001.exr"), f"elided in the middle, never at the end: {label.text()!r}"
+        # How much survives depends on the font, so only where the ellipsis went is asserted.
+        shown = label.text()
+        assert shown.endswith("exr") and "\u2026" in shown[:-3], (
+            f"elided in the middle, never at the end: {shown!r}"
+        )
         assert label.toolTip() == label.full_text
 
     def test_a_value_that_fits_is_left_exactly_as_it_is(self, qt_app: QApplication) -> None:
