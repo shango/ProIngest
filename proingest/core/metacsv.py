@@ -34,7 +34,7 @@ from __future__ import annotations
 import csv
 import io
 import re
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from proingest.core import media, naming
@@ -80,8 +80,10 @@ class MetaRow:
     start_tc: str = ""
     take: str = ""
     input_color_space: str = ""
+    plate: str = ""
+    """The plate a witness cam covers, `pl02` for `pl02_wit01` (user, 2026-10-23)."""
     hdri: bool = False
-    """An HDRI (QC-080): the tool copies its EXR as it is and runs no row rule on it, and
+    """An HDRI or LDRI (QC-080): the tool copies its file as it is and runs no row rule on it, and
     the stringout shows Ben's pre-render of its timeline event (user, 2026-10-07)."""
 
 
@@ -179,6 +181,14 @@ def _shot(typed: str, show_pattern: str) -> str:
     return typed
 
 
+_BARE_WITNESS = re.compile(rf"{naming.WITNESS_KIND}\d{{0,2}}", re.IGNORECASE)
+"""`wit01` with no plate before it, QC-010 since the plate became part of the name (user, 2026-10-23)."""
+
+
+_RECON_PLATE = re.compile(r"re\d{0,2}", re.IGNORECASE)
+"""`re01`, the recon plate, QC-010 since `recon` replaced it (user, 2026-10-27)."""
+
+
 def _row_qc(file_name: str, shot: str, shot_type: str, kind: str | None, show_pattern: str) -> list[QCResult]:
     """QC-010: the half-filled row.
 
@@ -186,6 +196,25 @@ def _row_qc(file_name: str, shot: str, shot_type: str, kind: str | None, show_pa
     this catches is a row that says it is a deliverable and then cannot be named: a
     `Shot Type` nothing resolves to, or a blank or malformed `Shot`.
     """
+    if kind is None and _RECON_PLATE.fullmatch(shot_type.strip()):
+        return [
+            QCResult(
+                "QC-010",
+                "error",
+                "row",
+                f"{file_name} has Shot Type {shot_type!r}: re is now recon, so write it recon01",
+            )
+        ]
+    if kind is None and _BARE_WITNESS.fullmatch(shot_type.strip()):
+        return [
+            QCResult(
+                "QC-010",
+                "error",
+                "row",
+                f"{file_name} has Shot Type {shot_type!r}, which names no plate: a witness cam is "
+                f"pl01_{shot_type.strip()} or pl02_{shot_type.strip()}, for the plate it covers",
+            )
+        ]
     if kind is None:
         return [
             QCResult(
@@ -250,14 +279,19 @@ def read(path: Path, show_pattern: str = naming.DEFAULT_SHOW_PATTERN) -> MetaCsv
             continue
         shot = _shot(_value(record, shot_positions), show_pattern)
         scene = _value(record, scene_positions)
-        if _HDRI.fullmatch(shot_type.strip()):
+        if naming.hdri_kind(shot_type) is not None:
             named = naming.parse_shot_code(shot, show_pattern) is not None
-            hdri = _hdri(file_name, shot, shot_type, scene, named)
-            result.rows.append(replace(hdri, take=_value(record, take_positions)))
+            result.rows.append(
+                _hdri(file_name, shot, shot_type, scene, named, _value(record, take_positions))
+            )
             continue
         if _STYLE_FRAME.fullmatch(shot_type.strip()):
             named = naming.parse_shot_code(shot, show_pattern) is not None
             result.rows.append(_style_frame(file_name, shot, shot_type, scene, named))
+            continue
+        if _AS_IS.fullmatch(shot_type.strip()):
+            named = naming.parse_shot_code(shot, show_pattern) is not None
+            result.rows.append(_as_is(file_name, shot, shot_type, scene, named))
             continue
         result.rows.append(
             MetaRow(
@@ -270,32 +304,35 @@ def read(path: Path, show_pattern: str = naming.DEFAULT_SHOW_PATTERN) -> MetaCsv
                 start_tc=_value(record, start_positions),
                 take=_value(record, take_positions),
                 input_color_space=_value(record, space_positions),
+                plate=naming.witness_plate(shot_type),
                 qc=tuple(type_qc + _row_qc(file_name, shot, shot_type, kind, show_pattern)),
             )
         )
     return result
 
 
-_HDRI = re.compile(r"hdri(?P<index>\d{1,2})?", re.IGNORECASE)
-"""`HDRI`, as turnover097's CSV writes it, with or without an index."""
+def _hdri(file_name: str, shot: str, shot_type: str, scene: str, named: bool, take: str) -> MetaRow:
+    """An HDRI or LDRI row (user, 2026-10-07 and 2026-10-08): its file is delivered as it is,
+    with no checks, and the stringout shows the pre-render of its timeline event. One whose
+    `Shot` is no shot code has nowhere to be delivered, and only the stringout shows it.
 
-
-def _hdri(file_name: str, shot: str, shot_type: str, scene: str, named: bool) -> MetaRow:
-    """An HDRI row (user, 2026-10-07): its EXR is delivered as it is, with no checks, and
-    the stringout shows the pre-render of its timeline event. One whose `Shot` is no shot
-    code has nowhere to be delivered, and only the stringout shows it."""
+    Its number (`SECA0009_pl01_LDRI02_v01.jpg`) is its `Shot Type`'s, `LDRI02`, and a bare `LDRI`
+    is `01` (user, 2026-10-27). It was the CSV's `Take` from 2026-10-12."""
+    hdri = naming.hdri_kind(shot_type) or naming.HDRI_KIND
+    image = "HDRI EXR" if hdri == naming.HDRI_KIND else "LDRI image"
     what = (
-        f"{file_name} is an HDRI's pre-render: the stringout shows it, and the tool delivers the "
-        "HDRI EXR it is named after as it is, with no checks"
+        f"{file_name} is an {hdri}'s pre-render: the stringout shows it, and the tool delivers the "
+        f"{image} it is named after as it is, with no checks"
         if Path(file_name).suffix.lower() in media.VIDEO_EXTENSIONS
-        else f"{file_name} is an HDRI: the tool delivers it as it is, with no checks, and the "
+        else f"{file_name} is an {hdri}: the tool delivers it as it is, with no checks, and the "
         "stringout shows its pre-render"
     )
-    note = QCResult("QC-080", "info", "row", what)
-    match = _HDRI.fullmatch(shot_type.strip())
-    index = ((match["index"] if match else None) or "1").zfill(2)
-    kind = naming.HDRI_KIND if named else None
-    return MetaRow(file_name, shot, shot_type, kind, index if named else None, scene, (note,), hdri=True)
+    notes = [QCResult("QC-080", "info", "row", what)]
+    index = naming.hdri_index(shot_type)
+    kind = hdri if named else None
+    return MetaRow(
+        file_name, shot, shot_type, kind, index if named else None, scene, tuple(notes), take=take, hdri=True
+    )
 
 
 _STYLE_FRAME = re.compile(r"styleframe(?P<index>\d{1,2})?", re.IGNORECASE)
@@ -314,6 +351,34 @@ def _style_frame(file_name: str, shot: str, shot_type: str, scene: str, named: b
     index = ((match["index"] if match else None) or "1").zfill(2)
     kind = naming.STYLE_FRAME_KIND if named else None
     return MetaRow(file_name, shot, shot_type, kind, index if named else None, scene, (note,))
+
+
+_AS_IS = re.compile(rf"(?P<kind>{'|'.join(naming.AS_IS_KINDS)})(?P<index>\d{{1,2}})?", re.IGNORECASE)
+_AS_IS_INDEX = {kind.casefold(): kind for kind in naming.AS_IS_KINDS}
+_AS_IS_WORDS = {
+    naming.AVIDREF_KIND: "an Avid reference",
+    naming.MEAS_KIND: "a measurement",
+    naming.RECON_KIND: "a recon",
+}
+
+
+def _as_is(file_name: str, shot: str, shot_type: str, scene: str, named: bool) -> MetaRow:
+    """An Avid reference, `avidRef01` (QC-088, user 2026-10-15), a measurement, `meas01`, or a
+    recon, `recon01` (user, 2026-10-27). No colour correction, and delivered as it is, never as
+    an EXR (user, 2026-10-22); the stringout plays its cut as it is."""
+    match = _AS_IS.fullmatch(shot_type.strip())
+    assert match is not None
+    kind = _AS_IS_INDEX[match["kind"].casefold()]
+    note = QCResult(
+        "QC-088",
+        "info",
+        "row",
+        f"{file_name} is {_AS_IS_WORDS[kind]}: delivered and shown on the stringout as it is, never graded",
+    )
+    index = (match["index"] or "1").zfill(2)
+    return MetaRow(
+        file_name, shot, shot_type, kind if named else None, index if named else None, scene, (note,)
+    )
 
 
 def find(folder: Path) -> list[Path]:

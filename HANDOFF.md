@@ -1,4 +1,27 @@
-# Handoff, 7 October 2026 (end of session)
+# Handoff, 28 October 2026
+
+**28 October, 0.5.49**: `meas##` and `recon##` are delivered as an Avid reference is (a movie
+an mp4, a still as itself, never graded, never an EXR); `recon` replaces `re` (`re01` is QC-010).
+HDRIs and LDRIs are numbered by the Shot Type, `HDRI01`, `HDRI02` (bare is 01), with no
+underscore, `INCA5002_pl01_HDRI02_v01.exr`; QC-087 is retired. The pre-render is delivered too,
+`INCA5002_pl01_HDRI02_v01.mp4` (that name assumed, OQ-88).
+
+# Handoff, 23 October 2026
+
+**23 October, 0.5.48**: a witness cam names the plate it covers. Ben types `pl01_wit01` or
+`pl02_wit01`, and all four deliverables and the burn-in carry both (`INCA5002_pl02_wit01_raw_4k_v01`).
+A bare `wit01` is QC-010. Its inset goes over the plate it names. OQ-87 has the assumptions. The
+shooters' spec sheet is out of date (user) and wants remaking.
+
+# Handoff, 22 October 2026
+
+**22 October, 0.5.47**: an `avidRef##` is now delivered, never as an EXR: a movie or an image
+sequence as `<shot>_avidRef01_v01.mp4` with no colour transform (its colour is baked in), a held
+JPG or PNG as it is, any other still as a JPG; not on the tracker. Frame rate confirmed as already
+24 throughout. `PROGRESS.md` has the entry and OQ-86 the assumptions. The rest of this file is
+the 15 October handoff and still stands, except where it says an avidRef is never delivered.
+
+# Handoff, 15 October 2026 (end of session)
 
 **Start here after a cleared context.** This is the short version. `PROGRESS.md` section 1 is the
 record: one entry per change, newest first, each with the user's words and how it was verified.
@@ -7,12 +30,13 @@ Then read `docs/WORKFLOW.md`, and `CLAUDE.md` for the ground rules.
 
 ## State
 
-- **Version 0.5.36 on branch `hdri/prerender`, PR #19 open, not merged.** Merge only when the
-  user asks. `main` has 0.5.25 (PR #18, merged 2026-10-06 at the user's request).
-- **0.5.36's CI run** is given in the last commit on the branch; check it with
-  `gh run list -R shango/ProIngest --branch hdri/prerender -L 3`, and if green hand over
-  `gh run download <id> -R shango/ProIngest -n ProIngest-macos-arm64 -D ~/Downloads/ProIngest-0.5.36`. 0.5.35's run (37690475455) was green and is in `~/Downloads/ProIngest-0.5.35/`.
-- 1930 tests pass locally (1 skipped); `ruff`, `ruff format` and `mypy --strict` are clean.
+- **Version 0.5.46 on branch `ldri`, PR #20 open.** Merge only when the user asks. `main` has
+  0.5.36 (PR #19, `a85cd53`); everything from 0.5.37 to 0.5.46 is on the branch only.
+- **0.5.46's CI run is 38706474925** (commit `e68c344`), green, built `ProIngest-0.5.46.dmg`. Its download:
+  `gh run download 38706474925 -R shango/ProIngest -n ProIngest-macos-arm64 -D ~/Downloads/ProIngest-0.5.46`.
+  0.5.45's run (38641965425) was green and built `ProIngest-0.5.45.dmg`.
+- 2028 tests pass locally at 0.5.46 (1 skipped); `ruff`, `ruff format` and `mypy --strict` are
+  clean.
 - Nothing uncommitted except the untracked samples listed under Working notes.
 
 ## The QC model now (0.5.33, user, 2026-10-07)
@@ -41,36 +65,43 @@ recreate the colors." `docs/QC_RULES.md`'s opening section is the authority; in 
 - **The QC log has an Issues sheet**: every finding in words, with its Effect (stopped the run,
   held this shot back, rendered). The Fix-it report leaves info out.
 
-## What this session built (6 and 7 Oct 2026, all user requests)
+## What this session built (13 to 15 Oct 2026, all user requests)
 
 | version | what |
 |---|---|
-| 0.5.25 | `User_Generated` and `User_Uploads`, empty, at the delivery root after any run that delivers |
-| 0.5.26 | **HDRI**: the EXR delivered byte for byte as `<shot>_pl01_HDRI_<idx>_v<ver>.exr`, no checks (QC-080); the stringout plays Ben's pre-render beside it (sRGB Linear, graded through the HDRI's AMF); missing is QC-083 |
-| 0.5.27 | **The stringout is cut from the delivered EXRs** (OpenEXR, OCIO, a lossless ffv1 intermediate); ffmpeg's DWAA decoder avoided. OQ-80 |
-| 0.5.28 | **Everything in the stringout is graded** |
-| 0.5.29 | **Reference clips play** in the stringout from the source; delivery is still one 4k EXR frame |
-| 0.5.30 | **Take on the burn-in** when the CSV's `Take` is above 1 (OQ-81) |
-| 0.5.31 | **Every Fix-it line names its shot** |
-| 0.5.32 | **Style frames** (`Shot Type` `styleFrame`, QC-085): a pre-graded PNG or JPG held as it is for its EDL length, never delivered, `SECA0009 styleFrame`, no counter. **The stringout line** under each turnover: bar while building, ball green when built, red for QC-142 or a black event (QC-144). OQ-82 |
-| 0.5.33 | **The QC overhaul** (above). OQ-83 |
-| 0.5.34 | **The HDRI pre-render on the timeline**: the `... .exr Render.mov` the timeline cuts is the stringout's event, the EXR named in it is delivered when it is in the folder, else QC-086 "HDRI EXR File Missing from turnover folder, omitted from delivery"; no CLF and no CDL shows it as it is (QC-009). **The Fix-it report** says, per clip, the full path it looked for and which file (CSV, EDL with timecode, AMF) reported it. OQ-84 |
-| 0.5.35 | **The stringout's time left** on its line, in Notes, counting down between events |
-| 0.5.36 | **The stringout optimised**: turnover135 from 26m15s to 3m00s. The view chain baked into a 65 point ACEScct cube (the exact ACES 2.0 transform was 98% of the time), a UT Video 10 bit intermediate in local temp, the pictures converted and the events encoded `workers` at a time. Fixed on the way: OCIO's cache reused one baked LUT's processor for another. Next lever: x264 `preset slow` for the stringout, the user's call |
+| 0.5.41 | QC-073 (retimed) only on the retimed cut; underscores between every part of a burn-in, never a space; a plain PLATES cell |
+| 0.5.42 | **An AMF input transform that is an inverse output transform** (`<aces:inverseOutputTransform>`, a display-referred render such as turnover144's `colorChart Render.mov`, Rec709 Gamma 2.2) is read: `Amf.input_inverse_output`, `amf.input_encoding_for`, `color.inverse_view` names it "<display>, inverse of <view>", and `to_aces` inverts the view. Verified: the rendered chart matched its source within 0.16/255 on average |
+| 0.5.43 | **A missing file is a MISSING MEDIA card** on the stringout, with the shot label, and the path it looked for (turnover folder plus File Name) wrapped at 90 characters after a `/`. QC-144 says so separately. The CSV's Clip Directory is not used (stale) |
+| 0.5.44 | A stringout-only type (then `preVis`), and **`docs/Shot_Types.xlsx`**: every Shot Type and how the tool treats it, a column guide, what is true of every type, how values are read, and yellow Proposed rows. The user wants it kept up to date and used as the place to add new types |
+| 0.5.45 | That type renamed `pl##_avidref` |
+| 0.5.46 | **Renamed again: `avidRef##`** (user: "Ben will put avidRef## in the metadata ... Later they might change it"). `avidRef01`, any case, bare `avidRef` is 01, QC-088 (info): no grade, no checks, nothing delivered, plays its cut as it is, burned in `INCA5002_avidRef01`. `pl01_avidref` and `preVis01` are QC-010. The spelling is one constant, `naming.AVIDREF_KIND`; `metacsv._AVIDREF` is built from it, so the next rename is that line plus the tests (`grep -rn -i avidref tests`) and the workbook |
 
-## Verified on the samples (0.5.34, the replaced exports of 2026-10-07)
+**The workbook is generated** by a script that lived in this session's scratchpad
+(`shot_types_xlsx.py`), which does not survive. Edit `docs/Shot_Types.xlsx` directly next time
+(openpyxl, or by hand), and keep the Downloads copy (`C:\Users\shann\Downloads\Shot_Types.xlsx`)
+in step if the user asks.
 
-- **Turnover134**: 21 rows, 0 errors. Every camera clip graded from the CDL in its AMF (QC-082,
-  no CLFs exported); three short-handle warnings (QC-030). Its three HDRI pre-renders are there,
-  ungraded (QC-009); its HDRI EXRs are not in the folder, so QC-086 and no HDRI delivered. 39
-  deliverables rendered, 0 failed.
-- **Turnover135**: 21 rows, 0 errors, 42 jobs including the three HDRI EXR copies. Every clip now
-  has an AMF; SECA0012's are ungraded (QC-009), SECA0013/14 graded from the CDL (QC-082).
-  All 42 rendered, 0 failed; its stringout (1920 frames) plays the three HDRI pre-renders as
-  they are and cuts the reference stills from their HD references (QC-143, info).
+## Turnover144 (michaelcrigler), read through 14 Oct
+
+- Test copy: `G:\Shared drives\VFX_Assets_&_Tools_Artists_Library\Artist_Library\Software\PRE-PRO INTERNAL\IngestPro\TEST MATERIAL\turnover144_10_06_26_[michaelcrigler]-footage`.
+  Ben's original: `G:\Shared drives\VFX_Ingest\turnover144_10_06_26_michaelcrigler`. From WSL,
+  G: is reached through `powershell.exe`, not `/mnt/g`.
+- Plates pl01 to pl03 are iPhone Apple Log: warnings QC-020, QC-028, QC-030.
+- `el01` and `el02` duplicate pl02 and pl03 and are not in the EDL, so nothing is delivered for them.
+- The shooter prefills as `[michaelcrigler]-footage`, from the folder name. The user: let wrong
+  naming pass through.
+- Ben's `INCA5002` folder sat inside the turnover folder; media scanning is recursive, so it is read.
+- **The split diopter render is still typed `preVis01`**: it needs retyping `avidRef01` in Resolve
+  and the CSV re-exported, or it is a QC-010 error.
+- **Asked, no answer**: Ben's hand delivery names the chart
+  `INCA5002_pl01_colorChart_01_raw_4k_v01.exr` and numbers frames from `_1001.exr`, which differ
+  from the spec. The tool stays on spec until the user says otherwise.
 
 ## Open, with the user (newest first)
 
+- **OQ-86's assumptions (the Avid reference), told the user**: it plays its cut rather than
+  holding one frame; no `Frame:` counter; the burn-in follows the type as written
+  (`<shot>_avidRef01`), the number being the reference's.
 - **OQ-83's assumptions, made without asking** (the user has not reacted yet): no-AMF clips read
   as the CSV's `Input Color Space`; their references through ACES 2.0 SDR Rec.709 on Gamma 2.2;
   low disk space (QC-063) stops the run like an unwritable root; QC-021 and QC-055 made info; the
@@ -84,7 +115,7 @@ recreate the colors." `docs/QC_RULES.md`'s opening section is the authority; in 
 - **OQ-81, the take**: "only if there's more than one take" was read as a Take above 1. No reply.
 - **The HDRI EXR "you don't need to touch"** was read as "copy it, never alter it". If it meant
   "do not deliver it", `planner._hdri_plan` is the one place to stop it. No reply.
-- **Mac checks** in `docs/MAC_SESSION.md`, newest first: the stringout optimised (0.5.36), the stringout's time left (0.5.35), the HDRI pre-render and Fix-it paths (0.5.34), the QC overhaul (0.5.33), style frames
+- **Mac checks** in `docs/MAC_SESSION.md`, newest first: unverified Fix-it claims (0.5.40), the Fix-it report by clip name (0.5.39), the LDRI (0.5.37), the stringout optimised (0.5.36), the stringout's time left (0.5.35), the HDRI pre-render and Fix-it paths (0.5.34), the QC overhaul (0.5.33), style frames
   and the stringout line (0.5.32), the stringout from the EXRs (0.5.27), the HDRI pre-render look
   (0.5.26), expiry and the CDL grade (0.5.23), burn-in boxes (0.5.22), and older ones.
 - **"Fix in Resolve" rule list** was chosen by Claude (`models.RESOLVE_FIX_RULES`; QC-008 and

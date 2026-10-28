@@ -541,6 +541,28 @@ class TestTheAleNamesTheEvents:
         plate = next(row for row in rows if row.clip_name == "A")
         assert "QC-073" in rules(plate)
 
+    def test_a_retime_is_said_on_its_own_cut_of_a_clip_only(self, tmp_path: Path) -> None:
+        """Turnover142's C2041, cut three times, carried event 017's retime on every row."""
+        folder = overlapping_turnover(tmp_path / GOOD_FOLDER, ALE_ORDER)
+        fixtures.make_meta_csv(
+            folder / "metadata.csv",
+            [
+                ("A", "MELT0001", "pl01"),
+                ("B", "MELT0001", "pl02"),
+                ("B", "MELT0001", "pl03"),
+                ("C", "MELT0001", "cp01"),
+                ("C", "MELT0001", "cp01"),
+            ],
+        )
+        edl = folder / "FINAL.edl"
+        lines = edl.read_text().split("\n")
+        at = next(i for i, line in enumerate(lines) if line.startswith("004 "))
+        lines.insert(at + 1, f"M2   AX             048.0                {fixtures.timecode(86404)}")
+        edl.write_text("\n".join(lines))
+        _, rows = scan.scan_turnover(folder, "t1", scan.ScanSettings(rules=fixtures.SMALL_RULES))
+        warned = {row.csv_shot_type: "QC-073" in rules(row) for row in rows if row.clip_name == "B"}
+        assert warned == {"pl02": False, "pl03": True}, "event 004 is B's second use"
+
 
 class TestTheAmf:
     """Each event's AMF is the clip's colour (user, 2026-09-28). QC-075 to QC-080."""
@@ -757,6 +779,12 @@ class TestTheAmf:
         assert {"QC-080", "QC-083"} <= set(rules(row)) and not row.errors()
         assert not qc.must_fix(Batch(delivery_root=tmp_path, turnovers=[turnover], rows=[row]))
 
+    def test_a_witness_carries_the_plate_its_shot_type_names(self, tmp_path: Path) -> None:
+        """User, 2026-10-23: `pl02_wit01` is delivered as `MELT0001_pl02_wit01_...`."""
+        folder = fixtures.make_turnover(tmp_path / GOOD_FOLDER, shots=1, frames=4, shot_types=["pl02_wit01"])
+        _, row = self.scanned(folder)
+        assert row.identity is not None and row.identity.stem == "MELT0001_pl02_wit01"
+
     def test_a_style_frame_blocks_nothing_and_delivers_nothing(self, tmp_path: Path) -> None:
         """User, 2026-10-07: a pre-graded PNG or JPG held on the stringout, and that is all."""
         folder = fixtures.make_turnover(tmp_path / GOOD_FOLDER, shots=1, frames=4, shot_types=["styleFrame"])
@@ -818,7 +846,8 @@ class TestAPreRenderOnTheTimeline:
         assert row.hdri_render is not None and row.hdri_render.path.name == self.RENDER
         assert not row.errors() and not rules(row) & {"QC-083", "QC-086"}
         jobs = planner.plan_row(row, tmp_path / "out", 1).jobs
-        assert [job.kind for job in jobs] == ["hdri"] and jobs[0].source.name == self.EXR
+        assert [job.kind for job in jobs] == ["hdri", "hdri_ref"] and jobs[0].source.name == self.EXR
+        assert jobs[1].source.name == self.RENDER, "the pre-render is delivered as an mp4 (user, 2026-10-27)"
 
     def test_no_exr_is_qc_086_and_nothing_is_delivered(self, tmp_path: Path) -> None:
         (row,) = self.scanned(self.folder(tmp_path, exr=False))
@@ -846,6 +875,74 @@ class TestAPreRenderOnTheTimeline:
         (row,) = self.scanned(self.folder(tmp_path, exr=True))
         (note,) = [result for result in row.qc if result.rule_id == "QC-009"]
         assert note.severity == "info" and "no color correction" in note.message
+
+
+class TestAnLdri:
+    """User, 2026-10-08: an LDRI is an HDRI whose file is a JPG or PNG. Its pre-render is
+    named the same way (`<LDRI image> Render 1.mov`) and the image is delivered byte for
+    byte under its own extension."""
+
+    RENDER = "MELT0001_pl01_LDRI_01_v01.jpg Render 1.mp4"
+    IMAGE = "MELT0001_pl01_LDRI_01_v01.jpg"
+
+    def folder(self, tmp_path: Path, image: bool, render: bool = True, image_row: bool = False) -> Path:
+        root = tmp_path / GOOD_FOLDER
+        if render:
+            fixtures.make_mp4(root / self.RENDER, count=4)
+        if image:
+            fixtures.make_still(root / self.IMAGE)
+        rows = [(self.RENDER, "MELT0001", "LDRI")] + ([(self.IMAGE, "MELT0001", "LDRI")] if image_row else [])
+        fixtures.make_meta_csv(root / "metadata.csv", rows)
+        fixtures.make_final_edl(root / "FINAL_v01.edl", [self.RENDER], duration=4)
+        return root
+
+    def scanned(self, folder: Path) -> list[ShotRow]:
+        _, rows = scan.scan_turnover(folder, "t1", scan.ScanSettings(rules=fixtures.SMALL_RULES))
+        return rows
+
+    def test_the_image_it_is_named_after_is_delivered_as_an_ldri(self, tmp_path: Path) -> None:
+        (row,) = self.scanned(self.folder(tmp_path, image=True))
+        assert qc.is_hdri(row) and qc.is_ldri(row)
+        assert row.media is not None and row.media.path.name == self.IMAGE
+        assert row.hdri_render is not None and row.hdri_render.path.name == self.RENDER
+        assert not row.errors() and not rules(row) & {"QC-083", "QC-086"}
+        job, prerender = planner.plan_row(row, tmp_path / "out", 1).jobs
+        assert (job.kind, job.source.name, job.destination.name) == (
+            "hdri",
+            self.IMAGE,
+            "MELT0001_pl01_LDRI01_v01.jpg",
+        )
+        assert (prerender.kind, prerender.destination.name) == ("hdri_ref", "MELT0001_pl01_LDRI01_v01.mp4")
+
+    def test_no_image_is_qc_086_in_ldri_words(self, tmp_path: Path) -> None:
+        (row,) = self.scanned(self.folder(tmp_path, image=False))
+        (note,) = [result for result in row.qc if result.rule_id == "QC-086"]
+        assert note.message.startswith("LDRI JPG File Missing from turnover folder, omitted from delivery")
+        assert planner.plan_row(row, tmp_path / "out", 1).jobs == []
+
+    def test_the_csv_s_own_image_row_folds_into_the_pre_render(self, tmp_path: Path) -> None:
+        rows = self.scanned(self.folder(tmp_path, image=True, image_row=True))
+        assert [row.clip_name for row in rows] == [self.RENDER]
+
+    def test_a_pre_render_not_in_the_folder_holds_the_image(self, tmp_path: Path) -> None:
+        (row,) = self.scanned(self.folder(tmp_path, image=True, render=False))
+        (note,) = [result for result in row.qc if result.rule_id == "QC-083"]
+        assert "the LDRI JPG held still" in note.message and not row.errors()
+
+
+@pytest.mark.parametrize(
+    ("prerender", "source"),
+    [
+        ("SECA0009_pl01_HDRI_01_v01.exr Render 1.mov", "SECA0009_pl01_HDRI_01_v01.exr"),
+        ("SECA0009_pl01_LDRI_01_v01.jpg Render.mov", "SECA0009_pl01_LDRI_01_v01.jpg"),
+        ("SECA0009_pl01_LDRI_01_v01.JPEG Render 1.mov", "SECA0009_pl01_LDRI_01_v01.JPEG"),
+        ("SECA0009_pl01_LDRI_01_v01.png Render 1.mov", "SECA0009_pl01_LDRI_01_v01.png"),
+        ("SECA0009_pl01_HDRI_01_v01 Render 1.mov", None),
+        ("a.exrs Render.mov", None),
+    ],
+)
+def test_hdri_source_name(prerender: str, source: str | None) -> None:
+    assert scan.hdri_source_name(prerender) == source
 
 
 class TestACutOutsideItsFile:

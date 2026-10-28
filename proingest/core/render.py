@@ -109,10 +109,12 @@ def render_job(
             _render_still(job, deliverable)
         elif job.kind == "audio":
             _render_audio(job, deliverable)
-        elif job.kind == "ref_mp4":
+        elif job.kind in ("ref_mp4", "hdri_ref"):
             _render_reference(job, deliverable)
         elif job.kind == "hdri":
             _copy_hdri(job, deliverable)
+        elif job.kind == "avidref":
+            _deliver_avidref(job, deliverable)
         else:
             raise RenderError(f"no renderer for a {job.kind} job")
     except ffmpeg.FFmpegError as exc:
@@ -171,10 +173,27 @@ def _record_file(deliverable: Deliverable, path: Path) -> None:
 
 
 def _copy_hdri(job: DeliverableJob, deliverable: Deliverable) -> None:
-    """The HDRI as it is, byte for byte, to the temp the envelope renames (user, 2026-10-07)."""
+    """The HDRI or LDRI as it is, byte for byte, to the temp the envelope renames (user, 2026-10-07).
+    An Avid reference's JPG or PNG too (user, 2026-10-22)."""
     shutil.copyfile(job.source, job.temp)
     _record_file(deliverable, job.temp)
     deliverable.frame_count = 1
+
+
+def _deliver_avidref(job: DeliverableJob, deliverable: Deliverable) -> None:
+    """An Avid reference as it is, never an EXR (user, 2026-10-22): an mp4 encoded with no
+    colour transform, a JPG or PNG copied, or another still written as a JPG."""
+    suffix = job.destination.suffix.lower()
+    if suffix == ".mp4":
+        _render_reference(job, deliverable)
+    elif suffix == job.source.suffix.lower():
+        _copy_hdri(job, deliverable)
+    else:
+        source = media.printf_pattern_for(job.source) if job.source_is_sequence else str(job.source)
+        frame = job.in_frame if job.in_frame is not None else job.source_start_frame
+        ffmpeg.write_still_jpg(source, job.temp, frame, job.source_is_sequence)
+        _record_file(deliverable, job.temp)
+        deliverable.frame_count = 1
 
 
 # --- Raw EXR delivery. COLOR_AND_FORMAT sections 3 and 7. ---
@@ -376,7 +395,10 @@ def _render_reference(job: DeliverableJob, deliverable: Deliverable) -> None:
             is_sequence=job.source_is_sequence,
             rate=f"{job.rate.numerator}/{job.rate.denominator}",
             target_size=scale,
-            lut=_view_lut(job, Path(folder)),
+            # An Avid reference's colour is baked in (user, 2026-10-22): no cube at all. A
+            # pre-render is linear, so its cube goes behind a shaper, as on the stringout.
+            lut=_view_lut(job, Path(folder)) if _graded(job) else None,
+            shaper=color.shaper_lut(Path(folder) / f"shaper{LUT_SUFFIX}") if _shaped(job) else None,
             audio=job.audio_source,
             audio_skip=_audio_skip(job),
             audio_tempo=_audio_tempo(job),
@@ -401,6 +423,15 @@ def _render_reference(job: DeliverableJob, deliverable: Deliverable) -> None:
     deliverable.frame_count = written
 
 
+def _graded(job: DeliverableJob) -> bool:
+    """A reference, or a pre-render the HDRI's grade is seen through (`planner.prerender_color`)."""
+    return job.kind == "ref_mp4" or _shaped(job)
+
+
+def _shaped(job: DeliverableJob) -> bool:
+    return job.kind == "hdri_ref" and job.shot_color.source_encoding is not None
+
+
 def _view_lut(job: DeliverableJob, folder: Path) -> Path:
     """Bake this job's view branch into `folder`, named after the deliverable.
 
@@ -412,7 +443,7 @@ def _view_lut(job: DeliverableJob, folder: Path) -> Path:
     """
     shot_color = job.shot_color
     transforms = shot_color.view_transforms()
-    return color.view_lut(folder / f"{job.destination.stem}{LUT_SUFFIX}", *transforms)
+    return color.view_lut(folder / f"{job.destination.stem}{LUT_SUFFIX}", *transforms, shaped=_shaped(job))
 
 
 def _audio_skip(job: DeliverableJob) -> float:

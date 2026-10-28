@@ -195,6 +195,14 @@ class TestShotRow:
         del older["delivered_range"]
         assert ShotRow.from_dict(older).delivered_range is None
 
+    def test_a_witness_plate_round_trips_and_an_old_batch_has_none(self) -> None:
+        row = make_row(identity=ShotIdentity(shot_code="MELT0001", kind="wit", index="01", plate="pl02"))
+        assert ShotRow.from_dict(row.to_dict()).identity == row.identity
+        older = row.to_dict()
+        del older["identity"]["plate"]
+        identity = ShotRow.from_dict(older).identity
+        assert identity is not None and identity.plate == ""
+
     def test_was_edited_is_false_without_a_snapshot(self) -> None:
         assert not make_row(snapshot=None).was_edited
 

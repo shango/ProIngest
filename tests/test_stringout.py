@@ -12,6 +12,7 @@ import pytest
 
 from proingest.core import clf, color, ffmpeg, naming, planner, qc, render, scan, stringout
 from proingest.core.models import Batch, Deliverable, FrameRate, InOut, MediaInfo
+from tests.fixtures import color as color_fixtures
 from tests.fixtures import media as fixtures
 
 FOLDER = "turnover007_09_23_26_testshooter"
@@ -66,6 +67,11 @@ class TestNaming:
         )
 
 
+def _position(path: Path) -> int:
+    """A burn-in's text file in the order it was written: `0000_12.txt` after `0000_2.txt`."""
+    return int(path.stem.rsplit("_", 1)[1])
+
+
 class TestPlan:
     def test_every_event_is_cut_from_its_delivered_exrs(self, batch: Batch) -> None:
         """User, 2026-10-07: the stringout is from the EXRs, the HD sequence of each plate."""
@@ -79,9 +85,10 @@ class TestPlan:
         assert made.timecode == "01:00:00:00", "the EDL's record start"
 
     def test_a_take_above_1_follows_the_label(self, batch: Batch) -> None:
-        """User, 2026-10-07: `SECA0009_pl01 Take 02`; take 1 or none shows no take."""
+        """User, 2026-10-07: `SECA0009_pl01_Take_02` (underscores since 2026-10-13); take 1 or
+        none shows no take."""
         batch.rows[0].take, batch.rows[1].take = "1", "2"
-        assert [s.label for s in planned(batch).segments] == ["MELT0001_pl01", "MELT0002_pl01 Take 02"]
+        assert [s.label for s in planned(batch).segments] == ["MELT0001_pl01", "MELT0002_pl01_Take_02"]
 
     def test_with_no_hd_exr_the_reference_stands_in(self, batch: Batch) -> None:
         for item in batch.rows[1].deliverables:
@@ -155,6 +162,30 @@ class TestPlan:
         batch.rows = [batch.rows[0]]
         second = planned(batch).segments[1]
         assert second.kind == "black" and second.length == FRAMES
+        assert second.missing is None, "no row names a file, so there is no path to give"
+
+    def test_a_clip_whose_file_is_missing_is_a_card_naming_where_it_should_be(self, batch: Batch) -> None:
+        """User, 2026-10-14: "Put a card that reads "missing media" with a path to where it's
+        supposed to be"."""
+        row = batch.rows[1]
+        row.media = None
+        second = planned(batch).segments[1]
+        assert second.kind == "black" and second.length == FRAMES
+        assert second.missing == batch.turnovers[0].folder / row.clip_name
+        assert second.label == naming.shot_label(row.identity) if row.identity else False
+        assert second.effect == row.scene
+
+    def test_the_card_burns_in_missing_media_and_the_path(self, tmp_path: Path) -> None:
+        path = Path("/Volumes/GoogleDrive/Shared drives/VFX_Ingest/turnover144/" + "INCA5002/" * 12)
+        path = path / "pl01.mp4"
+        card = stringout.Segment(kind="black", length=24, label="pl01", missing=path)
+        filters = stringout._burn_ins("so", card, tmp_path / "0000")
+        texts = [written.read_text() for written in sorted(tmp_path.glob("0000_*.txt"), key=_position)]
+        assert "MISSING MEDIA" in texts
+        lines = texts[texts.index("MISSING MEDIA") + 1 :]
+        assert "".join(lines) == str(path) and len(lines) > 1
+        assert all(len(line) <= stringout.CARD_LINE for line in lines), "wrapped to fit"
+        assert len(filters) == len(texts)
 
     def test_a_gap_in_the_record_timeline_is_black_with_only_the_name(self, batch: Batch) -> None:
         edl = batch.turnovers[0].edl_path
@@ -264,8 +295,8 @@ class TestInsets:
     """A plate carries its shot's cp top left and wit top right (user, 2026-09-29)."""
 
     @staticmethod
-    def as_kind(batch: Batch, index: int, shot: str, kind: str) -> None:
-        batch.rows[index].identity = naming.ShotIdentity(shot, kind, "01")
+    def as_kind(batch: Batch, index: int, shot: str, kind: str, plate: str = "") -> None:
+        batch.rows[index].identity = naming.ShotIdentity(shot, kind, "01", plate=plate)
 
     def test_a_plate_carries_its_shots_cp_top_left(self, batch: Batch) -> None:
         self.as_kind(batch, 1, "MELT0001", "cp")
@@ -279,9 +310,14 @@ class TestInsets:
         assert clean.insets == (), "only a plate carries insets"
 
     def test_a_wit_goes_top_right(self, batch: Batch) -> None:
-        self.as_kind(batch, 1, "MELT0001", "wit")
+        self.as_kind(batch, 1, "MELT0001", "wit", plate="pl01")
         (inset,) = planned(batch).segments[0].insets
-        assert (inset.picture.x, inset.picture.y, inset.label) == (1440, 0, "wit01")
+        assert (inset.picture.x, inset.picture.y, inset.label) == (1440, 0, "pl01_wit01")
+
+    def test_a_wit_goes_over_the_plate_it_names_only(self, batch: Batch) -> None:
+        """User, 2026-10-23: `pl02_wit01` covers pl02, so pl01 carries no inset of it."""
+        self.as_kind(batch, 1, "MELT0001", "wit", plate="pl02")
+        assert planned(batch).segments[0].insets == ()
 
     def test_another_shots_cp_is_not_inset(self, batch: Batch) -> None:
         self.as_kind(batch, 1, "MELT0009", "cp")
@@ -425,7 +461,7 @@ class TestAnHdri:
         hdri = with_hdri.rows[1]
         assert qc.is_hdri(hdri) and not hdri.skipped and hdri.media is not None
         (item,) = hdri.deliverables
-        assert (item.kind, item.name, item.status) == ("hdri", "MELT0002_pl01_HDRI_01_v01.exr", "done")
+        assert (item.kind, item.name, item.status) == ("hdri", "MELT0002_pl01_HDRI01_v01.exr", "done")
         assert item.path.read_bytes() == hdri.media.path.read_bytes()
 
     def test_with_no_pre_render_it_asks_for_one_and_holds_the_exr_graded(self, with_hdri: Batch) -> None:
@@ -452,6 +488,15 @@ class TestAnHdri:
         assert (segment.kind, segment.start, segment.length, segment.freeze) == ("source", 0, FRAMES, False)
         assert segment.color is not None and segment.color.source_encoding == "Linear Rec.709 (sRGB)"
         assert stringout._still_lut(segment, tmp_path / "hdri.cube") is not None, "graded, not as it is"
+
+    def test_its_pre_render_is_delivered_too_as_a_graded_mp4(self, with_render: Batch) -> None:
+        """User, 2026-10-27: the pre-render on the stringout "get[s] an mp4"; the EXR is the file."""
+        hdri = with_render.rows[1]
+        assert [(item.kind, item.name, item.status) for item in hdri.deliverables] == [
+            ("hdri", "MELT0002_pl01_HDRI01_v01.exr", "done"),
+            ("hdri_ref", "MELT0002_pl01_HDRI01_v01.mp4", "done"),
+        ]
+        assert hdri.deliverables[1].frame_count == FRAMES and not hdri.errors()
 
     def test_its_pre_render_is_held_on_a_frame_hold_too(self, with_render: Batch) -> None:
         """The EDL's event is an `M2` hold on the EXR; the pre-render plays, for the event's length."""
@@ -510,9 +555,86 @@ class TestAPreRenderOnTheTimeline:
         assert made is not None and made.frame_count == 2 * FRAMES
 
 
+class TestAnLdri:
+    """User, 2026-10-08: an LDRI is treated as an HDRI on the stringout, its file a JPG or PNG
+    delivered byte for byte. A JPG or PNG is display referred, so its pre-render, and the
+    image held when there is none, are shown as they are, graded or not."""
+
+    RENDER = "MELT0002_pl01_LDRI_01_v01.jpg Render 1.mp4"
+    IMAGE = "MELT0002_pl01_LDRI_01_v01.jpg"
+
+    def batch(self, tmp_path: Path, render: bool) -> Batch:
+        folder = fixtures.make_turnover(tmp_path / FOLDER, shots=1, frames=FRAMES)
+        if render:
+            fixtures.make_mp4(folder / self.RENDER, count=FRAMES)
+        fixtures.make_still(folder / self.IMAGE)
+        name = self.RENDER if render else self.IMAGE
+        grade = [color_fixtures.make_clf(folder / "ldri_ClipGraph_CorrectorNode_1.clf").name]
+        color_fixtures.make_amf(folder, 2, name, clfs=grade)
+        rows = [("MELT0001_pl01", "MELT0001", "pl01"), (name, "MELT0002", "LDRI")]
+        fixtures.make_meta_csv(folder / "metadata.csv", rows)
+        fixtures.make_final_edl(folder / "FINAL_v01.edl", ["MELT0001_pl01", name], duration=FRAMES)
+        return TestAnHdri.scanned(folder, Batch(delivery_root=tmp_path / "delivery"))
+
+    def test_its_image_is_delivered_byte_for_byte(self, tmp_path: Path) -> None:
+        ldri = self.batch(tmp_path, render=True).rows[1]
+        assert qc.is_ldri(ldri) and ldri.media is not None
+        item, prerender = ldri.deliverables
+        assert (item.kind, item.name, item.status) == ("hdri", "MELT0002_pl01_LDRI01_v01.jpg", "done")
+        assert item.path.read_bytes() == ldri.media.path.read_bytes()
+        assert (prerender.name, prerender.status) == ("MELT0002_pl01_LDRI01_v01.mp4", "done")
+
+    def test_its_pre_render_is_shown_as_it_is_though_graded(self, tmp_path: Path) -> None:
+        batch = self.batch(tmp_path, render=True)
+        ldri = batch.rows[1]
+        assert clf.has_grade(ldri), "the AMF carries a CLF, and it is not applied"
+        segment = planned(batch).segments[1]
+        assert segment.prerender and ldri.hdri_render is not None and segment.path == ldri.hdri_render.path
+        assert segment.color is None and stringout._still_lut(segment, tmp_path / "x.cube") is None
+        assert segment.label == "MELT0002_pl01_LDRI01"
+        assert batch.delivery_root is not None
+        made = stringout.build(batch, batch.turnovers[0], batch.delivery_root)
+        assert made is not None and made.frame_count == 2 * FRAMES
+
+    def test_with_no_pre_render_the_image_is_held_as_it_is(self, tmp_path: Path) -> None:
+        batch = self.batch(tmp_path, render=False)
+        ldri = batch.rows[1]
+        assert "QC-083" in {q.rule_id for q in ldri.qc}
+        segment = planned(batch).segments[1]
+        assert ldri.media is not None and segment.path == ldri.media.path and segment.exr is None
+        assert (segment.kind, segment.length, segment.freeze, segment.color) == ("source", FRAMES, True, None)
+        assert batch.delivery_root is not None
+        made = stringout.build(batch, batch.turnovers[0], batch.delivery_root)
+        assert made is not None and made.frame_count == 2 * FRAMES
+
+
+class TestAnAvidRef:
+    """User, 2026-10-14: an Avid reference, `avidRef01`, is "treated just like styleframe type. No
+    cc needed". A video, so it plays its cut as it is. Delivered since 2026-10-22, never an EXR."""
+
+    def test_it_plays_its_cut_as_it_is_and_is_delivered_as_an_mp4(self, tmp_path: Path) -> None:
+        folder = fixtures.make_turnover(
+            tmp_path / FOLDER, shots=2, frames=FRAMES, shot_types=["avidRef01", "pl01"]
+        )
+        batch = TestAnHdri.scanned(folder, Batch(delivery_root=tmp_path / "delivery"))
+        avidref = batch.rows[0]
+        assert qc.is_stringout_only(avidref)
+        assert [item.name for item in avidref.deliverables] == ["MELT0001_avidRef01_v01.mp4"]
+        assert [q.rule_id for q in avidref.qc] == ["QC-088"]
+        segment = planned(batch).segments[0]
+        assert avidref.media is not None and segment.path == avidref.media.path
+        assert (segment.kind, segment.length, segment.freeze, segment.style_frame) == (
+            "source",
+            FRAMES,
+            False,
+            True,
+        )
+        assert segment.color is None and segment.label == "MELT0001_avidRef01"
+
+
 class TestAStyleFrame:
     """User, 2026-10-07: a pre-graded PNG or JPG before its shot's plate, held as it is for the
-    EDL's length, burned in `SECA0009 styleFrame` with no counter, and never delivered."""
+    EDL's length, burned in `SECA0009_styleFrame` with no counter, and never delivered."""
 
     @pytest.fixture
     def folder(self, tmp_path: Path) -> Path:
@@ -539,15 +661,15 @@ class TestAStyleFrame:
             True,
             True,
         )
-        assert segment.color is None and segment.label == "MELT0001 styleFrame"
+        assert segment.color is None and segment.label == "MELT0001_styleFrame"
 
     def test_its_burn_in_has_no_frame_counter(self, tmp_path: Path) -> None:
         held = stringout.Segment(
-            kind="source", length=48, freeze=True, label="X styleFrame", style_frame=True
+            kind="source", length=48, freeze=True, label="X_styleFrame", style_frame=True
         )
         stringout._burn_ins("so", held, tmp_path / "0000")
         texts = [path.read_text() for path in sorted(tmp_path.glob("0000_*.txt"))]
-        assert not any(text.startswith("Frame:") for text in texts) and "X styleFrame" in texts
+        assert not any(text.startswith("Frame:") for text in texts) and "X_styleFrame" in texts
 
     def test_the_stringout_is_written_with_it_and_it_is_no_stand_in(self, with_style: Batch) -> None:
         assert with_style.delivery_root is not None
@@ -568,6 +690,7 @@ class TestAStyleFrame:
         assert batch.delivery_root is not None
         segment = planned(batch).segments[0]
         assert (segment.kind, segment.length) == ("black", FRAMES)
+        assert segment.missing is not None and segment.missing.parent == batch.turnovers[0].folder
         made = stringout.build(batch, batch.turnovers[0], batch.delivery_root)
         assert made is not None
         said = [(q.rule_id, q.severity) for q in batch.turnovers[0].qc]

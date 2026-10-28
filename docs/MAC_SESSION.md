@@ -55,6 +55,21 @@ chunk 7 of `docs/TO_A_WORKING_BUILD.md`, in the order that wastes least.
       in. Open `SECA0009_pl01_ref_HD_v01.mp4` beside Ben's own Resolve playback of the same frame:
       the brightness and colour should match. The tool applies the CDL in ACEScg, unclamped, as
       the AMF states; CI proves the maths, only Ben's screen says it is what Resolve does.
+- [ ] **No unverified Fix-it claims (2026-10-12, 0.5.40).** Rescan the INCA turnover with
+      `DJI_0293_S005.mov`: its line says which file gave 'Rec.709 (Scene)' (the CSV's Input Color
+      Space column, naming any AMF it passed over), and never "Reported by the clip's AMF".
+- [ ] **The Fix-it report by clip name (2026-10-12, 0.5.39).** Open turnover134's Fix-it report in
+      Safari: each clip line starts with its timeline name in code type, then its shot and
+      `at <timecode> on the timeline`, and a message shared by several clips appears once above
+      them. Jump Resolve's playhead to one of the timecodes: that clip is there.
+- [ ] **The LDRI (2026-10-08, 0.5.37).** Once Ben sends a turnover with an LDRI (`Shot Type`
+      `LDRI`, a JPG or PNG, its pre-render `<image> Render 1.mov` on the timeline), scan and run it.
+      Its stringout event plays the pre-render exactly as Ben's Resolve timeline shows it, with no
+      grade; the shot folder gets `<shotcode>_pl01_LDRI_01_v01.jpg` (or `.png`), byte identical to
+      the source (`cmp`); the tracker's HDRI cell for that shot is empty. Move the pre-render
+      out and re-scan: QC-083, and the event holds the image as it is. No sample has one yet.
+      Since 2026-10-12 the `_01_` is the clip's Take: set an LDRI's Take to 2 in Resolve, re-export
+      the CSV and re-scan, and it delivers `..._LDRI_02_v01.jpg` and burns in `..._LDRI_02` alone.
 - [ ] **The stringout optimised (2026-10-08, 0.5.36).** Build turnover135's stringout from the
       app with Workers at 4 and time it: 3m00s on the Linux dev box (26m15s in 0.5.35). Activity
       Monitor shows several ProIngest processes busy at once early on, then several ffmpeg. Open it
@@ -86,7 +101,7 @@ chunk 7 of `docs/TO_A_WORKING_BUILD.md`, in the order that wastes least.
 - [ ] **Style frames and the stringout line (2026-10-07, 0.5.32).** Once Ben sends a turnover
       with a `styleFrame` PNG or JPG before a plate, build its stringout: the frame holds for its
       EDL length before the plate, looks as it does in Preview (no grade, no colour shift), and
-      reads `SECA0009 styleFrame` bottom right with no `Frame:` at bottom left. In the shot list,
+      reads `SECA0009_styleFrame` bottom right with no `Frame:` at bottom left. In the shot list,
       the `Stringout` line under the turnover shows a moving bar and a percentage while it builds,
       then a green ball; move the PNG out of the folder, Scan, build again: red, and hovering the
       ball says which event is black.

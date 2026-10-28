@@ -57,6 +57,16 @@ tool to go stale. What turnover097 uses:
 | `lookTransform` | a CLF by file name, with its md5 | the file, read by OCIO as it is |
 | `outputTransform` | `Output.Academy.Rec709-D65_100nit_in_Rec709-D65_Gamma2pt2.a2.v1` | display `Gamma 2.2 Rec.709 - Display`, view `ACES 2.0 - SDR 100 nits (Rec.709)` |
 
+**A display referred render's input transform is an inverse output transform** (turnover144,
+2026-10-14): `<aces:inputTransform>` holds `<aces:inverseOutputTransform>` and in it
+`InvOutput.Academy.Rec709-D65_100nit_in_Rec709-D65_Gamma2pt2.a2.v1`, on Ben's `colorChart Render.mov`,
+a ProRes he rendered out of the Gamma 2.2 Rec.709 view. The config lists that ID on the same
+display and view transform as the forward one, so it resolves to the view undone, an OCIO
+`DisplayViewTransform` in the inverse direction into ACES2065-1 (`color.inverse_view`,
+`amf.input_encoding_for`). Seen back through the same view, turnover144's delivered chart matches
+the render's code values to 0.16/255 on average and 1.1/255 at the 99th percentile. Before
+0.5.42 the inverse was not read, and the chart was QC-046 and held.
+
 An input ID the config lacks is QC-047, and an AMF with none is QC-046. An output ID the config
 lacks is QC-079.
 

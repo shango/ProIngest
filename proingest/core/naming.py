@@ -17,7 +17,8 @@ from typing import Literal
 DEFAULT_SHOW_PATTERN = r"[A-Z]{2,6}"
 """Show prefix. Configurable in Settings; the same value drives both directions."""
 
-ELEMENT_TYPES = ("pl", "cp", "el", "wit", "re")
+ELEMENT_TYPES = ("pl", "cp", "el", "wit")
+"""`re`, the recon plate, was retired for `recon` (user, 2026-10-27): `RECON_KIND`."""
 AUX_NAMES = ("colorChart", "mirrorBall", "greyBall", "sizeRef")
 
 CLIP_TYPES = ELEMENT_TYPES + AUX_NAMES
@@ -42,14 +43,68 @@ HDRI_KIND = "HDRI"
 The tool delivers the HDRI EXR byte for byte, and the stringout shows Ben's pre-render of
 its timeline event (user, 2026-10-07)."""
 
+LDRI_KIND = "LDRI"
+"""An LDRI's `Shot Type` (user, 2026-10-08): an HDRI whose file is a JPG or PNG. Treated as
+an HDRI throughout (`ShotIdentity.is_hdri` is true of both, and so is `qc.is_hdri`), except
+that its file is delivered byte for byte under its own extension and the stringout shows it,
+or its pre-render, as it is, with no grade."""
+
+LDRI_EXTENSIONS = (".jpg", ".jpeg", ".png")
+"""What an LDRI's file is, and so what its delivered copy ends with."""
+
+HDRI_SHOT_TYPE = re.compile(r"(?P<kind>hdri|ldri)(?P<index>\d{1,2})?", re.IGNORECASE)
+"""`HDRI01`, `HDRI02`, `LDRI01`, as the CSV writes it, in any case; a bare `HDRI` is `HDRI01`
+(user, 2026-10-27: a turnover can have several). The number names the file and the burn-in.
+From 2026-10-12 to then it was the CSV's `Take`, and `HDRI2` was QC-010."""
+
+
+def hdri_kind(shot_type: str) -> str | None:
+    """`HDRI_KIND` or `LDRI_KIND` for a `Shot Type` that is one, else None."""
+    match = HDRI_SHOT_TYPE.fullmatch(shot_type.strip())
+    if match is None:
+        return None
+    return LDRI_KIND if match["kind"].casefold() == LDRI_KIND.casefold() else HDRI_KIND
+
+
+def hdri_index(shot_type: str) -> str:
+    """`02` for `HDRI02` or `LDRI2`, and `01` for a bare `HDRI`."""
+    match = HDRI_SHOT_TYPE.fullmatch(shot_type.strip())
+    return ((match["index"] if match else None) or "1").zfill(2)
+
+
 STYLE_FRAME_KIND = "styleFrame"
 """A style frame's `Shot Type` (QC-085, user 2026-10-07): a pre-graded PNG or JPG held on the
 timeline before its shot's plate. Not in `CLIP_TYPES` and never delivered: the stringout
 shows it as it is, for the event's length."""
 
+AVIDREF_KIND = "avidRef"
+"""An Avid reference's `Shot Type`, `avidRef01`, `avidRef02` (QC-088, user 2026-10-15). Not in
+`CLIP_TYPES` and never graded: its colour is baked in. Delivered as it is, never as an EXR (user,
+2026-10-22): a movie as an mp4, a still as itself (`as_is_file`); the stringout plays its cut as
+it is. The one place the spelling lives, since it may change again: it was `preVis01` in 0.5.44
+and `pl01_avidref` in 0.5.45."""
+
+MEAS_KIND = "meas"
+RECON_KIND = "recon"
+"""A measurement's and a recon's `Shot Type`, `meas01`, `recon02` (QC-088, user 2026-10-27): never
+colour corrected and delivered as an Avid reference is, never as an EXR. `recon` replaces `re`."""
+
+AS_IS_KINDS = (AVIDREF_KIND, MEAS_KIND, RECON_KIND)
+"""The kinds delivered as they are (`as_is_file`): a movie as an mp4, a still as itself."""
+
+AS_IS_STILL_EXTENSIONS = (".jpg", ".jpeg", ".png")
+"""A held still delivered under its own extension. Any other still becomes a `.jpg`."""
+
 HDRI_ELEMENT = "pl01"
-"""Every HDRI is named under the plate: `[SHOTCODE]_pl01_HDRI_v01.exr` in the shooters'
-spec, `BACH0002_pl01_HDRI_01_v01.exr` in the tracker."""
+"""Every HDRI and LDRI is named under the plate: `[SHOTCODE]_pl01_HDRI_v01.exr` in the shooters'
+spec, `BACH0002_pl01_HDRI_01_v01.exr` in the tracker, and `BACH0002_pl01_HDRI01_v01.exr` since
+2026-10-27 (user: no underscore before the number, like every other number)."""
+
+WITNESS_KIND = "wit"
+
+WITNESS_SHOT_TYPE = re.compile(r"(?P<plate>pl\d{0,2})_wit(?P<index>\d{1,2})?", re.IGNORECASE)
+"""A witness cam's `Shot Type` names the plate it covers: `pl01_wit01`, `pl02_wit01` (user,
+2026-10-23), and so does every deliverable. A bare `wit01` names no plate and is QC-010."""
 
 _SHOT_TYPE_INDEX = {name.casefold(): name for name in CLIP_TYPES}
 _SHOT_TYPE_PATTERN = re.compile(r"^(?P<kind>[A-Za-z]+)(?P<index>\d{1,2})?$")
@@ -61,6 +116,7 @@ Resolution = Literal["4k", "HD"]
 
 _TYPES = "|".join(ELEMENT_TYPES)
 _AUX = "|".join(AUX_NAMES)
+_AS_IS = "|".join(AS_IS_KINDS)
 
 
 @dataclass(frozen=True)
@@ -77,11 +133,15 @@ class ShotIdentity:
     still therefore has no element, which is why `stem` refuses to build one for it.
 
     `index` stays a string so a leading zero survives the round trip.
+
+    `plate` is the plate a witness cam covers, `pl02` for `pl02_wit01`, and empty for
+    every other kind.
     """
 
     shot_code: str
     kind: str
     index: str
+    plate: str = ""
 
     @property
     def show(self) -> str:
@@ -100,8 +160,13 @@ class ShotIdentity:
 
     @property
     def is_hdri(self) -> bool:
-        """An HDRI: its EXR is delivered as it is, keyed to the shot's plate."""
-        return self.kind == HDRI_KIND
+        """An HDRI or an LDRI: its file is delivered as it is, keyed to the shot's plate."""
+        return self.kind in (HDRI_KIND, LDRI_KIND)
+
+    @property
+    def is_ldri(self) -> bool:
+        """An LDRI: an HDRI whose file is a JPG or PNG (user, 2026-10-08)."""
+        return self.kind == LDRI_KIND
 
     @property
     def is_style_frame(self) -> bool:
@@ -109,8 +174,16 @@ class ShotIdentity:
         return self.kind == STYLE_FRAME_KIND
 
     @property
+    def is_as_is(self) -> bool:
+        """An Avid reference, a measurement or a recon (QC-088): delivered as it is, never as an
+        EXR (user, 2026-10-22 and 2026-10-27)."""
+        return self.kind in AS_IS_KINDS
+
+    @property
     def elem(self) -> str:
-        """`pl01`, what a plate's deliverables are named for."""
+        """`pl01`, what a plate's deliverables are named for; `pl02_wit01` for a witness cam."""
+        if self.plate:
+            return f"{self.plate}_{self.kind}{self.index}"
         return f"{self.kind}{self.index}"
 
     @property
@@ -143,15 +216,30 @@ def parse_shot_type(written: str) -> tuple[str, str] | None:
 
     What comes back is always the spelling in NAMING_SPEC section 1, never the shooter's,
     so two deliverables cannot differ by capitalisation alone.
+
+    A witness cam is `pl02_wit01` (`witness_plate` reads the plate); a bare `wit01` is None.
     """
+    witness = WITNESS_SHOT_TYPE.fullmatch(written.strip())
+    if witness is not None:
+        return WITNESS_KIND, (witness["index"] or "1").zfill(2)
     match = _SHOT_TYPE_PATTERN.match(written.strip())
     if match is None:
         return None
     key = match["kind"].casefold()
+    if key == WITNESS_KIND:
+        return None
     kind = _SHOT_TYPE_INDEX.get(SHOT_TYPE_ALIASES.get(key, key))
     if kind is None:
         return None
     return kind, (match["index"] or "1").zfill(2)
+
+
+def witness_plate(written: str) -> str:
+    """`pl02` for a `Shot Type` of `pl02_wit01` (a bare `pl` is `pl01`), else empty."""
+    witness = WITNESS_SHOT_TYPE.fullmatch(written.strip())
+    if witness is None:
+        return ""
+    return "pl" + (witness["plate"][2:] or "1").zfill(2)
 
 
 def parse_shot_code(code: str, show_pattern: str = DEFAULT_SHOW_PATTERN) -> tuple[str, str] | None:
@@ -210,15 +298,45 @@ def aux_still_exr(identity: ShotIdentity, version: int) -> str:
 
 
 def hdri_exr(identity: ShotIdentity, version: int) -> str:
-    """`SECA0009_pl01_HDRI_01_v01.exr`: the HDRI, copied byte for byte (user, 2026-10-07)."""
-    if not identity.is_hdri:
+    """`SECA0009_pl01_HDRI01_v01.exr`: the HDRI, copied byte for byte (user, 2026-10-07)."""
+    if identity.kind != HDRI_KIND:
         raise ValueError(f"an HDRI must have kind {HDRI_KIND!r}, got {identity.kind!r}")
     return f"{hdri_label(identity)}_{_ver(version)}.exr"
 
 
+def ldri_image(identity: ShotIdentity, version: int, suffix: str) -> str:
+    """`SECA0009_pl01_LDRI01_v01.jpg`: the LDRI, copied byte for byte under the extension it
+    came with (user, 2026-10-08)."""
+    if not identity.is_ldri:
+        raise ValueError(f"an LDRI must have kind {LDRI_KIND!r}, got {identity.kind!r}")
+    if suffix.lower() not in LDRI_EXTENSIONS:
+        raise ValueError(f"an LDRI must be one of {LDRI_EXTENSIONS}, got {suffix!r}")
+    return f"{hdri_label(identity)}_{_ver(version)}{suffix.lower()}"
+
+
+def as_is_file(identity: ShotIdentity, version: int, suffix: str) -> str:
+    """`INCA5002_avidRef01_v01.mp4`, `INCA5002_meas01_v01.mp4`, or `.png` or `.jpg` for a held
+    still: no size tag (user, 2026-10-22 and 2026-10-27)."""
+    if not identity.is_as_is:
+        raise ValueError(f"a file delivered as it is must be one of {AS_IS_KINDS}, got {identity.kind!r}")
+    if suffix.lower() not in (".mp4", *AS_IS_STILL_EXTENSIONS):
+        raise ValueError(f"{identity.kind} is delivered as an mp4, a JPG or a PNG, got {suffix!r}")
+    return f"{shot_label(identity)}_{_ver(version)}{suffix.lower()}"
+
+
+def hdri_prerender_mp4(identity: ShotIdentity, version: int) -> str:
+    """`SECA0009_pl01_HDRI01_v01.mp4`: Ben's pre-render of an HDRI's or LDRI's timeline event,
+    delivered beside the file it is named after (user, 2026-10-27)."""
+    if not identity.is_hdri:
+        raise ValueError(f"a pre-render belongs to an HDRI or LDRI, got {identity.kind!r}")
+    return f"{hdri_label(identity)}_{_ver(version)}.mp4"
+
+
 def hdri_label(identity: ShotIdentity) -> str:
-    """`SECA0009_pl01_HDRI_01`: the HDRI's name without its version."""
-    return f"{identity.shot_code}_{HDRI_ELEMENT}_{HDRI_KIND}_{identity.index}"
+    """`SECA0009_pl01_HDRI01` or `SECA0009_pl01_LDRI02`: the name without its version. No
+    underscore before the number, like every other number (user, 2026-10-27); the number is
+    the `Shot Type`'s, carried as the identity's index."""
+    return f"{identity.shot_code}_{HDRI_ELEMENT}_{identity.kind}{identity.index}"
 
 
 # --- The turnover stringout, NAMING_SPEC.md section 5 (OQ-38, reopened 2026-09-25). ---
@@ -258,24 +376,28 @@ def stringout_version(name: str, number: int, month: int, day: int, year: int, s
 
 def shot_label(identity: ShotIdentity) -> str:
     """What the stringout burns in at bottom right: `TIME1001_pl01`, or a still's
-    `SECA0002_colorChart_01`, the way its own file names it, or `SECA0009 styleFrame`
-    (user, 2026-10-07)."""
+    `SECA0002_colorChart_01`, the way its own file names it, or `SECA0009_styleFrame`
+    (user, 2026-10-07). Underscores between every part, never a space (user, 2026-10-13)."""
     if identity.is_still:
         return f"{identity.shot_code}_{identity.kind}_{identity.index}"
     if identity.is_hdri:
         return hdri_label(identity)
     if identity.is_style_frame:
-        return f"{identity.shot_code} {STYLE_FRAME_KIND}"
+        return f"{identity.shot_code}_{STYLE_FRAME_KIND}"
+    if identity.is_as_is:
+        return f"{identity.shot_code}_{identity.kind}{identity.index}"
     return identity.stem
 
 
-def take_label(label: str, take: str) -> str:
-    """`SECA0009_pl01 Take 02`: the burn-in with its take, when the CSV's `Take` is above 1.
-    Take 1, a blank or anything not a number leaves the label as it is (user, 2026-10-07)."""
+def take_label(label: str, take: str, identity: ShotIdentity | None = None) -> str:
+    """`SECA0009_pl01_Take_02`: the burn-in with its take, when the CSV's `Take` is above 1.
+    Take 1, a blank or anything not a number leaves the label as it is (user, 2026-10-07).
+    An HDRI or LDRI carries its own number in its name (`SECA0009_pl01_LDRI02`), so it
+    gets no `Take` after it (user, 2026-10-12)."""
     written = take.strip()
-    if not written.isdigit() or int(written) <= 1:
+    if (identity is not None and identity.is_hdri) or not written.isdigit() or int(written) <= 1:
         return label
-    return f"{label} Take {int(written):02d}"
+    return f"{label}_Take_{int(written):02d}"
 
 
 # --- Delivery folder layout, NAMING_SPEC.md section 5. ---
@@ -307,6 +429,8 @@ OutputKind = Literal[
     "audio",
     "aux_still",
     "hdri",
+    "hdri_ref",
+    "avidref",
 ]
 
 
@@ -328,7 +452,7 @@ class ParsedOutput:
 def _output_patterns(show_pattern: str) -> list[tuple[OutputKind, re.Pattern[str]]]:
     """One anchored pattern per kind. Mutually exclusive on the literal kind segment."""
     shot = rf"(?P<show>{show_pattern})(?P<shot>\d{{4}})"
-    sc = rf"{shot}_(?P<type>{_TYPES})(?P<idx>\d{{2}})"
+    sc = rf"{shot}_(?:(?P<plate>pl\d{{2}})_(?={WITNESS_KIND}))?(?P<type>{_TYPES})(?P<idx>\d{{2}})"
     v = r"v(?P<ver>\d{2})"
     res = r"(?P<res>4k|HD)"
     return [
@@ -337,7 +461,24 @@ def _output_patterns(show_pattern: str) -> list[tuple[OutputKind, re.Pattern[str
         ("ref_mp4", re.compile(rf"^{sc}_ref_{res}_{v}\.mp4$")),
         ("audio", re.compile(rf"^{sc}_audio_{v}\.wav$")),
         ("aux_still", re.compile(rf"^{shot}_(?P<aux>{_AUX})_(?P<auxidx>\d{{2}})_4k_{v}\.exr$")),
-        ("hdri", re.compile(rf"^{shot}_{HDRI_ELEMENT}_(?P<aux>{HDRI_KIND})_(?P<auxidx>\d{{2}})_{v}\.exr$")),
+        # `_?`: an HDRI delivered before 2026-10-27 has `HDRI_01`; it still counts as a version.
+        ("hdri", re.compile(rf"^{shot}_{HDRI_ELEMENT}_(?P<aux>{HDRI_KIND})_?(?P<auxidx>\d{{2}})_{v}\.exr$")),
+        (
+            "hdri",
+            re.compile(
+                rf"^{shot}_{HDRI_ELEMENT}_(?P<aux>{LDRI_KIND})_?(?P<auxidx>\d{{2}})_{v}\.(?P<ext>jpe?g|png)$"
+            ),
+        ),
+        (
+            "hdri_ref",
+            re.compile(
+                rf"^{shot}_{HDRI_ELEMENT}_(?P<aux>{HDRI_KIND}|{LDRI_KIND})(?P<auxidx>\d{{2}})_{v}\.mp4$"
+            ),
+        ),
+        (
+            "avidref",
+            re.compile(rf"^{shot}_(?P<aux>{_AS_IS})(?P<auxidx>\d{{2}})_{v}\.(?P<ext>mp4|jpe?g|png)$"),
+        ),
     ]
 
 
@@ -354,6 +495,8 @@ def parse_output_name(name: str, show_pattern: str = DEFAULT_SHOW_PATTERN) -> Pa
         groups = match.groupdict()
         shot_code = f"{groups['show']}{groups['shot']}" if "show" in groups else None
         elem = f"{groups['type']}{groups['idx']}" if "type" in groups else None
+        if elem is not None and groups.get("plate"):
+            elem = f"{groups['plate']}_{elem}"
         frame = groups.get("frame")
         raw_res = groups.get("res")
         return ParsedOutput(

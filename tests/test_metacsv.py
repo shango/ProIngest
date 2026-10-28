@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from proingest.core import metacsv
+from proingest.core import metacsv, naming
 from proingest.core.metacsv import MetaCsvError
 
 REAL_HEADER = ["File Name", "Shot", "Shot Type", "Gamma Notes", "Color Space Notes", "Shot Code", "Shot Type"]
@@ -168,13 +168,16 @@ class TestColumnsNotRead:
 class TestHdri:
     """Its EXR is copied as it is and no check runs on it (user, 2026-10-07)."""
 
-    @pytest.mark.parametrize(("written", "index"), [("HDRI", "01"), ("hdri", "01"), ("HDRI2", "02")])
-    def test_an_hdri_row_is_marked_and_carries_only_info(
-        self, tmp_path: Path, written: str, index: str
+    HEADER = ("File Name", "Shot", "Shot Type", "Take")
+
+    @pytest.mark.parametrize(
+        ("written", "take", "index"), [("HDRI", "3", "01"), ("hdri02", "1", "02"), ("HDRI3", "", "03")]
+    )
+    def test_an_hdri_row_is_numbered_by_its_shot_type_and_carries_only_info(
+        self, tmp_path: Path, written: str, take: str, index: str
     ) -> None:
-        result = read(
-            tmp_path, ["File Name", "Shot", "Shot Type"], [["DALU0012_pl01_02_HDRI.exr", "TEST0013", written]]
-        )
+        """User, 2026-10-27: `HDRI01`, `HDRI02`; a bare `HDRI` is `HDRI01`, whatever the Take."""
+        result = read(tmp_path, list(self.HEADER), [["DALU0012_pl01_02_HDRI.exr", "TEST0013", written, take]])
         (row,) = result.rows
         assert row.hdri and (row.kind, row.index) == ("HDRI", index)
         assert [(q.rule_id, q.severity) for q in row.qc] == [("QC-080", "info")]
@@ -183,11 +186,24 @@ class TestHdri:
         result = read(tmp_path, ["File Name", "Shot", "Shot Type"], [["x.exr", "", "HDRI"]])
         (row,) = result.rows
         assert row.hdri and row.kind is None
+        assert [q.rule_id for q in row.qc] == ["QC-080"], "nothing is named, so no number is asked for"
 
     def test_an_hdri_keeps_its_take(self, tmp_path: Path) -> None:
         header = ["File Name", "Shot", "Shot Type", "Take"]
         result = read(tmp_path, header, [["x.exr", "TEST0013", "HDRI", "2"]])
         assert result.rows[0].take == "2"
+
+    @pytest.mark.parametrize(("written", "take", "index"), [("LDRI", "4", "01"), ("ldri03", "1", "03")])
+    def test_an_ldri_row_is_an_hdri_of_kind_ldri(
+        self, tmp_path: Path, written: str, take: str, index: str
+    ) -> None:
+        """User, 2026-10-08: an LDRI is treated as an HDRI, its file a JPG or PNG."""
+        name = "SECA0009_pl01_LDRI_01_v01.jpg Render 1.mov"
+        result = read(tmp_path, list(self.HEADER), [[name, "TEST0013", written, take]])
+        (row,) = result.rows
+        assert row.hdri and (row.kind, row.index) == ("LDRI", index)
+        (note,) = row.qc
+        assert note.rule_id == "QC-080" and "LDRI image" in note.message and "HDRI" not in note.message
 
     def test_a_type_merely_containing_hdri_is_still_qc_010(self, tmp_path: Path) -> None:
         result = read(tmp_path, ["File Name", "Shot", "Shot Type"], [["x.exr", "TEST0013", "HDRIref"]])
@@ -221,6 +237,68 @@ class TestStyleFrame:
         result = read(tmp_path, ["File Name", "Shot", "Shot Type"], [["sf.jpg", "", "styleFrame"]])
         (row,) = result.rows
         assert row.kind is None and [q.rule_id for q in row.qc] == ["QC-085"]
+
+
+class TestAnAvidRef:
+    """`avidRef01`, treated as a style frame is (user, 2026-10-15): QC-088, never delivered."""
+
+    @pytest.mark.parametrize(
+        ("written", "index"),
+        [("avidRef01", "01"), ("avidRef", "01"), ("AVIDREF02", "02"), ("avidref3", "03")],
+    )
+    def test_an_avidref_row_carries_only_info(self, tmp_path: Path, written: str, index: str) -> None:
+        result = read(tmp_path, ["File Name", "Shot", "Shot Type"], [["ref.mov", "INCA5002", written]])
+        (row,) = result.rows
+        assert (row.kind, row.index) == (naming.AVIDREF_KIND, index) and not row.hdri
+        assert [(q.rule_id, q.severity) for q in row.qc] == [("QC-088", "info")]
+
+    @pytest.mark.parametrize("written", ["preVis01", "pl01_avidref"])
+    def test_the_old_spellings_are_no_longer_a_shot_type(self, tmp_path: Path, written: str) -> None:
+        """It was `preVis01` in 0.5.44 and `pl01_avidref` in 0.5.45 (user, 2026-10-14 and 15)."""
+        result = read(tmp_path, ["File Name", "Shot", "Shot Type"], [["ref.mov", "INCA5002", written]])
+        assert [q.rule_id for q in result.rows[0].qc] == ["QC-010"]
+
+
+class TestAMeasurementOrRecon:
+    """`meas01` and `recon01`, delivered as an Avid reference is (user, 2026-10-27)."""
+
+    @pytest.mark.parametrize(
+        ("written", "kind", "index"),
+        [
+            ("meas", "meas", "01"),
+            ("MEAS02", "meas", "02"),
+            ("recon", "recon", "01"),
+            ("recon02", "recon", "02"),
+        ],
+    )
+    def test_each_carries_only_info(self, tmp_path: Path, written: str, kind: str, index: str) -> None:
+        result = read(tmp_path, ["File Name", "Shot", "Shot Type"], [["m.mov", "INCA5002", written]])
+        (row,) = result.rows
+        assert (row.kind, row.index) == (kind, index)
+        assert [(q.rule_id, q.severity) for q in row.qc] == [("QC-088", "info")]
+
+    @pytest.mark.parametrize("written", ["re", "re01", "RE02"])
+    def test_re_is_qc_010_and_says_to_write_recon(self, tmp_path: Path, written: str) -> None:
+        result = read(tmp_path, ["File Name", "Shot", "Shot Type"], [["r.mov", "INCA5002", written]])
+        (finding,) = result.rows[0].qc
+        assert finding.rule_id == "QC-010" and "recon01" in finding.message
+
+
+class TestAWitness:
+    """`pl01_wit01` or `pl02_wit01`, naming the plate it covers (user, 2026-10-23)."""
+
+    @pytest.mark.parametrize(("written", "plate"), [("pl01_wit01", "pl01"), ("pl02_wit01", "pl02")])
+    def test_the_plate_is_read_from_the_shot_type(self, tmp_path: Path, written: str, plate: str) -> None:
+        result = read(tmp_path, ["File Name", "Shot", "Shot Type"], [["wit.mov", "INCA5002", written]])
+        (row,) = result.rows
+        assert (row.kind, row.index, row.plate) == ("wit", "01", plate)
+        assert row.qc == ()
+
+    def test_a_bare_wit_is_qc_010_and_says_how_to_write_it(self, tmp_path: Path) -> None:
+        result = read(tmp_path, ["File Name", "Shot", "Shot Type"], [["wit.mov", "INCA5002", "wit01"]])
+        (finding,) = result.rows[0].qc
+        assert finding.rule_id == "QC-010"
+        assert "pl01_wit01 or pl02_wit01" in finding.message
 
 
 class TestFileShape:

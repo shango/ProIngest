@@ -1134,3 +1134,93 @@ class TestPostRenderQC:
         batch = Batch(rows=[row])
         render.apply_results(batch, [deliverable], show_pattern="[a-z]{2}")
         assert "QC-151" not in ids(batch.qc)
+
+
+class TestAnAvidRef:
+    """User, 2026-10-22: an Avid reference is never an EXR. A `Render` movie is an mp4 with its
+    colour as it is ("color is baked in"), a held still is delivered as it is, or as a JPG."""
+
+    def job(self, tmp_path: Path, source: Path, name: str, out_frame: int) -> DeliverableJob:
+        return sequence_job(
+            source, tmp_path / "out" / name, 0, out_frame, kind="avidref", is_sequence=False, start_frame=0
+        )
+
+    def test_a_mov_render_is_an_mp4_of_its_cut_at_24_with_no_cube(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        handed: list[object] = []
+        real = ffmpeg.encode_reference
+
+        def spy(*args: object, **kwargs: object) -> None:
+            handed.append(kwargs["lut"])
+            real(*args, **kwargs)  # type: ignore[arg-type]
+
+        monkeypatch.setattr(ffmpeg, "encode_reference", spy)
+        source = fixtures.make_mov(tmp_path / "src" / "split diopter Render.mov", count=8, rate="24000/1001")
+        job = self.job(tmp_path, source, "MELT0001_avidRef01_v01.mp4", 5)
+        deliverable = render.render_job(job)
+        assert deliverable.status == "done", deliverable.qc
+        assert handed == [None]
+        assert deliverable.frame_count == 6
+        video = video_stream(job.destination)
+        assert (video["r_frame_rate"], video["width"], video["height"]) == ("24/1", *SMALL)
+        assert "audio" not in [s["codec_type"] for s in streams(job.destination)]
+
+    def test_a_png_is_copied_byte_for_byte(self, tmp_path: Path) -> None:
+        source = fixtures.make_still(tmp_path / "src" / "frame.png")
+        job = self.job(tmp_path, source, "MELT0001_avidRef01_v01.png", 0)
+        assert render.render_job(job).status == "done"
+        assert job.destination.read_bytes() == source.read_bytes()
+
+    def test_a_tif_still_becomes_a_jpg(self, tmp_path: Path) -> None:
+        source = fixtures.make_still(tmp_path / "src" / "frame.tif")
+        job = self.job(tmp_path, source, "MELT0001_avidRef01_v01.jpg", 0)
+        deliverable = render.render_job(job)
+        assert deliverable.status == "done"
+        video = video_stream(job.destination)
+        assert (video["codec_name"], video["width"], video["height"]) == ("mjpeg", *SMALL)
+
+    def test_a_lone_exr_becomes_a_jpg(self, tmp_path: Path) -> None:
+        fixture = fixtures.make_exr_sequence(tmp_path / "src", count=1, first=1001)
+        job = self.job(tmp_path, fixture.path_for(1001), "MELT0001_avidRef01_v01.jpg", 0)
+        assert render.render_job(job).status == "done"
+        assert video_stream(job.destination)["codec_name"] == "mjpeg"
+
+    def test_its_pixels_come_out_as_they_went_in(self, tmp_path: Path) -> None:
+        """No transform: a flat Rec.709 pre-render comes out at the same code values. Flat, because
+        on a busy picture this small 4:2:0 and x264 move pixels by several values."""
+
+        def first_frame(path: Path) -> bytes:
+            command = ["ffmpeg", "-v", "error", "-i", str(path), "-frames:v", "1", "-f", "rawvideo"]
+            return subprocess.run(
+                [*command, "-pix_fmt", "rgb24", "-"], check=True, capture_output=True
+            ).stdout
+
+        source = tmp_path / "src" / "pre Render.mp4"
+        source.parent.mkdir(parents=True)
+        subprocess.run(
+            [
+                *("ffmpeg", "-v", "error", "-f", "lavfi", "-i", "color=c=0x8040c0:size=64x36:rate=24"),
+                *(
+                    "-frames:v",
+                    "4",
+                    "-c:v",
+                    "libx264",
+                    "-pix_fmt",
+                    "yuv420p",
+                    "-colorspace",
+                    "bt709",
+                    str(source),
+                ),
+            ],
+            check=True,
+        )
+        job = replace(
+            self.job(tmp_path, source, "MELT0001_avidRef01_v01.mp4", 3),
+            source_color_space="bt709",
+            source_color_range="tv",
+        )
+        assert render.render_job(job).status == "done"
+        before, after = first_frame(source), first_frame(job.destination)
+        assert len(before) == len(after)
+        assert max(abs(a - b) for a, b in zip(before, after, strict=True)) <= 1

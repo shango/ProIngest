@@ -280,13 +280,13 @@ lower inside it than the measured y.
   In) + n`; held still on a freeze.
 - **Bottom centre**: `Primary Effect: <Scene>`, from the CSV's `Scene` column.
 - **Bottom right**: `SHOT_elem` (`MELT0001_pl01`), then **` Take NN` when the CSV's `Take` is above 1**
-  (`SECA0009_pl01 Take 02`; user, 2026-10-07). Take 1 or a blank Take shows no take (`naming.take_label`).
+  (`SECA0009_pl01_Take_02`; user, 2026-10-07; underscores, never a space, user 2026-10-13). Take 1 or a blank Take shows no take (`naming.take_label`).
 
 **Picture in picture on a plate** (`stringout.INSET_CORNERS`) (user, 2026-09-29): over each `pl` event, the shot's **cp top left** and **wit top right**, each 480x270 flush in its corner (Resolve's zoom 0.25 at X -720/+720, Y 405). The first cp and the first wit of the shot in EDL order, from their **delivered HD references**, each playing from its own cut In at the plate's first frame, and **gone** when it runs out or at the plate's Out, whichever is first. No cp or wit, or none delivered: no inset in that corner. The top centre name sits between them (x 499 to 1411 on turnover097). Each inset carries its own element (`cp01`, `wit01`) burned in bottom left inside it, Open Sans 32 px against the frame's 42 (user, 2026-09-29), and it goes when the inset does.
 
 **A reference clip plays** (user, 2026-10-07): a chart, ball or size ref is a video on the timeline, so its event plays its cut at full speed, graded, from the source; it is still delivered as one EXR frame. **Any held frame plays for one second** (user, 2026-09-29): a frame hold (`M2` at 0) or any one frame cut, held for 24 frames whatever the EDL gives it (**except an HDRI, which keeps the EDL's length** and plays its pre-render, user 2026-10-07), so the stringout runs longer than the EDL by that much. Taken from the source, such a frame is **coloured through its AMF** (input transform, CLF nodes, output transform) as Resolve shows it; a still's delivered EXR stays ungraded. An event with no known source is black for the same second.
 
-**A style frame** (user, 2026-10-07; QC-085): a pre-graded PNG or JPG, `Shot Type` `styleFrame`, cut before its shot's plate. It is held **as it is**, ungraded, **for the EDL's length**, never delivered. Bottom right reads `SECA0009 styleFrame`, and there is **no `Frame:` counter**, since it has no delivered frame to count. Its file missing is black for the event's length (QC-144).
+**A style frame** (user, 2026-10-07; QC-085): a pre-graded PNG or JPG, `Shot Type` `styleFrame`, cut before its shot's plate. It is held **as it is**, ungraded, **for the EDL's length**, never delivered. Bottom right reads `SECA0009_styleFrame` (underscores, never a space, user 2026-10-13), and there is **no `Frame:` counter**, since it has no delivered frame to count. Its file missing is black for the event's length (QC-144).
 
 The bottom line sits at y 892. No source timecode is burned in. White text with no box is hard
 to read on a bright frame; that matches Ben's template and is not yet decided (PROGRESS).
@@ -496,8 +496,12 @@ AMF, CLF or clip into the folder and re-scans.
 
 ## 15b. Re-scan, on a shot or a turnover (D11, D12)
 
-**One right-click entry, Re-scan, on a shot and on a turnover heading** (user, 2026-09-25). It
-replaced Reset and Re-run. The editor swaps a file in the folder with the batch still open, then
+**Re-scan is a right-click entry on a shot and on a turnover heading** (user, 2026-09-25). It
+replaced Reset and Re-run. A shot's menu also has **Skip Shot**, the same as Ctrl+K, which reads
+**Unskip Shot** on a shot already skipped (user, 2026-10-12). A turnover heading's menu has **Skip
+Turnover**: every shot in it is skipped with one reason, asked once, and a shot skipped before
+keeps its own. Once every shot in it is skipped it reads **Unskip Turnover** and puts them all
+back. The editor swaps a file in the folder with the batch still open, then
 Re-scans: a shot for a replaced clip, the heading for a replaced EDL or CSV.
 
 - It reads the turnover again, keeping the editor's trims, skips and notes (D8), so every rule

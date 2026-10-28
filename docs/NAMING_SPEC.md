@@ -36,11 +36,14 @@ The two fields are read separately (show prefix configurable, default `[A-Z]{2,6
 ```
 Shot        ^(?P<show>[A-Z]{2,6})(?P<shot>\d{4})$
 Shot Type   ^(?P<kind>[A-Za-z]+)(?P<index>\d{1,2})?$   kind, casefolded, one of
-            pl cp el wit re colorChart mirrorBall greyBall sizeRef   (cl accepted as cp)
+            pl cp el colorChart mirrorBall greyBall sizeRef   (cl accepted as cp; re retired for recon)
+Witness     ^(?P<plate>pl\d{0,2})_wit(?P<index>\d{1,2})?$   pl01_wit01, pl02_wit01
+            HDRI##, LDRI##, styleFrame, avidRef##, meas## and recon## are read on their own, outside this list
 ```
 
 - `show` + `shot` = shot code (`MELT0001`).
 - `kind` + `index` = element id (`pl01`), the index zero-padded to two digits and `01` when bare.
+- **A witness cam names the plate it covers** (user, 2026-10-23): Ben types `pl01_wit01` or `pl02_wit01`, and every one of its deliverables carries both, `MELT0001_pl02_wit01_raw_4k_v01`. A bare `wit01` names no plate and is QC-010. Its stringout inset goes over the plate it names. This replaces the shooters' spec sheet's `MELT0001_wit01_...`, which is out of date.
 - A `kind` that is one of the four reference stills marks a single-frame reference still. **Changed 2026-09-21 by the shooters' updated spec**: a reference still is keyed to the **shot code**, not to an element, and its delivered name no longer carries one.
 
   ```
@@ -58,11 +61,14 @@ Shot Type   ^(?P<kind>[A-Za-z]+)(?P<index>\d{1,2})?$   kind, casefolded, one of
 | pl | main plate | raw 4k exr seq, raw HD exr seq, ref 4k mp4, ref HD mp4, audio wav |
 | cp | clean plate | raw 4k, raw HD, ref 4k, ref HD |
 | el | element plate | raw 4k, raw HD, ref 4k, ref HD |
-| wit | witness cam | raw 4k, raw HD, ref 4k, ref HD |
-| re | recon plate | raw 4k, raw HD, ref 4k, ref HD |
+| wit | witness cam, `Shot Type` `pl02_wit01` | raw 4k, raw HD, ref 4k, ref HD, named `{shotcode}_{plate}_wit{idx}_...` |
+| ~~re~~ | ~~recon plate~~ | **retired 2026-10-27 (user): "It's now recon"**. `re01` is QC-010 and says to write `recon01` |
 | aux still | reference still, keyed to the shot code | single 4k exr, converted and never graded |
-| HDRI | the HDRI, `Shot Type` `HDRI` (QC-080) | the EXR, **copied byte for byte** and never checked (user, 2026-10-07) |
+| HDRI | the HDRI, `Shot Type` `HDRI01`, `HDRI02` (QC-080; a bare `HDRI` is `HDRI01`, user 2026-10-27) | the EXR, **copied byte for byte** and never checked (user, 2026-10-07), and **Ben's pre-render of its event as an mp4** beside it (user, 2026-10-27): the whole render, the size it is, silent, graded as the stringout shows it |
+| LDRI | the LDRI, `Shot Type` `LDRI01` (QC-080): an HDRI whose file is a JPG or PNG | the JPG or PNG, **copied byte for byte** under its own extension and never checked (user, 2026-10-08), and its pre-render as an mp4, as it is |
 | styleFrame | a pre-graded PNG or JPG held before the shot's plate (QC-085) | **nothing**: shown on the stringout only, as it is (user, 2026-10-07) |
+| avidRef## | an Avid reference (QC-088), its colour baked in | **never an EXR** (user, 2026-10-22): a movie (a `Render` mp4 or mov, or an image sequence) is encoded to one mp4 of its cut at 24, the size it is, no grade, no audio; a held still, one image file, is copied byte for byte when a JPG or PNG and otherwise becomes a JPG. Not on the tracker |
+| meas##, recon## | a measurement and a recon (QC-088, user 2026-10-27), never colour corrected | **as an Avid reference is**: a movie is one mp4 of its cut, a still is itself or a JPG. Not on the tracker |
 
 **Nothing else is a deliverable** (2026-09-22). camData, BTS stills and the lens grid carry
 no `Shot Type`, which is the whole of the tool's scope, so the tool neither
@@ -82,7 +88,10 @@ Tokens: `{shotcode}` `{elem}` `{kind}` `{res}` `{ver}` `{frame}` `{aux}` `{auxid
 | raw exr folder | `{shotcode}_{elem}_raw_{res}_v{ver}` | `MELT0001_pl01_raw_4k_v01` |
 | ref mp4 | `{shotcode}_{elem}_ref_{res}_v{ver}.mp4` | `MELT0001_pl01_ref_HD_v01.mp4` |
 | audio | `{shotcode}_{elem}_audio_v{ver}.wav` | `MELT0001_pl01_audio_v01.wav` |
-| HDRI exr | `{shotcode}_pl01_HDRI_{idx}_v{ver}.exr` | `SECA0009_pl01_HDRI_01_v01.exr`. As the tracker writes it (`BACH0002_pl01_HDRI_01_v01.exr`); the shooters' spec drops the index. `naming.hdri_exr` (2026-10-07) |
+| HDRI exr | `{shotcode}_pl01_HDRI{idx}_v{ver}.exr` | `SECA0009_pl01_HDRI01_v01.exr`. **`01` is the Shot Type's** (`HDRI01`; bare `HDRI` is 01), with no underscore before it, like every other number (user, 2026-10-27). It was the CSV's `Take`, written `HDRI_01`, from 2026-10-12; that spelling still counts as a version. `naming.hdri_exr` |
+| LDRI image | `{shotcode}_pl01_LDRI{idx}_v{ver}.{jpg\|jpeg\|png}` | `SECA0009_pl01_LDRI01_v01.jpg`. The HDRI's name mirrored, with the source's own extension, lowercased (user, 2026-10-08). The tracker has no LDRI column. `naming.ldri_image` |
+| HDRI or LDRI pre-render | `{shotcode}_pl01_{HDRI\|LDRI}{idx}_v{ver}.mp4` | `SECA0009_pl01_HDRI02_v01.mp4`, beside the file it is named after (user, 2026-10-27; the name assumed, OQ-88). `naming.hdri_prerender_mp4` |
+| Avid reference, measurement, recon | `{shotcode}_{avidRef\|meas\|recon}{idx}_v{ver}.{mp4\|jpg\|jpeg\|png}` | `INCA5002_avidRef01_v01.mp4`, `INCA5002_meas01_v01.mp4`, `INCA5002_recon02_v01.jpg`. No size tag (user, 2026-10-22 and 2026-10-27). `naming.as_is_file` |
 | aux still exr | `{shotcode}_{aux}_{auxidx}_4k_v{ver}.exr` | `MELT0001_colorChart_01_4k_v01.exr`. **No element segment** (shooters' spec, 2026-09-21): a reference still is keyed to the shot code |
 | stringout mp4 | `turnover{num:03}_{MM}_{DD}_{YY}_{shooter}_SO_v{ver}.mp4`, in `<show>/_reports/` | `turnover121_09_23_26_danielluckett_SO_v01.mp4`. Dated as the turnover folder, not the render; month, day and year are always two digits each (user, 2026-10-05; a folder's four digit year is written as its last two). A stringout written earlier with a four digit year still counts as a version. `naming.stringout_stem` (2026-09-25) |
 
@@ -130,7 +139,11 @@ the sheet does not go looking for the rule behind one of them.
       <shotcode>_<elem>_ref_HD_v01.mp4
       <shotcode>_<elem>_audio_v01.wav
       <shotcode>_colorChart_01_4k_v01.exr     (keyed to the shot code, not an element)
-      <shotcode>_pl01_HDRI_01_v01.exr         (the HDRI, copied as it is)
+      <shotcode>_pl01_HDRI01_v01.exr          (the HDRI, copied as it is)
+      <shotcode>_pl01_HDRI01_v01.mp4          (its pre-render)
+      <shotcode>_pl01_LDRI01_v01.jpg          (or .png: an LDRI, copied as it is, and its .mp4)
+      <shotcode>_avidRef01_v01.mp4            (or .jpg or .png: an Avid reference, never an EXR;
+      <shotcode>_meas01_v01.mp4                meas and recon the same)
     _reports/
       shot_tracker_<batchname>_<date>.xlsx      (<date> is YYYYMMDD, so name order is date order)
       qc_ingest_log_<batchname>_<date>.xlsx
@@ -157,7 +170,7 @@ Shared fragments:
 
 ```
 shotcode  (?P<show>[A-Z]{2,6})(?P<shot>\d{4})
-elem      (?P<type>pl|cp|el|wit|re)(?P<idx>\d{2})
+elem      (?:(?P<plate>pl\d{2})_(?=wit))?(?P<type>pl|cp|el|wit)(?P<idx>\d{2})   the plate only before wit
 res       (?P<res>4k|HD)
 ver       v(?P<ver>\d{2})
 ```
@@ -170,7 +183,10 @@ One anchored pattern per kind, tried in order. They are mutually exclusive becau
 | raw exr folder | `^<sc>_raw_(?P<res>4k\|HD)_v(?P<ver>\d{2})$` |
 | ref mp4 | `^<sc>_ref_(?P<res>4k\|HD)_v(?P<ver>\d{2})\.mp4$` |
 | audio | `^<sc>_audio_v(?P<ver>\d{2})\.wav$` |
-| HDRI exr | `^<shotcode>_pl01_(?P<aux>HDRI)_(?P<auxidx>\d{2})_v(?P<ver>\d{2})\.exr$` |
+| HDRI exr | `^<shotcode>_pl01_(?P<aux>HDRI)_?(?P<auxidx>\d{2})_v(?P<ver>\d{2})\.exr$` (`_?` reads the spelling before 2026-10-27) |
+| LDRI image | `^<shotcode>_pl01_(?P<aux>LDRI)_?(?P<auxidx>\d{2})_v(?P<ver>\d{2})\.(?P<ext>jpe?g\|png)$` (read back as kind `hdri`) |
+| HDRI or LDRI pre-render | `^<shotcode>_pl01_(?P<aux>HDRI\|LDRI)(?P<auxidx>\d{2})_v(?P<ver>\d{2})\.mp4$` (kind `hdri_ref`) |
+| Avid reference, measurement, recon | `^<shotcode>_(?P<aux>avidRef\|meas\|recon)(?P<auxidx>\d{2})_v(?P<ver>\d{2})\.(?P<ext>mp4\|jpe?g\|png)$` (kind `avidref`) |
 | aux still exr | `^<shotcode>_(?P<aux>colorChart\|mirrorBall\|greyBall\|sizeRef)_(?P<auxidx>\d{2})_4k_v(?P<ver>\d{2})\.exr$` |
 
 The `show` prefix pattern is the same configurable value as section 1, so a Settings change applies to both directions at once.

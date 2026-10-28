@@ -720,7 +720,7 @@ def check_source_encoding(row: ShotRow) -> list[QCResult]:
                 "QC-047",
                 "error" if blocking else "warning",
                 "row",
-                f"the AMF's input transform {grade.input_transform} is not one {color.BUILTIN_CONFIG} has",
+                f"the AMF's input transform {grade.input_transform} is not one the tool knows",
             )
         ]
     said = (
@@ -770,9 +770,15 @@ def check_duplicate_name(row: ShotRow, counts: dict[str, int]) -> list[QCResult]
 
 
 def is_hdri(row: ShotRow) -> bool:
-    """An HDRI row (QC-080): its EXR is copied as it is and no row rule runs on it
+    """An HDRI or LDRI row (QC-080): its file is copied as it is and no row rule runs on it
     (user, 2026-10-07). Its source fps or range said as errors was noise (2026-09-29)."""
     return any(result.rule_id == "QC-080" for result in row.qc)
+
+
+def is_ldri(row: ShotRow) -> bool:
+    """An LDRI row (user, 2026-10-08): an HDRI row whose file is a JPG or PNG, shown on the
+    stringout as it is. From the CSV's `Shot Type`, so a row with no shot code knows it too."""
+    return is_hdri(row) and naming.hdri_kind(row.csv_shot_type) == naming.LDRI_KIND
 
 
 def is_prerender_name(file_name: str) -> bool:
@@ -810,6 +816,13 @@ def is_style_frame(row: ShotRow) -> bool:
     return any(result.rule_id == "QC-085" for result in row.qc)
 
 
+def is_stringout_only(row: ShotRow) -> bool:
+    """A style frame (QC-085) or an Avid reference (QC-088): shown on the stringout as it is, and
+    no rule runs on it (user, 2026-10-07 and 2026-10-14). A style frame is never delivered; an
+    Avid reference is, as it is (user, 2026-10-22)."""
+    return any(result.rule_id in ("QC-085", "QC-088") for result in row.qc)
+
+
 def run_row_rules(
     row: ShotRow,
     project_rate: FrameRate,
@@ -819,7 +832,7 @@ def run_row_rules(
     """Every row rule that is a pure function of the model, in rule ID order."""
     if is_hdri(row):
         return check_prerender_color(row)
-    if is_style_frame(row):
+    if is_stringout_only(row):
         return []
     results: list[QCResult] = []
     results.extend(check_duplicate_name(row, name_counts or {}))
@@ -1191,7 +1204,7 @@ def preflight(batch: Batch, decoders: frozenset[str] | None = None) -> None:
         turnover.qc.extend(check_turnover_folder(turnover))
     for row in batch.rows:
         row.qc = [result for result in row.qc if result.rule_id not in OWNED_PREFLIGHT_RULES]
-        if is_hdri(row) or is_style_frame(row):
+        if is_hdri(row) or is_stringout_only(row):
             continue  # copied as it is, or not delivered, with no checks (user, 2026-10-07)
         row.qc.extend(check_source_codec(row, decoders))
         row.qc.extend(check_color_chain(row))
@@ -1258,6 +1271,8 @@ def run_phase_b(job: DeliverableJob, deliverable: Deliverable) -> list[QCResult]
         "raw_dir": _verify_sequence,
         "aux_still": _verify_still,
         "hdri": _no_checks,
+        "hdri_ref": _verify_reference,
+        "avidref": _verify_avidref,
         "ref_mp4": _verify_reference,
         "audio": _verify_audio,
     }.get(job.kind)
@@ -1270,6 +1285,14 @@ def run_phase_b(job: DeliverableJob, deliverable: Deliverable) -> list[QCResult]
 
 def _no_checks(job: DeliverableJob, deliverable: Deliverable) -> list[QCResult]:
     """An HDRI is copied as it is, and no check runs on it (user, 2026-10-07)."""
+    return []
+
+
+def _verify_avidref(job: DeliverableJob, deliverable: Deliverable) -> list[QCResult]:
+    """An Avid reference's mp4 is checked as a reference is (QC-110 to QC-114); a still is not
+    checked, as an HDRI is not."""
+    if job.destination.suffix.lower() == ".mp4":
+        return _verify_reference(job, deliverable)
     return []
 
 
@@ -1692,6 +1715,8 @@ DELIVERABLE_RULES_BY_KIND: dict[str, tuple[str, ...]] = {
     "raw_dir": ("QC-101", "QC-102", "QC-103", "QC-104", "QC-105", "QC-106", "QC-107"),
     "aux_still": ("QC-103", "QC-104", "QC-105", "QC-106"),
     "hdri": (),
+    "hdri_ref": ("QC-110", "QC-111", "QC-113", "QC-114", "QC-115"),
+    "avidref": ("QC-110", "QC-111", "QC-113", "QC-114", "QC-115"),
     "ref_mp4": ("QC-110", "QC-111", "QC-112", "QC-113", "QC-114", "QC-115"),
     "audio": ("QC-120", "QC-121"),
 }
@@ -1699,7 +1724,9 @@ DELIVERABLE_RULES_BY_KIND: dict[str, tuple[str, ...]] = {
 
 This is what makes NA mean something in the log: an mp4 has no opinion about EXR
 compression, so QC-105 against a reference reads NA rather than a PASS it never
-earned. QC-100 is not here because every kind owes it.
+earned. QC-100 is not here because every kind owes it. An Avid reference's mp4, and an HDRI's
+pre-render's, owes the reference rules but the size, which is its own; an Avid reference's still
+owes none (`_verify_avidref`).
 """
 
 
@@ -1716,6 +1743,8 @@ def deliverable_rule_state(deliverable: Deliverable, rule_id: str) -> str:
         return "FAIL" if rule_id == RENDER_FAILED else "NA"
     if rule_id == RENDER_FAILED:
         return "PASS"
+    if deliverable.kind == "avidref" and deliverable.path.suffix.lower() != ".mp4":
+        return "NA"
     return "PASS" if rule_id in DELIVERABLE_RULES_BY_KIND.get(deliverable.kind, ()) else "NA"
 
 

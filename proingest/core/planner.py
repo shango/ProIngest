@@ -18,7 +18,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Literal
 
-from proingest.core import clf, frames, naming, resize
+from proingest.core import clf, color, frames, media, naming, resize
 from proingest.core.models import (
     Batch,
     Deliverable,
@@ -36,7 +36,7 @@ TEMP_SUFFIX = ".part"
 RESOLUTIONS: dict[Resolution, tuple[int, int]] = {"4k": (3840, 2160), "HD": (1920, 1080)}
 """Exact target sizes, docs/COLOR_AND_FORMAT.md section 4. Never derived from the source."""
 
-JobKind = Literal["raw_dir", "ref_mp4", "audio", "aux_still", "hdri"]
+JobKind = Literal["raw_dir", "ref_mp4", "audio", "aux_still", "hdri", "hdri_ref", "avidref"]
 
 PICTURE_DELIVERABLES: tuple[tuple[JobKind, Resolution], ...] = (
     ("raw_dir", "4k"),
@@ -224,6 +224,9 @@ class _Shot:
     audio: Path | None
     color: clf.ShotColor
     freeze: bool = False
+    prerender: MediaInfo | None = None
+    """An HDRI's or LDRI's pre-render, delivered as an mp4 beside its file (user, 2026-10-27)."""
+    prerender_color: clf.ShotColor | None = None
 
 
 def effective_identity(row: ShotRow, show_pattern: str = naming.DEFAULT_SHOW_PATTERN) -> ShotIdentity | None:
@@ -276,7 +279,9 @@ def plannable_identity(row: ShotRow, show_pattern: str = naming.DEFAULT_SHOW_PAT
         return None
     identity = effective_identity(row, show_pattern)
     # A style frame is only ever on the stringout (QC-085).
-    return None if identity is not None and identity.is_style_frame else identity
+    if identity is not None and identity.is_style_frame:
+        return None
+    return identity
 
 
 def resolve_version(directory: Path, show_pattern: str = naming.DEFAULT_SHOW_PATTERN) -> int:
@@ -312,11 +317,15 @@ def plan_row(
         audio=_audio_source(row),
         color=shot_color,
         freeze=row.freeze,
+        prerender=row.hdri_render,
+        prerender_color=prerender_color(row, shot_color),
     )
     if identity.is_still:
         plan = _aux_plan(shot)
     elif identity.is_hdri:
         plan = _hdri_plan(shot)
+    elif identity.is_as_is:
+        plan = _avidref_plan(shot)
     else:
         plan = RowPlan(jobs=[_picture_job(shot, kind, res) for kind, res in TYPE_TABLE[identity.kind]])
         audio = _audio_job(shot)
@@ -548,17 +557,100 @@ def _audio_job(shot: _Shot) -> DeliverableJob | None:
 
 
 def _hdri_plan(shot: _Shot) -> RowPlan:
-    """An HDRI delivers its EXR, copied byte for byte (user, 2026-10-07). A copy has no
-    frame range and no colour."""
+    """An HDRI delivers its EXR, copied byte for byte (user, 2026-10-07), and an LDRI its JPG
+    or PNG, under the extension it came with (user, 2026-10-08). A copy has no frame range
+    and no colour."""
+    identity, source = shot.identity, shot.media.path
+    name = (
+        naming.ldri_image(identity, shot.version, source.suffix)
+        if identity.is_ldri
+        else naming.hdri_exr(identity, shot.version)
+    )
+    jobs = [
+        DeliverableJob(
+            kind="hdri",
+            source=source,
+            destination=shot.directory / name,
+            version=shot.version,
+            shot_code=shot.identity.shot_code,
+            elem=naming.HDRI_ELEMENT,
+        )
+    ]
+    if shot.prerender is not None:
+        jobs.append(_prerender_job(shot, shot.prerender))
+    return RowPlan(jobs=jobs)
+
+
+def _prerender_job(shot: _Shot, render: MediaInfo) -> DeliverableJob:
+    """Ben's pre-render as an mp4 (user, 2026-10-27): the whole of it, the size it is, silent,
+    coloured as the stringout shows it (`prerender_color`)."""
+    return DeliverableJob(
+        kind="hdri_ref",
+        source=render.path,
+        destination=shot.directory / naming.hdri_prerender_mp4(shot.identity, shot.version),
+        version=shot.version,
+        shot_code=shot.identity.shot_code,
+        elem=naming.HDRI_ELEMENT,
+        in_frame=render.start_frame,
+        out_frame=render.max_available_out,
+        source_is_sequence=render.is_sequence,
+        source_size=render.resolution,
+        rate=render.rate,
+        source_color_space=render.color_space,
+        source_color_range=render.color_range,
+        source_start_frame=render.start_frame,
+        # The display alone labels an ungraded one; no input transform and no cube.
+        shot_color=shot.prerender_color or clf.ShotColor(display=shot.color.display),
+    )
+
+
+def prerender_color(row: ShotRow, shot_color: clf.ShotColor) -> clf.ShotColor | None:
+    """How an HDRI's pre-render is seen, on the stringout and delivered: the HDRI's grade over
+    linear Rec.709 (QC-083). None, the pre-render as it is, for an LDRI (user, 2026-10-08) or
+    when the pre-render is on the timeline and its AMF carries no grade (QC-009)."""
+    ldri = naming.hdri_kind(row.csv_shot_type) == naming.LDRI_KIND
+    on_timeline = Path(row.clip_name).suffix.lower() in media.VIDEO_EXTENSIONS
+    if ldri or (on_timeline and not clf.has_grade(row)):
+        return None
+    return replace(shot_color, source_encoding=color.HDRI_RENDER_ENCODING)
+
+
+def _avidref_plan(shot: _Shot) -> RowPlan:
+    """An Avid reference, never an EXR (user, 2026-10-22), and a measurement or a recon the
+    same way (user, 2026-10-27). Its colour is baked in, or it is never colour corrected, so
+    nothing is graded. A movie (an mp4, a `.mov` pre-render, or an image sequence) is encoded to an
+    mp4 over its cut at 24, the size it is; a held still, one image file, is copied byte for
+    byte when it is a JPG or PNG and otherwise becomes a JPG. No audio: only a plate
+    delivers any."""
+    source = shot.media
+    extension = source.path.suffix.lower()
+    movie = source.is_sequence or extension in media.VIDEO_EXTENSIONS
+    if movie:
+        suffix = ".mp4"
+    elif extension in naming.AS_IS_STILL_EXTENSIONS:
+        suffix = source.path.suffix
+    else:
+        suffix = ".jpg"
+    first = shot.current.in_frame
     return RowPlan(
         jobs=[
             DeliverableJob(
-                kind="hdri",
-                source=shot.media.path,
-                destination=shot.directory / naming.hdri_exr(shot.identity, shot.version),
+                kind="avidref",
+                source=source.path,
+                destination=shot.directory / naming.as_is_file(shot.identity, shot.version, suffix),
                 version=shot.version,
                 shot_code=shot.identity.shot_code,
-                elem=naming.HDRI_ELEMENT,
+                elem=shot.identity.elem,
+                in_frame=first,
+                out_frame=shot.current.out_frame if movie else first,
+                source_is_sequence=source.is_sequence,
+                source_size=source.resolution,
+                rate=source.rate,
+                source_color_space=source.color_space,
+                source_color_range=source.color_range,
+                source_start_frame=source.start_frame,
+                # The display only, which labels the mp4; no grade and no input transform.
+                shot_color=clf.ShotColor(display=shot.color.display),
             )
         ]
     )

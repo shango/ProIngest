@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from proingest.core import color, naming, planner
+from proingest.core import clf, color, naming, planner
 from proingest.core.models import (
     Batch,
     FrameRate,
@@ -24,6 +24,7 @@ from proingest.core.models import (
     ShotRow,
     Turnover,
 )
+from proingest.core.naming import ShotIdentity
 from tests.fixtures.names import identity_of
 
 ROOT = Path("/delivery")
@@ -33,6 +34,7 @@ GRADE = Grade(
     display="Gamma 2.2 Rec.709 - Display",
     view="ACES 2.0 - SDR 100 nits (Rec.709)",
 )
+GRADE_COLOR = clf.ShotColor(source_encoding="Apple Log", display="Gamma 2.2 Rec.709 - Display")
 SHOT_DIR = ROOT / "MELT" / "MELT0001"
 RATE = FrameRate(24)
 
@@ -85,6 +87,110 @@ def kinds(jobs: list[planner.DeliverableJob]) -> list[str]:
     return [job.kind for job in jobs]
 
 
+class TestAnHdriPreRender:
+    """User, 2026-10-27: the HDRI's file is delivered, and its pre-render, which the stringout
+    shows, is delivered beside it as an mp4."""
+
+    def hdri(self, kind: str, clip_name: str = "SECA0009_pl01_HDRI.exr", render: bool = True) -> ShotRow:
+        graded = Grade(amf=Path("/t/x.amf"), input_transform="", looks=(GradeLook("clf", "/t/x.clf"),))
+        return row(
+            clip_name,
+            identity=naming.ShotIdentity("SECA0009", kind, "02"),
+            csv_shot_type=f"{kind}02",
+            grade=graded,
+            media=media("/t/hdri.exr" if kind == naming.HDRI_KIND else "/t/ldri.jpg", is_sequence=False),
+            hdri_render=replace(media("/t/hdri.mp4", is_sequence=False), start_frame=0, frame_count=48)
+            if render
+            else None,
+        )
+
+    def test_an_hdri_delivers_its_exr_and_its_pre_render_graded(self) -> None:
+        jobs = planner.plan_row(self.hdri(naming.HDRI_KIND), ROOT, 1, shot_color=GRADE_COLOR).jobs
+        assert [(job.kind, job.name) for job in jobs] == [
+            ("hdri", "SECA0009_pl01_HDRI02_v01.exr"),
+            ("hdri_ref", "SECA0009_pl01_HDRI02_v01.mp4"),
+        ]
+        mp4 = jobs[1]
+        assert (mp4.source, mp4.in_frame, mp4.out_frame, mp4.audio_source, mp4.res) == (
+            Path("/t/hdri.mp4"),
+            0,
+            47,
+            None,
+            None,
+        )
+        assert mp4.shot_color == replace(GRADE_COLOR, source_encoding="Linear Rec.709 (sRGB)")
+
+    def test_an_ldri_pre_render_is_delivered_as_it_is(self) -> None:
+        jobs = planner.plan_row(self.hdri(naming.LDRI_KIND), ROOT, 1, shot_color=GRADE_COLOR).jobs
+        assert [job.name for job in jobs][1] == "SECA0009_pl01_LDRI02_v01.mp4"
+        assert jobs[1].shot_color == clf.ShotColor(display=GRADE_COLOR.display)
+
+    def test_no_pre_render_delivers_the_exr_alone(self) -> None:
+        jobs = planner.plan_row(self.hdri(naming.HDRI_KIND, render=False), ROOT, 1).jobs
+        assert [job.kind for job in jobs] == ["hdri"]
+
+
+class TestAnAvidRef:
+    """User, 2026-10-22: "avidRef types are never processed to exr files." A movie is an mp4, a
+    held still is delivered as it is, and neither is graded ("color is baked in")."""
+
+    def avidref(self, path: str, is_sequence: bool = False) -> ShotRow:
+        graded = Grade(amf=Path("/t/x.amf"), input_transform="", looks=(GradeLook("clf", "/t/x.clf"),))
+        return row(
+            identity=naming.ShotIdentity("MELT0001", naming.AVIDREF_KIND, "01"),
+            grade=graded,
+            media=media(path, is_sequence=is_sequence),
+        )
+
+    def test_a_mov_render_is_one_ungraded_mp4_over_its_cut(self) -> None:
+        mov = self.avidref("/t/split diopter Render.mov")
+        jobs = planner.plan_row(mov, ROOT, 1, shot_color=GRADE_COLOR).jobs
+        assert names(jobs) == ["MELT0001_avidRef01_v01.mp4"]
+        job = jobs[0]
+        assert (job.kind, job.destination.parent, job.res) == ("avidref", SHOT_DIR, None)
+        assert (job.in_frame, job.out_frame, job.audio_source) == (1001, 1240, None)
+        assert job.shot_color == clf.ShotColor(display=GRADE_COLOR.display)
+
+    def test_a_held_png_is_copied_under_its_own_extension(self) -> None:
+        jobs = planner.plan_row(self.avidref("/t/frame.PNG"), ROOT, 1).jobs
+        assert names(jobs) == ["MELT0001_avidRef01_v01.png"]
+        assert (jobs[0].in_frame, jobs[0].out_frame) == (1001, 1001)
+
+    @pytest.mark.parametrize("path", ["/t/frame.tif", "/t/frame.1001.exr"])
+    def test_any_other_still_is_a_jpg_never_an_exr(self, path: str) -> None:
+        jobs = planner.plan_row(self.avidref(path), ROOT, 1).jobs
+        assert names(jobs) == ["MELT0001_avidRef01_v01.jpg"]
+
+    def test_an_image_sequence_is_a_movie(self) -> None:
+        jobs = planner.plan_row(self.avidref("/t/frame.1001.exr", is_sequence=True), ROOT, 1).jobs
+        assert names(jobs) == ["MELT0001_avidRef01_v01.mp4"]
+        assert (jobs[0].in_frame, jobs[0].out_frame) == (1001, 1240)
+
+    def test_its_name_reads_back(self) -> None:
+        for name in ("MELT0001_avidRef01_v03.mp4", "MELT0001_avidRef02_v01.jpg"):
+            parsed = naming.parse_output_name(name)
+            assert parsed is not None and parsed.kind == "avidref"
+        assert naming.next_version(["MELT0001_avidRef01_v03.mp4"]) == 4
+
+    @pytest.mark.parametrize(
+        ("kind", "path", "name"),
+        [
+            (naming.MEAS_KIND, "/t/tape.mov", "MELT0001_meas02_v01.mp4"),
+            (naming.RECON_KIND, "/t/set.JPG", "MELT0001_recon02_v01.jpg"),
+            (naming.RECON_KIND, "/t/set.dng", "MELT0001_recon02_v01.jpg"),
+        ],
+    )
+    def test_a_measurement_or_recon_is_delivered_the_same_way(self, kind: str, path: str, name: str) -> None:
+        """User, 2026-10-27: "If the file on the timeline is a still, deliver a still, if the
+        file is a movie, deliver an mp4", never colour corrected."""
+        shot = replace(self.avidref(path), identity=naming.ShotIdentity("MELT0001", kind, "02"))
+        jobs = planner.plan_row(shot, ROOT, 1, shot_color=GRADE_COLOR).jobs
+        assert names(jobs) == [name] and jobs[0].kind == "avidref"
+        assert jobs[0].shot_color == clf.ShotColor(display=GRADE_COLOR.display)
+        parsed = naming.parse_output_name(name)
+        assert parsed is not None and (parsed.kind, parsed.aux, parsed.aux_index) == ("avidref", kind, "02")
+
+
 class TestTypeTable:
     def test_plate_delivers_two_sequences_two_refs_and_audio(self) -> None:
         plan = planner.plan_row(row(audio_path=Path("/turnover/MELT0001_pl01.wav")), ROOT, 1)
@@ -96,7 +202,7 @@ class TestTypeTable:
             "MELT0001_pl01_audio_v01.wav",
         ]
 
-    @pytest.mark.parametrize("elem_type", ["cp", "el", "wit", "re"])
+    @pytest.mark.parametrize("elem_type", ["cp", "el", "wit"])
     def test_every_other_type_delivers_the_four_picture_outputs(self, elem_type: str) -> None:
         clip = f"MELT0001_{elem_type}01"
         plan = planner.plan_row(row(clip, audio_path=Path("/turnover/audio.wav")), ROOT, 1)
@@ -110,6 +216,16 @@ class TestTypeTable:
         """
         plan = planner.plan_row(row("MELT0001_wit01"), ROOT, 1)
         assert "MELT0001_wit01_raw_4k_v01" in names(plan.jobs)
+
+    def test_a_witness_cam_is_named_under_the_plate_it_covers(self) -> None:
+        """User, 2026-10-23: `pl02_wit01` in the CSV, `_pl02_wit01_` in all four names."""
+        witness = row("MELT0001_wit01", identity=ShotIdentity("MELT0001", "wit", "01", plate="pl02"))
+        assert names(planner.plan_row(witness, ROOT, 1).jobs) == [
+            "MELT0001_pl02_wit01_raw_4k_v01",
+            "MELT0001_pl02_wit01_raw_HD_v01",
+            "MELT0001_pl02_wit01_ref_4k_v01.mp4",
+            "MELT0001_pl02_wit01_ref_HD_v01.mp4",
+        ]
 
     def test_resolutions_are_exact(self) -> None:
         plan = planner.plan_row(row(), ROOT, 1)

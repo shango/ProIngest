@@ -79,6 +79,8 @@ demoted second line sits in every other column, and it is a glance, not a readou
 
 SKIP_PROMPT_TITLE = "Skip shot"
 SKIP_PROMPT_LABEL = "Reason for skipping this shot:"
+SKIP_TURNOVER_PROMPT_TITLE = "Skip turnover"
+SKIP_TURNOVER_PROMPT_LABEL = "Reason for skipping every shot in this turnover:"
 
 ModelIndex = QModelIndex | QPersistentModelIndex
 
@@ -131,6 +133,20 @@ It reads the files again, so a replaced clip, EDL or CSV is what every rule now 
 and puts the shot, or every shot in the turnover, back for the next Run: a new warning
 or must-fix shows on the row, and otherwise the Run renders it again, at the next
 version if it was delivered before. It replaced Reset and Re-run."""
+
+SKIP_TEXT = "Skip Shot"
+"""A shot's right-click entry, the same as Ctrl+K: it leaves the shot out of the Run, asking
+for a reason the first time (user, 2026-10-12)."""
+
+UNSKIP_TEXT = "Unskip Shot"
+"""What Skip Shot reads as on a shot already skipped: it puts the shot back in the Run."""
+
+SKIP_TURNOVER_TEXT = "Skip Turnover"
+"""A turnover heading's entry: every shot in it is skipped, with one reason asked once (user,
+2026-10-12). A shot skipped before keeps the reason it was given."""
+
+UNSKIP_TURNOVER_TEXT = "Unskip Turnover"
+"""What Skip Turnover reads as once every shot in the turnover is skipped: all go back in the Run."""
 
 RELOCATE_TEXT = "New Folder Location..."
 """A turnover heading's right-click entry: reload it from where it moved to (D16)."""
@@ -535,7 +551,7 @@ class ShotListView(QTreeView):
             return None
         row = self.shot_model.row_at(source)
         if row is not None:
-            return self._row_menu(row)
+            return self._row_menu(row, source)
         built = self.shot_model.stringout_at(source)
         if built is not None:
             return self._stringout_menu(built)
@@ -552,7 +568,13 @@ class ShotListView(QTreeView):
             action = menu.addAction(text)
             action.setEnabled(not self.shot_model.locked)
             action.triggered.connect(lambda _checked=False, signal=signal: signal.emit(turnover))
-        armed = [row for row in self.shot_model.batch.rows_for(turnover.turnover_id) if row.rerun]
+        rows = self.shot_model.batch.rows_for(turnover.turnover_id)
+        if rows:
+            every = all(row.skipped for row in rows)
+            skip = menu.addAction(UNSKIP_TURNOVER_TEXT if every else SKIP_TURNOVER_TEXT)
+            skip.setEnabled(not self.shot_model.locked)
+            skip.triggered.connect(lambda: self._skip_turnover(turnover, not every))
+        armed = [row for row in rows if row.rerun]
         if armed:
             self._add_cancel(menu, armed)
         return menu
@@ -570,12 +592,15 @@ class ShotListView(QTreeView):
         build.triggered.connect(lambda: self.stringout_requested.emit(turnover))
         return menu
 
-    def _row_menu(self, row: ShotRow) -> QMenu:
-        """A shot's Re-scan, and Cancel Re-run while it is marked (user, 2026-09-25)."""
+    def _row_menu(self, row: ShotRow, index: QModelIndex) -> QMenu:
+        """A shot's Re-scan and Skip Shot, and Cancel Re-run while it is marked (user, 2026-09-25)."""
         menu = QMenu(self)
         rescan = menu.addAction(RESCAN_TEXT)
         rescan.setEnabled(not self.shot_model.locked)
         rescan.triggered.connect(lambda: self.row_rescan_requested.emit(row))
+        skip = menu.addAction(UNSKIP_TEXT if row.skipped else SKIP_TEXT)
+        skip.setEnabled(not self.shot_model.locked)
+        skip.triggered.connect(lambda: self._toggle_skip_at(QPersistentModelIndex(index)))
         if row.rerun:
             self._add_cancel(menu, [row])
         return menu
@@ -624,7 +649,10 @@ class ShotListView(QTreeView):
         back on does not ask again about a decision already explained. Escape at the
         prompt cancels the skip rather than skipping without a reason.
         """
-        index = self.proxy.mapToSource(self.currentIndex())
+        self._toggle_skip_at(self.proxy.mapToSource(self.currentIndex()))
+
+    def _toggle_skip_at(self, index: QModelIndex | QPersistentModelIndex) -> None:
+        """Skip or unskip the shot at a source index: Ctrl+K's and the right-click menu's."""
         row = self.shot_model.row_at(index)
         if row is None:
             return
@@ -635,6 +663,24 @@ class ShotListView(QTreeView):
         if reason is None:
             return
         self.shot_model.set_skipped(index, True, reason)
+
+    def _skip_turnover(self, turnover: Turnover, skipped: bool) -> None:
+        """Skip, or unskip, every shot in a turnover. Skipping asks once, and only when a shot
+        in it has no reason of its own yet; Escape cancels the lot."""
+        rows = self.shot_model.batch.rows_for(turnover.turnover_id)
+        reason: str | None = None
+        if skipped and any(not row.skipped and not row.skip_reason for row in rows):
+            reason = self.ask_turnover_skip_reason(turnover)
+            if reason is None:
+                return
+        for row in rows:
+            self.shot_model.set_skipped(self.shot_model.index_for_row(row), skipped, reason)
+
+    def ask_turnover_skip_reason(self, turnover: Turnover) -> str | None:
+        """Skip Turnover's prompt, its own method for the same reason as `ask_skip_reason`."""
+        label = f"{SKIP_TURNOVER_PROMPT_LABEL}\n{turnover.folder.name}"
+        reason, accepted = QInputDialog.getText(self, SKIP_TURNOVER_PROMPT_TITLE, label)
+        return reason if accepted else None
 
     def ask_skip_reason(self, row: ShotRow) -> str | None:
         """The prompt, and the one part of an edit that cannot live in the model.

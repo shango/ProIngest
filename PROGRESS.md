@@ -8,7 +8,7 @@ commit.
 
 ## 1. Resume here
 
-**State at 2026-10-08, version 0.5.36 on branch `hdri/prerender`, PR #19 open** (0.5.36: the stringout from 26 minutes to 3 on turnover135; 0.5.35: the stringout's time left on its line; 0.5.34: the HDRI pre-render on the timeline; 0.5.33: the QC overhaul, nothing stops a batch or a turnover; 0.5.32: style frames on the stringout, the stringout line in the shot list; 0.5.31: every Fix-it line names its shot; 0.5.30: the take on the burn-in; 0.5.29: reference clips play in the stringout; 0.5.28: everything in the stringout graded; 0.5.27: the stringout from the EXRs; 0.5.26: the HDRI pre-render and delivery, QC-084, Accept As Is runs what it can; 0.5.25, merged to `main` with PR #18: `User_Generated` and `User_Uploads` at the delivery root; 0.5.24: the Fix-it
+**State at 2026-10-28, version 0.5.49 on branch `ldri`, PR #20 open** (0.5.49: `meas##` and `recon##` delivered as they are, `re` retired, `HDRI01`/`HDRI02` numbered by the Shot Type with no underscore, the pre-render delivered as an mp4; 0.5.48: a witness cam named under its plate, `pl02_wit01`; 0.5.47: the Avid reference delivered, never an EXR; 0.5.46: the Avid reference typed `avidRef##`; 0.5.40: no Fix-it line claims what the tool did not verify; 0.5.39: the Fix-it report by timeline clip name, each message once; 0.5.38: an HDRI's or LDRI's number is its take; 0.5.37: the LDRI; 0.5.36 and before merged to `main` with PR #19 as `a85cd53`; 0.5.36: the stringout from 26 minutes to 3 on turnover135; 0.5.35: the stringout's time left on its line; 0.5.34: the HDRI pre-render on the timeline; 0.5.33: the QC overhaul, nothing stops a batch or a turnover; 0.5.32: style frames on the stringout, the stringout line in the shot list; 0.5.31: every Fix-it line names its shot; 0.5.30: the take on the burn-in; 0.5.29: reference clips play in the stringout; 0.5.28: everything in the stringout graded; 0.5.27: the stringout from the EXRs; 0.5.26: the HDRI pre-render and delivery, QC-084, Accept As Is runs what it can; 0.5.25, merged to `main` with PR #18: `User_Generated` and `User_Uploads` at the delivery root; 0.5.24: the Fix-it
 report, one error per cause, a lone EXR read as one frame, AMFs falling back to the clip they name) (`HANDOFF.md` is the short version, with the session's open items); 0.5.22 went to `main` earlier (PR #17 merged as `70e1160` at the user's request, after its CI
 run 37276656318 built the 0.5.22 dmg). The 2026-09-23 review is built (chunks A
 to H of `docs/REVIEW_2026-09-23.md`), and so are the fixes that a second official turnover,
@@ -17,6 +17,239 @@ renders; Turnover121, every clip 8 bit 4:2:0, runs again with a QC-020 warning o
 since 2026-09-28 (user). What is left is the Mac: `docs/MAC_SESSION.md`, from "The 0.5.0 build, in
 order" down, and Ben's 4.886 slope. Entries are newest first; anything older than 2026-09-22
 describes the tool before the review and is history.
+
+**2026-10-28, 0.5.49: meas and recon, numbered HDRIs, and the pre-render delivered (user).**
+"2 new shot types. "meas" and "recon" both will not be color corrected"; asked, and answered: a
+still on the timeline is delivered as a still, a movie as an mp4, "Not color corrected is an
+indication that no exr is to be delivered"; numbered, bare is 01; burned in `INCA5002_meas01`;
+named `INCA5002_meas01_v01.mp4`; "It's now recon", so `re` is retired. "HDRI01, HDRI02 etc.
+Burnins should follow that naming", "Lose the underscore", "Bare HDRI is equal to HDRI01", and the
+pre-render on the timeline "get[s] an mp4", the EXR being the file; LDRI the same. **Built**:
+`naming.MEAS_KIND`, `RECON_KIND` and `AS_IS_KINDS` with the Avid reference; `is_avidref` is now
+`ShotIdentity.is_as_is`, `avidref_file` is `as_is_file`, and the job and deliverable kind stays
+`avidref` (a saved batch reads it). `metacsv._as_is` reads all three (QC-088, words per kind).
+`re` is gone from `ELEMENT_TYPES`; `re01` is QC-010 saying to write `recon01`
+(`metacsv._RECON_PLATE`). `naming.HDRI_SHOT_TYPE` takes a number and `naming.hdri_index` reads it
+(bare is 01); `hdri_label` drops the underscore, `SECA0009_pl01_HDRI02`; the Take no longer
+numbers an HDRI and **QC-087 is retired**; a name written `HDRI_01` still reads back, so it counts
+as a version. The pre-render (`row.hdri_render`) is a new `hdri_ref` job,
+`SECA0009_pl01_HDRI02_v01.mp4` (`naming.hdri_prerender_mp4`): the whole render, its own size,
+silent, coloured as the stringout shows it (`planner.prerender_color`, moved from `stringout`;
+the HDRI's grade over linear Rec.709 behind the shaper, `ffmpeg.encode_reference(shaper=)`, an
+LDRI as it is), checked as a reference is but for its size. The Fix-it QC-010 line lists the
+new spellings. **Assumed, told the user (OQ-88)**: the pre-render mp4's name (the message was cut
+off there); meas and recon off the tracker; no EXR (QC-086) delivers no mp4 either.
+**Verified**: tests in `test_naming.py`, `test_metacsv.py`, `test_planner.py` (meas, recon, the
+pre-render job graded and not), `test_exports.py`, `test_scan.py`, and `test_stringout.py`, where
+a real HDRI and LDRI turnover now delivers the EXR or image and its mp4, all rendered. Workbook:
+`re` Retired, HDRI and LDRI rows, new `meas##` and `recon##` rows; NAMING_SPEC, QC_RULES and its
+summary.
+
+**2026-10-23, 0.5.48: a witness cam is named under the plate it covers (user).** "It will appear
+in the metadata and csv as wit01, wit02, etc. It should appear in the resulting file names as
+_pl01_wit01_. This file will get color correction and become an exr sequence." Already graded and
+delivered as EXRs; only the name changed. Asked, and answered: "could be a pl02_wit01"; all four
+deliverables; the burn-in too; "Ben will add pl01_wit01 or pl02_wit01 to the metadata and the tool
+will read it in the csv"; the shooters' spec sheet (`MELT0001_wit01_...`) is out of date and wants
+remaking. **Built**: `naming.WITNESS_SHOT_TYPE` reads `pl02_wit01` (any case, bare `pl` or `wit`
+means 01) and `naming.witness_plate` its plate, carried as the new `ShotIdentity.plate` (empty for
+every other kind; `MetaRow.plate`, `scan`). `ShotIdentity.elem` is `pl02_wit01` for a witness, so
+`stem`, every builder, the burn-in, the exports' element column and QC-151 follow;
+`parse_output_name` reads the plate back before `wit` only. A bare `wit01` is QC-010 with a message
+saying how to write it (`metacsv._BARE_WITNESS`); the Fix-it QC-010 line lists `pl01_wit01`. The
+stringout lays a witness over the plate it names only (`stringout._with_insets`). A batch saved
+before this has no `plate` and loads as empty (`models._identity_from_dict` now takes the field's
+default). **Assumed, told the user (OQ-87)**: bare `wit01` refused rather than read as pl01; the
+inset follows the plate. **Verified**: tests in `test_naming.py`, `test_metacsv.py`,
+`test_planner.py` (all four names), `test_stringout.py` (inset over pl01 only for `pl01_wit01`),
+`test_scan.py`, `test_models.py` (round trip, old batch). Workbook row updated, NAMING_SPEC
+sections 1, 2 and 7.
+
+**2026-10-22, 0.5.47: the Avid reference is delivered, never as an EXR (user).** "avidRef types
+are never processed to exr files. If they appear on the EDL as an mp4 file, then they should be
+rendered as an mp4, named correctly and placed in the delivery location. If they appear on the EDL
+as a still that was held for some frames, then that still should be named correctly and be
+delivered." Asked, and answered: named `INCA5002_avidRef01_v01.mp4`, no size tag; a movie marked
+`Render` is Ben's pre-render on the Resolve timeline, "the color is baked in and you don't need to
+touch color", mp4 or mov alike; a still that is not a JPG or PNG becomes a JPG; "avidRef doesn't
+get listed on the sheet". **Built**: `planner._avidref_plan`, one `avidref` job per row. A movie
+or an image sequence is encoded by the reference path over its cut at 24, the size it is, with no
+cube (`render._render_reference` passes `lut=None` for it) and no audio, labelled for its AMF's
+display, and checked as a reference is except QC-112 (no target size); one image file that is a
+JPG or PNG is copied byte for byte; any other image file becomes a JPG (`ffmpeg.write_still_jpg`).
+`naming.avidref_file` names it and `parse_output_name` reads it back as kind `avidref`, so it
+versions like the rest. `exports.tracker_rows` leaves avidRef rows out. The stringout is
+unchanged. **Assumed, told the user (OQ-86)**: ungraded whether or not `Render` is in its name;
+silent; the EDL's cut with no handles; an image sequence is a movie; an EXR still goes to JPG with
+no view transform (no sample has one). **Frame rate (user, same day): "everything is 24fps and the
+tool should expect 24"**: already so, nothing changed (the project rate is asserted 24, every file
+read at it, QC-026 warns on another rate, audio follows the picture). **Verified**: planner,
+render (a 24000/1001 mov comes out a silent 24/1 mp4 of its cut; a flat Rec.709 frame comes out at
+the same code values, max difference 1), exports (fails without the fix), naming read-back, the
+stringout test now expecting the mp4; ruff, format and mypy clean. **Not yet run on turnover144**,
+whose render is still typed `preVis01`. Workbook row updated.
+
+**2026-10-15, 0.5.46: the Avid reference is typed `avidRef##` (user).** "Ben will put avidRef## in
+the metadata. Tool will need to use that. Later they might change it." `avidRef01`, `avidRef02`
+(any case, bare `avidRef` is 01) is QC-088 as before; the burn-in is `INCA5002_avidRef01`
+(assumed, OQ-86). `pl01_avidref` and `preVis01` are QC-010. Since the name may change again, the
+spelling is one constant, `naming.AVIDREF_KIND`, and `metacsv._AVIDREF` is built from it: a rename
+is that line plus the tests. The workbook's row is renamed. **Verified**: the avidref tests, with
+`pl01_avidref` added to the old-spelling test.
+
+**2026-10-14, 0.5.45: the stringout-only type is `pl##_avidref`, not `preVis` (user).** "It
+will appear like this pl01_avidref. pl##_avidref is the shot type, just replacing the naming on
+preVis." Same behaviour as 0.5.44's preVis: `metacsv._avidref` reads `pl01_avidref` (any case,
+`pl_avidref` is 01) as `naming.AVIDREF_KIND`, QC-088 (info), nothing delivered, no checks, shown as
+it is and playing its cut, burned in `INCA5002_pl01_avidref` (`naming.shot_label`). `preVis01` is
+QC-010 now, so **turnover144's split diopter row needs retyping** in Resolve. QC-088 keeps its
+number, revised the same day it was written. The workbook's row is renamed. **Verified**: the
+renamed tests and a new one that `preVis01` is QC-010.
+
+**2026-10-14, 0.5.44: preVis is a Shot Type (user), and the Shot Type workbook.** "preVis type
+is treated just like styleframe type. No cc needed, no delivery, only lives in the stringout."
+`preVis01`, `preVis02` (any case, bare means 01) are read by `metacsv._previs` as a style frame is,
+with QC-088 (info). `qc.is_stringout_only` (QC-085 or QC-088) replaces the style frame test in the
+scan, preflight, row rules and Fix-it report; the planner plans nothing for `ShotIdentity.is_previs`.
+On the stringout it is shown as it is, no grade, no counter, burned in `INCA5002_preVis01`, and
+**plays its cut** rather than holding a frame (assumed, OQ-86). Earlier the same day it was an
+element type delivered when graded; superseded before release. Turnover144's preVis is now QC-088
+alone. **Verified**: tests in `test_metacsv.py`, `test_planner.py`, `test_qc.py`, `test_naming.py`
+and `test_stringout.py` (the stringout plan for a preVis).
+**`docs/Shot_Types.xlsx`** (user: "a place for new types to be added with all the relavant data
+necessary to incoporate into a new version of the app"): one row per type, 33 columns read off the
+code (identity, colour, delivery, stringout, QC, spreadsheets, decision), five Proposed rows to fill
+in, a column guide naming where each behaviour lives in the code, the rules true of every type, and
+how a Shot Type is read. Hand kept from here: a new type is added there first. Update a row when a
+type's behaviour changes.
+
+**2026-10-14, 0.5.43: a missing file is a card on the stringout (user).** "Put a card that
+reads "missing media" with a path to where it's supposed to be, in on the timeline and don't deliver
+the missing clip." An event whose clip a CSV row names and whose file the scan did not find
+(QC-012, which already holds the row) is black with `MISSING MEDIA` and the turnover folder joined
+with the `File Name`, wrapped after a `/` at 90 characters, centred, with the clip's own label and
+Primary Effect (`stringout._missing`). QC-144 says these on their own line. The CSV's `Clip
+Directory` is not used for the path: `metacsv` documents it as the pre-consolidation originals.
+**Verified**: a copy of turnover144 without `pl02.mp4` renders the card on event 003 (looked at,
+frame 380). **Open with the user**: what a `preVis##` delivers (Ben's hand delivery in
+`VFX_Ingest/turnover144_10_06_26_michaelcrigler` has `INCA5002_preVis01_raw_4k_v01`, 236 frames,
+4K raw only). Answered: a wrong folder name passes through as it is (it already did); `el01.mp4`
+and `el02.mp4` are not in the EDL, so they are not delivered (already so); Ben's `INCA5002` folder
+was inside the turnover folder, and the media scan already walks subfolders.
+
+**2026-10-14, 0.5.42: turnover144 read through, and an inverse output transform is an input
+transform.** Turnover144 (Michael Crigler, Ben's export 2026-10-13, `TEST MATERIAL` on the Drive):
+six events, INCA5002's style frame, pl01 to pl03 (iPhone 17 Pro Max, Apple Log, H.264 4:2:0 with
+no timecode, cut whole so no handles), `colorChart Render.mov` and `split diopter michael test
+Render.mov`. **Tool fault, fixed:** both renders' AMFs bring them in through
+`<aces:inverseOutputTransform>` (the Gamma 2.2 Rec.709 view undone), which `amf.read` did not look
+inside, so the chart was QC-046 "names no input transform" and held. Now read
+(`Amf.input_inverse_output`, `amf.input_encoding_for`) and converted by an inverse
+`DisplayViewTransform` (`color.inverse_view`). **Verified**: the chart renders, its EXR header
+names the inverse, and seen back through the view it matches the render to 0.16/255 on average;
+new tests in `test_amf.py` and `test_color.py` failed before the fix. **Asked of the user, not
+changed:** `preVis01` on the split diopter render is not a Shot Type the tool delivers (QC-010,
+held); the folder name prefills the shooter as `[michaelcrigler]-footage`, brackets and suffix
+included (the CSV's Clip Directory shows it is a subfolder of `turnover144_10_06_26_michaelcrigler`);
+`el01.mp4` and `el02.mp4` are byte for byte `pl02.mp4` and `pl03.mp4` and no CSV row names them.
+
+**2026-10-13, 0.5.41: QC-073 on its own cut, no space in a burn-in, and a plain PLATES cell (user).** Turnover142
+(Ben, 2026-10-12) was read through: its AMFs and CLFs parse, every CLF named is there with its md5,
+and the four INCA3002 clips (C2045, C2048, C2050, C2051) are graded on Ben's timeline (`.drt`
+`HasCorrection=true`) yet exported only an identity CDL and no CLF, so they deliver ungraded.
+**Not a tool fault; asked of Ben.** Also asked: INCA3010 is S-Gamut3 and INCA3002 S-Gamut3.Cine
+on one FX30, and event 017 has an M2 of 3172.9 fps at equal source and record lengths. **QC-073
+named every row of a clip** whose one cut was retimed (C2041, cut three times, carried event
+017's retime on all three): `scan._refuse_retimes` now runs per pairing, in `_conform_all` and
+`_conform_by_use`, on the row paired with the event; a row whose pairing failed (QC-066, QC-067)
+no longer gets it. **Burn-ins use underscores between every part, never a space** ("There should
+never be a space in the burnins, underscore always, between sections of the name"):
+`SECA0009_styleFrame` and `SECA0009_pl01_Take_02` (`naming.shot_label`, `naming.take_label`).
+**Verified**: the new `test_a_retime_is_said_on_its_own_cut_of_a_clip_only` fails without the fix;
+full suite 2006 passed before the burn-in change, `test_naming.py` and `test_stringout.py` after it.
+**The shot sheet's PLATES cell names only what landed** ("if the Available Resolution is 4K only
+put a 4K in the field, same for if it's HD. Dont cram both with a checkmark next to one"): `4K`,
+`HD`, or both on two lines, empty for none; no tick and no dash (`exports._plate_marks`). Both
+landing is written `4K` and `HD` on two lines, an assumption.
+
+**2026-10-12, 0.5.40: no Fix-it line claims what the tool did not verify (user).** The old
+QC-047 item said an AMF named 'Rec.709 (Scene)' when no AMF was used, and the user read it that way:
+"This fixit tool is useless if it's not very specific. If there are other generalities this is an
+issue. If an issue is not coming from somewhere the tool can verify, I'd rather it say, "This clip
+is appearing as a rec709, please investigate why." **Audited every `fixit.ADVICE` entry** and
+fixed: QC-047's line now says per clip which file gave the colour space (the AMF, named; or "No
+AMF was matched to this clip, so the metadata CSV's Input Color Space column was used. It says
+...", naming the passed-over AMF when QC-075's info says one named another clip), and "This clip
+is appearing as '...', please investigate why" when neither can be shown
+(`fixit._colour_space_detail`); `_named_by` never says "the clip's AMF" without an AMF. QC-046
+said "It has no AMF" though it also fires for an AMF naming no input transform: heading "Nothing
+says what colour space a clip was recorded in", per-clip message. QC-075's heading ("Two colour
+files claim the same clip") was wrong for its turnover warnings (an AMF that will not parse, or
+has no index): now "A colour file (AMF) cannot be used", per-line message. QC-042 said "missing or
+cannot be read" but is only raised for unreadable. QC-076 and QC-067 headings no longer guess
+between causes; their lines say which. QC-011, 014, 027, 028, 041, 042, 043, 046, 067, 073 and 075
+showed the heading alone and dropped the message's events, files and reasons; each now shows it.
+QC-083 keeps "probably rendered into another folder", which is the user's own word for the usual
+cause (2026-10-07). **Verified**: `test_fixit.py` (36), turnover134 and 135 reports read through.
+Then, same day (user): **no line names the ACES config** ("we know what ACES presets we're
+working with already"): QC-047, QC-077, QC-079 and `color.ColorError` say "not one the tool
+knows" with the value, and the Fix-it colour-space lines lose their second sentence ("It's not
+informative. It's already the obvious"). **QC-082's item is "A clip is missing a CLF file.
+Defaulting to the CDL in its AMF for colour."**, the user's wording; the log message keeps the
+slope. **Skip from the right-click menu**: a shot's menu has Skip Shot (Unskip Shot once
+skipped), the same as Ctrl+K; a turnover heading's has Skip Turnover, every shot with one reason
+asked once, a shot skipped before keeping its own, and Unskip Turnover once all are skipped
+(`docs/UI_SPEC.md` 15b). Skipping several selected shots at once is not built. **Verified**: full
+suite before the skip work (1998 passed), `test_shot_list.py` and `test_ui_shell.py` after it.
+
+**2026-10-12, 0.5.39: the Fix-it report names every clip, says each message once (user).**
+From a Fix-it item on INCA6010 (QC-047, `DJI_0293_S005.mov`, 'Rec.709 (Scene)'): "You'll need to
+list, by name, every clip involved. Don't repeat the message though", then "Please use the clip
+name on the timeline. The user needs to refer back to the clips by name to fix the issues."
+**Built**: each clip line leads with the clip's timeline name (the EDL's `FROM CLIP NAME`, which
+the scan pairs with the CSV's `File Name`, so the two are one name), then its shot and its record
+timecode: `A001_C003.mov - SECA0009 clean plate, at 01:00:07:21 on the timeline`
+(`fixit.Clip.at`). An item's clips are grouped under each message they share, said once above
+them (`fixit.clip_groups`). **Found and fixed on the way**: that QC-047 came from the CSV's `Input
+Color Space` (the clip had no AMF), yet the item was titled for the AMF and said "Reported by the
+clip's AMF"; it is now "A clip's input colour space is one the tool does not know", explains it
+is the colour space Resolve reads the footage as and not its grade, and is reported by the CSV's
+Input Color Space column. 'Rec.709 (Scene)' (Resolve's name) is not a colour space in the pinned
+OCIO config, so the clip is held; whether to map it is open (not asked yet). **Verified**:
+`test_fixit.py` (the CSV case, the grouping); turnover134's report read through.
+
+**2026-10-12, 0.5.38: the number in an HDRI's or LDRI's name is its take (user).**
+"SECA0009_pl01_LDRI_01_v01.jpg - in this name, _01_ is the take number." Asked, and answered: the
+HDRI the same; a blank Take is `01`, with a warning; "There should not be HDRI2, or LDRI2. That's a
+mistake."; the burn-in drops the word "Take". **Built**: `metacsv._hdri` numbers the row from the
+CSV's `Take` (two digits); a blank or non-numeric Take is `01` and QC-087 (new, warning, Fix in
+Resolve); `naming.HDRI_SHOT_TYPE` no longer takes a number, so `HDRI2` or `LDRI2` falls to QC-010
+like `HDRIref`; `naming.take_label` takes the identity and adds no `Take` to an HDRI or LDRI (its
+burn-in is `SECA0009_pl01_LDRI_02`). Two HDRIs on one shot are now told apart by their takes
+(QC-011 only for one take twice). "Yes" to question 2 ("I'd write 01 ... Or would you rather have
+a warning?") was read as both: `01` and a warning. **Verified**: metacsv and naming tests (take
+numbering, QC-087, QC-010 for `HDRI2`/`LDRI2`/`hdri02`, the burn-in); turnover134 and 135 (every
+HDRI Take 1) unchanged, 0 errors, 135 still delivering `SECA0012/13/14_pl01_HDRI_01_v01.exr`.
+
+**2026-10-08, 0.5.37: the LDRI (user).** "In some turnovers, there won't be an HDRI on the
+stringout. Instead it will be LDRI shot type. Treated the same as the HDRI in regards to the
+stringout. Only difference is that the deliverable file will be a jpg or png rather than an EXR and
+the naming is LDRI rather than HDRI." Asked five things and answered: delivered byte for byte;
+named as the HDRI mirrored (`SECA0009_pl01_LDRI_01_v01.jpg`, its own extension); its pre-render
+named as the HDRI's (`<image> Render 1.mov`); shown on the stringout as it is, never graded, since a
+JPG or PNG is display referred; no tracker column ("the list simply indicates that there's no
+HDRI"). **Built** as an HDRI of another kind, so every HDRI path carries it: `naming.LDRI_KIND`,
+`ShotIdentity.is_hdri` true of both and `is_ldri` for the one, `naming.hdri_kind` reading
+`HDRI`/`LDRI` (with an index) for `metacsv`, `qc.is_ldri` from the CSV's `Shot Type` (so a row with
+no shot code knows too), `naming.ldri_image` (extension lowercased) read back as kind `hdri`,
+`scan.hdri_source_name` (was `hdri_exr_name`) taking the name up to `.exr`, `.jpg`, `.jpeg` or
+`.png`, QC-086 reading `LDRI JPG File Missing ...` and QC-083 `the LDRI JPG held still`,
+`stringout._prerender_color` returning None for an LDRI, its held image (no pre-render) falling
+through to the source segment as it is, and `exports` leaving the HDRI cell empty for one.
+**Verified**: `TestAnLdri` in `test_scan.py` and `test_stringout.py` (delivered byte identical as
+`.jpg`, a graded AMF not applied, held as it is, the stringout written), naming, metacsv and
+tracker tests; turnover134 and 135 still scan with 0 errors and the HDRI wording unchanged. **No
+sample has an LDRI**: synthetic JPGs only. Assumptions in OQ-85. Mac check in `docs/MAC_SESSION.md`.
 
 **2026-10-08, 0.5.36, then: the stringout optimised (user).** "I need to get the stringout render
 time optimized. Please make a plan and implement. If parallel is the best we have, optimize

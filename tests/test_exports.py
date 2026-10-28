@@ -14,7 +14,7 @@ from pathlib import Path
 import pytest
 from openpyxl import load_workbook
 
-from proingest.core import exports, qc
+from proingest.core import exports, naming, qc
 from proingest.core.models import (
     AudioInfo,
     Batch,
@@ -325,8 +325,46 @@ class TestShotTracker:
         assert values[4] == "MELT0001_pl01_ref_HD_v01.mp4"
         assert values[5] == "MELT0001_pl01_HDRI_v01.exr", "the HDRI the tool copied (user, 2026-10-07)"
         assert values[6] is None, "CAM Data likewise"
+
+    def test_an_ldri_leaves_the_hdri_cell_empty(self, tmp_path: Path) -> None:
+        """User, 2026-10-08: no LDRI column; an empty HDRI cell says there is no HDRI."""
+        ldri = row(
+            "MELT0001_pl01_LDRI_01_v01.jpg",
+            identity=naming.ShotIdentity("MELT0001", naming.LDRI_KIND, "01"),
+            csv_shot_type="LDRI",
+            qc=[QCResult("QC-080", "info", "row", "an LDRI")],
+            deliverables=[deliverable("hdri", "MELT0001_pl01_LDRI_01_v01.jpg", checksum="dd")],
+        )
+        plate = row()
+        plate.deliverables = [item for item in plate.deliverables if item.kind != "hdri"]
+        tracker = exports.write_shot_tracker(batch_of(plate, ldri), tmp_path / "tracker.xlsx")
+        values = sheet_rows(tracker, "Shots")[1]
+        assert values[4] == "MELT0001_pl01_ref_HD_v01.mp4" and values[5] is None
         assert values[8] == "24"
         assert values[9] == "✓"
+
+    def test_an_avid_reference_is_delivered_but_not_on_the_sheet(self, tmp_path: Path) -> None:
+        """User, 2026-10-22: "avidRef doesn't get listed on the sheet." A shot whose only landed
+        row is one gets no line."""
+        avidref = row(
+            "MELT0002_avidRef01_v01.mp4",
+            identity=naming.ShotIdentity("MELT0002", naming.AVIDREF_KIND, "01"),
+            deliverables=[deliverable("avidref", "MELT0002_avidRef01_v01.mp4", checksum="ee")],
+        )
+        tracker = exports.write_shot_tracker(batch_of(row(), avidref), tmp_path / "tracker.xlsx")
+        assert [values[2] for values in sheet_rows(tracker, "Shots")[1:]] == ["MELT0001"]
+
+    @pytest.mark.parametrize("kind", [naming.MEAS_KIND, naming.RECON_KIND])
+    def test_a_measurement_or_recon_is_not_on_the_sheet_either(self, tmp_path: Path, kind: str) -> None:
+        """The tracker has no column for either (assumed, OQ-88)."""
+        name = f"MELT0002_{kind}01_v01.mp4"
+        only = row(
+            name,
+            identity=naming.ShotIdentity("MELT0002", kind, "01"),
+            deliverables=[deliverable("avidref", name)],
+        )
+        tracker = exports.write_shot_tracker(batch_of(row(), only), tmp_path / "tracker.xlsx")
+        assert [values[2] for values in sheet_rows(tracker, "Shots")[1:]] == ["MELT0001"]
 
     def test_every_other_column_is_empty(self, tracker: Path) -> None:
         """The whole point: 30 columns belong to the vendor and a paste must not touch them."""
@@ -339,14 +377,21 @@ class TestShotTracker:
         """Every one of the 782 real values in the studio sheet is the HD one."""
         assert sheet_rows(tracker, "Shots")[1][4] == "MELT0001_pl01_ref_HD_v01.mp4"
 
-    def test_the_plate_marks_read_like_the_sheet_s_own(self, tracker: Path) -> None:
-        assert sheet_rows(tracker, "Shots")[1][7] == "4K ✓\nHD ✓"
+    def test_the_plates_cell_names_each_resolution_that_landed(self, tracker: Path) -> None:
+        assert sheet_rows(tracker, "Shots")[1][7] == "4K\nHD"
 
-    def test_a_missing_plate_is_marked_rather_than_blank(self, tmp_path: Path) -> None:
+    def test_a_shot_with_only_4k_says_only_4k(self, tmp_path: Path) -> None:
+        """No tick and no mark for the one that is missing (user, 2026-10-13)."""
         target = row()
         target.deliverables = [d for d in target.deliverables if d.res != "HD"]
         written = exports.write_shot_tracker(batch_of(target), tmp_path / "t.xlsx")
-        assert sheet_rows(written, "Shots")[1][7] == "4K ✓\nHD \u2014"
+        assert sheet_rows(written, "Shots")[1][7] == "4K"
+
+    def test_a_shot_with_only_hd_says_only_hd(self, tmp_path: Path) -> None:
+        target = row()
+        target.deliverables = [d for d in target.deliverables if d.res != "4k"]
+        written = exports.write_shot_tracker(batch_of(target), tmp_path / "t.xlsx")
+        assert sheet_rows(written, "Shots")[1][7] == "HD"
 
     def test_the_stringout_column_is_empty_until_one_is_written(self, tracker: Path) -> None:
         assert sheet_rows(tracker, "Shots")[1][34] is None
@@ -380,7 +425,7 @@ class TestShotTracker:
         written = exports.write_shot_tracker(batch_of(clean), tmp_path / "t.xlsx")
         line = sheet_rows(written, "Shots")[1]
         assert line[4] is None
-        assert line[7] == "4K \u2014\nHD \u2014"
+        assert line[7] is None
         assert line[9] is None
 
     def test_a_blocked_row_is_not_offered_for_pasting(self, tmp_path: Path) -> None:

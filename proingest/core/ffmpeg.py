@@ -580,6 +580,36 @@ def extract_audio(
         raise FFmpegError(f"extracting audio from {source} failed: {result.stderr.strip()}")
 
 
+# --- An Avid reference's held still as a JPG (user, 2026-10-22). ---
+
+
+def still_jpg_command(
+    source: str, destination: Path, frame: int, is_sequence: bool, ffmpeg: Path | None = None
+) -> list[str]:
+    """One frame of `source` as a JPG, its pixels as they are: an Avid reference's colour is
+    baked in, so no transform is applied. `frame` is the first frame number of a sequence.
+
+    `-f image2` and `-update 1` for the same reason `extract_audio_command` states `-f wav`:
+    the `.part` path has no extension to infer a muxer from, and `-update` writes one file
+    rather than reading the name as a numbered pattern.
+    """
+    tool = ffmpeg or resolve_tool("ffmpeg")
+    start = ["-start_number", str(frame)] if is_sequence else []
+    return [
+        str(tool), "-hide_banner", "-loglevel", "error", "-nostdin", "-y",
+        *start, "-i", source,
+        "-frames:v", "1", "-c:v", "mjpeg", "-q:v", "2", "-f", "image2", "-update", "1",
+        str(destination),
+    ]  # fmt: skip
+
+
+def write_still_jpg(source: str, destination: Path, frame: int, is_sequence: bool) -> None:
+    """Run the JPG write, raising FFmpegError with ffmpeg's own complaint on failure."""
+    result = run(still_jpg_command(source, destination, frame, is_sequence))
+    if result.returncode != 0:
+        raise FFmpegError(f"writing {destination.name} failed: {result.stderr.strip()}")
+
+
 # --- Encoding a reference mp4. COLOR_AND_FORMAT section 3. ---
 
 ENCODE_TIMEOUT = 1800
@@ -1014,6 +1044,7 @@ def encode_reference(
     canvas: tuple[int, int] | None = None,
     hold: int = 0,
     display: str = DEFAULT_DISPLAY,
+    shaper: Path | None = None,
 ) -> None:
     """Run the reference encode, raising FFmpegError with ffmpeg's own complaint.
 
@@ -1040,6 +1071,7 @@ def encode_reference(
         canvas=canvas,
         hold=hold,
         display=display,
+        shaper=shaper,
     )
     result = run(command, timeout=ENCODE_TIMEOUT)
     if result.returncode != 0:
