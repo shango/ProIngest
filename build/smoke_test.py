@@ -46,6 +46,10 @@ four frame render is not the thing being timed."""
 FAKE_SPAWN = ["--multiprocessing-fork", "tracker_fd=-1", "pipe_handle=-1"]
 """A worker's spawn arguments, naming handles that are not real."""
 
+FAKE_SPAWN_CHECK = sys.platform != "win32"
+"""Whether `check_spawn_argument_is_intercepted` can run here; its docstring says why not
+on Windows."""
+
 
 class SmokeFailure(RuntimeError):
     """The built app did not do what a working one does."""
@@ -92,9 +96,6 @@ def check_spawn_argument_is_intercepted(executable: Path) -> None:
     check sat out its whole timeout, twice (2026-10-28). `check_run`'s two workers are the
     check there, since without `freeze_support()` they die on the parser and the run fails.
     """
-    if sys.platform == "win32":
-        print("  spawn arguments: checked by the two worker run instead, on Windows")
-        return
     result = subprocess.run(
         [str(executable), *FAKE_SPAWN],
         capture_output=True,
@@ -194,7 +195,10 @@ def main(argv: list[str] | None = None) -> int:
         with tempfile.TemporaryDirectory(prefix="proingest-smoke-") as name:
             work = Path(name)
             check_version(executable)
-            check_spawn_argument_is_intercepted(executable)
+            if FAKE_SPAWN_CHECK:
+                check_spawn_argument_is_intercepted(executable)
+            else:
+                print("  spawn arguments: checked by the two worker run instead, on Windows")
             batch = check_scan(executable, work)
             delivery = check_run(executable, work, batch)
             check_qc(executable, work, batch, delivery)
