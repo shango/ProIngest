@@ -43,15 +43,8 @@ STEP_TIMEOUT = 600
 four frame render is not the thing being timed."""
 
 
-FAKE_SPAWN = (
-    ["--multiprocessing-fork", "parent_pid=0", "pipe_handle=0"]
-    if sys.platform == "win32"
-    else ["--multiprocessing-fork", "tracker_fd=-1", "pipe_handle=-1"]
-)
-"""A worker's spawn arguments, in the form each platform's `multiprocessing` writes them,
-naming handles that are not real. **Not -1 on Windows**: there it is the pseudo handle for
-the current process, so the child read its own process forever and the check timed out
-(2026-10-28). Zero is no handle at all, so the child fails at once."""
+FAKE_SPAWN = ["--multiprocessing-fork", "tracker_fd=-1", "pipe_handle=-1"]
+"""A worker's spawn arguments, naming handles that are not real."""
 
 
 class SmokeFailure(RuntimeError):
@@ -93,7 +86,15 @@ def check_spawn_argument_is_intercepted(executable: Path) -> None:
 
     Cheap, and pointed at the one line in this repository most likely to be deleted by
     someone who checked it against the standard library and concluded it was a no-op.
+
+    **Not on Windows.** There the app is a windowed program, and PyInstaller answers the
+    exception the fake handle raises with a message box that nobody on a runner closes: the
+    check sat out its whole timeout, twice (2026-10-28). `check_run`'s two workers are the
+    check there, since without `freeze_support()` they die on the parser and the run fails.
     """
+    if sys.platform == "win32":
+        print("  spawn arguments: checked by the two worker run instead, on Windows")
+        return
     result = subprocess.run(
         [str(executable), *FAKE_SPAWN],
         capture_output=True,
