@@ -1,14 +1,17 @@
 """Populate proingest/resources/ffmpeg/ from build/ffmpeg.lock.json.
 
-The ffmpeg and ffprobe binaries are ~132 MB and are deliberately not tracked in git.
-This script is the only supported way to obtain them, so every machine ends up with the
-exact build recorded in the lock file and in every QC log.
+The ffmpeg and ffprobe binaries are 132 MB on macOS and 205 MB on Windows and are
+deliberately not tracked in git. This script is the only supported way to obtain them,
+so every machine ends up with the exact build recorded in the lock file and in every QC
+log. The lock pins one build per shipped platform; this installs the one for the
+platform it runs on, or the one `--platform` names.
 
 Usage:
     python build/fetch_ffmpeg.py                    # download, verify, install
     python build/fetch_ffmpeg.py --verify           # check what is there, download nothing
     python build/fetch_ffmpeg.py --from ~/Downloads # install from files already on disk
     python build/fetch_ffmpeg.py --show             # print what to download, and from where
+    python build/fetch_ffmpeg.py --show --platform win32   # the same, for another platform
 
 `--from` exists for a machine that cannot or should not reach the internet from a shell:
 put the files somewhere by hand and this verifies them against the same sha256 the
@@ -38,6 +41,19 @@ EXEC_BITS = stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH
 
 USER_AGENT = "ProIngest-fetch-ffmpeg/1.0"
 """ffmpeg.martin-riedl.de answers the default `Python-urllib/3.x` agent with 403."""
+
+
+def load_spec(platform: str = sys.platform) -> dict[str, Any]:
+    """The lock's ffmpeg for `platform`, a `sys.platform` value. Linux has none: the dev
+    machine and its CI runner use the distro's ffmpeg on PATH, and nothing ships there."""
+    platforms: dict[str, Any] = json.loads(LOCK_PATH.read_text(encoding="utf-8"))["platforms"]
+    if platform not in platforms:
+        raise SystemExit(
+            f"no ffmpeg is pinned for {platform}; the lock has {', '.join(sorted(platforms))}. "
+            "Off those, the tool uses the ffmpeg on PATH."
+        )
+    spec: dict[str, Any] = platforms[platform]["ffmpeg"]
+    return spec
 
 
 def display_path(path: Path) -> str:
@@ -135,7 +151,11 @@ def place(temp: Path, dest: Path, entry: dict[str, Any]) -> None:
 
 
 def fetch(entry: dict[str, Any], dest_dir: Path, work: Path) -> None:
-    """Download one entry, verify it, then move it into place."""
+    """Download one entry, verify it, then move it into place.
+
+    An archive is kept in `work` once downloaded, so entries that share one (the Windows
+    build's ffmpeg, ffprobe and licence are all in a single 111 MB zip) fetch it once.
+    """
     dest = dest_dir / str(entry["dest_name"])
     temp = dest.with_suffix(dest.suffix + ".part")
     member = entry.get("archive_member")
@@ -143,10 +163,10 @@ def fetch(entry: dict[str, Any], dest_dir: Path, work: Path) -> None:
     if member is None:
         download(str(entry["url"]), temp)
     else:
-        archive = work / f"{entry['dest_name']}.zip"
-        download(str(entry["url"]), archive)
+        archive = work / Path(str(entry["url"])).name
+        if not archive.is_file():
+            download(str(entry["url"]), archive)
         unpack(archive, str(member), temp)
-        archive.unlink()
 
     place(temp, dest, entry)
 
@@ -232,9 +252,12 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--verify", action="store_true", help="check what is installed, fetch nothing")
     parser.add_argument("--show", action="store_true", help="print the URLs and hashes, do nothing else")
+    parser.add_argument(
+        "--platform", default=sys.platform, help="a sys.platform value to install for (default: this one)"
+    )
     args = parser.parse_args(argv)
 
-    spec = json.loads(LOCK_PATH.read_text())["ffmpeg"]
+    spec = load_spec(args.platform)
     dest_dir = REPO_ROOT / str(spec["dest_dir"])
 
     if args.show:

@@ -659,7 +659,9 @@ def render(made: Plan, progress: Progress | None = None, workers: int = DEFAULT_
             made, views, parts, workers, lambda done: progress(converted + done, total) if progress else None
         )
         listing = parts / "segments.txt"
-        listing.write_text("".join(f"file '{_quoted(path)}'\n" for path in encoded), encoding="utf-8")
+        listing.write_text(
+            "".join(f"file '{_quoted(path)}'\n" for path in encoded), encoding="utf-8", newline="\n"
+        )
         _run(ffmpeg.concat_command(listing, temp, made.timecode), temp.name)
         problems = qc.check_stringout(temp, made.total, SIZE, RATE)
         if problems:
@@ -943,7 +945,7 @@ def _labelled(segment: Segment, base: Path) -> list[ffmpeg.Inset]:
     insets = []
     for position, inset in enumerate(segment.insets):
         textfile = base.with_name(f"{base.name}_inset{position}.txt")
-        textfile.write_text(ffmpeg.drawtext_literal(inset.label), encoding="utf-8")
+        textfile.write_text(ffmpeg.drawtext_literal(inset.label), encoding="utf-8", newline="\n")
         label = ffmpeg.drawtext_filter(textfile, FONT, INSET_FONT_SIZE, INSET_LABEL_X, INSET_LABEL_Y)
         insets.append(replace(inset.picture, filters=(label,)))
     return insets
@@ -973,7 +975,8 @@ def _burn_ins(stem: str, segment: Segment, base: Path) -> list[str]:
     filters = []
     for position, (text, x, y, size) in enumerate(sized):
         textfile = base.with_name(f"{base.name}_{position}.txt")
-        textfile.write_text(text, encoding="utf-8")
+        # `\n` as written, not the `\r\n` Windows would turn it into: drawtext reads every byte.
+        textfile.write_text(text, encoding="utf-8", newline="\n")
         filters.append(ffmpeg.drawtext_filter(textfile, FONT, size, x, y))
     return filters
 

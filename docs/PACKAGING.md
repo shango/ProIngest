@@ -1,7 +1,11 @@
-# Packaging (macOS v01)
+# Packaging (macOS and Windows)
 
-v01 targets **macOS on Apple Silicon only**. Windows moved to the v02 backlog (PRD section
-10).
+Two products from one repository and one CI workflow: **macOS on Apple Silicon**, installed
+from a dmg, and **Windows x64**, installed by `ProIngest-Setup-<version>.exe` (user,
+2026-10-28: "a windows build that works in parity with the MacOS app"). Windows was the v02
+backlog until then. Everything below is about the Mac unless it says otherwise; the Windows
+build is its own section at the end, and `docs/WINDOWS_SESSION.md` is its checklist for a
+person.
 
 **M7 is built as of 2026-09-13 and CI packages every push.** `build/build.py` produces the
 app, and on macOS the dmg beside it; `build/smoke_test.py` drives the result through a whole
@@ -50,7 +54,7 @@ The residue that still needs a person is `docs/MAC_SESSION.md`.
   leaks is running from source on an Intel Mac, where `resolve_tool` hands back the bundled
   arm64 binary (it tests `is_file`, not whether this machine can execute it) and the first
   ffprobe call fails with `Exec format error`. That is a developer's problem, not the
-  editor's, and the v02 Windows build will have to revisit `BUNDLED_PLATFORM` regardless.
+  editor's.
 - Distribution as a `.dmg`, built with **`hdiutil`** rather than the `create-dmg` this
   document used to name. The only part of create-dmg the tool wanted was the drag-to-install
   layout, and that is one symlink to `/Applications` in a staging folder; doing it with
@@ -142,14 +146,14 @@ rather than the target hardware but is the only first launch figure that exists.
   `proingest/resources/ffmpeg/PROVENANCE.md`. OQ-8 re-resolved for macOS.
 - Binaries live in `proingest/resources/ffmpeg/` and are named `ffmpeg` and `ffprobe`, with no
   extension. `core/ffmpeg.py` resolves the Settings override first, then the bundled path,
-  then PATH. **The bundled step is gated on `sys.platform == "darwin"`.** That guard is load
-  bearing rather than tidiness: unlike `.exe`, the macOS binary name is exactly what a Linux
-  or Windows machine also looks for, so without the guard the Linux dev machine resolves a
-  Mach-O binary as a valid file and every subprocess dies with "Exec format error".
-- The pair is 132 MB installed, ~57 MB compressed, against a 300 MB installer budget. The
-  Windows pair was 446 MB, so the macOS build has considerably more room.
-- The binaries are **not tracked in git**. `build/ffmpeg.lock.json` pins the versioned URLs and
-  a sha256 per extracted file; `python build/fetch_ffmpeg.py` downloads and verifies them into
+  then PATH. **The bundled step is gated on `sys.platform` being `darwin` or `win32`**
+  (`BUNDLED_PLATFORMS`). That guard is load bearing rather than tidiness: unlike `.exe`, the
+  macOS binary name is exactly what a Linux machine also looks for, so without the guard the
+  Linux dev machine resolves a Mach-O binary as a valid file and every subprocess dies with
+  "Exec format error".
+- The pair is 132 MB installed, ~57 MB compressed, against a 300 MB installer budget.
+- The binaries are **not tracked in git**. `build/ffmpeg.lock.json` pins, per platform, the
+  versioned URLs and a sha256 per extracted file; `python build/fetch_ffmpeg.py` downloads and verifies them into
   `proingest/resources/ffmpeg/`. Run it once after cloning and before `build/build.py`.
   `--show` prints the URLs and hashes, `--from <folder>` installs files downloaded by hand or
   copied from another machine, and `--verify` says whether what is installed is the pinned
@@ -201,7 +205,7 @@ M7 rather than at delivery.
   it on the way out, and a handler that reopened a new path every midnight would be a second
   mechanism to get wrong. Off macOS - the Linux dev machine and the Linux CI runner - the
   folder is `logs` beside `settings.json`, because `~/Library/Logs` exists nowhere else and
-  `QStandardPaths` models no log location to ask (`ui/paths.py`)
+  `QStandardPaths` models no log location to ask (`ui/paths.py`). Windows is the same, below
 - Crash dumps: same folder, with the batch path and last 200 log lines
 - Batches: wherever the user saves them; default suggestion is the delivery root
 
@@ -235,11 +239,53 @@ only the patch version bumped is the way out of a lockout.
   available. Presence in the build is not proof it opens on the hardware, so the check is an
   actual trial encode of a few frames, not a string match on `-encoders`. OQ-23.
 
-## Windows (later)
+## Windows
 
-v02. Keep everything path-agnostic and avoid macOS-only APIs outside `ui/` platform helpers,
-which is the same discipline that made this switch cheap in the first place. The Windows plan
-is the one this document previously described: PyInstaller `onedir`, Inno Setup producing
-`ProIngest-Setup-<version>.exe`, per-user install by default, and the gyan.dev GPL full build
-of ffmpeg. `build/ffmpeg.lock.json` will need a platform matrix at that point; it deliberately
-does not have one now, because a matrix with one entry is harder to read than a flat file.
+Built 2026-10-28 for parity with the Mac app: the same code, the same tests, the same
+ffmpeg release, packaged on a `windows-latest` runner (Windows Server 2025, x64) by the
+`package-windows` CI job, which uploads `ProIngest-windows-x64`.
+
+- **x64 only.** Windows 11 on ARM runs x64 programs under its own emulation, so one build
+  covers both; no ARM64 build is made (OQ-89).
+- **PyInstaller `onedir`**, from the same `build/proingest.spec` and `build/bundle.py` as the
+  Mac. The folder is `dist/ProIngest/` with `ProIngest.exe` in it, a windowed program with no
+  console. PyInstaller's own manifest declares it `longPathAware`.
+- **The installer is Inno Setup**, from `build/proingest.iss`, compiled by `ISCC` on PATH.
+  `build/build.py` passes it the version and the folders, so the script holds no version and
+  no path. It installs **per user, with no administrator rights** (`PrivilegesRequired=lowest`),
+  into `%LOCALAPPDATA%\Programs\ProIngest`, with a Start menu entry, an optional desktop
+  shortcut and an uninstaller. Its `AppId` is fixed and, like the bundle identifier, must
+  never change once a build has reached a user. An upgrade deletes the old `_internal` folder
+  first so a file a newer build dropped is not left behind. Inno Setup 6 is preinstalled on
+  the runner image; nothing is downloaded to package a build.
+- **ffmpeg is gyan.dev's 9.0.1 essentials build**, GPL v3, the same release the Mac bundles,
+  so the two apps never differ by encoder. One zip carries `ffmpeg.exe`, `ffprobe.exe` and the
+  licence; `fetch_ffmpeg.py` downloads it once and verifies each file taken out of it. Its
+  configure line was read from the binary: libx264, libzimg, libfreetype and libharfbuzz are
+  in, which is everything `PROVENANCE.md` lists as needed. The full build is 250 MB against
+  essentials' 111 MB and adds nothing the tool uses.
+- **CI checks the installed copy, not only the build.** After the smoke test runs against
+  `dist/ProIngest/ProIngest.exe`, the job runs the setup silently, as the user would but
+  without the clicks, and smoke tests the `ProIngest.exe` it installed.
+- **One copy at a time.** macOS refuses a second instance through `Info.plist`; Windows has no
+  such switch, so `ui/app.py` holds a `QLockFile` in the app data folder and a second launch
+  says ProIngest is already open and quits. The lock is on every platform; on the Mac it never
+  gets the chance to matter.
+- **Every ffmpeg runs without a console window** (`CREATE_NO_WINDOW`). The app has no console,
+  so without it each encode would flash one.
+- **Logged commands are quoted for `cmd.exe`** on Windows (`subprocess.list2cmdline`), so a
+  render is still reproduced by pasting its log line.
+- **Unsigned.** There is no code signing certificate. A setup exe downloaded through a browser
+  gets SmartScreen's "Windows protected your PC"; **More info**, then **Run anyway**, gets past
+  it, once per downloaded file. This is a warning, not the outright block Gatekeeper applies
+  on the Mac (OQ-9).
+
+Runtime locations on Windows, answered by `QStandardPaths` (`ui/paths.py`):
+
+- Settings: `%APPDATA%\ProIngest\settings.json`, which is `AppData\Roaming\ProIngest`.
+- Logs: `%APPDATA%\ProIngest\logs\`. Windows has no counterpart to `~/Library/Logs`.
+- The app itself: `%LOCALAPPDATA%\Programs\ProIngest\`.
+
+Two things only a person on a Windows machine can confirm are in `docs/WINDOWS_SESSION.md`:
+how Google Drive for desktop's `G:` drive behaves under a render (file locks on rename, long
+paths), and how the window reads on a real display.

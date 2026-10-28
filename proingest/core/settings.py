@@ -1,9 +1,10 @@
 """Application settings: what the app remembers between launches.
 
-JSON at `~/Library/Application Support/ProIngest/settings.json` (PACKAGING.md,
-"Runtime locations"). **This module never works out where that is.** The path comes
-from `ui/paths.py`, which asks `QStandardPaths` for it as UI_SPEC section 11 requires,
-and every function here takes it as an argument. Core imports no Qt, so the alternative
+JSON at `~/Library/Application Support/ProIngest/settings.json` on macOS and
+`%APPDATA%\\ProIngest\\settings.json` on Windows (PACKAGING.md, "Runtime locations").
+**This module never works out where that is.** The path comes from `ui/paths.py`, which
+asks `QStandardPaths` for it as UI_SPEC section 11 requires, and every function here
+takes it as an argument. Core imports no Qt, so the alternative
 would be a second implementation of the same path in a module that cannot check Qt's
 answer, and two authorities for one location is how a settings file ends up written in
 one place and read from another.

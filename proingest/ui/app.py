@@ -11,7 +11,8 @@ import logging
 import platform
 from pathlib import Path
 
-from PySide6.QtWidgets import QApplication
+from PySide6.QtCore import QLockFile
+from PySide6.QtWidgets import QApplication, QMessageBox
 
 from proingest import __version__
 from proingest.core import logsetup
@@ -19,6 +20,23 @@ from proingest.ui import paths
 from proingest.ui.main_window import MainWindow
 
 THEME_FILE = Path(__file__).parent / "theme.qss"
+
+INSTANCE_LOCK = "ProIngest.lock"
+
+ALREADY_OPEN = "ProIngest is already open."
+
+
+def claim_instance(folder: Path) -> QLockFile | None:
+    """The lock that makes this the one ProIngest running, or None if another has it.
+
+    macOS refuses a second instance itself (`LSMultipleInstancesProhibited` in the
+    bundle); Windows has no such switch, and a second copy would fight the first over
+    the same settings file. Qt removes a lock whose process has died, so a crash does not
+    lock the user out. Held for as long as the caller keeps the object.
+    """
+    folder.mkdir(parents=True, exist_ok=True)
+    lock = QLockFile(str(folder / INSTANCE_LOCK))
+    return lock if lock.tryLock(0) else None
 
 
 def theme() -> str:
@@ -54,6 +72,10 @@ def run(argv: list[str] | None = None) -> int:
     is being built.
     """
     app = build_application(argv)
+    instance = claim_instance(paths.app_data_dir())
+    if instance is None:
+        QMessageBox.information(None, paths.APPLICATION_NAME, ALREADY_OPEN)
+        return 0
     logsetup.configure(paths.log_dir())
     logsetup.install_exception_hooks()
     window = MainWindow(paths.settings_path())

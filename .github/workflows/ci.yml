@@ -1,7 +1,7 @@
-# Two jobs on purpose. Linux is where this has always been developed and is the fast,
-# cheap signal; macOS on Apple Silicon is the actual target and, until this workflow
-# existed, no line of this code had ever run there (OQ-22). Running both means a macOS
-# failure can be read immediately as platform-specific or not.
+# Three test jobs on purpose. Linux is where this has always been developed and is the
+# fast, cheap signal; macOS on Apple Silicon and Windows x64 are the two products, each
+# with its own pinned ffmpeg (2026-10-28). Running all three means a failure on one can
+# be read immediately as platform-specific or not.
 name: CI
 
 on:
@@ -123,8 +123,53 @@ jobs:
             && ffprobe -hide_banner -v error -show_entries stream=codec_name,width,height \
                  -of default=noprint_wrappers=1 /tmp/vt-probe.mp4
 
-  # Packaging (M7). Two jobs for the same reason the two test jobs exist: the macOS one
-  # is the product and the Linux one is the cheap signal. Nothing ships from Linux, but
+  windows:
+    name: Windows (x64)
+    # windows-latest is Windows Server 2025 on x64. The product targets Windows 11, which
+    # shares its kernel and Win32 surface; what the server cannot answer is in
+    # docs/WINDOWS_SESSION.md.
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Cache the pinned ffmpeg
+        uses: actions/cache@v6
+        with:
+          path: proingest/resources/ffmpeg
+          key: ffmpeg-${{ runner.os }}-${{ hashFiles('build/ffmpeg.lock.json') }}
+
+      - name: Fetch the pinned ffmpeg
+        # gyan.dev's 9.0.1 essentials build, verified by sha256 against the lock.
+        run: python build/fetch_ffmpeg.py
+
+      - name: Put the bundled ffmpeg on PATH, and prove it runs
+        # As on macOS: the suite tests the build the product ships, and a missing binary
+        # fails here loudly rather than letting the fixtures skip the suite.
+        run: |
+          echo "$GITHUB_WORKSPACE\\proingest\\resources\\ffmpeg" >> "$GITHUB_PATH"
+          proingest/resources/ffmpeg/ffmpeg.exe -hide_banner -version | head -1
+          proingest/resources/ffmpeg/ffprobe.exe -hide_banner -version | head -1
+
+      - uses: astral-sh/setup-uv@v10.1.0
+        with:
+          cache-dependency-glob: "uv.lock"
+      - name: Create the environment
+        run: uv sync --frozen --extra dev --python ${{ env.PYTHON_VERSION }}
+
+      - name: Lint, format check and type check
+        run: |
+          .venv/Scripts/python -m ruff check .
+          .venv/Scripts/python -m ruff format --check .
+          .venv/Scripts/python -m mypy proingest tests build
+
+      - name: Tests
+        run: .venv/Scripts/python -m pytest tests/ -q
+
+  # Packaging (M7). The macOS and Windows jobs are the products and the Linux one is the
+  # cheap signal. Nothing ships from Linux, but
   # a spec that has stopped collecting a plugin manifest or has lost a hidden import
   # fails a Linux build exactly as it fails a macOS one, and finding that here costs a
   # free runner rather than a day of a rented Mac (`docs/MAC_SESSION.md`).
@@ -220,4 +265,69 @@ jobs:
           # action zips what it is given, and a zip drops the symlinks and the execute
           # bits that a bundle is made of. A dmg arrives intact.
           path: dist/ProIngest-*.dmg
+          if-no-files-found: error
+
+  package-windows:
+    name: Package (Windows x64)
+    needs: windows
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Cache the pinned ffmpeg
+        uses: actions/cache@v6
+        with:
+          path: proingest/resources/ffmpeg
+          key: ffmpeg-${{ runner.os }}-${{ hashFiles('build/ffmpeg.lock.json') }}
+
+      - name: Fetch the pinned ffmpeg
+        # build/build.py refuses a Windows build without the two exes.
+        run: python build/fetch_ffmpeg.py
+
+      - name: Put the bundled ffmpeg and Inno Setup on PATH
+        # ffmpeg for the smoke test's fixtures; the app resolves its own copy. Inno Setup
+        # 6 is on the runner image, and build.py finds ISCC on PATH rather than by a path.
+        run: |
+          echo "$GITHUB_WORKSPACE\\proingest\\resources\\ffmpeg" >> "$GITHUB_PATH"
+          echo "C:\\Program Files (x86)\\Inno Setup 6" >> "$GITHUB_PATH"
+
+      - uses: astral-sh/setup-uv@v10.1.0
+        with:
+          cache-dependency-glob: "uv.lock"
+      - name: Create the environment
+        run: uv sync --frozen --extra dev --python ${{ env.PYTHON_VERSION }}
+
+      - name: Build the app and the installer
+        run: |
+          .venv/Scripts/python build/build.py | tee "$RUNNER_TEMP/build.log"
+          {
+            echo '### ProIngest bundle (Windows)'
+            echo '```'
+            tail -n 6 "$RUNNER_TEMP/build.log"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Smoke test the frozen app
+        run: .venv/Scripts/python build/smoke_test.py dist/ProIngest/ProIngest.exe
+
+      - name: Install it as a user would, and smoke test the installed copy
+        # Silent and per user, so no administrator rights: the same installer the editor
+        # double-clicks, proving what it lays down runs and not only what PyInstaller left.
+        shell: pwsh
+        run: |
+          $setup = Get-ChildItem dist/ProIngest-Setup-*.exe | Select-Object -First 1
+          $run = Start-Process $setup.FullName -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/CURRENTUSER' -Wait -PassThru
+          if ($run.ExitCode -ne 0) { throw "setup exited $($run.ExitCode)" }
+          $installed = Join-Path $env:LOCALAPPDATA 'Programs\ProIngest\ProIngest.exe'
+          if (-not (Test-Path $installed)) { throw "nothing installed at $installed" }
+          .venv/Scripts/python build/smoke_test.py $installed
+
+      - name: Upload the installer
+        uses: actions/upload-artifact@v7
+        with:
+          name: ProIngest-windows-x64
+          path: dist/ProIngest-Setup-*.exe
           if-no-files-found: error

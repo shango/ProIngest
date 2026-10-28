@@ -1,3 +1,12 @@
+# Handoff, 28 October 2026 (Windows)
+
+**28 October, 0.5.50 on branch `windows`**: PR #20 is merged (`main` is `b8323cd`, 0.5.49). The
+Windows build is in progress for parity with the Mac: gyan.dev ffmpeg 9.0.1 pinned beside the
+Mac's, an Inno Setup per user installer, `windows` and `package-windows` CI jobs, and a filter
+path escape fixed on both platforms. `PROGRESS.md` has the entry, OQ-89 the assumptions, and
+`docs/WINDOWS_SESSION.md` what a person on Windows has to check. If the Windows CI is not green
+yet, that is the work: read the failing job's log and fix forward.
+
 # Handoff, 28 October 2026
 
 **28 October, 0.5.49**: `meas##` and `recon##` are delivered as an Avid reference is (a movie

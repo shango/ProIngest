@@ -1,5 +1,11 @@
 # Bundled ffmpeg
 
+Two builds of one release, ffmpeg **9.0.1**, GPL v3: martin-riedl.de's for macOS arm64, below,
+and gyan.dev's essentials build for Windows x64, in the section at the end (2026-10-28). Both
+are pinned in `build/ffmpeg.lock.json`.
+
+## macOS arm64
+
 | field | value |
 |---|---|
 | version | `9.0.1-https://www.martin-riedl.de` |
@@ -83,3 +89,26 @@ identical to the text the gyan.dev archive shipped, as expected for the same lic
 66 MB per binary, 132 MB for the pair, ~57 MB compressed. That is a large improvement on the
 Windows pair (446 MB installed, 111 MB compressed) and leaves real room under the 300 MB
 installer budget in PRD section 8.
+
+## Windows x64
+
+| field | value |
+|---|---|
+| version | `9.0.1-essentials_build-www.gyan.dev` |
+| source | gyan.dev, release `9.0.1` of `GyanD/codexffmpeg` on GitHub |
+| archive | https://github.com/GyanD/codexffmpeg/releases/download/9.0.1/ffmpeg-9.0.1-essentials_build.zip |
+| archive sha256 | `fec81ae03971d9dd4be3ebe02e263bd2ec1d789483f931bdba5f5715e65da2e9` (GitHub's own digest for the asset) |
+| linkage | `--enable-static` |
+| license | **GPL v3** (`--enable-gpl --enable-version3`); `LICENSE` in the archive is byte for byte the macOS licence text |
+| ffmpeg.exe sha256 | `72a489eccd008c2ec2c0a5856c5c75bc3d8bbfa90166c4566865c246445e6aa3` |
+| ffprobe.exe sha256 | `19202b23c0043f15ad1b7bce2344f406fd52bd6efd8f995ce02e7392a1cec52f` |
+
+**Why the essentials build.** Its configure line, read out of `ffmpeg.exe` on 2026-10-28, has
+`--enable-libx264`, `--enable-libzimg`, `--enable-libfreetype` and `--enable-libharfbuzz`, which
+with the built-in decoders, `aac` and the mp4 muxer is every row of the table above that is not
+VideoToolbox. The full build is 251 MB to essentials' 111 MB and adds libraries the tool never
+calls. gyan.dev's release builds are versioned GitHub releases, so the URL does not move.
+
+**How it was verified, and its limit.** As for the Mac: by reading the binary on Linux, which
+cannot run it. CI then runs it: the Windows job puts it on PATH and the whole suite renders
+through it.

@@ -34,7 +34,7 @@ Non-goals for v01
 - Lens grid delivery. **Ben delivers the lens grid** and the tool does not look for one (2026-09-22, OQ-20 closed).
 - Frame viewer. Specified on the morning of 2026-09-11 as three steppable viewers, removed that afternoon, and back in the v02 backlog where it started (FR-16).
 - Any Google Drive API use. The Drive mount is a normal mounted folder.
-- Windows build (design for it, do not ship it). v01 is Apple Silicon only, and a Windows 11 build is a v02 intention (OQ-24).
+- ~~Windows build~~ **Built 2026-10-28**, in parity with the Mac app, on the user's word (OQ-89). v01 was Apple Silicon only until then (OQ-24).
 
 ## 4. Inputs
 
@@ -217,5 +217,5 @@ M9 The user guide (FR-17, added 2026-09-12): install guide, quickstart, a refere
 - Frame viewer. Removed from v01 twice now, which is worth noting before anyone adds it a third time: it was a v02 item from the start, was promoted into v01 on 2026-09-11 as three steppable viewers, and was removed again on 2026-09-11 because the review that needed pictures moved to Resolve. It needs a decoded frame cache per row and the viewing LUT that M4.5 builds anyway.
 - Per shot colour controls in the tool, if the round trip through the colour session ever proves too slow for a review session. Removed from v01 deliberately (section 3).
 - Burn-ins on reference mp4s.
-- Windows 11 build. Intended, not committed (OQ-24).
+- ~~Windows 11 build~~ **Built 2026-10-28 (OQ-89)**, x64, from the same repository and CI workflow. `docs/PACKAGING.md`, Windows.
 - Google Apps Script hyperlink export for the tracker.

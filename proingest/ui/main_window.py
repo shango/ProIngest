@@ -1051,7 +1051,7 @@ class MainWindow(QMainWindow):
         )
 
     def open_folder(self, folder: Path) -> None:
-        """Show a folder in the Finder. Its own method so a test can answer it."""
+        """Show a folder in the Finder, or Explorer on Windows. Its own method so a test can answer it."""
         QDesktopServices.openUrl(QUrl.fromLocalFile(str(folder)))
 
     def save_logs(self) -> None:

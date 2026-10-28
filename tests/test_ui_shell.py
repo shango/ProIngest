@@ -193,6 +193,12 @@ class TestTheApplication:
         assert paths.log_dir().name in (paths.APPLICATION_NAME, "logs")
         assert "~" not in str(paths.log_dir())
 
+    @pytest.mark.skipif(sys.platform != "win32", reason="what Qt answers on Windows")
+    def test_on_windows_everything_is_in_the_roaming_app_data_folder(self, qt_app: QApplication) -> None:
+        """PACKAGING.md says `%APPDATA%\\ProIngest`; only the Windows runner can ask Qt."""
+        assert paths.app_data_dir().parent.name == "Roaming"
+        assert paths.log_dir() == paths.app_data_dir() / "logs"
+
     def test_the_mac_log_folder_is_derived_rather_than_written_out(
         self, qt_app: QApplication, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -213,6 +219,17 @@ class TestTheApplication:
         """A cosmetic file left out of a bundle must not be the reason the tool will not start."""
         monkeypatch.setattr(ui_app, "THEME_FILE", Path("/nowhere/theme.qss"))
         assert ui_app.theme() == ""
+
+    def test_a_second_copy_finds_the_first_one_running(self, tmp_path: Path) -> None:
+        """Windows starts a second ProIngest on a second double click, and two would
+        write one settings file. The lock is what makes the second one stop."""
+        first = ui_app.claim_instance(tmp_path / "ProIngest")
+        assert first is not None
+        assert ui_app.claim_instance(tmp_path / "ProIngest") is None
+        first.unlock()
+        again = ui_app.claim_instance(tmp_path / "ProIngest")
+        assert again is not None
+        again.unlock()
 
 
 class TestTheVersionIsAlwaysInView:
