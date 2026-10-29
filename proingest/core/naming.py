@@ -79,7 +79,7 @@ shows it as it is, for the event's length."""
 
 AVIDREF_KIND = "avidRef"
 """An Avid reference's `Shot Type`, `avidRef01`, `avidRef02` (QC-088, user 2026-10-15). Not in
-`CLIP_TYPES` and never graded: its colour is baked in. Delivered as it is, never as an EXR (user,
+`CLIP_TYPES` and never graded: its color is baked in. Delivered as it is, never as an EXR (user,
 2026-10-22): a movie as an mp4, a still as itself (`as_is_file`); the stringout plays its cut as
 it is. The one place the spelling lives, since it may change again: it was `preVis01` in 0.5.44
 and `pl01_avidref` in 0.5.45."""
@@ -87,7 +87,7 @@ and `pl01_avidref` in 0.5.45."""
 MEAS_KIND = "meas"
 RECON_KIND = "recon"
 """A measurement's and a recon's `Shot Type`, `meas01`, `recon02` (QC-088, user 2026-10-27): never
-colour corrected and delivered as an Avid reference is, never as an EXR. `recon` replaces `re`."""
+color corrected and delivered as an Avid reference is, never as an EXR. `recon` replaces `re`."""
 
 AS_IS_KINDS = (AVIDREF_KIND, MEAS_KIND, RECON_KIND)
 """The kinds delivered as they are (`as_is_file`): a movie as an mp4, a still as itself."""

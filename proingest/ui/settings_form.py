@@ -11,8 +11,8 @@ list than against a layout. It also makes the page's contents assertable without
 window, which is how a section that quietly lost a field gets caught.
 
 **A field is here only if something already reads it**, with one stated exception: the
-Colour section's ingest folder is read by the chooser in M5.7.3 and is remembered from
-now, because the alternative is a Colour section that is entirely read only and a page
+Color section's ingest folder is read by the chooser in M5.7.3 and is remembered from
+now, because the alternative is a Color section that is entirely read only and a page
 reopened one chunk later for one line. **Every section is live as of M5.12**, Output
 last: the two settings it carries are applied inside a worker process, so they had to
 travel there before the section could mean anything. `Section.enabled` stays, because
@@ -73,7 +73,7 @@ class Section:
 
 GENERAL = "General"
 RULES = "Rules"
-COLOUR = "Colour"
+COLOR = "Color"
 NAMING = "Naming"
 OUTPUT = "Output"
 ADVANCED = "Advanced"
@@ -82,7 +82,7 @@ ADVANCED = "Advanced"
 def sections() -> tuple[Section, ...]:
     """Every section of the page, in the order PRD FR-12 lists them.
 
-    A function rather than a constant because the Colour section reads the pinned
+    A function rather than a constant because the Color section reads the pinned
     config's own names, and a constant would fix them at import time and then disagree
     with the library after a version bump - which is precisely the thing OQ-29 pinned
     the config to prevent.
@@ -160,7 +160,7 @@ def sections() -> tuple[Section, ...]:
             ),
         ),
         Section(
-            COLOUR,
+            COLOR,
             (
                 Field(
                     "readonly.config",
@@ -170,10 +170,10 @@ def sections() -> tuple[Section, ...]:
                     "change what a reference looks like (OQ-29).",
                 ),
                 Field(
-                    "readonly.colour_source",
-                    "Colour",
+                    "readonly.color_source",
+                    "Color",
                     "readonly",
-                    "Where each clip's colour comes from. Its AMF names the input "
+                    "Where each clip's color comes from. Its AMF names the input "
                     "transform, the looks and the output transform, and the CLFs beside it "
                     "carry the grade; the tool applies them in that order, in ACES2065-1, "
                     "and carries the result to ACEScg.",
@@ -187,7 +187,7 @@ def sections() -> tuple[Section, ...]:
                 ),
             ),
             note=(
-                "There is no colour setting: each clip's AMF says what it is and what was "
+                "There is no color setting: each clip's AMF says what it is and what was "
                 "done to it, and every ID in it is resolved by the ACES config itself."
             ),
         ),
@@ -274,10 +274,10 @@ def sections() -> tuple[Section, ...]:
 
 
 def readonly_values() -> dict[str, str]:
-    """The Colour section's read-only lines, read from core rather than copied."""
+    """The Color section's read-only lines, read from core rather than copied."""
     return {
         "readonly.config": color.BUILTIN_CONFIG,
-        "readonly.colour_source": f"each clip's AMF and its CLFs, applied in {color.ACES}",
+        "readonly.color_source": f"each clip's AMF and its CLFs, applied in {color.ACES}",
         "readonly.output_transform": "each clip's AMF",
         "readonly.log_file": str(paths.log_dir() / logsetup.LOG_FILENAME),
     }

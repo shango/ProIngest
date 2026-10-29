@@ -182,7 +182,7 @@ class TestAnAvidRef:
     )
     def test_a_measurement_or_recon_is_delivered_the_same_way(self, kind: str, path: str, name: str) -> None:
         """User, 2026-10-27: "If the file on the timeline is a still, deliver a still, if the
-        file is a movie, deliver an mp4", never colour corrected."""
+        file is a movie, deliver an mp4", never color corrected."""
         shot = replace(self.avidref(path), identity=naming.ShotIdentity("MELT0001", kind, "02"))
         jobs = planner.plan_row(shot, ROOT, 1, shot_color=GRADE_COLOR).jobs
         assert names(jobs) == [name] and jobs[0].kind == "avidref"
@@ -538,13 +538,13 @@ class TestOutputNamesReadBack:
         assert parsed.kind == job.kind
 
 
-class TestShotColourOnJobs:
+class TestShotColorOnJobs:
     """Which chain each deliverable is rendered through. COLOR_AND_FORMAT section 1.
 
-    A job is self contained, so the colour rides on it. The one that matters here is
+    A job is self contained, so the color rides on it. The one that matters here is
     the aux still: `colorChart`, `mirrorBall`, `greyBall` and `sizeRef` are the
     references a comp matches lighting against, and a creative grade applied to a
-    colour chart destroys the only thing the chart is delivered for.
+    color chart destroys the only thing the chart is delivered for.
     """
 
     def ingest(self, batch: Batch, tmp_path: Path) -> None:
@@ -595,7 +595,7 @@ class TestShotColourOnJobs:
         assert {job.shot_color.source_encoding for job in jobs} == {"ACEScc"}
 
     def test_a_name_that_does_not_resolve_leaves_the_job_naming_none(self) -> None:
-        """`S-Log3` is not a colour space. QC-047 reports it; the chain carries nothing."""
+        """`S-Log3` is not a color space. QC-047 reports it; the chain carries nothing."""
         batch = Batch(name="b", rows=[row(source_encoding="S-Log3")], delivery_root=ROOT)
         jobs = planner.plan_batch(batch)
         assert {job.shot_color.source_encoding for job in jobs} == {None}

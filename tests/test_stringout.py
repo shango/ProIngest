@@ -357,8 +357,8 @@ class TestInsets:
     def test_an_inset_is_drawn_and_then_gone(self, tmp_path: Path) -> None:
         """Rendered: red in the top left for the inset's frames, then the plate again."""
 
-        def clip(path: Path, colour: str, count: int) -> Path:
-            source = f"color=c={colour}:s=192x108:r=24"
+        def clip(path: Path, color: str, count: int) -> Path:
+            source = f"color=c={color}:s=192x108:r=24"
             subprocess.run(
                 ["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", source, "-frames:v", str(count),
                  "-pix_fmt", "yuv420p", str(path)],
@@ -406,7 +406,7 @@ class TestReferenceClips:
         assert clip.color is not None and clip.color.looks, "graded"
         assert planned(batch).total == 2 * FRAMES
 
-    def test_its_colour_is_baked_as_a_reference_is(self, batch: Batch, tmp_path: Path) -> None:
+    def test_its_color_is_baked_as_a_reference_is(self, batch: Batch, tmp_path: Path) -> None:
         self.as_chart(batch)
         still = planned(batch).segments[1]
         lut = stringout._still_lut(still, tmp_path / "still.cube")

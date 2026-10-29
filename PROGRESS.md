@@ -8,7 +8,7 @@ commit.
 
 ## 1. Resume here
 
-**State at 2026-10-29, version 0.5.51 on branch `fixit-orange`, from `main` after PR #21 (0.5.50) merged as `81c0358`** (0.5.51: the Fix-it report's Fix in Resolve colour orange rather than red; 0.5.50: the Windows build, in parity with the Mac; the filter path escape fixed on both; 0.5.49: `meas##` and `recon##` delivered as they are, `re` retired, `HDRI01`/`HDRI02` numbered by the Shot Type with no underscore, the pre-render delivered as an mp4; 0.5.48: a witness cam named under its plate, `pl02_wit01`; 0.5.47: the Avid reference delivered, never an EXR; 0.5.46: the Avid reference typed `avidRef##`; 0.5.40: no Fix-it line claims what the tool did not verify; 0.5.39: the Fix-it report by timeline clip name, each message once; 0.5.38: an HDRI's or LDRI's number is its take; 0.5.37: the LDRI; 0.5.36 and before merged to `main` with PR #19 as `a85cd53`; 0.5.36: the stringout from 26 minutes to 3 on turnover135; 0.5.35: the stringout's time left on its line; 0.5.34: the HDRI pre-render on the timeline; 0.5.33: the QC overhaul, nothing stops a batch or a turnover; 0.5.32: style frames on the stringout, the stringout line in the shot list; 0.5.31: every Fix-it line names its shot; 0.5.30: the take on the burn-in; 0.5.29: reference clips play in the stringout; 0.5.28: everything in the stringout graded; 0.5.27: the stringout from the EXRs; 0.5.26: the HDRI pre-render and delivery, QC-084, Accept As Is runs what it can; 0.5.25, merged to `main` with PR #18: `User_Generated` and `User_Uploads` at the delivery root; 0.5.24: the Fix-it
+**State at 2026-10-29, version 0.5.52 on branch `fixit-orange`, draft PR #22, from `main` after PR #21 (0.5.50) merged as `81c0358`** (0.5.52: US spelling, "color" everywhere; 0.5.51: the Fix-it report's Fix in Resolve color orange rather than red; 0.5.50: the Windows build, in parity with the Mac; the filter path escape fixed on both; 0.5.49: `meas##` and `recon##` delivered as they are, `re` retired, `HDRI01`/`HDRI02` numbered by the Shot Type with no underscore, the pre-render delivered as an mp4; 0.5.48: a witness cam named under its plate, `pl02_wit01`; 0.5.47: the Avid reference delivered, never an EXR; 0.5.46: the Avid reference typed `avidRef##`; 0.5.40: no Fix-it line claims what the tool did not verify; 0.5.39: the Fix-it report by timeline clip name, each message once; 0.5.38: an HDRI's or LDRI's number is its take; 0.5.37: the LDRI; 0.5.36 and before merged to `main` with PR #19 as `a85cd53`; 0.5.36: the stringout from 26 minutes to 3 on turnover135; 0.5.35: the stringout's time left on its line; 0.5.34: the HDRI pre-render on the timeline; 0.5.33: the QC overhaul, nothing stops a batch or a turnover; 0.5.32: style frames on the stringout, the stringout line in the shot list; 0.5.31: every Fix-it line names its shot; 0.5.30: the take on the burn-in; 0.5.29: reference clips play in the stringout; 0.5.28: everything in the stringout graded; 0.5.27: the stringout from the EXRs; 0.5.26: the HDRI pre-render and delivery, QC-084, Accept As Is runs what it can; 0.5.25, merged to `main` with PR #18: `User_Generated` and `User_Uploads` at the delivery root; 0.5.24: the Fix-it
 report, one error per cause, a lone EXR read as one frame, AMFs falling back to the clip they name) (`HANDOFF.md` is the short version, with the session's open items); 0.5.22 went to `main` earlier (PR #17 merged as `70e1160` at the user's request, after its CI
 run 37276656318 built the 0.5.22 dmg). The 2026-09-23 review is built (chunks A
 to H of `docs/REVIEW_2026-09-23.md`), and so are the fixes that a second official turnover,
@@ -18,12 +18,25 @@ since 2026-09-28 (user). What is left is the Mac: `docs/MAC_SESSION.md`, from "T
 order" down, and Ben's 4.886 slope. Entries are newest first; anything older than 2026-09-22
 describes the tool before the review and is history.
 
+**2026-10-29, 0.5.52: US spelling, "color" everywhere (user).** "Why am I seeing instances of
+the word color spelled "colour"", then "yes, change it all to color. This is a US company and
+unfortunatly, some are confused by the spelling colour." No one had chosen British spelling;
+sessions had drifted into it. Every `colour` in the repository is now `color` (colorist, colored,
+and so on), in the UI (the Settings page's Color section), the Fix-it report, QC messages, the
+spreadsheets, identifiers and test names, every doc, `docs/ROADMAP.docx` and
+`docs/Shot_Types.xlsx`; `docs/COLOUR_SESSION_EXPORT.md` is `docs/COLOR_SESSION_EXPORT.md`.
+Quotations were converted too: the user writes US English, so a `colour` inside one was a
+transcription. **Kept as they are**: `colour_primaries` and `colour_description_present_flag`,
+the H.264 standard's own field names (`docs/SAMPLE_TURNOVER_199.md`, OQ-60), and the retired
+`build-track.html`. No saved key changes (none held the word), so old batches and settings load.
+**Write US English from here on.**
+
 **2026-10-29, 0.5.51: the Fix-it report's highlight orange, not red (user).** "Change the highlight
 color theme in the fixit browswer to orange rather than red." The red was `--resolve` in
 `fixit._STYLE`: the Fix in Resolve tag, the left edge of its cards, and "Stops these clips from
 being delivered". Now `#c2410c` on the light page and `#fb923c` on the dark one, 4.8:1 and 7.1:1
 against their backgrounds, kept apart from the amber of Fix in the turnover folder (`--folder`,
-unchanged). Nothing else in the page or the app changed colour. PR #21 was merged first at the
+unchanged). Nothing else in the page or the app changed color. PR #21 was merged first at the
 user's word ("merge PR #21") as `81c0358`.
 
 **2026-10-28, 0.5.50: the Windows build, in parity with the Mac (user).** "What would it take
@@ -80,7 +93,7 @@ pre-render on the timeline "get[s] an mp4", the EXR being the file; LDRI the sam
 numbers an HDRI and **QC-087 is retired**; a name written `HDRI_01` still reads back, so it counts
 as a version. The pre-render (`row.hdri_render`) is a new `hdri_ref` job,
 `SECA0009_pl01_HDRI02_v01.mp4` (`naming.hdri_prerender_mp4`): the whole render, its own size,
-silent, coloured as the stringout shows it (`planner.prerender_color`, moved from `stringout`;
+silent, colored as the stringout shows it (`planner.prerender_color`, moved from `stringout`;
 the HDRI's grade over linear Rec.709 behind the shaper, `ffmpeg.encode_reference(shaper=)`, an
 LDRI as it is), checked as a reference is but for its size. The Fix-it QC-010 line lists the
 new spellings. **Assumed, told the user (OQ-88)**: the pre-render mp4's name (the message was cut
@@ -164,7 +177,7 @@ alone. **Verified**: tests in `test_metacsv.py`, `test_planner.py`, `test_qc.py`
 and `test_stringout.py` (the stringout plan for a preVis).
 **`docs/Shot_Types.xlsx`** (user: "a place for new types to be added with all the relavant data
 necessary to incoporate into a new version of the app"): one row per type, 33 columns read off the
-code (identity, colour, delivery, stringout, QC, spreadsheets, decision), five Proposed rows to fill
+code (identity, color, delivery, stringout, QC, spreadsheets, decision), five Proposed rows to fill
 in, a column guide naming where each behaviour lives in the code, the rules true of every type, and
 how a Shot Type is read. Hand kept from here: a new type is added there first. Update a row when a
 type's behaviour changes.
@@ -223,15 +236,15 @@ QC-047 item said an AMF named 'Rec.709 (Scene)' when no AMF was used, and the us
 "This fixit tool is useless if it's not very specific. If there are other generalities this is an
 issue. If an issue is not coming from somewhere the tool can verify, I'd rather it say, "This clip
 is appearing as a rec709, please investigate why." **Audited every `fixit.ADVICE` entry** and
-fixed: QC-047's line now says per clip which file gave the colour space (the AMF, named; or "No
+fixed: QC-047's line now says per clip which file gave the color space (the AMF, named; or "No
 AMF was matched to this clip, so the metadata CSV's Input Color Space column was used. It says
 ...", naming the passed-over AMF when QC-075's info says one named another clip), and "This clip
 is appearing as '...', please investigate why" when neither can be shown
-(`fixit._colour_space_detail`); `_named_by` never says "the clip's AMF" without an AMF. QC-046
+(`fixit._color_space_detail`); `_named_by` never says "the clip's AMF" without an AMF. QC-046
 said "It has no AMF" though it also fires for an AMF naming no input transform: heading "Nothing
-says what colour space a clip was recorded in", per-clip message. QC-075's heading ("Two colour
+says what color space a clip was recorded in", per-clip message. QC-075's heading ("Two color
 files claim the same clip") was wrong for its turnover warnings (an AMF that will not parse, or
-has no index): now "A colour file (AMF) cannot be used", per-line message. QC-042 said "missing or
+has no index): now "A color file (AMF) cannot be used", per-line message. QC-042 said "missing or
 cannot be read" but is only raised for unreadable. QC-076 and QC-067 headings no longer guess
 between causes; their lines say which. QC-011, 014, 027, 028, 041, 042, 043, 046, 067, 073 and 075
 showed the heading alone and dropped the message's events, files and reasons; each now shows it.
@@ -239,9 +252,9 @@ QC-083 keeps "probably rendered into another folder", which is the user's own wo
 cause (2026-10-07). **Verified**: `test_fixit.py` (36), turnover134 and 135 reports read through.
 Then, same day (user): **no line names the ACES config** ("we know what ACES presets we're
 working with already"): QC-047, QC-077, QC-079 and `color.ColorError` say "not one the tool
-knows" with the value, and the Fix-it colour-space lines lose their second sentence ("It's not
+knows" with the value, and the Fix-it color-space lines lose their second sentence ("It's not
 informative. It's already the obvious"). **QC-082's item is "A clip is missing a CLF file.
-Defaulting to the CDL in its AMF for colour."**, the user's wording; the log message keeps the
+Defaulting to the CDL in its AMF for color."**, the user's wording; the log message keeps the
 slope. **Skip from the right-click menu**: a shot's menu has Skip Shot (Unskip Shot once
 skipped), the same as Ctrl+K; a turnover heading's has Skip Turnover, every shot with one reason
 asked once, a shot skipped before keeping its own, and Unskip Turnover once all are skipped
@@ -258,9 +271,9 @@ timecode: `A001_C003.mov - SECA0009 clean plate, at 01:00:07:21 on the timeline`
 (`fixit.Clip.at`). An item's clips are grouped under each message they share, said once above
 them (`fixit.clip_groups`). **Found and fixed on the way**: that QC-047 came from the CSV's `Input
 Color Space` (the clip had no AMF), yet the item was titled for the AMF and said "Reported by the
-clip's AMF"; it is now "A clip's input colour space is one the tool does not know", explains it
-is the colour space Resolve reads the footage as and not its grade, and is reported by the CSV's
-Input Color Space column. 'Rec.709 (Scene)' (Resolve's name) is not a colour space in the pinned
+clip's AMF"; it is now "A clip's input color space is one the tool does not know", explains it
+is the color space Resolve reads the footage as and not its grade, and is reported by the CSV's
+Input Color Space column. 'Rec.709 (Scene)' (Resolve's name) is not a color space in the pinned
 OCIO config, so the clip is held; whether to map it is open (not asked yet). **Verified**:
 `test_fixit.py` (the CSV case, the grouping); turnover134's report read through.
 
@@ -394,7 +407,7 @@ run cannot start"). Accept As Is (QC-074) is gone, with `Turnover.qc_bypassed`, 
 no AMF for a clip is no longer QC-075; it is read as the CSV's `Input Color Space`
 (`metacsv.INPUT_COLOR_SPACE_COLUMN`, origin "CSV"), its references through `color.DEFAULT_VIEW`
 (the output transform every AMF of 134 and 135 names), and QC-009, now a row rule, says "Clip
-ungraded in Resolve project". With no AMF and no colour space it is QC-046, held. QC-075 is an
+ungraded in Resolve project". With no AMF and no color space it is QC-046, held. QC-075 is an
 error only for two AMFs on one clip. **Face value**: `clf.approved_in_out` counts a file with no TC
 from 0; `scan._outside` tries the file's own clock then the CSV's `Start TC` silently (QC-084
 retired), else renders the frames the file has with QC-029 info. **Warnings now**: QC-023 (the
@@ -523,7 +536,7 @@ nothing, and asks for the HDRI pre-renders; the older per-turnover page for 134 
   originals; the earlier diagnosis to Ben was wrong).
 - **Accept As Is** (user: "the turnover should run everything it can and not hold back any other
   clips"). The allowlist `planner.QC_BYPASSABLE` is now a denylist, `planner.QC_CANNOT_RENDER`:
-  only a row with nothing to render or no way to colour it is held (QC-012, -013, -014, -022, -029,
+  only a row with nothing to render or no way to color it is held (QC-012, -013, -014, -022, -029,
   -031, -032, -042, -046, -047, -075, -076; a turnover's QC-008 or QC-069 holds every row). OQ-76
   answered.
 
@@ -656,7 +669,7 @@ PRD, MAC_SESSION.
 
 **2026-09-30, a held HDRI keeps the EDL's length, 0.5.21 (user).** The 0.5.18 one second rule made
 turnover097's two `M2` held HDRI slots 24 frames; they now keep the EDL's 72 and 120, frame held,
-uncoloured (`stringout._segment`: `STILL_LENGTH` only when the row is not `qc.is_shooter_delivered`).
+uncolored (`stringout._segment`: `STILL_LENGTH` only when the row is not `qc.is_shooter_delivered`).
 Other held frames stay one second. **Verified**: a test that writes a real `M2` line into the
 fixture EDL (the old "held HDRI" test changed the row, not the EDL, and never made a hold; replaced);
 turnover097's stringout rebuilt: 008 is 72, 015 is 120, the stills 24, 1262 frames in all. Copied
@@ -677,17 +690,17 @@ stringout rebuilt, both events play (frames 705 and 1100 looked at). Copied over
 **2026-09-29, the HDRI is a video clip, 0.5.19 (user).** "The hdri that is on the timeline is a
 video clip, not a single frame. It's the sRGB version of what the shooter captured that was later
 stitched into an actual exr hdri frame... The tool never touches an hdri exr." The user said this
-keeps being lost; it is now in QC_RULES QC-080, COLOUR_SESSION_EXPORT and a memory. An HDRI clip's
+keeps being lost; it is now in QC_RULES QC-080, COLOR_SESSION_EXPORT and a memory. An HDRI clip's
 stringout event is its own source, shown as it is: `stringout._segment` never gives a shooter
-delivered row AMF colour, held or not. **Verified**: three tests on a fixture turnover with a
-multi-frame clip typed HDRI (its event is the clip, `source`, full length, uncoloured; held, still
-uncoloured; the stringout is written with it). **Turnover097 holds no HDRI video**: its EDL and its
+delivered row AMF color, held or not. **Verified**: three tests on a fixture turnover with a
+multi-frame clip typed HDRI (its event is the clip, `source`, full length, uncolored; held, still
+uncolored; the stringout is written with it). **Turnover097 holds no HDRI video**: its EDL and its
 CSV put the two stitched `.exr` files in the HDRI slots (events 008 and 015, `M2` holds of 72 and
 120 frames) and the folder has no HDRI video, so those events are black. Told the user. (A stray
 `.otio` and `.drt` sit in `collected files`; **a turnover is only the CMX 3600 EDL, the CSV, one
 AMF per clip and the CLFs** (user), and the tool reads nothing else.)
 
-**2026-09-29, held frames play a second and are coloured, 0.5.18 (user).** "All the still frame
+**2026-09-29, held frames play a second and are colored, 0.5.18 (user).** "All the still frame
 items should play out as 1 sec long", "the Balls, Chart and size ref all need color applied", "the
 same for any still image frames". The stills were flat because a still is delivered as one 4K EXR
 and no HD reference, so the stringout fell back to the ungraded camera source; the CSV was not the
@@ -740,11 +753,11 @@ X -720/+720, Y 405 = 480x270 flush in the corners of 1920x1080); five questions 
 answered, nothing built.
 
 **2026-09-29, docs: Ben exports no stringout (user).** "Anything that says that Ben exports is
-incorrect. The tool does the stringout export." The docs still said the colour session renders
+incorrect. The tool does the stringout export." The docs still said the color session renders
 and exports one, left over from 2026-09-11/22. Rewritten: PRD FR-9 and M6, WORKFLOW steps 12 and
 24, UI_SPEC section 8 (the burn-in layout, from `core/stringout.py`), NAMING_SPEC (the `_SO_v##`
 template), QC_RULES QC-140 and tracker column 34, OQ-12/38/41, COLOR_AND_FORMAT and
-COLOUR_SESSION_EXPORT (section 2: do not export one; comparisons are against Ben's own Resolve
+COLOR_SESSION_EXPORT (section 2: do not export one; comparisons are against Ben's own Resolve
 playback). No code change.
 
 **2026-09-29, OQ-77 answers, 0.5.13 (user).** (4) A two digit year in the folder name
@@ -781,16 +794,16 @@ the command, a rendered reference probing `bt470m`, QC-079 on a P3 AMF, the suit
 mypy. **Mac**: whether QuickTime honours the 2.2 label (MAC_SESSION). 0.5.10 was built by CI but
 not handed over.
 
-**2026-09-28, colour from AMF + CLF (user). Chunk 3 of 3, docs and 0.5.10.** The spec now says
+**2026-09-28, color from AMF + CLF (user). Chunk 3 of 3, docs and 0.5.10.** The spec now says
 what the code does: COLOR_AND_FORMAT (a new governing section, the CDL policy marked superseded),
-COLOUR_SESSION_EXPORT (what Ben exports: EDL, CSV, one AMF per event, the CLFs), PRD, ARCHITECTURE,
+COLOR_SESSION_EXPORT (what Ben exports: EDL, CSV, one AMF per event, the CLFs), PRD, ARCHITECTURE,
 WORKFLOW, UI_SPEC, the guide, QC_RULES (QC-075 to QC-080; QC-008/009/046/047/048 reworded; QC-009
 info), OQ-71 resolved, OQ-76 updated, OQ-77 (what turnover097 did not show: a Resolve render to
 compare, EXR sequence naming, the VFX preset, the two digit year folder, QC-070 not watching AMFs,
-AMFs read only directly in the folder). The metadata pane's Colour section also names the AMF, the
+AMFs read only directly in the folder). The metadata pane's Color section also names the AMF, the
 looks and the display. **Verified**: the suite (1780), ruff, mypy. **Mac**: a MAC_SESSION line.
 
-**2026-09-28, in progress: colour from AMF + CLF (user). Chunk 2 of 3, wired.** The scan reads
+**2026-09-28, in progress: color from AMF + CLF (user). Chunk 2 of 3, wired.** The scan reads
 every `*.amf` in the folder (`scan._Grades`), matches one to each row by its EDL event (the
 filename index) and checks it names the row's file, then resolves it onto the row:
 `ShotRow.source_encoding` from the input transform (origin `AMF`) and `ShotRow.grade` (`Grade`:
@@ -809,7 +822,7 @@ chain tests in test_clf and test_color), ruff, mypy; turnover097 scanned: must-f
 (QC-033 C4261 70 frames, QC-034 C4271 353), every plate's QC-048 names its CLF nodes, QC-009 info
 on C4271, both HDRIs skipped.
 
-**2026-09-28, in progress: colour from AMF + CLF (user). Chunk 1 of 3, `core/amf.py`.** The
+**2026-09-28, in progress: color from AMF + CLF (user). Chunk 1 of 3, `core/amf.py`.** The
 user's decisions and the verified facts are in `HANDOFF.md` "In progress". This chunk reads an
 AMF (clip file or sequence pattern, timeline index from the file name, preset, input
 transform, looks in order with CLF names and md5s, output transform) and resolves its IDs
@@ -858,9 +871,9 @@ message now says the source is a poor linear plate rather than that it cannot ca
 COLOR_AND_FORMAT section 2.
 
 **2026-09-25, a reference still is decoded with its own matrix and range.** Found tracing Turnover121's
-colour: `planner._aux_plan` never passed `source_color_space`/`source_color_range`, so every still
+color: `planner._aux_plan` never passed `source_color_space`/`source_color_range`, so every still
 decoded as BT.709 limited. Harmless on Turnover121 (tagged bt709/tv); a full range (`pc`) source
-such as Turnover199's would have had its colour chart stretched. **Verified**: a planner test and
+such as Turnover199's would have had its color chart stretched. **Verified**: a planner test and
 the suite (1739).
 
 **2026-09-25, pinned to ACES 2.0 (OQ-29).** The user found Ben's project on ACES 2.0, timeline
@@ -870,7 +883,7 @@ ACEScct, output believed sRGB. `color.BUILTIN_CONFIG` is `studio-config-v4.0.0_a
 OQ-71); the references do. Every camera space the input table maps to exists in v4.
 `test_trilinear_is_the_worse_answer...` now compares the two interpolations on mid grey, 0.0005
 tetrahedral vs 0.0031 trilinear; the old fixed 0.005 threshold no longer held. **Not borne out
-under 2.0**: `color.INTERPOLATION`'s claim that trilinear is visibly worse on saturated colour;
+under 2.0**: `color.INTERPOLATION`'s claim that trilinear is visibly worse on saturated color;
 on four saturated samples the two were within 0.002 of each other, either way. **Open**: the
 display, off Ben's project settings; a MAC_SESSION line compares a reference with his viewer.
 
@@ -987,7 +1000,7 @@ Finder drag.
 **2026-09-25, three threads opened, nothing built.** **AMF (OQ-71, reopened by the user): Ben will
 export a per-clip AMF from his grading session.** Read by hand first, against what the tool assumes
 per clip (input transform, the CDL's working space, any other look), to explain the white Turnover121
-plates; whether it then replaces the CSV's colour fields or cross-checks them is decided after.
+plates; whether it then replaces the CSV's color fields or cross-checks them is decided after.
 **Tracker hyperlinks (asked, not answered)**: the user wants the tracker's Publish Folder and Plate
 Video cells linked to the items in Google Drive. Design agreed with the user: the run stops writing
 the tracker; an Export Tracker button, while the batch is open, first checks every linked item has
@@ -1026,7 +1039,7 @@ written by `DaVinci Resolve Studio` (the `encoder` tag), 8 bit 4:2:0 H.264, labe
 the H.264 VUI and the `colr` box, while the CSV says Apple Log; nothing else in the turnover names
 709 or 2020. So the files were rendered, and whether that render converted the pixels or only
 labelled them is unknown. Turnover199 also carries Resolve's encoder tag (Copy with trim) but is 10
-bit 4:2:2 with no colour tags, so the encoder tag cannot tell a copy from a render. **Waiting on**:
+bit 4:2:2 with no color tags, so the encoder tag cannot tell a copy from a render. **Waiting on**:
 one camera original to compare, and the Deliver settings that made the files. **Deferred by the
 user**: a QC rule for a log encoding in a file labelled with a display curve. **Asked, not
 answered**: the user wants a log of the whole session with every file written and its full path;
@@ -1099,7 +1112,7 @@ the edited range, so the message now says the wav is padded with silence (edited
 recorded sound) or cut (edited inside it), with a test for each. **The docs** (QC_RULES 043, 120,
 121; COLOR_AND_FORMAT section 3's audio line) no longer call the wav a byte copy, which it is now
 only on a row with no range. **PRD FR-10** now describes the log's two In/Out pairs, Delivered and
-Final: the code was right, since the colourist's export became the turnover the shooters' range
+Final: the code was right, since the colorist's export became the turnover the shooters' range
 and the approved range are one range. **Still open**: OQ-63 (refuse an M2 motion effect) and
 non-square pixels when letterboxing; neither affects `Turnover199`. **Verified**: the suite (1623).
 
@@ -1165,21 +1178,21 @@ freezing the window for two more minutes (F18). **Scan re-scans every turnover a
 editor's work** by File Name (`scan.carry_over`, D8); a header's right-click offers Re-scan and
 New Folder Location (D16). A moved turnover is **QC-069** on opening and in the pre-flight; a
 changed EDL or CSV on a re-scan is **QC-070** (`Turnover.edl_digest`, `csv_digest`). **Ingest
-Colour Session is removed** (`ui/color_session.py`, the old chunk 5c), and OQ-48 is answered.
+Color Session is removed** (`ui/color_session.py`, the old chunk 5c), and OQ-48 is answered.
 **Verified on `Turnover199`**: moved, QC-069 raised, re-scanned from the new place with a trim and
 a skip carried over; an edited EDL raised QC-070. **Left for C**: the held-back-turnover run
 (every must-fix blocks the run, D8). **Left for H**: `proingest run --color-session`,
 `clf.ingest`, and the `color_session_folder` setting the Settings page still shows. **Next: C,
 D, H.** The branch is **not pushed**.
 
-**2026-09-23, chunk G: colour and format.** **Every decode states its matrix and range**
+**2026-09-23, chunk G: color and format.** **Every decode states its matrix and range**
 (`ffmpeg.to_rgb`): the file's own when it states them, else BT.709 (D17, provisional) and
 limited. The real files state full range and no matrix, so they were decoded as BT.601 until
 now. **The reference states BT.709 on the way out too** (`ffmpeg.REFERENCE_TO_YUV`): Y of pure
-red measured 81 (BT.601) under a BT.709 tag, now 63. `MediaInfo` carries the four colour tags
+red measured 81 (BT.601) under a BT.709 tag, now 63. `MediaInfo` carries the four color tags
 (additive, no schema move) and **QC-018 is built** as an info saying which matrix was used.
 **A source of another shape is letterboxed, not stretched** (`resize.fit_inside`,
-`resize.letterbox`, `ffmpeg.pad_filter`): the EXR's bars are added after the colour chain, so
+`resize.letterbox`, `ffmpeg.pad_filter`): the EXR's bars are added after the color chain, so
 they are linear zero. QC-024 is retired. **Half float is clamped at 65504** rather than cast to
 inf (`exr.HALF_MAX`). Non-square pixels are not handled and are written down in
 COLOR_AND_FORMAT section 4. **Verified on `Turnover199`**: 12 written, 0 failed, a QC-018 info on
@@ -1415,12 +1428,12 @@ csv`, no `utf-16`, no `Shot Type` anywhere in `proingest/`); **the identity mode
 wrong** rather than stale, because `ShotIdentity` hangs a reference still off an element where the
 CSV makes `colorChart` a peer of `pl01`; **the EDL is read at the wrong time**, since `plan_batch`
 still documents the two-phase ingest OQ-74 collapsed; and **QC-018 cannot be built until `MediaInfo`
-grows colour fields**, which it has none of. Five more questions are open in section 3 of the review,
+grows color fields**, which it has none of. Five more questions are open in section 3 of the review,
 none built to a default. **Still no code changed.**
 
 **2026-09-22, later: the tool's scope is now exactly `Shot Type`, and a second sample arrived with
 it filled in.** The alignment pass the user asked for produced five rulings, all recorded. **(1) The
-`_color` folder is gone**: OQ-53 is dissolved, and `WORKFLOW.md`, `COLOUR_SESSION_EXPORT.md` and
+`_color` folder is gone**: OQ-53 is dissolved, and `WORKFLOW.md`, `COLOR_SESSION_EXPORT.md` and
 `UI_SPEC.md` no longer describe a discovery convention, so M5.13's `clf.find_session` and its
 post-scan offer come out of the code. **(2) Ben produces and exports the final stringout, and the
 tool does nothing with it at all** - not built, read, transcoded, renamed or checked - which closes
@@ -1502,11 +1515,11 @@ and fixed; `docs/DOC_AUDIT_2026-09-21.md` is the finding list and records **58 s
 `PRD.md` and `CLAUDE.md`'s own description of the project; ProRes 4444 in 7; `Input Color Space` as
 the encoding field in 8; and identity coming from the clip name in 18. **The workflow as stated**:
 shooters debayer **only** where the camera system records RAW, to a basic file type with nothing
-baked in and no colours chosen; set every clip to 24.000; cut a stringout; fill `Shot`, `Shot Type`,
+baked in and no colors chosen; set every clip to 24.000; cut a stringout; fill `Shot`, `Shot Type`,
 `Gamma Notes` and `Color Space Notes`; then **Copy with trim, consolidating, not transcoding**.
 **Ben** does the final trims and the grade and exports **an EDL with the CDL and a metadata CSV**,
 and those sit **in the same folder as the media**. The tool does folders, filenames, every export
-format and the colour. Decisions taken along the way, all recorded: **there are no per-shot grade
+format and the color. Decisions taken along the way, all recorded: **there are no per-shot grade
 files** (the `.cube` is gone, QC-019 and QC-039 retired with it); **the project rate is 24 and the
 tool asserts it**, since a CMX 3600 EDL carries no frame rate and the `.drt` is not read; **`cp` is
 the clean-plate code** after the user corrected themselves twice (OQ-72 closed, no alias needed);
@@ -1555,7 +1568,7 @@ in the direction the plan did not want.** The user dropped `Turnover199/` into t
 timeline and a Media Pool metadata CSV. **`docs/SAMPLE_TURNOVER_199.md` is the evidence page** and
 records how to read each file. What it settled: **the trimmed camera file carries no gamma or
 gamut metadata** (Resolve rewraps the MP4 and strips Sony's `rtmd` track; ffprobe reads every
-colour field `unknown`, only the range flag survives, full), so OQ-58's preferred route cannot be
+color field `unknown`, only the range flag survives, full), so OQ-58's preferred route cannot be
 built; the encoding is named in **exactly one place**, the CSV's `Gamma Notes` = `S-Log3` and
 `Color Space Notes` = `S-Gamut3.Cine`, and who filled those fields is **OQ-68**, the user's to
 answer, because two sources say Resolve reads Sony MP4 acquisition metadata only through a script.
@@ -1592,8 +1605,8 @@ the rule. **1739 tests.**
 
 **2026-09-18, later: the grade is the CDL in the final EDL, applied in ACEScct, and the cube
 is the exception.** The user decided it, after the cube correction below: Resolve's CDL export
-carries the primaries of **node one** and nothing else, so the colourist grades in node one of a
-**colour managed** session whose timeline is **ACEScct** by standard, Resolve converts each clip
+carries the primaries of **node one** and nothing else, so the colorist grades in node one of a
+**color managed** session whose timeline is **ACEScct** by standard, Resolve converts each clip
 into ACEScct from its `Input Color Space`, and the tool does the same from the same metadata,
 applies the CDL, and converts to ACEScg. That reverses OQ-37 and decides OQ-46: the tool
 converts on both sides of the grade again, and the input transform table is load bearing on
@@ -1604,7 +1617,7 @@ that same session is the clip's node graph, ACEScct in and out, and where one na
 the cube alone in ACEScct, floor 0.07, because a grade-only cube is log in and log out and the
 ratio would have refused every one. `color.WORKING_SPACE` is a constant shown read-only in
 Settings, not a setting: a value that disagreed with the session grades wrong silently.
-`docs/COLOUR_SESSION_EXPORT.md` is rewritten for the colourist (a managed session, the wheels in
+`docs/COLOR_SESSION_EXPORT.md` is rewritten for the colorist (a managed session, the wheels in
 node one, Offset rather than Lift, Luma Mix 0, a cube only when the wheels could not do it) and
 **OQ-55 is the test export**, which now has four things to show rather than one. Branch
 `color/cdl-in-acescct`. The note "The grade is the CDL, applied in ACEScct" below has the
@@ -1613,13 +1626,13 @@ detail and the reasoning. **1739 tests.**
 **2026-09-18: the per-shot grade file is a `.cube`, not a CLF, because Resolve writes no
 CLF.** The user pointed out there was no evidence Resolve exports one, and there is none: the
 Resolve manual lists CLF among the LUT formats it reads, and Generate LUT writes 17, 33 or 65
-point `.cube` files and nothing else. Every colour document had assumed a CLF per shot since
+point `.cube` files and nothing else. Every color document had assumed a CLF per shot since
 2026-09-11. The mechanism did not move, so the code change is one tuple
 (`clf.GRADE_EXTENSIONS`) and the user-facing word: OpenColorIO loads a cube through the same
 file transform, the pairing by shot code is unchanged, and QC-039 probes it the same way. The
 identifiers (`core/clf.py`, `clf_path`, `proingest/clf`) keep their names, and the module
-docstring says why. **`docs/COLOUR_SESSION_EXPORT.md` is new and is the page to hand the
-colourist**: three files per turnover, the folder, and the Resolve setup that makes a cube
+docstring says why. **`docs/COLOR_SESSION_EXPORT.md` is new and is the page to hand the
+colorist**: three files per turnover, the folder, and the Resolve setup that makes a cube
 contain the whole conversion. **OQ-54** records it and wants one test export. The note
 "The grade file is a cube" below has the detail. **1730 tests.**
 
@@ -1629,7 +1642,7 @@ jobs (run 35308641062). The version is 0.2.0**, the first bump since scaffolding
 for six things; the note "UX pass, 2026-09-17" below has each. **New batch opens the turnover
 chooser straight away**, the empty list has an Add Turnover button, **Export writes both
 spreadsheets without a run**, the delivery root is amber until set, **Run refuses in a dialog
-when nothing would render**, **a colour session exported by convention is found by the scan
+when nothing would render**, **a color session exported by convention is found by the scan
 and offered** (OQ-53, the convention Ben has to agree to), and **the Deliverables tab exists**.
 The toolbar has no dead button and the bottom dock no placeholder left. **1726 tests.**
 
@@ -1668,7 +1681,7 @@ about them, and a third about Google Drive that is described below.
 
 **This session split `MainWindow`, which was the last code on the list that this machine
 could write alone.** `REVIEW.md`'s S1 and S2, both closed: the run is `ui/run_controller.py`,
-the colour session ingest is `ui/color_session.py`, `qc.blocking_results` and
+the color session ingest is `ui/color_session.py`, `qc.blocking_results` and
 `scan.next_turnover_id` are one authority each where there had been two, and `main_window.py`
 is 1394 lines down to 1039. No behaviour changed except the turnover numbering, which now does
 what its docstring always claimed. Its note is below, and it is worth reading for the guard the
@@ -1743,7 +1756,7 @@ with the lock install and the format check.
 
 **What the tool does today, end to end.** A batch is made, opened, saved and filled with
 turnover folders; the scan runs off the UI thread; the list shows it grouped by turnover and
-can be typed into, with every edit re-checking that row and autosaving. A colour session is
+can be typed into, with every edit re-checking that row and autosaving. A color session is
 ingested from the window, one turnover at a time, which writes the approved cut, the CDL and
 each shot's CLF onto the rows. Run plans the batch and drives the worker pool, the rows fill
 in as they go, a strip above the list narrates the step, Stop reaches a job mid flight, and a
@@ -1753,7 +1766,7 @@ clicks back to its shot; everything the tool did reads in the Log tab and in a r
 Settings carries five of its six sections. Every toolbar button says what it does and, when it
 is greyed, why.
 
-**What the colour chain delivers.** A plate is written graded, in linear ACEScg with AP1
+**What the color chain delivers.** A plate is written graded, in linear ACEScg with AP1
 primaries and a header stating what was applied to it; a reference mp4 is encoded through the
 shot's grade and the ACES output transform baked into one cube. **The chain converts nothing
 ahead of the CLF**, which was the one thing in the code that would have delivered a wrong plate
@@ -1762,7 +1775,7 @@ shot, resolved through a table, recorded in the QC log and stated with its origi
 delivered header.
 
 **Nothing is left that can be finished on this machine.** M8 wants a real turnover and a real
-colour session; M9's shipped screenshots want the Mac; the rest is questions for a person.
+color session; M9's shipped screenshots want the Mac; the rest is questions for a person.
 "Next task" below groups them by what each is waiting on. **Of the two open questions that were
 about correctness rather than scope, OQ-47 closed on 2026-09-13**, and OQ-46 was decided by the
 user on 2026-09-18; what is left of it is OQ-55, the test export, which is a thing to ask a
@@ -1789,7 +1802,7 @@ is gone**, deleted with its tests in M4.5.4 as planned.
 
 ### The grade is the CDL, applied in ACEScct, 2026-09-18: the carrier decided
 
-**What the user decided.** The colourist's session is colour managed, ACES 1.3, timeline
+**What the user decided.** The colorist's session is color managed, ACES 1.3, timeline
 ACEScct, each clip's Input Color Space set to its camera encoding. The grade is exported once
 per turnover as the CDL lines on the final EDL's events, from Timelines > Export > CDL. The tool
 reads the clip's encoding from its metadata, converts into ACEScct, applies the CDL, converts
@@ -1800,7 +1813,7 @@ standard for the colorists batch session colorspace."
 **Why this and not the cube.** Resolve's manual: the CDL export writes only the primary
 corrections in the first node of each clip. The morning's export page had a Color Space
 Transform in node one so that a cube would contain the whole conversion, which would have made
-the CDL identity; the two setups are mutually exclusive. The CDL route matches how a colourist
+the CDL identity; the two setups are mutually exclusive. The CDL route matches how a colorist
 actually works (managed), needs one export per turnover instead of one per shot, has no naming
 and no pairing for the normal case, is exact arithmetic and readable, and removes the "does the
 cube contain the conversion" risk. What it costs: the metadata field is load bearing on every
@@ -1858,7 +1871,7 @@ bakes the clip's node graph and nothing outside it, so the contract (source enco
 linear ACEScg out, no display rendering) is met only by a session set up for it: DaVinci YRGB
 unmanaged, a Color Space Transform from the clip's encoding to ACEScct as the first node, one
 from ACEScct to ACES AP1 linear as the last, and the viewing transform on the timeline node,
-never the clip. A session run colour managed yields a grade-only cube and the tool would have
+never the clip. A session run color managed yields a grade-only cube and the tool would have
 to convert around it, which is OQ-46's double-conversion risk. **One test export settles it**,
 and it answers OQ-54, OQ-31, OQ-33 and OQ-46 together. There is no separate CDL file to name:
 the EDL is named `<turnover folder name>_final_v01.edl` and a re-export replaces it, because
@@ -1897,7 +1910,7 @@ are being built, each its own commit on `ux/first-run-and-discovery`:
    errors holding it (`_held_back_reasons`), then brings up the Issues tab. The partial
    case is unchanged: a status bar line, and the ready turnovers deliver. UI_SPEC section
    7 and the quickstart's "When Run refuses" say so.
-5. **Colour session discovery. Built, to a convention that wants a word with Ben (OQ-53).**
+5. **Color session discovery. Built, to a convention that wants a word with Ben (OQ-53).**
    `clf.find_session(turnover_folder, settings_folder)` looks for a folder named exactly as
    the turnover folder, first under the Settings folder the chooser opens at, then in
    `_color` beside the turnovers, and wants exactly one `.edl` in it at any depth; two is
@@ -1912,12 +1925,12 @@ are being built, each its own commit on `ux/first-run-and-discovery`:
    `TestASessionFoundBesideTheTurnover` in `tests/test_ui_shell.py`.
 6. **The Deliverables tab. Built.** `ui/deliverables.py`, a `QTreeWidget` like the Issues
    dock and for its reason: for the selected rows, one line per deliverable with shot, name,
-   kind, res, version, status (coloured as the list's dot is), frames, size, the rule IDs it
+   kind, res, version, status (colored as the list's dot is), frames, size, the rule IDs it
    failed and the path; double-click opens the folder. Redrawn from `refresh_metadata`, so
    it changes exactly when the pane does, including when a run writes statuses back; not on
    the run's timer. A selected shot with nothing planned shows one line saying so. UI_SPEC
    section 6.2, the reference's "The Deliverables tab", and a `docs/MAC_SESSION.md` line for
-   the widths and colours. Tests: `TestTheDeliverablesTab` in `tests/test_ui_shell.py`.
+   the widths and colors. Tests: `TestTheDeliverablesTab` in `tests/test_ui_shell.py`.
 
 ### First five minutes
 
@@ -1934,22 +1947,22 @@ Then read `docs/COLOR_AND_FORMAT.md` section 1 before anything else. It was rewr
 2026-09-11 and again on 2026-09-12, and it invalidates things a commit message or a memory of
 this project may still say. The table below dates each version.
 
-### Read this before trusting anything about colour
+### Read this before trusting anything about color
 
-**The colour spec has now been wrong twice and rewritten twice.** Take nothing about colour
+**The color spec has now been wrong twice and rewritten twice.** Take nothing about color
 from memory or from a commit message, and check the time on anything dated 2026-09-11 before
 trusting it: two of the three versions below share that date.
 
 | dated | what it claimed | status |
 |---|---|---|
 | 2026-09-10 | sources display referred, sRGB baked in, references apply no transfer | wrong |
-| 2026-09-11 am | sources ACEScct, plate **ungraded**, CDL read from the shooters' EDL, four colour controls in the tool | superseded |
-| 2026-09-11 pm | colour finished before ingest, **CLF per shot applied**, plate **graded**, no controls, no viewers, no stringout | current, except the source |
+| 2026-09-11 am | sources ACEScct, plate **ungraded**, CDL read from the shooters' EDL, four color controls in the tool | superseded |
+| 2026-09-11 pm | color finished before ingest, **CLF per shot applied**, plate **graded**, no controls, no viewers, no stringout | current, except the source |
 | 2026-09-12 | the source goes back to **camera native log**, named in the clip's metadata. Settled that evening: **no mode**, DaVinci Wide Gamut is one more entry in an input transform table, **the CLF starts at the source encoding** so the tool applies no input transform ahead of it, and **ACEScct leaves the chain** | current |
 
 The mechanics survived all three rewrites almost intact: ACEScg working space, OCIO for every
 transform, the plate branch unbounded in numpy, the view branch bounded and collapsed into one
-3D LUT. What kept changing is **where colour is authored and by whom**, and on 2026-09-12,
+3D LUT. What kept changing is **where color is authored and by whom**, and on 2026-09-12,
 **what the source is encoded in**. That last one has now been answered three different ways in
 two days - camera original, one studio standard, camera native again - so take nothing about
 the source encoding from memory either.
@@ -1957,7 +1970,7 @@ the source encoding from memory either.
 ### What the tool is for
 
 **Checking all media, running QC, and producing every turnover output.** The user said it in
-those words on 2026-09-11. It does not author colour, it does not cut a stringout, and it
+those words on 2026-09-11. It does not author color, it does not cut a stringout, and it
 decides nothing creative. Everything it writes is either a deliverable named from the spec or
 a report about one.
 
@@ -1967,7 +1980,7 @@ The user described it on 2026-09-11 and it is written up in `docs/COLOR_AND_FORM
 section 1. In one paragraph: the shooters deliver **ProRes 4444 in their camera's native log**,
 each clip's metadata naming which (2026-09-12; S-Log3, C-Log3 and BM Film today, more later, and
 DaVinci Wide Gamut is one more value rather than a mode). Their CDL and their string-out
-are offline reference and **the tool reads neither**. After the AD meeting, a **colour session
+are offline reference and **the tool reads neither**. After the AD meeting, a **color session
 in Resolve**, where Ben works with the AD (ACES 1.3, primary grades only, the CLF starting at
 whatever the clip is encoded in),
 exports an **updated final EDL** (conform, the approved trims, and the CDL as `*ASC_SOP` /
@@ -1978,17 +1991,17 @@ exports an **updated final EDL** (conform, the approved trims, and the CDL as `*
 
 | decision | where it lives |
 |---|---|
-| Colour is finished before ingest; the tool applies, never authors | COLOR_AND_FORMAT section 1, PRD section 3 |
-| The colour session's grade is what ships; the shooters' is superseded | COLOR_AND_FORMAT section 1, PRD FR-15 |
+| Color is finished before ingest; the tool applies, never authors | COLOR_AND_FORMAT section 1, PRD section 3 |
+| The color session's grade is what ships; the shooters' is superseded | COLOR_AND_FORMAT section 1, PRD FR-15 |
 | The **CLF is applied**; the CDL travels beside it as the readable record | OQ-40, closed |
 | The session's **updated final EDL** is the conform the run uses | COLOR_AND_FORMAT section 1, PRD section 4 |
 | **The plate is graded**, reversing the morning's spec | COLOR_AND_FORMAT section 1, PRD section 5 |
 | Sources are one **studio standard log**, camera agnostic | COLOR_AND_FORMAT sections 1 and 2, OQ-39 |
-| **The four colour controls are removed**, then **the three viewers too** | PRD section 3 and FR-16, UI_SPEC section 14 |
-| Ben trims with the AD; his final EDL is the **approved cut** as well as the colour | COLOR_AND_FORMAT section 1, PRD FR-5 and FR-15 |
+| **The four color controls are removed**, then **the three viewers too** | PRD section 3 and FR-16, UI_SPEC section 14 |
+| Ben trims with the AD; his final EDL is the **approved cut** as well as the color | COLOR_AND_FORMAT section 1, PRD FR-5 and FR-15 |
 | The tool keeps In/Out editing for the **one-off trim**, reported by QC-045 | PRD FR-5, QC-045 |
 | **The stringout is dropped**, M6 with it | PRD FR-9, UI_SPEC section 8, OQ-38 |
-| A batch cannot render until its colour session exists | PRD section 6, QC-008 |
+| A batch cannot render until its color session exists | PRD section 6, QC-008 |
 | OCIO `GroupTransform`, tetrahedral, pinned ACES 1.3 | COLOR_AND_FORMAT section 1, OQ-29 |
 
 QC rules: QC-006, QC-007, QC-017 and QC-037 are **retired**, and QC-140 and QC-141 went with
@@ -2018,13 +2031,13 @@ so and says it is not a precedent.
   **The tool is now expected to build exactly that table** (OQ-34, reopened), because the
   shooters deliver camera native log and name it in the clip metadata. That is not a wrong
   turn any more, it is the price of the workflow the user wants. **OQ-37 came back the same
-  day and paid most of the bill**: the colourist starts the CLF from the source encoding, so a
+  day and paid most of the bill**: the colorist starts the CLF from the source encoding, so a
   graded plate never goes through the tool's own conversion and a wrong table entry cannot
   reach one. The table is still built, because the user asked for multiple input transforms
   selected by the metadata and because the **aux still** needs one whatever the CLF contains.
   What is left of the original hazard is OQ-46: applying the table *and* a CLF that already
   contains it converts twice, and that is invisible.
-- **The tool's stringout would have been the only one cut to the edited In/Out.** The colour
+- **The tool's stringout would have been the only one cut to the edited In/Out.** The color
   session's QT and the shooters' offline are both cut to the turnover as delivered. That is
   what dropping M6 gives up, and it is recorded in PRD FR-9 so it reads as a decision rather
   than an oversight.
@@ -2065,7 +2078,7 @@ and `BMDFilm WideGamut Gen5`, and each built a processor through `color.input_tr
 did `DaVinci Intermediate WideGamut`. **The transforms are not the problem; the names are.**
 
 **Two traps, both silent, both written up in COLOR_AND_FORMAT section 1.** A curve name does
-not choose a gamut - "S-Log3" names four colour spaces - so the shooters must be asked to write
+not choose a gamut - "S-Log3" names four color spaces - so the shooters must be asked to write
 the curve *and* the gamut, ideally the Resolve input transform name verbatim. And the config
 carries one variant where the camera offers several: LogC3 at EI800 only, BMD Film Gen 5 only,
 Canon at Cinema Gamut only. Neither failure looks wrong on a monitor.
@@ -2118,7 +2131,7 @@ Three things in it are worth not re-deriving:
 
 ### M4.5.2 is built, and OQ-30 and OQ-33 are built to their defaults
 
-`core/clf.py` reads the colour session package: the final EDL as the conform, the approved
+`core/clf.py` reads the color session package: the final EDL as the conform, the approved
 In/Out and the CDL per event, and the CLF for a row, loaded, hashed and probed. 42 tests.
 Five things in it should not be re-derived.
 
@@ -2160,8 +2173,8 @@ are built and both are pinned by tests, so one real EDL and one real CLF confirm
 constant each.
 
 **The rules are still not wired.** QC-008, QC-009, QC-019, QC-039 and QC-045 all read this
-module and none of them can fire until a batch knows where its colour session package is. That
-is a Settings value (PRD section 7, Colour group) and the wiring is **M5**. What M4.5.4 added is
+module and none of them can fire until a batch knows where its color session package is. That
+is a Settings value (PRD section 7, Color group) and the wiring is **M5**. What M4.5.4 added is
 a caller: the planner asks a `ColorSession` for each row's `ShotColor`, and
 `proingest run --color-session` supplies the session headlessly. The rules themselves report
 nothing yet.
@@ -2177,8 +2190,8 @@ it should not be re-derived.
   A test asserts the name is in the config, so a rename in a later ACES version fails at the
   first bake rather than in a delivered mp4.
 - **The cube is sampled from the processor, not baked with `ocio.Baker`.** Baker only bakes
-  between colour spaces a config names, so a chain with a `FileTransform` in it means a deep
-  copy of the config, a synthetic colour space and a round trip through ACES2065-1 to define
+  between color spaces a config names, so a chain with a `FileTransform` in it means a deep
+  copy of the config, a synthetic color space and a round trip through ACES2065-1 to define
   it. Sampling the processor on the cube's own grid is the chain exactly as composed, and the
   file is 35937 lines of text that OCIO cannot write anyway: `GroupTransform.write` supports
   CLF and CTF only, and answers "format resolve_cube does not support writing".
@@ -2201,7 +2214,7 @@ it should not be re-derived.
 
 ### M4.5.4 is built: render and exr are on the new chain
 
-The last colour chunk, and the one that makes the other three visible in a file. 34 tests.
+The last color chunk, and the one that makes the other three visible in a file. 34 tests.
 `render.py` now splits the way COLOR_AND_FORMAT section 1 does: `_plate_branch` builds one OCIO
 processor per job and applies it to every frame on the way to an EXR, and `_view_lut` bakes the
 same chain plus the ACES output transform into a `.cube` that ffmpeg applies with `lut3d`.
@@ -2212,8 +2225,8 @@ the oldest item on the open list.
 
 Seven things in it should not be re-derived.
 
-- **What a worker needs to know about colour rides on the job, as `clf.ShotColor`.** A path, a
-  colour space name and the CDL: three picklable things, because a job crosses a spawn boundary
+- **What a worker needs to know about color rides on the job, as `clf.ShotColor`.** A path, a
+  color space name and the CDL: three picklable things, because a job crosses a spawn boundary
   and no `ocio` object survives one. The worker calls `ShotColor.load()` once per job to turn the
   path back into a transform, which also means **the digest in the header is taken at render
   time** and describes the file that was actually applied.
@@ -2223,7 +2236,7 @@ Seven things in it should not be re-derived.
   that only converts and asserting mid grey still lands on 0.18.
 - **An aux still is never graded, and that is a decision rather than an oversight.** The aux
   names are `colorChart`, `mirrorBall`, `greyBall` and `sizeRef`. A creative grade applied to a
-  colour chart destroys the only thing the chart is delivered for, and it does it invisibly. It
+  color chart destroys the only thing the chart is delivered for, and it does it invisibly. It
   still gets the input transform, so it lands in ACEScg like every other EXR. Enforced in
   `planner._aux_plan`, tested there, and now written into COLOR_AND_FORMAT section 1.
 - **The cube goes in a system temp directory, not under `job.temp`.** The handoff proposed the
@@ -2254,7 +2267,7 @@ binary will say so.
 **Two assumptions came out of it and both are recorded.** OQ-42: an EXR source is transformed as
 though it were the studio standard log, which is a wrong image rather than an error for a
 sequence already in ACEScg, and reading the source's own header is the way out. OQ-43: the
-resize happens before the colour transform rather than after it as the chain diagram draws it.
+resize happens before the color transform rather than after it as the chain diagram draws it.
 Both orders are bounded so nothing clips and the property the diagram protects holds, but log
 and linear resampling ring differently on a high contrast edge. COLOR_AND_FORMAT section 1 was
 corrected to say where the resize actually is.
@@ -2323,7 +2336,7 @@ is deleted**, and so is every parameter that carried a batch-wide value down to 
 
 ### M4.6.3 is built: the input transform table
 
-Built 2026-09-12. `color.INPUT_TRANSFORMS` maps what a shooter writes onto one colour space in
+Built 2026-09-12. `color.INPUT_TRANSFORMS` maps what a shooter writes onto one color space in
 the pinned config and `color.resolve_encoding` is the only way in. 897 tests. Four things in it
 should not be re-derived.
 
@@ -2332,11 +2345,11 @@ should not be re-derived.
   WideGamut` all resolve with no row at all, and what comes back is the config's own spelling
   so two clips that named one space two ways record the same provenance. Three rows exist:
   `c-log3`, `bm film` and `davinci wide gamut`, which are the names the shooters were given.
-- **`S-Log3` has no row on purpose.** It names four colour spaces in this config, a curve does
+- **`S-Log3` has no row on purpose.** It names four color spaces in this config, a curve does
   not choose a gamut, and a row picking one would be picking a gamut on the shooter's behalf.
   It resolves to nothing and the error names all four.
 - **The candidate list in the message is built by a substring search, and that search never
-  matches.** It exists so QC-047 can say "S-Log3 names 4 colour spaces here" rather than "not
+  matches.** It exists so QC-047 can say "S-Log3 names 4 color spaces here" rather than "not
   found". Resolving to any of them would be the nearest miss the table exists to refuse.
 - **An unresolvable name is not an exception on the way to a job.** `clf.resolved_encoding`
   catches it and carries None, because a graded row renders correctly without it and both
@@ -2353,7 +2366,7 @@ All three are in section 5's tables and in the specs that own them.
 - **Every toolbar button should say what it does on hover**, concisely. **Built 2026-09-13 as
   M5.11**; the note further down says how. `docs/UI_SPEC.md` section 1 is the spec. The half
   worth building carefully was the **disabled** button, and that is what it got - plus one note
-  on a button that is *enabled*, Run over a batch with no colour session, which is the case that
+  on a button that is *enabled*, Run over a batch with no color session, which is the case that
   actually reads as broken.
 - **A user guide**, and it is a milestone rather than a task: install, quickstart, then a
   section per surface of the window, with screenshots, delivered as a PDF or something that
@@ -2406,7 +2419,7 @@ resolution they agree about.
 - **The pane never reads a file.** camData is the one field that lives on disk, so it arrives
   through a lookup the window supplies and caches per batch. The pane redraws on every arrow
   key; an uncached read would be a round trip to a Drive mount per keystroke.
-- **There is a Colour section and section 12.2's table did not have one.** M4.6 put the
+- **There is a Color section and section 12.2's table did not have one.** M4.6 put the
   source encoding, its origin and the CLF path on the row after that table was written, and
   all three are exactly what the pane is for: facts about a shot with no column in the list.
   UI_SPEC 12.2 now carries the row and says when it was added.
@@ -2470,7 +2483,7 @@ the line naming each step in order, and the banner taking the strip when it fini
 - **The banner's link was unreadable and this chunk fixed it.** It rendered in Qt's own
   `#0000ff` on the `#1b1e23` band. A stylesheet cannot select an anchor inside a `QLabel`,
   and the palette's `Link` role that could is overridden by the application stylesheet
-  this window sets, so the colour is written into the anchor by `banner_text` from
+  this window sets, so the color is written into the anchor by `banner_text` from
   `run_strip.LINK_COLOR`. A test pins it. It is M5.5's bug, fixed here because it is in
   the widget this chunk took ownership of.
 
@@ -2528,11 +2541,11 @@ deliverables, both spreadsheets, the banner naming `_reports`, and every row at 
   `shutdown` is about to block. Waiting without quitting first was a deadlock that lasted
   until the 120 second timeout, which a test caught by taking exactly that long.
 
-**What M5.5 does not do, and where each lands.** The run carried **no colour session**, so
+**What M5.5 does not do, and where each lands.** The run carried **no color session**, so
 every row planned ungraded exactly as the CLI did without `--color-session`. **M5.7.1 changed
 that**: the session is ingested onto the rows and a turnover with none is held back by QC-008,
 so a run is graded or it does not happen. The concurrency is `render.DEFAULT_WORKERS` until Settings can set it (FR-12).
-The rendering dot is the accent colour but **is not animated**, which section 3 asks for and
+The rendering dot is the accent color but **is not animated**, which section 3 asks for and
 which wants a repaint timer of its own. Pre-flight and planning run on the UI thread, which
 is the one thing in this chunk worth measuring on a real turnover (section 9). And the
 toolbar's **Export button is still disabled**: the run writes both spreadsheets, so what that
@@ -2609,7 +2622,7 @@ should not be re-derived.
   Its **record anchor is the clip's record start paired with the snapshot's In**, which does
   not move when the editor trims: that is what keeps the mapping linear instead of sliding
   with every edit.
-- **What a cell says and what colour it is are both the model's answers.** A delegate that had
+- **What a cell says and what color it is are both the model's answers.** A delegate that had
   to work either out would be reading the model twice, and a stylesheet cannot see a model at
   all, which is why the dot and the tints are painted from `shot_model.py` against the palette
   `theme.qss` states at its top.
@@ -2617,7 +2630,7 @@ should not be re-derived.
   states at once: skipped beats everything because the editor chose it, a render that is still
   happening beats one that failed, and a failure beats the rules that were checked before it.
   `turnover_state` is the same order applied to a group, including the turnover's own rules,
-  since QC-001 and QC-002 leave it with no rows to carry the colour.
+  since QC-001 and QC-002 leave it with no rows to carry the color.
 - **The two line cell is one delegate on every column, not on In and Out alone.** The row has
   to be tall enough for two lines whatever the cell holds, and a delegate that only some
   columns used would leave the rest centred against a different height.
@@ -2682,7 +2695,7 @@ log's Shots sheet gains a Source encoding column beside the CLF one. Three thing
 not be re-derived.
 
 - **The two places record two different strings, on purpose.** The header names the **resolved
-  colour space**, because that is what the pixels went through. The QC log names **what the
+  color space**, because that is what the pixels went through. The QC log names **what the
   clip's metadata said, verbatim**, because that column is read when QC-046 or QC-047 fires and
   what has to be corrected is the string somebody typed. Neither is derivable from the other:
   four names resolve to `S-Log3 S-Gamut3.Cine` and one resolves to nothing.
@@ -2710,7 +2723,7 @@ re-derived.
 - **The clip's metadata first, the container's tags second.** The timeline is where a person
   filled the field in; a tag is the same string travelling inside the file, and it comes second
   because a consolidated media file can outlive the session that wrote it. This is not the
-  colour tag COLOR_AND_FORMAT section 2 says to override: that is what a container writes
+  color tag COLOR_AND_FORMAT section 2 says to override: that is what a container writes
   because it must write something, and this is a named field somebody typed.
 - **The metadata walk is by field name, not by path.** Resolve nests what it exports under a
   vendor key or two and which one is not knowable here, so `timeline.flatten_metadata` collects
@@ -2718,7 +2731,7 @@ re-derived.
   field to keep that honest.
 - **The row stores what was written, not what it resolves to.** QC-047's whole job is to quote
   a shooter's typing back at whoever briefs them, and the resolution happens at plan time where
-  a failure is catchable. The EXR header still names the resolved colour space, because that is
+  a failure is catchable. The EXR header still names the resolved color space, because that is
   what the pixels went through.
 - **QC-048 is in the pre-flight and QC-046 and QC-047 are in the row rules.** A row's chain
   depends on the CLF the planner resolved, so it is a fact about the run about to happen; a
@@ -2730,15 +2743,15 @@ lesser elsewhere, which is what `QC_RULES.md` specifies. A row with no CLF *and*
 also has nothing to render through, and it is not an error here, because at scan time no row
 has a CLF yet and the rule would fire on every row of every batch. What catches it instead is
 `ShotColor.plate_transforms` refusing the chain, which comes back as QC-100 with the reason and
-nothing written. **When M5 wires the colour session into Settings**, the rules will be able to
+nothing written. **When M5 wires the color session into Settings**, the rules will be able to
 tell "no session yet" from "this session had no grade for this row", and that is the moment to
 decide whether QC-046's error widens.
 
-### M5.7.1 is built: the colour session reaches the model
+### M5.7.1 is built: the color session reaches the model
 
 **This is the chunk that makes a run from the window a real delivery**, and it changed
 what a run does rather than adding a page. Before it, Run planned every row ungraded and
-wrote it. Now a turnover with no colour session is **held back**, and what the session
+wrote it. Now a turnover with no color session is **held back**, and what the session
 said lives on the rows rather than in a `ColorSession` a run has to be handed.
 
 **Five things settled here that should not be re-derived.**
@@ -2753,7 +2766,7 @@ said lives on the rows rather than in a `ColorSession` a run has to be handed.
 - **The session is recorded per turnover, on the batch** (`Turnover.color_session_edl`),
   which is **OQ-50** and the one place three documents disagreed. PRD FR-12 put the
   location in Settings, PRD section 6 step 4 makes ingest a step in the user flow, and
-  QC-008 is turnover scope and says one turnover can wait on colour while another
+  QC-008 is turnover scope and says one turnover can wait on color while another
   renders, which a per-user Settings path cannot express. Built to the superset: with one
   turnover it behaves exactly like a batch wide value. The PRD now says so.
 - **The approved cut overwrites a trim already made, and the ingest says which rows lost
@@ -2772,7 +2785,7 @@ said lives on the rows rather than in a `ColorSession` a run has to be handed.
   a re-ingest, not a render, because what it said is on the rows. The one file a render
   still needs is the CLF, and that is per row, which is where QC-009 already lives.
 
-**The cost worth knowing about**: a run with no colour session now writes **nothing**.
+**The cost worth knowing about**: a run with no color session now writes **nothing**.
 That is COLOR_AND_FORMAT section 1 as specified ("Rendering waits"), and it invalidated
 six CLI tests that had been asserting the ungraded run. They now assert the refusal, and
 `tests/fixtures/color.make_session` and `batches.ingested` are how a test that is about
@@ -2804,7 +2817,7 @@ Output as the only one still waiting. **Five things settled here.**
   `DeliverableJob` rather than be read from the page, and that is a chunk rather than a
   field. The ffmpeg path override and the log level landed with M5.8.3, which is what gave
   logging somewhere to be configured from; **Advanced is live and Output is not**.
-- **The Colour section is mostly read only**, and the three read-only lines are read from
+- **The Color section is mostly read only**, and the three read-only lines are read from
   `core/color.py` rather than copied, so a config bump cannot leave the page describing a
   library that has moved. The input transform **overrides** FR-12 asks for are not built:
   an override has to reach a spawned worker, so it travels on a job like everything else,
@@ -2820,9 +2833,9 @@ asserting it would mean writing the mapping out twice.
 ### M5.7.3 is built: the window ingests a session
 
 **The chunk that closed the gap M5.7.1 opened.** The checks refused to render a turnover
-with no colour session and the window had no way to tell them there was one: a batch
+with no color session and the window had no way to tell them there was one: a batch
 ingested from the CLI and reopened in the window ran correctly, but a person working only
-in the window could not deliver. `Ingest Colour Session` is a toolbar action beside Scan,
+in the window could not deliver. `Ingest Color Session` is a toolbar action beside Scan,
 the editor points at the final EDL, and `clf.load_session` then `clf.ingest` do the work
 the CLI already did. 19 tests.
 
@@ -2854,7 +2867,7 @@ the CLI already did. 19 tests.
 turnover was graded from is on the turnover (OQ-50); this is only where the dialog starts,
 which is why it is a per user setting and not part of the batch.
 
-**One thing to look at on a Mac and it is cosmetic.** `Ingest Colour Session` is two and a
+**One thing to look at on a Mac and it is cosmetic.** `Ingest Color Session` is two and a
 half times the width of every other toolbar button, so a once-per-turnover action sits wider
 than Run. The alternative is `Ingest` with the full name in the tooltip M5.11 will add, and
 the argument against it is that this is a tool called ProIngest whose log is
@@ -3132,15 +3145,15 @@ log is. 4 tests in `tests/test_guide.py`, 1669 in the suite. **Five things in it
   committed now is what the Mac line exists to prevent. `docs/MAC_SESSION.md` says to commit
   them on the day.
 - **It names no chunk IDs and no people.** An earlier draft opened with "This is M9.2" and
-  described the trim as the one the colourist did by name. The guide is the document most likely
+  described the trim as the one the colorist did by name. The guide is the document most likely
   to leave the repo, and neither belongs in it.
 - **The button sentences are not restated**, which is what `ui/toolbar_help.py` is apart from
   the window for. The quickstart names buttons and describes the flow; M9.3's button reference
   is the page that should read that module.
-- **Writing it found `docs/WORKFLOW.md` six lines stale**, all of them the colour policy that
+- **Writing it found `docs/WORKFLOW.md` six lines stale**, all of them the color policy that
   was superseded on 2026-09-12: the shooters converting to one studio standard, an ACEScct
   timeline, the CLF starting there, and the tool applying an input transform ahead of it. Its
-  step 7 also told the colourist not to use curves or colour wheels, with a "see below" pointing
+  step 7 also told the colorist not to use curves or color wheels, with a "see below" pointing
   at the rule that says the CLF carries them - which is the whole reason the CLF is applied
   rather than the CDL. Fixed in its own commit, and the report filenames were a simplification
   that read like real ones.
@@ -3247,7 +3260,7 @@ tooltip does. This is the second time CI has caught a difference the dev machine
 it is the cheap kind: `Ctrl+R` is the longer of the two, so the width limit is still measured
 against the worst case.
 
-**`Ingest Colour Session` now has the tooltip that would let it read `Ingest`**, which is the
+**`Ingest Color Session` now has the tooltip that would let it read `Ingest`**, which is the
 argument docs/MAC_SESSION.md asks to settle in front of the real window. The label is
 deliberately **not** changed here: that judgement is about width on a real toolbar.
 
@@ -3412,7 +3425,7 @@ waiting on, because that is the thing that decides whether a session can start i
 - **OQ-49, the guide's form.** A fixed PDF or a Google Doc they can edit. It decides whether the
   repo's copy stays the only one, and it is what M9.5 is waiting on.
 - **OQ-44**, to whoever briefs the shooters: which metadata field carries the log name and
-  exactly what string goes in it, remembering that "S-Log3" names four colour spaces in the
+  exactly what string goes in it, remembering that "S-Log3" names four color spaces in the
   pinned config.
 - **The clip (OQ-58, OQ-61, OQ-62) and the two OQ-59 decisions**, before any of the respec, the
   EDL-only scan or the turnover default is started. `docs/REVIEW_2026-09-19.md` lists what to
@@ -3440,17 +3453,17 @@ M7 ticked all three of its preconditions):
 - The rest of that checklist: the `.app` double-clicked, the Dock tile, Retina rendering,
   geometry across displays.
 
-**Waiting on a real turnover and a real colour session:** the whole of **M8**, all four chunks.
+**Waiting on a real turnover and a real color session:** the whole of **M8**, all four chunks.
 Nothing here substitutes for it, and M8.2's speed target has never been measured against media
 on a Drive mount.
 
-**The pane is where an ingest is seen without running anything**: its Colour section reads
+**The pane is where an ingest is seen without running anything**: its Color section reads
 `source_encoding`, `source_encoding_origin` and `clf_path` off the row, so selecting a row
 is how a person checks that the right CLF was matched.
 
 **Two things worth asking and neither is a build task.** Ask **whoever briefs the
 shooters** which metadata field carries the log name and exactly what string goes in it
-(OQ-44), remembering that "S-Log3" names four colour spaces in the pinned config. And
+(OQ-44), remembering that "S-Log3" names four color spaces in the pinned config. And
 confirm **OQ-46** against one real export, because the difference between a CLF that
 contains the conversion and one that does not is two plausible looking images and no error.
 
@@ -3478,7 +3491,7 @@ contains the conversion and one that does not is two plausible looking images an
   OQ-34, OQ-37, OQ-38 and OQ-40. **OQ-30 and OQ-33 each closed and reopened within the same
   day**, as the grade carrier went CLF, then CDL, then CLF again, and **OQ-19 was reopened after
   a day** by the real tracker's FPS column. New: OQ-35, OQ-36, OQ-39, OQ-41. OQ-29 is mostly
-  answered, since the colour session pins ACES 1.3, and its config half is now built.
+  answered, since the color session pins ACES 1.3, and its config half is now built.
 - **Everything through M5.9 is pushed**, at the user's instruction on 2026-09-13: 3 commits on
   top of M5.11's six - the chunk, the build track brought forward from the live board, and this
   session's note in `HANDOFF.md`. **Run 34768468796 is green on both runners**, macOS arm64 in
@@ -3512,7 +3525,7 @@ fix one and say which.**
 |---|---|
 | `docs/WORKFLOW.md` | who does what, in twenty lines. Read it first, it is the shortest thing here |
 | `docs/NAMING_SPEC.md` | every input and output name, the type table, versioning, delivery layout |
-| `docs/COLOR_AND_FORMAT.md` | colour policy, accepted sources, output formats, frame math, EXR pipeline |
+| `docs/COLOR_AND_FORMAT.md` | color policy, accepted sources, output formats, frame math, EXR pipeline |
 | `docs/QC_RULES.md` | every rule ID, severity and scope. IDs never change meaning |
 | `docs/ARCHITECTURE.md` | package layout, data flow, concurrency, batch file |
 | `docs/UI_SPEC.md` | the M5 interface, keyboard model, burn-ins |
@@ -3591,9 +3604,9 @@ PDF viewer.
 | `core/resize.py` | antialiased Lanczos downscale for the EXR path | 96 |
 | `core/color.py` | the pinned OCIO config, every leg of the chain but the CLF, composing and applying them, and the view branch baked to a `.cube` | 209 |
 | `core/timeline.py` | OTIO and EDL loading, audio association | 233 |
-| `core/clf.py` | the colour session package: the final EDL as the conform, the CDL, the CLF matched per row, loaded, hashed and probed, and `ShotColor`, which is what rides on a job | 606 |
+| `core/clf.py` | the color session package: the final EDL as the conform, the CDL, the CLF matched per row, loaded, hashed and probed, and `ShotColor`, which is what rides on a job | 606 |
 | `core/scan.py` | turnover folder -> Turnover + ShotRows | 459 |
-| `core/planner.py` | type table, deliverable jobs, version resolution, the shot's colour attached to each job | 485 |
+| `core/planner.py` | type table, deliverable jobs, version resolution, the shot's color attached to each job | 485 |
 | `core/batchfile.py` | `.pibatch` save/load, backup, filesystem reconciliation | 86 |
 | `core/camdata.py` | key/value pairs out of a camData `.txt` or `.rtf`, RTF stripped pragmatically | 62 |
 | `core/exports.py` | the QC log's five sheets and the studio tracker's rows to paste | 378 |
@@ -3656,10 +3669,10 @@ Entry points worth knowing:
 | M2 | Naming and planning: type table, versioning, layout | complete, 66 tests |
 | M3 | Render | complete, 172 tests |
 | M4 | QC: all rules both phases, xlsx exports, `qc` CLI | complete, 175 tests |
-| M4.5 | Colour pipeline, core only. Source log in, CLF applied, ACEScg out, the viewing LUT | complete, 111 tests |
+| M4.5 | Color pipeline, core only. Source log in, CLF applied, ACEScg out, the viewing LUT | complete, 111 tests |
 | M4.6 | Per shot source encoding: read from the clip metadata, the input transform table, the input transform out of the graded chains, QC-046 to QC-048 | complete, all five chunks (OQ-37 answered; OQ-46 wants confirming) |
 | M5 | UI: the list, the FR-14 metadata pane, settings, log. **No viewers** | **complete, all twelve chunks** |
-| M6 | ~~Stringout with burn-ins~~ | **dropped 2026-09-11**, the colour session exports it |
+| M6 | ~~Stringout with burn-ins~~ | **dropped 2026-09-11**, the color session exports it |
 | M7 | Packaging: PyInstaller app, dmg, the frozen smoke test, both CI jobs | **complete 2026-09-13, 19 tests.** Built and smoke tested on Linux before pushing; Gatekeeper is OQ-9 and still unanswered |
 | M8 | Polish, performance on a real turnover, docs | not started |
 | M9 | The user guide: install, quickstart, a section per surface, screenshots (PRD FR-17) | **4 of 5**: the harness and all three pages of prose. M9.5 wants OQ-49 and the Mac |
@@ -3674,7 +3687,7 @@ M4 detail. The milestone had no chunk table until M4.1; this is it:
 
 M4.5 detail, respecified 2026-09-11, M4.5.1 built the same evening. It is **smaller than that
 morning's version**: the AD notes model is gone entirely, the viewers and their frame fetch went
-with it, and what M4.5.2 reads is the colour session's package rather than the shooters'.
+with it, and what M4.5.2 reads is the color session's package rather than the shooters'.
 
 | chunk | scope | state |
 |---|---|---|
@@ -3698,7 +3711,7 @@ happens when it cannot be resolved.
 |---|---|---|
 | M4.6.1 | `ShotRow.source_encoding` (additive, like `clf_path`), read per row rather than from one Settings value. **No mode**: `DEFAULT_SOURCE_ENCODING` stops being a batch-wide authority | **done, 882 tests.** The constant is deleted rather than redefined |
 | M4.6.2 | **Take the input transform out of the graded chains.** `ShotColor.plate_transforms` drops `input_transform` when a CLF is present, `WORKING_SPACE` and `plate_transform` collapse into one source-to-ACEScg leg, and `view_lut` bakes the CLF and the output transform only | **done, 876 tests.** OQ-47 found on the way |
-| M4.6.3 | The mapping table in `core/color.py`: what a shooter writes to one OCIO colour space, extensible by a row, refusing the unrecognised and the ambiguous | **done, 897 tests.** `INPUT_TRANSFORMS` and `resolve_encoding` |
+| M4.6.3 | The mapping table in `core/color.py`: what a shooter writes to one OCIO color space, extensible by a row, refusing the unrecognised and the ambiguous | **done, 897 tests.** `INPUT_TRANSFORMS` and `resolve_encoding` |
 | M4.6.4 | Read the encoding at scan time from the carrier OQ-44 names, and QC-046, QC-047 and QC-048 | **done, 924 tests.** OQ-44 built to its default: `Input Color Space`, clip metadata first, container tags second |
 | M4.6.5 | `proingest/source_encoding_origin` in the EXR header, and the source encoding column in the QC log beside the CLF one | **done, 934 tests.** `models.SourceEncodingOrigin`, and the header's name and the log's name are deliberately different strings |
 
@@ -3715,12 +3728,12 @@ exercise as OQ-31. QC-048 exists so that a run records which chain it used rathe
 it to be re-derived later.
 
 **M4.6.3 is required whatever OQ-46 says**, because the user asked for multiple input transforms
-selected by the file metadata and because the aux still needs one regardless: a colour chart is
+selected by the file metadata and because the aux still needs one regardless: a color chart is
 delivered ungraded, never gets the CLF, and still has to reach ACEScg.
 
 **M5 is not blocked by any of this, and it got smaller on 2026-09-12.** An earlier version of
 this note told M5 to carry a source encoding mode control from the start. **There is no mode**,
-so there is no control: the Settings Colour group carries the colour session location, the input
+so there is no control: the Settings Color group carries the color session location, the input
 transform table and its overrides, the ACES config version and the output transform, and nothing
 about which encoding a batch is in.
 
@@ -3735,10 +3748,10 @@ batch can do", so each chunk has something a person can look at:
 | M5.3 | Editing: shot code, In, Out and Notes in their cells, section 5's input parsing, Ctrl+K skip, per row revalidation, autosave | **done, 1125 tests.** A commit re-runs the row's rules only, and `ui/autosave.py` holds the edits of a batch that has no file yet |
 | M5.4 | Batch lifecycle: New, Open, Save, Add Turnover against the source root, the scan off the UI thread, the Issues dock | **done, 1199 tests.** The scan is a `QThread` with a copied probe cache; `Scan` re-tries only the turnovers with no rows (OQ-48) |
 | M5.5 | Run and progress: the worker pool driven from the window, the Progress column, the status bar, Stop, the completion banner | **done, 1249 tests.** `ui/runner.py` is a `QThread` over `render.execute`; one 200 ms timer draws everything a run shows; the run writes both spreadsheets |
-| M5.6 | The metadata pane, FR-14 and UI_SPEC section 12 | **done, 1344 tests.** `ui/metadata.py` is the field list as a value and `ui/metadata_pane.py` draws it; a right dock, three update signals, and a **Colour** section section 12.2 did not have |
-| M5.7.1 | The colour session reaches the model: `clf.ingest`, `Turnover.color_session_edl`, `ShotRow.approved` and `ShotRow.cdl`, and QC-008, QC-009, QC-019, QC-039 and QC-045 | **done, 1377 tests** |
-| M5.7.2 | The Settings page, PRD FR-12, **including the Colour group** | **done, 1408 tests.** `ui/settings_form.py` is the field list as a value and `ui/settings_dialog.py` draws it; Output and Advanced are listed and disabled |
-| M5.7.3 | `Ingest Colour Session` in the window, and what it reports | **done, 1427 tests.** One turnover at a time, the chooser opening where FR-12 remembers, and the report the CLI prints |
+| M5.6 | The metadata pane, FR-14 and UI_SPEC section 12 | **done, 1344 tests.** `ui/metadata.py` is the field list as a value and `ui/metadata_pane.py` draws it; a right dock, three update signals, and a **Color** section section 12.2 did not have |
+| M5.7.1 | The color session reaches the model: `clf.ingest`, `Turnover.color_session_edl`, `ShotRow.approved` and `ShotRow.cdl`, and QC-008, QC-009, QC-019, QC-039 and QC-045 | **done, 1377 tests** |
+| M5.7.2 | The Settings page, PRD FR-12, **including the Color group** | **done, 1408 tests.** `ui/settings_form.py` is the field list as a value and `ui/settings_dialog.py` draws it; Output and Advanced are listed and disabled |
+| M5.7.3 | `Ingest Color Session` in the window, and what it reports | **done, 1427 tests.** One turnover at a time, the chooser opening where FR-12 remembers, and the report the CLI prints |
 | M5.8 | The Log tab and the rotating log file, FR-13 | **done, all three chunks** |
 | M5.9 | The frozen left columns: the overlaid second view sharing the model and the selection | **done, 1536 tests.** `FrozenColumns` in `ui/shot_list.py`; one model and one selection between the two views, and the edit is routed rather than the focus followed |
 | M5.10 | The run's strip above the list: the thin batch progress bar and the line of text naming the step being done (UI_SPEC 7.1) | **done, 1266 tests.** `ui/run_strip.py` is three states in one band, and the line names the longest running job rather than the newest message |
@@ -3814,8 +3827,8 @@ two things it had to be fitted around, `ShotListView.moveCursor` and the cell ed
 both already there to be handed the work rather than reimplemented. The chunk note in section
 1 says what it cost and what it settled.
 
-**M5.7.1 is where the colour work finished.** The five rules that read `core/clf.py` are
-wired, and what a batch knows about its colour session is `Turnover.color_session_edl`
+**M5.7.1 is where the color work finished.** The five rules that read `core/clf.py` are
+wired, and what a batch knows about its color session is `Turnover.color_session_edl`
 rather than a Settings value (OQ-50). Nothing in core had to change for M5.7.2 or M5.7.3
 beyond `IngestReport.counts` and `notices()`, which are the words both surfaces report an
 ingest in, kept in one place so the CLI and the window cannot drift.
@@ -3954,20 +3967,20 @@ issues 22, batchfile 18, resize 16, settings 16, camdata 12, scanner 11, autosav
 
 ## 6. Decisions taken
 
-**The colour pipeline (respecified 2026-09-11, nothing built).**
+**The color pipeline (respecified 2026-09-11, nothing built).**
 
 `docs/COLOR_AND_FORMAT.md` section 1 is the spec and is not repeated here. What belongs here is
 why each choice was made, so it is not relitigated by someone reading only the code.
 
 **This spec has been rewritten twice in one day and both rewrites were the user correcting a
 premise, not a design changing its mind.** Section 1 of this file has the table. The mechanics
-were right both times; what was wrong was who authors colour and when.
+were right both times; what was wrong was who authors color and when.
 
-- **Colour is authored in a Resolve session, not in this tool, and that deletes a feature
+- **Color is authored in a Resolve session, not in this tool, and that deletes a feature
   rather than moving one.** The morning's spec had four per clip sliders as an AD notes layer
-  on top of the shooter's CDL. The AD's notes now go into the colour session with the AD in the
+  on top of the shooter's CDL. The AD's notes now go into the color session with the AD in the
   room, and come back in the CLF. Two places to author a grade is two answers to a question
-  that can only have one, and the session is the one with the colourist and the reference
+  that can only have one, and the session is the one with the colorist and the reference
   monitor. QC-037 and OQ-32 retired with the sliders.
 - **The plate is graded, which reverses 2026-09-11 on its own terms.** That spec refused a
   graded plate because a baked grade stops matching when the grade moves in the DI. This
@@ -3995,10 +4008,10 @@ were right both times; what was wrong was who authors colour and when.
   forever**, and the camera specific work stays in the shooter's Resolve project where the
   camera metadata actually is. If a future session finds itself building a table of IDT names,
   it has taken a wrong turn. Which encoding it is, is OQ-39; ACEScct makes the transform
-  identity, because the colour session's CLF starts there.
+  identity, because the color session's CLF starts there.
 - **The viewers are gone, and the trimming they were attached to is not.** The user removed the
   three viewers hours after specifying them that morning. The thing they existed for, judging
-  a cut point on a picture, moved to the colour session, which has the AD in the room, a real
+  a cut point on a picture, moved to the color session, which has the AD in the room, a real
   viewer and a calibrated monitor. What stayed is In/Out editing in the list, deliberately, as
   **the quick one-off**: the trim that would otherwise mean asking Ben to reopen Resolve and
   export a new EDL for one shot. That framing matters more than the feature, because it is the
@@ -4013,17 +4026,17 @@ were right both times; what was wrong was who authors colour and when.
   meaning; QC-045 reports the middle against the last, at warning severity, because a delivered
   shot that is not the shot the AD signed off is a louder fact than an editorial trim. The QC
   log's Shots sheet carries all three columns.
-- **The list is the only surface that writes to a row again.** No viewers, no colour controls,
+- **The list is the only surface that writes to a row again.** No viewers, no color controls,
   no editable metadata pane. That was the original design, was briefly untrue on 2026-09-11 when
   the viewers were given trim buttons, and is true again. It is worth stating because FR-5 spent
   a day carrying an explicit exception to it.
-- **The stringout is dropped and M6 with it.** The colour session exports a reference QT with
+- **The stringout is dropped and M6 with it.** The color session exports a reference QT with
   the look and burn-ins. Three artifacts claiming to be the stringout is two too many. What it
   gives up is real and is recorded in PRD FR-9: the tool's would have been the only one cut to
   the **edited** In/Out, since the session's QT and the shooters' offline are both cut to the
   turnover as delivered. If the vendor turns out to need that, it comes back as a milestone.
 - **Rendering now depends on something that is not media.** A batch scans and reviews without a
-  colour session and cannot render final deliverables without one (QC-008, QC-009). That is a
+  color session and cannot render final deliverables without one (QC-008, QC-009). That is a
   new shape for the user flow, written into PRD section 6 as its own step, and it is why Run
   can be blocked by something with nothing wrong with the pictures.
 - **QC IDs were retired rather than repurposed.** QC-006, QC-007, QC-017, QC-037, QC-140 and
@@ -4036,14 +4049,14 @@ were right both times; what was wrong was who authors colour and when.
   inside a 300 MB installer budget in exchange for no capability. DWAA 45 stays the default
   over PIZ for the same kind of reason, and is OQ-36 rather than closed.
 - **Tetrahedral interpolation is specified, not defaulted.** Trilinear is the default in
-  several tools, it is visibly worse on saturated colour, and it is a one word difference that
+  several tools, it is visibly worse on saturated color, and it is a one word difference that
   nobody notices being wrong. It is stated for both the OCIO transform and the ffmpeg `lut3d`.
 
 These carry over from 2026-09-11 unchanged, because they never depended on where the grade came
 from:
 
 - **ACEScg over scene linear Rec.709, because of negatives.** Converting a wide gamut camera
-  image into 709 primaries pushes saturated colour out of gamut, where it becomes negative
+  image into 709 primaries pushes saturated color out of gamut, where it becomes negative
   float, and negatives misbehave in comp. Resizing a linear image in too small a gamut
   manufactures them on its own, and this tool resizes every plate to HD. AP1 is wide enough
   that the question does not arise. ACES has an entire Reference Gamut Compression spec because
@@ -4061,7 +4074,7 @@ from:
   The plate branch is unbounded and resizes in numpy, which is what `resize.py` is for.
 - **OCIO's packaging objection was checked and does not exist.** 5.7 MB arm64 wheel, built-in
   configs so nothing ships on disk, Windows wheel available for v02. The alternative considered
-  was `colour-science`; OCIO wins because it also loads a CLF and does ACES properly rather
+  was `color-science`; OCIO wins because it also loads a CLF and does ACES properly rather
   than just the curves.
 
 **Phase B verification, where it runs and what it keeps (M4.2).**
@@ -4104,7 +4117,7 @@ from:
   `qc.is_plate` decide it and nothing else does. An aux still is a single frame at its
   own size, so the resolution, range, handle, duration and timecode rules skip it; only
   the plate owes audio (QC-040) and side files (QC-050, QC-051), because only the plate
-  delivers them. Firing QC-033 on every colour chart in a turnover would bury the
+  delivers them. Firing QC-033 on every color chart in a turnover would bury the
   warnings the editor is actually meant to read.
 - **Every threshold lives in `qc.RuleSettings`, never as a literal at the point of use.**
   It maps one to one onto FR-12's Rules section, round-trips through
@@ -4223,7 +4236,7 @@ from:
   frame-counting `trim` for a container, never `-ss`. Section 7 has the two traps that
   come with using it for an encode rather than a decode.
 - **Superseded by M4.5.4:** the transfer used to come from `color.display_transform`, which
-  returned a linear-to-sRGB filter or None. There is no such function now. The colour that
+  returned a linear-to-sRGB filter or None. There is no such function now. The color that
   reaches ffmpeg is one baked cube applied with `lut3d`, built by `render._view_lut` from the
   shot's own chain. The scale still runs before it, so the downscale sees the log values, which
   are bounded the way swscale needs them (COLOR_AND_FORMAT sections 1 and 4).
@@ -4277,7 +4290,7 @@ from:
   the hardened runtime (`CS_RUNTIME`, read out of their code directory), so they are fine;
   ProIngest's own bundle is the problem. Decide before handover, not at handover.
 
-**Colour (OQ-17, answered by the studio 2026-09-10). SUPERSEDED 2026-09-11, twice.**
+**Color (OQ-17, answered by the studio 2026-09-10). SUPERSEDED 2026-09-11, twice.**
 Kept as the record of what M3 was built against and why its reference encodes looked the way
 they did. The live policy is COLOR_AND_FORMAT section 1: a studio standard log source, a CLF
 per shot applied, a graded ACEScg plate. **Nothing in this block is still in the code.** The
@@ -4431,7 +4444,7 @@ is useful rather than not, but a test asserting "one stream" will fail on it.
 - `OpenEXR.File(header, channels)` takes the header **first**.
 - **DWAA is lossy.** At level 45 a frame comes back about 0.1% off proportionally at
   every brightness (0.5 -> 0.0005 out, 64.0 -> 0.0625 out). "Pixels in, pixels out"
-  means no colour transform, not a byte copy. QC-106 hashes the written file rather
+  means no color transform, not a byte copy. QC-106 hashes the written file rather
   than comparing pixels, which is sound because the encoder is byte-deterministic for
   identical input. Both facts are tested.
 - The bindings **cannot write a `Rational` attribute**, so `framesPerSecond` cannot be
@@ -4481,7 +4494,7 @@ is useful rather than not, but a test asserting "one stream" will fail on it.
 
 - `gbrpf32le` is planar and stores **G, then B, then R**. RGB is planes 2, 0, 1. Nothing
   errors if this is wrong; red and blue simply swap, on every deliverable. There is a flat
-  colour fixture and a test that pins it.
+  color fixture and a test that pins it.
 - **Frame seeking.** A container seeks with `trim=start_frame=<in>:end_frame=<out+1>`, whose
   end is exclusive. It counts frames after the decoder has reordered them, so it is exact on
   a long GOP h.264 source; verified against a full decode. `-ss` is never used: it takes a
@@ -4607,7 +4620,7 @@ Nothing blocks the next task. These are live, in rough priority order:
 - **The rendering dot is not animated.** UI_SPEC section 3 asks for an accent dot that
   moves; the dots are drawn once per state and cached, which is what keeps a hundred shot
   repaint cheap, and an animated one needs a repaint timer and a cache key that carries a
-  phase. The state is live and the colour is right; only the movement is missing.
+  phase. The state is live and the color is right; only the movement is missing.
 
 - ~~QC-039's probe cannot separate a dark C-Log3 grade from a display rendering (OQ-47).~~
   **Closed 2026-09-13.** The probe compares two samples near the top of the log range rather
@@ -4640,7 +4653,7 @@ Nothing blocks the next task. These are live, in rough priority order:
   refuses rather than passing log pixels through under an ACEScg header. **Since M4.6.4 the scan fills the row in**, so this
   is the clip that named nothing rather than every clip.
 
-- **No colour session has ever exported for this tool (OQ-31).** Every claim in
+- **No color session has ever exported for this tool (OQ-31).** Every claim in
   COLOR_AND_FORMAT section 1 about what arrives is a specification, not an observation, until
   one session has run end to end on one shot. That single exercise answers OQ-29, OQ-30, OQ-33
   and OQ-39 at the same time, and it is the cheapest thing on this list: it needs one graded shot,
@@ -4675,7 +4688,7 @@ Nothing blocks the next task. These are live, in rough priority order:
   transform rather than after it.
 - **The delivered EXR header is missing three fields the spec lists.**
   `proingest/tool_version`, the shot ID and the frame range are in COLOR_AND_FORMAT's EXR
-  metadata list and are not written; the colour provenance and the `timeCode` attribute are.
+  metadata list and are not written; the color provenance and the `timeCode` attribute are.
   They are cheap, they need only what the job already carries, and nothing has asked for them,
   so the doc now says "not yet written" rather than describing them as built.
 
@@ -4690,7 +4703,7 @@ Nothing blocks the next task. These are live, in rough priority order:
   3840x2160 with black bars baked into it looks identical in a header. Detecting it means
   decoding a frame and measuring the black rows and columns, which is a scan-time cost on
   a network mount and false-positives on a genuinely dark plate. Nothing is built and
-  nothing pretends to be. Worth doing next to the colour space heuristic below, since
+  nothing pretends to be. Worth doing next to the color space heuristic below, since
   both want the same "read one frame during the scan" machinery.
 - **Letterboxing a non 16:9 source is still not implemented, and the toggle for it now
   exists.** QC-023 blocks such a row, which is the half that mattered: `render._fit` can

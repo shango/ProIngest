@@ -1,11 +1,11 @@
 [project]
 name = "proingest"
-version = "0.5.51"
+version = "0.5.52"
 description = "VFX turnover ingest and conform tool"
 requires-python = ">=3.11"
 dependencies = [
     "numpy>=1.26",
-    # 2.5 is the floor for the ACES 2.0 studio built-in config the colour session
+    # 2.5 is the floor for the ACES 2.0 studio built-in config the color session
     # is pinned to (COLOR_AND_FORMAT section 1, OQ-29). No config files ship.
     "opencolorio>=2.5",
     "openexr>=3.2",

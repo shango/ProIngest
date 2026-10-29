@@ -4,7 +4,7 @@
 EDL, his metadata CSV and one AMF per EDL event together, and there is nothing to scan
 before he does. So this reads four things and nothing else: the folder for media, the CSV
 for **who each clip is**, the EDL for **the approved cut**, and each event's AMF with its
-CLFs for **the colour** (user, 2026-09-28).
+CLFs for **the color** (user, 2026-09-28).
 
 **Rows come from CSV rows, not from timeline clips.** `Shot Type` is the whole of the
 tool's scope: a clip that carries one becomes a row, and a clip that carries none is
@@ -204,7 +204,7 @@ def _handover_files(folder: Path, turnover: Turnover) -> tuple[Path, Path] | Non
     **Exactly one of each, directly in the folder.** Two EDLs is not something to choose
     between: choosing between two cuts is choosing a cut, and the same argument covers
     two CSVs. Not recursive, because the handover is one folder (OQ-74) and a recursive
-    search would find a colourist's working copy in a subfolder as readily as the export.
+    search would find a colorist's working copy in a subfolder as readily as the export.
     """
     # By suffix in any case: `.EDL` is as much Ben's export as `.edl` (F27).
     edls = sorted(p for p in folder.iterdir() if p.is_file() and p.suffix.lower() == EDL_SUFFIX)
@@ -642,7 +642,7 @@ def _refuse_retimes(row: ShotRow, events: list[clf.ConformEvent], rate: FrameRat
 def _collapse(rows: list[ShotRow]) -> list[ShotRow]:
     """One row per thing delivered, in timeline order of first use (user, 2026-09-23).
 
-    A reference still (a colour chart, a grey ball) is delivered **once per shot code**,
+    A reference still (a color chart, a grey ball) is delivered **once per shot code**,
     from its first use: a chart cut at two frames is the same chart. Any other clip cut
     twice to the same frames, as two holds of one frame are, is delivered once too. The row
     kept says so (QC-072). A row that did not conform is never folded: its error has to show.
@@ -687,7 +687,7 @@ def _delivers(row: ShotRow) -> tuple[object, ...] | None:
 
 
 def _conform(row: ShotRow, event: clf.ConformEvent, grades: _Grades) -> None:
-    """The approved cut off this row's one EDL event, and the colour off that event's AMF."""
+    """The approved cut off this row's one EDL event, and the color off that event's AMF."""
 
     row.record_in, row.record_out = event.record_in, event.record_out
     # A file that is not there (QC-012) has its AMF checked once it is. A pre-render on the
@@ -696,7 +696,7 @@ def _conform(row: ShotRow, event: clf.ConformEvent, grades: _Grades) -> None:
         before = len(row.qc)
         grades.attach(row, event)
         if qc.is_hdri(row) or qc.is_stringout_only(row):
-            # An HDRI's grade colours the pre-render on the stringout and a style frame or an
+            # An HDRI's grade colors the pre-render on the stringout and a style frame or an
             # Avid reference is shown as it is; no check runs on any (user, 2026-10-07), so what is wrong
             # with its AMF goes unsaid.
             del row.qc[before:]
@@ -1027,7 +1027,7 @@ def _grade_of(found: amf.Amf, folder: Path) -> tuple[Grade, list[QCResult]]:
     does not define, and anything that is neither an ID nor a CLF, is ignored with a
     warning (QC-077, user 2026-09-28: primaries and simple secondaries only). A CLF that is
     missing, changed since the export, or unreadable is an error (QC-076), because the
-    grade it carries is the colourist's and cannot be left out quietly.
+    grade it carries is the colorist's and cannot be left out quietly.
     """
     findings: list[QCResult] = []
     looks: list[GradeLook] = []
@@ -1099,7 +1099,7 @@ def _cdl_finding(found: amf.Amf, cdl: amf.AmfCdl, looks: list[GradeLook], names_
     2026-10-05), applied in the working space it states, and the row says so (QC-082)."""
     if names_a_clf:
         return _ignored(found, "its CDL, since a CLF carries the grade,")
-    working = amf.colour_space_for(cdl.working) if cdl.working else None
+    working = amf.color_space_for(cdl.working) if cdl.working else None
     if working is None:
         return _ignored(
             found, f"a CDL in a working space the tool does not know ({cdl.working or 'none stated'})"

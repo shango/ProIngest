@@ -1,8 +1,9 @@
 # Handoff, 29 October 2026
 
-**29 October, 0.5.51 on branch `fixit-orange`**: PR #21 (the Windows build, 0.5.50) is merged,
-`main` is `81c0358`. The Fix-it report's Fix in Resolve colour is orange rather than red
-(`fixit._STYLE`, `--resolve`). Merge only when the user asks.
+**29 October, 0.5.52 on branch `fixit-orange`, draft PR #22**: PR #21 (the Windows build, 0.5.50) is merged,
+`main` is `81c0358`. The Fix-it report's Fix in Resolve color is orange rather than red
+(`fixit._STYLE`, `--resolve`), and **US spelling throughout** (0.5.52): "color", never "colour",
+in code, UI, reports and docs. Merge only when the user asks.
 
 **28 October, 0.5.50 on branch `windows`**: PR #20 is merged (`main` is `b8323cd`, 0.5.49). The
 Windows build is in progress for parity with the Mac: gyan.dev ffmpeg 9.0.1 pinned beside the
@@ -35,7 +36,7 @@ shooters' spec sheet is out of date (user) and wants remaking.
 # Handoff, 22 October 2026
 
 **22 October, 0.5.47**: an `avidRef##` is now delivered, never as an EXR: a movie or an image
-sequence as `<shot>_avidRef01_v01.mp4` with no colour transform (its colour is baked in), a held
+sequence as `<shot>_avidRef01_v01.mp4` with no color transform (its color is baked in), a held
 JPG or PNG as it is, any other still as a JPG; not on the tracker. Frame rate confirmed as already
 24 throughout. `PROGRESS.md` has the entry and OQ-86 the assumptions. The rest of this file is
 the 15 October handoff and still stands, except where it says an avidRef is never delivered.

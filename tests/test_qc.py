@@ -985,13 +985,13 @@ class TestClfRule:
         assert results[0].message.startswith(qc.UNGRADED)
         assert "C4261.amf carries no CLF and no CDL" in results[0].message
 
-    def test_a_row_with_no_amf_is_ungraded_from_the_csv_colour_space(self) -> None:
+    def test_a_row_with_no_amf_is_ungraded_from_the_csv_color_space(self) -> None:
         plain = row(source_encoding="Apple Log", grade=None)
         results = qc.check_clf(plain)
         assert ids(results) == ["QC-009"]
         assert "read as Apple Log, the CSV's Input Color Space" in results[0].message
 
-    def test_a_row_with_no_colour_at_all_leaves_it_to_qc_046(self) -> None:
+    def test_a_row_with_no_color_at_all_leaves_it_to_qc_046(self) -> None:
         assert qc.check_clf(row(source_encoding=None, grade=None)) == []
 
     def test_a_cdl_in_place_of_a_clf_is_a_grade(self) -> None:
@@ -1015,7 +1015,7 @@ class TestClfRule:
 
 
 class TestApprovedRule:
-    """QC-045: the row will be delivered at an In/Out the colour session did not approve."""
+    """QC-045: the row will be delivered at an In/Out the color session did not approve."""
 
     def test_a_trim_away_from_the_approved_cut_is_a_warning(self) -> None:
         trimmed = row(current=InOut(20, 200))

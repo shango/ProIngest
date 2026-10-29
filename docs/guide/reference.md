@@ -31,7 +31,7 @@ One sentence each, the same sentences the buttons themselves show when you hover
 | **Run** | Renders every shot that is not skipped, then writes both spreadsheets. |
 | **Stop** | Stops the run. What is in flight finishes; nothing further starts. |
 | **Export** | Writes the QC log and the shot tracker without rendering. |
-| **Settings** | Opens the settings page: thresholds, naming, colour and logging. |
+| **Settings** | Opens the settings page: thresholds, naming, color and logging. |
 
 **A greyed button says why it is greyed.** Hover it. "No batch is open", "A scan is going",
 "A run is going" - that is usually the whole answer, and it is the reason the
@@ -39,7 +39,7 @@ toolbar shows everything from the first launch rather than hiding what cannot be
 
 **Run always runs every shot it can.** A red shot is held back on its own and stays unrendered
 until the problem is fixed and the turnover re-scanned: its media is missing or will not open, or
-its colour cannot be recreated (its CLF is missing, or nothing says what colour space it is in).
+its color cannot be recreated (its CLF is missing, or nothing says what color space it is in).
 Everything else renders. A shot with no grade from Ben renders ungraded, and the QC log says
 "Clip ungraded in Resolve project". The one thing that stops Run is a delivery folder that cannot
 take the delivery (not writable, or not enough space): a popup says so.
@@ -150,7 +150,7 @@ typing instant, and saves a moment later. A batch that has never been saved asks
 
 Everything known about the selected shot that has no column: codec, pixel format, start
 timecode, file sizes, the turnover, and the paths themselves. Eight sections - Identity, Source
-media, Frame rate, Range, Colour, Audio, Turnover and QC - each collapsible and each remembering whether you shut it.
+media, Frame rate, Range, Color, Audio, Turnover and QC - each collapsible and each remembering whether you shut it.
 
 - **Read only**, always. The list owns every edit, so there is one place a value can be changed
   and one place validation can disagree with itself.
@@ -163,7 +163,7 @@ media, Frame rate, Range, Colour, Audio, Turnover and QC - each collapsible and 
 - **Select several shots** and it shows what they agree on and marks the rest `mixed`. That is
   how one clip at the wrong resolution in a turnover of thirty is found without reading thirty
   rows.
-- Its **Colour** section names the shot's source encoding, as the colourist's AMF gave it, and
+- Its **Color** section names the shot's source encoding, as the colorist's AMF gave it, and
   where that came from (`AMF`). The looks the shot is graded with are in its QC-048 line in the
   Issues tab, and in the delivered EXR's header.
 
@@ -266,7 +266,7 @@ button that opens with no batch loaded, because it is where a new batch's number
 |---|---|
 | General | how many shots render at once, and a media path rewrite for timelines exported on Windows |
 | Rules | every threshold the checks compare against: shortest and longest shot, expected handles, expected resolution, audio sync tolerance |
-| Colour | read only: the ACES config, and that the colour and the output transform both come from each clip's AMF |
+| Color | read only: the ACES config, and that the color and the output transform both come from each clip's AMF |
 | Naming | the pattern every shot code is parsed with and every delivered name is built from |
 | Output | the reference mp4's quality and the EXR compression level |
 | Advanced | how much is logged, an ffmpeg to use instead of the bundled one, and where the log file is |
@@ -283,7 +283,7 @@ month therefore cannot silently re-judge a batch that shipped last week.
 **A value that will not parse changes nothing**, rather than being corrected to something
 plausible - the same rule as In and Out.
 
-There is **no colour mode and no source encoding setting**: each clip's AMF names what it is
+There is **no color mode and no source encoding setting**: each clip's AMF names what it is
 encoded in, what it was graded with and what its references are viewed on. And there is nothing
 to choose for the grade either: the cut is the `.edl` in the turnover folder and the grade is each
 clip's `.amf` and `.clf` files beside it, read at every scan.

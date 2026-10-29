@@ -1,8 +1,8 @@
 """The Fix-it report: what Ben needs to change, in plain words, as one HTML page.
 
 User, 2026-10-06: a link above the Details dock, named "Fix-it report", opening in the
-browser. Written for the colourist rather than the editor: he knows basic editing and
-colour, and is not a Resolve expert. So each QC rule he can act on gets a sentence in
+browser. Written for the colorist rather than the editor: he knows basic editing and
+color, and is not a Resolve expert. So each QC rule he can act on gets a sentence in
 his terms (`ADVICE`), every clip it applies to is listed once under it, and the rule IDs
 stay out of sight. Rules about the editor's own choices (In/Out edits, the delivery
 root, a run) are not his and are left out.
@@ -106,17 +106,17 @@ ADVICE: dict[str, Advice] = {
     ),
     "QC-046": Advice(
         "resolve",
-        "Nothing says what colour space a clip was recorded in.",
+        "Nothing says what color space a clip was recorded in.",
         "Without it the tool cannot convert the clip, so it holds the clip back. Each clip below says "
-        "what the tool found. Please set its input colour space in Resolve and export its AMF (or the "
+        "what the tool found. Please set its input color space in Resolve and export its AMF (or the "
         "metadata) again.",
         "message",
     ),
     "QC-047": Advice(
         "resolve",
-        "A clip's input colour space is one the tool does not know.",
-        "This is the colour space Resolve reads the camera footage as, not its grade. Each clip below "
-        "says which of the exported files gave it. Please check the clip's input colour space in "
+        "A clip's input color space is one the tool does not know.",
+        "This is the color space Resolve reads the camera footage as, not its grade. Each clip below "
+        "says which of the exported files gave it. Please check the clip's input color space in "
         "Resolve. If it is right, let the editor know which camera this is.",
         "message",
     ),
@@ -152,7 +152,7 @@ ADVICE: dict[str, Advice] = {
     ),
     "QC-075": Advice(
         "resolve",
-        "A colour file (AMF) cannot be used.",
+        "A color file (AMF) cannot be used.",
         "Each line below names the AMF and why. Where two AMFs claim one clip the tool cannot tell which "
         "grade is right, so it holds that clip back. Please export the AMFs again from the timeline, one "
         "per clip.",
@@ -174,15 +174,15 @@ ADVICE: dict[str, Advice] = {
     ),
     "QC-079": Advice(
         "look",
-        "A clip's colour file (AMF) names a viewing setup the tool does not know.",
+        "A clip's color file (AMF) names a viewing setup the tool does not know.",
         "Its reference movies were made for a standard Rec.709 screen instead. Please check the "
-        "project's output colour space.",
+        "project's output color space.",
         "message",
     ),
     "QC-082": Advice(
         "resolve",
         "A clip is missing a CLF file.",
-        "Defaulting to the CDL in its AMF for colour.",
+        "Defaulting to the CDL in its AMF for color.",
     ),
     "QC-012": Advice(
         "folder",
@@ -309,7 +309,7 @@ KIND_WORDS = {
     "meas": "measurement",
     "recon": "recon",
     "avidRef": "Avid reference",
-    "colorChart": "colour chart",
+    "colorChart": "color chart",
     "greyBall": "grey ball",
     "mirrorBall": "mirror ball",
     "sizeRef": "size reference",
@@ -520,7 +520,7 @@ def _who(row: ShotRow) -> str:
 
 def _detail(row: ShotRow, result: QCResult) -> str:
     if result.rule_id == "QC-047":
-        return _colour_space_detail(row, result)
+        return _color_space_detail(row, result)
     kind = ADVICE[result.rule_id].detail
     if kind == "message":
         return _plain(result.message)
@@ -529,8 +529,8 @@ def _detail(row: ShotRow, result: QCResult) -> str:
     return ""
 
 
-def _colour_space_detail(row: ShotRow, result: QCResult) -> str:
-    """Where the unknown input colour space came from, as far as the tool can show it (user,
+def _color_space_detail(row: ShotRow, result: QCResult) -> str:
+    """Where the unknown input color space came from, as far as the tool can show it (user,
     2026-10-12: "If an issue is not coming from somewhere the tool can verify, I'd rather it
     say, This clip is appearing as a rec709, please investigate why")."""
     space = row.source_encoding

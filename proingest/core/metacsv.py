@@ -3,8 +3,8 @@
 Resolve writes it from the Media Pool and it sits in the turnover folder beside the
 media and the EDL (docs/WORKFLOW.md). One thing reaches the tool through this file and
 through nothing else: **which shot and which clip type each file is** (`Shot` and
-`Shot Type`). The EDL carries the cut and each clip's AMF carries its colour; since
-2026-09-28 (user) the CSV's colour columns are not read.
+`Shot Type`). The EDL carries the cut and each clip's AMF carries its color; since
+2026-09-28 (user) the CSV's color columns are not read.
 
 Three properties of the real file drive the whole module, all measured in
 docs/SAMPLE_TURNOVER_199.md sections 7 and 8:
@@ -47,7 +47,7 @@ SCENE_COLUMN = "Scene"
 TAKE_COLUMN = "Take"
 """The clip's take, burned into the stringout after its label when above 1 (user, 2026-10-07)."""
 INPUT_COLOR_SPACE_COLUMN = "Input Color Space"
-"""Resolve's input colour space for the clip, `Apple Log` in turnovers 134 and 135. Read only
+"""Resolve's input color space for the clip, `Apple Log` in turnovers 134 and 135. Read only
 for a clip no AMF grades, which renders ungraded from it (QC-009, user 2026-10-07)."""
 START_TC_COLUMN = "Start TC"
 """Where the clip starts as Resolve has it, which the EDL's source timecodes count from.
@@ -364,7 +364,7 @@ _AS_IS_WORDS = {
 
 def _as_is(file_name: str, shot: str, shot_type: str, scene: str, named: bool) -> MetaRow:
     """An Avid reference, `avidRef01` (QC-088, user 2026-10-15), a measurement, `meas01`, or a
-    recon, `recon01` (user, 2026-10-27). No colour correction, and delivered as it is, never as
+    recon, `recon01` (user, 2026-10-27). No color correction, and delivered as it is, never as
     an EXR (user, 2026-10-22); the stringout plays its cut as it is."""
     match = _AS_IS.fullmatch(shot_type.strip())
     assert match is not None

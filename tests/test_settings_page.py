@@ -43,7 +43,7 @@ class TestTheForm:
 
     def test_it_offers_every_section_the_spec_lists(self) -> None:
         titles = [section.title for section in settings_form.sections()]
-        assert titles == ["General", "Rules", "Colour", "Naming", "Output", "Advanced"]
+        assert titles == ["General", "Rules", "Color", "Naming", "Output", "Advanced"]
 
     def test_the_sections_with_nothing_behind_them_say_so_and_are_disabled(self) -> None:
         """Disabled rather than absent, like the toolbar in M5.1: the shape is the spec."""
@@ -72,10 +72,10 @@ class TestTheForm:
         keys = [f.key for s in settings_form.sections() for f in s.fields]
         assert not [key for key in keys if "encoding" in key]
 
-    def test_the_pinned_colour_values_are_read_rather_than_copied(self) -> None:
+    def test_the_pinned_color_values_are_read_rather_than_copied(self) -> None:
         values = settings_form.readonly_values()
         assert values["readonly.config"] == color.BUILTIN_CONFIG
-        assert color.ACES in values["readonly.colour_source"] and "AMF" in values["readonly.colour_source"]
+        assert color.ACES in values["readonly.color_source"] and "AMF" in values["readonly.color_source"]
         assert "AMF" in values["readonly.output_transform"]
 
     def test_values_round_trip_through_the_form(self) -> None:

@@ -62,7 +62,7 @@ Everything in this list is currently **built to a default and unverified**:
 Without it, chunk 3 below is written against an assumption in exactly the way the
 `verified-facts-only` rule exists to prevent. **With it, chunk 3 is a morning's work.**
 
-### 1.3 One artifact for the largest known colour defect
+### 1.3 One artifact for the largest known color defect
 
 **One original camera file, straight off the card, or its `M01.XML` sidecar** (OQ-60). The decode
 currently asserts no matrix and no range, and is measurably a BT.601 decode where it should almost
@@ -72,9 +72,9 @@ defect in the tool that ships wrong pixels under a correct filename; everything 
 The consolidated files cannot answer it, because Resolve's rewrap strips Sony's metadata track. The
 delivered MP4's only tags are `encoder`, `handler_name` and `timecode`.
 
-### 1.4 One export that validates the colour chain, and can arrive with 1.2
+### 1.4 One export that validates the color chain, and can arrive with 1.2
 
-**OQ-55's test export**: one shot graded with the wheels in node one of an ACEScct colour-managed
+**OQ-55's test export**: one shot graded with the wheels in node one of an ACEScct color-managed
 session, handed over as the folder in 1.2 **plus the stringout**. The tool renders that shot and its
 reference mp4 is compared against Ben's stringout. That single comparison confirms four things at
 once, none of which has ever been observed:
@@ -86,7 +86,7 @@ once, none of which has ever been observed:
    would disagree silently;
 4. the CDL replayed in ACEScct matches what the room approved.
 
-`docs/COLOUR_SESSION_EXPORT.md` is the page to hand Ben. It already asks for exactly this.
+`docs/COLOR_SESSION_EXPORT.md` is the page to hand Ben. It already asks for exactly this.
 
 ### 1.5 Decisions that will be built to a stated default unless corrected
 
@@ -242,7 +242,7 @@ If only some of Part 1 arrives, this is the order that wastes least.
 | **Q1 alone** | Chunks 1, 2, 4, 5. A tool that scans a real folder, names every row correctly and refuses nothing it should not. **No rendering**, because the cut and the grade come from the EDL |
 | **Q1 + the real EDL folder (1.2)** | All of chunks 1 to 5. **This is the working build.** The acceptance test passes |
 | **+ the camera file (1.3)** | Chunk 6. Plates that are right rather than plausible |
-| **+ the test export (1.4)** | The colour chain confirmed end to end rather than reasoned about |
+| **+ the test export (1.4)** | The color chain confirmed end to end rather than reasoned about |
 
 **Q1 and 1.2 are the two that matter.** Everything else improves a build that already works; those
 two are the difference between a build that ingests a turnover and one that cannot.

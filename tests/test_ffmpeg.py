@@ -204,7 +204,7 @@ class TestChannelOrder:
     """`gbrpf32le` is planar G, B, R. Getting this wrong swaps red and blue silently."""
 
     def test_red_green_and_blue_land_in_that_order(self, tmp_path: Path) -> None:
-        source = fixtures.make_solid_dpx(tmp_path / "flat.dpx", colour="0x804020")
+        source = fixtures.make_solid_dpx(tmp_path / "flat.dpx", color="0x804020")
         frame = decode(str(source), 0, 0)[0]
         red, green, blue = (float(frame[:, :, index].mean()) for index in range(3))
         assert red > green > blue
@@ -241,7 +241,7 @@ class TestTargetSize:
 
     def test_the_downscale_is_not_a_crop(self, tmp_path: Path) -> None:
         """A subsample would keep the corner values; an integrating filter averages."""
-        source = fixtures.make_solid_dpx(tmp_path / "flat.dpx", colour="0x804020")
+        source = fixtures.make_solid_dpx(tmp_path / "flat.dpx", color="0x804020")
         full = decode(str(source), 0, 0)[0]
         small = decode(str(source), 0, 0, target_size=HALF)[0]
         assert small.mean() == pytest.approx(float(full.mean()), abs=1e-3)

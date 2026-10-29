@@ -123,7 +123,7 @@ class DeliverableJob:
 
     A copy job carries the default and ignores it; bytes are bytes. So does an **aux
     still**, deliberately: the aux names are `colorChart`, `mirrorBall`, `greyBall` and
-    `sizeRef`, and a grade applied to a colour chart destroys the one thing the chart is
+    `sizeRef`, and a grade applied to a color chart destroys the one thing the chart is
     delivered for. It still gets the input transform, so it lands in ACEScg like every
     other EXR the tool writes, but never the shot's grade.
     """
@@ -251,7 +251,7 @@ def holding_errors(row: ShotRow) -> list[QCResult]:
 
     **An error holds one shot and nothing else** (user, 2026-10-07: "nothing prevents
     rendering an entire batch or turnover"). What is an error is what leaves the tool
-    nothing to render or no way to recreate the colour: missing or unreadable media, no
+    nothing to render or no way to recreate the color: missing or unreadable media, no
     name to give it, no cut, or a grade it cannot rebuild (QC_RULES). Everything else is a
     warning or a note in the report and renders.
     """
@@ -352,7 +352,7 @@ def plan_batch(
     run rather than when a batch is opened: the state recorded against a row belongs to
     the version that produced it, not to the one about to be written.
 
-    **The colour session is not a parameter here.** The scan put it on the rows: the
+    **The color session is not a parameter here.** The scan put it on the rows: the
     approved In/Out off the EDL and the grade off each event's AMF, so planning reads them
     off the model like every other field. A row with an error is held here and nowhere
     else; only a batch scope error refuses the run (`qc.must_fix`).
@@ -559,7 +559,7 @@ def _audio_job(shot: _Shot) -> DeliverableJob | None:
 def _hdri_plan(shot: _Shot) -> RowPlan:
     """An HDRI delivers its EXR, copied byte for byte (user, 2026-10-07), and an LDRI its JPG
     or PNG, under the extension it came with (user, 2026-10-08). A copy has no frame range
-    and no colour."""
+    and no color."""
     identity, source = shot.identity, shot.media.path
     name = (
         naming.ldri_image(identity, shot.version, source.suffix)
@@ -583,7 +583,7 @@ def _hdri_plan(shot: _Shot) -> RowPlan:
 
 def _prerender_job(shot: _Shot, render: MediaInfo) -> DeliverableJob:
     """Ben's pre-render as an mp4 (user, 2026-10-27): the whole of it, the size it is, silent,
-    coloured as the stringout shows it (`prerender_color`)."""
+    colored as the stringout shows it (`prerender_color`)."""
     return DeliverableJob(
         kind="hdri_ref",
         source=render.path,
@@ -617,7 +617,7 @@ def prerender_color(row: ShotRow, shot_color: clf.ShotColor) -> clf.ShotColor | 
 
 def _avidref_plan(shot: _Shot) -> RowPlan:
     """An Avid reference, never an EXR (user, 2026-10-22), and a measurement or a recon the
-    same way (user, 2026-10-27). Its colour is baked in, or it is never colour corrected, so
+    same way (user, 2026-10-27). Its color is baked in, or it is never color corrected, so
     nothing is graded. A movie (an mp4, a `.mov` pre-render, or an image sequence) is encoded to an
     mp4 over its cut at 24, the size it is; a held still, one image file, is copied byte for
     byte when it is a JPG or PNG and otherwise becomes a JPG. No audio: only a plate

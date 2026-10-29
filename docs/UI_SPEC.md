@@ -42,7 +42,7 @@ The list is still the hero. The metadata pane is a fixed-width reading surface b
 second workspace: it is read only, it never takes focus, and it collapses to nothing. See
 section 12.
 
-**The list is the only thing that writes to the model.** No viewers, no colour controls, no
+**The list is the only thing that writes to the model.** No viewers, no color controls, no
 editable metadata pane: In, Out, Shot Code, Notes and Skip are edited in their cells and
 nowhere else. That was true in the original spec, briefly untrue on 2026-09-11 when the
 viewers were given trim buttons, and is true again.
@@ -181,7 +181,7 @@ beside the two spreadsheets (asking for a delivery root first when there is none
 the default browser, not in a panel, so it is a file the editor can send on. Enabled with a batch
 that has rows, except during a scan; refused with the expiry modal once the build has expired.
 
-It is for Ben, the colourist, who knows basic editing and colour and is not a Resolve expert: what
+It is for Ben, the colorist, who knows basic editing and color and is not a Resolve expert: what
 he needs to change, in plain words, with no rule IDs (`core/fixit.py`). Per turnover, a status
 ("2 of 18 clips blocked", "Every clip blocked", "Nothing blocking"), then items grouped under
 **Fix in Resolve**, **Fix in the turnover folder** and **Worth a look**, those that stop delivery
@@ -284,7 +284,7 @@ lower inside it than the measured y.
 
 **Picture in picture on a plate** (`stringout.INSET_CORNERS`) (user, 2026-09-29): over each `pl` event, the shot's **cp top left** and **wit top right**, each 480x270 flush in its corner (Resolve's zoom 0.25 at X -720/+720, Y 405). The first cp and the first wit of the shot in EDL order, from their **delivered HD references**, each playing from its own cut In at the plate's first frame, and **gone** when it runs out or at the plate's Out, whichever is first. No cp or wit, or none delivered: no inset in that corner. The top centre name sits between them (x 499 to 1411 on turnover097). Each inset carries its own element (`cp01`, `wit01`) burned in bottom left inside it, Open Sans 32 px against the frame's 42 (user, 2026-09-29), and it goes when the inset does.
 
-**A reference clip plays** (user, 2026-10-07): a chart, ball or size ref is a video on the timeline, so its event plays its cut at full speed, graded, from the source; it is still delivered as one EXR frame. **Any held frame plays for one second** (user, 2026-09-29): a frame hold (`M2` at 0) or any one frame cut, held for 24 frames whatever the EDL gives it (**except an HDRI, which keeps the EDL's length** and plays its pre-render, user 2026-10-07), so the stringout runs longer than the EDL by that much. Taken from the source, such a frame is **coloured through its AMF** (input transform, CLF nodes, output transform) as Resolve shows it; a still's delivered EXR stays ungraded. An event with no known source is black for the same second.
+**A reference clip plays** (user, 2026-10-07): a chart, ball or size ref is a video on the timeline, so its event plays its cut at full speed, graded, from the source; it is still delivered as one EXR frame. **Any held frame plays for one second** (user, 2026-09-29): a frame hold (`M2` at 0) or any one frame cut, held for 24 frames whatever the EDL gives it (**except an HDRI, which keeps the EDL's length** and plays its pre-render, user 2026-10-07), so the stringout runs longer than the EDL by that much. Taken from the source, such a frame is **colored through its AMF** (input transform, CLF nodes, output transform) as Resolve shows it; a still's delivered EXR stays ungraded. An event with no known source is black for the same second.
 
 **A style frame** (user, 2026-10-07; QC-085): a pre-graded PNG or JPG, `Shot Type` `styleFrame`, cut before its shot's plate. It is held **as it is**, ungraded, **for the EDL's length**, never delivered. Bottom right reads `SECA0009_styleFrame` (underscores, never a space, user 2026-10-13), and there is **no `Frame:` counter**, since it has no delivered frame to count. Its file missing is black for the event's length (QC-144).
 
@@ -307,7 +307,7 @@ Built in M5.7.2. What that settled, beyond the layout:
 - **A section with nothing behind it yet is listed and disabled**, and its page says what it is waiting on. Same rule as the toolbar in section 1. **Every section is live as of M5.12**; the rule stays because it is how the page was built and how the next section will arrive.
 - **Advanced went live in M5.8.3**: the log level, the ffmpeg override, and a read-only line naming the log file. Both editable values are process wide rather than per batch, both take effect the moment they are applied, and both reach a render's worker processes when the next run starts them - a worker is told at its initialiser (`core/render.execute`), so a change made mid-run applies from the run after. The ffmpeg override takes the folder or the binary, and **a path that is not there is an error rather than a fallback**: an override quietly ignored is a render done with the wrong build of ffmpeg.
 - **Output went live in M5.12**, last, because both its values are applied inside a render's worker processes and had to be able to get there first. They travel on the channel Advanced built, at the worker's initialiser, so a change reaches the next run rather than one already going. Reference quality is the x264 rate factor, bounded 0 to 51 by what the encoder accepts; the preset stays at `slow` and is not editable. EXR compression level is the DWAA level. **Both are pinned by the spec** (`COLOR_AND_FORMAT.md` section 3: CRF 18, DWAA 45) and the page opens on those values, read from `core/ffmpeg.py` and `core/exr.py` rather than typed in a second time: moving either is a decision about a delivery rather than a preference, and each field's help says what the spec is so the person moving it knows what they are leaving.
-- **The Colour section carries no source encoding value and no mode** (2026-09-12): the encoding is a per clip fact. **Since 2026-09-28 it is three read-only lines**: the ACES config (`core/color.BUILTIN_CONFIG`), **Colour**, reading `each clip's AMF and its CLFs, applied in ACES2065-1`, and **Output transform**, reading `each clip's AMF`. The working space and the input transform table it used to show are gone with the CDL, because the AMF names what each clip is and what was done to it, and the config resolves every ID in it. Read only because the config is pinned by spec (OQ-29) and there is no colour setting to make. The EDL is not chosen here either: it is the one in the turnover folder, read at every scan (OQ-74), and the turnover records which file it read (`Turnover.color_session_edl`).
+- **The Color section carries no source encoding value and no mode** (2026-09-12): the encoding is a per clip fact. **Since 2026-09-28 it is three read-only lines**: the ACES config (`core/color.BUILTIN_CONFIG`), **Color**, reading `each clip's AMF and its CLFs, applied in ACES2065-1`, and **Output transform**, reading `each clip's AMF`. The working space and the input transform table it used to show are gone with the CDL, because the AMF names what each clip is and what was done to it, and the config resolves every ID in it. Read only because the config is pinned by spec (OQ-29) and there is no color setting to make. The EDL is not chosen here either: it is the one in the turnover folder, read at every scan (OQ-74), and the turnover records which file it read (`Turnover.color_session_edl`).
 
 ## 10. Empty and first-run states
 
@@ -404,7 +404,7 @@ it is hidden rather than shown empty.
 | Frame rate | the project rate, 24, asserted rather than read and labelled "Timeline rate"; the rate the file is conformed to when it differs; the rate stated by the media; and an explicit disagreement note when they differ. QC-026 is the rule |
 | Range | record In/Out, source In/Out in frames and timecode, turnover snapshot In/Out, current In/Out, duration, max available out, and whether the editor has moved it off the snapshot (QC-035) |
 | Audio | path, sample rate, channels, bit depth, duration in samples and in frames, and the sync difference against the video range (QC-043) |
-| Colour | the source encoding and which carrier named it. **Since 2026-09-28** the encoding is the config colour space the clip's AMF input transform resolved to, the carrier is `AMF`, and three more lines follow: **AMF** (its file name), **Looks** (in the order applied, config looks by name and CLFs by file name, or `none`) and **Viewed on** (the AMF's view and display, which the references are rendered for) |
+| Color | the source encoding and which carrier named it. **Since 2026-09-28** the encoding is the config color space the clip's AMF input transform resolved to, the carrier is `AMF`, and three more lines follow: **AMF** (its file name), **Looks** (in the order applied, config looks by name and CLFs by file name, or `none`) and **Viewed on** (the AMF's view and display, which the references are rendered for) |
 | Turnover | number, date, shooter, folder, EDL, metadata CSV, timeline start. Shown alone when a turnover group header is the selection |
 | QC | count by severity with the rule IDs, each clicking through to that row in the Issues dock. **Built across the whole selection rather than merged field by field**, unlike every other section: two rows with different problems agree on nothing, so a merge would reduce this to "mixed", which is the one answer that helps nobody |
 
@@ -464,21 +464,21 @@ OQ-25.
 ## 14. Viewers: dropped
 
 **There are no image viewers in the tool** (PRD FR-16, decided 2026-09-11). This section
-specified three, In / Center / Out, steppable, with stepping trimming the row, and four colour
+specified three, In / Center / Out, steppable, with stepping trimming the row, and four color
 controls beside them. All of it is removed and a frame viewer is a v02 item again.
 
 The section number is kept rather than renumbered, because the other sections are referenced by
 number from the PRD, from `QC_RULES.md` and from `PROGRESS.md`.
 
 **Why it went:** the viewers existed so an editor could judge a cut point and act on it. That
-judgement now happens in the colour session, with the AD present, a real viewer and a calibrated
+judgement now happens in the color session, with the AD present, a real viewer and a calibrated
 monitor. What is left in this tool is the occasional one-off trim of an already approved edit
 (PRD FR-5), and that is done by typing a number, which the In/Out cells have always supported in
 four formats (section 5).
 
 ## 15. Scan, re-scan and a moved turnover (2026-09-23)
 
-**Ingest Colour Session is gone** (review 2026-09-23, chunk E). The cut is read at scan from the
+**Ingest Color Session is gone** (review 2026-09-23, chunk E). The cut is read at scan from the
 EDL in the turnover folder and, since 2026-09-28, the grade from each event's AMF and its CLFs
 beside it. A correction reaches the batch the way D8 says: the editor drops the fixed EDL, CSV,
 AMF, CLF or clip into the folder and re-scans.

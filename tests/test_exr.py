@@ -165,7 +165,7 @@ class TestProvenance:
     """What a graded plate says was done to it. COLOR_AND_FORMAT section 1.
 
     A delivered EXR leaves the tool and the studio, so the header is the only record a
-    facility with no colour session has. These assert the file, not the dict.
+    facility with no color session has. These assert the file, not the dict.
     """
 
     def shot_color(self, tmp_path: Path) -> clf.ShotColor:
@@ -257,7 +257,7 @@ class TestReadPixels:
         with pytest.raises(exr.ExrError, match="could not read pixels"):
             exr.read_pixels(tmp_path / "absent.exr")
 
-    def test_a_file_without_colour_channels_is_an_exr_error(self, tmp_path: Path) -> None:
+    def test_a_file_without_color_channels_is_an_exr_error(self, tmp_path: Path) -> None:
         path = tmp_path / "depth.exr"
         OpenEXR.File({}, {"Z": np.zeros((8, 8), dtype=np.float32)}).write(str(path))
         with pytest.raises(exr.ExrError, match="no RGB channels"):
@@ -276,7 +276,7 @@ class TestDwaaIsLossy:
     """DWAA is a lossy codec, so a raw deliverable is not bit-identical to its source.
 
     COLOR_AND_FORMAT section 3 requires DWAA at 45 anyway, and section 1's "pixels in,
-    pixels out" means no colour transform is applied, not that the file is a byte copy.
+    pixels out" means no color transform is applied, not that the file is a byte copy.
     The error is relative, around a tenth of a percent, so QC cannot compare a rendered
     frame to its source by equality. QC-106 hashes the written file instead, which is
     sound because the encoder is deterministic.

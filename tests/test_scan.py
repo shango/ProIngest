@@ -565,7 +565,7 @@ class TestTheAleNamesTheEvents:
 
 
 class TestTheAmf:
-    """Each event's AMF is the clip's colour (user, 2026-09-28). QC-075 to QC-080."""
+    """Each event's AMF is the clip's color (user, 2026-09-28). QC-075 to QC-080."""
 
     def scanned(self, folder: Path) -> tuple[Turnover, ShotRow]:
         turnover, rows = scan.scan_turnover(folder, "t1", scan.ScanSettings(rules=fixtures.SMALL_RULES))
@@ -583,8 +583,8 @@ class TestTheAmf:
         assert row.grade is not None
         assert [look.kind for look in row.grade.looks] == ["look", "clf"]
 
-    def test_an_event_with_no_amf_and_no_csv_colour_space_is_held_by_qc_046(self, tmp_path: Path) -> None:
-        """Nothing says what colour it is in, so the tool cannot recreate it."""
+    def test_an_event_with_no_amf_and_no_csv_color_space_is_held_by_qc_046(self, tmp_path: Path) -> None:
+        """Nothing says what color it is in, so the tool cannot recreate it."""
         folder = self.folder(tmp_path)
         self.amf(folder).unlink()
         _, row = self.scanned(folder)
@@ -606,7 +606,7 @@ class TestTheAmf:
         assert said.severity == "info" and said.message.startswith("Clip ungraded in Resolve project")
         assert planner.plannable_identity(row) is not None
 
-    def test_the_amf_wins_over_the_csv_colour_space(self, tmp_path: Path) -> None:
+    def test_the_amf_wins_over_the_csv_color_space(self, tmp_path: Path) -> None:
         folder = self.folder(tmp_path)
         rows = [("MELT0001_pl01", "MELT0001", "pl01")]
         fixtures.make_meta_csv(folder / "metadata.csv", rows, input_color_space="Apple Log")

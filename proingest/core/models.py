@@ -45,7 +45,7 @@ DeliverableStatus = Literal["planned", "rendering", "done", "failed", "exists", 
 SourceEncodingOrigin = Literal["AMF", "CSV"]
 """Which carrier named a row's source encoding. COLOR_AND_FORMAT, EXR metadata.
 
-Since 2026-09-28 (user) there is one: the clip's AMF, exported from the colour session,
+Since 2026-09-28 (user) there is one: the clip's AMF, exported from the color session,
 whose input transform ID the pinned config resolves. It is still written into the EXR
 header, because the origin is how a wrong encoding is traced back to where it was set.
 """
@@ -193,8 +193,8 @@ class MediaInfo:
 
     Kept because the source encoding may be written into the file itself rather than
     into the timeline (OQ-44), and the scan is where both are in front of the tool at
-    once. Nothing else reads it, and it is not a colour tag: COLOR_AND_FORMAT section 2
-    is explicit that a container's colour tags are overridden rather than trusted, and
+    once. Nothing else reads it, and it is not a color tag: COLOR_AND_FORMAT section 2
+    is explicit that a container's color tags are overridden rather than trusted, and
     that what is trusted is a named field a person filled in. Additive, so the schema
     version does not move.
     """
@@ -217,10 +217,10 @@ class MediaInfo:
     color_range: str = ""
     color_transfer: str = ""
     color_primaries: str = ""
-    """The stream's own colour tags as ffprobe names them, empty when it states none.
+    """The stream's own color tags as ffprobe names them, empty when it states none.
 
     The decode reads only the matrix and the range: they say how YCbCr becomes RGB, which
-    comes before any colour transform and which no metadata field names. The transfer
+    comes before any color transform and which no metadata field names. The transfer
     and primaries are kept for QC-018 and for the record. Additive, so the schema
     version does not move.
     """
@@ -366,9 +366,9 @@ class GradeLook:
     """One look of a clip's grade, in the order the AMF applies it.
 
     `look` is a look the pinned config defines (the Reference Gamut Compress); `clf` is a
-    CLF file beside the AMF, by full path, one corrector node of the colourist's grade;
+    CLF file beside the AMF, by full path, one corrector node of the colorist's grade;
     `cdl` is the CDL written inside the AMF, used only when it names no CLF (QC-082), its
-    numbers in `cdl` and the colour space it is applied in as `name`.
+    numbers in `cdl` and the color space it is applied in as `name`.
     """
 
     kind: LookKind
@@ -402,7 +402,7 @@ class GradeLook:
 
 @dataclass(frozen=True)
 class Grade:
-    """What a clip's AMF says about its colour, resolved at scan (user, 2026-09-28).
+    """What a clip's AMF says about its color, resolved at scan (user, 2026-09-28).
 
     On the row rather than read again at render so that a reopened batch renders and
     records what was scanned. The input transform resolves onto `ShotRow.source_encoding`;
@@ -424,7 +424,7 @@ class Grade:
 
     @property
     def graded(self) -> bool:
-        """Whether the colourist left this clip a grade: a CLF, or the AMF's CDL in its place."""
+        """Whether the colorist left this clip a grade: a CLF, or the AMF's CDL in its place."""
         return any(look.kind in ("clf", "cdl") for look in self.looks)
 
     def to_dict(self) -> dict[str, Any]:
@@ -559,7 +559,7 @@ class ShotRow:
 
     **A per clip fact, which is why it lives on the row** (COLOR_AND_FORMAT section 1): a
     turnover may mix encodings freely and nothing batch wide can stand in for this. What
-    is stored is the string a shooter wrote, not a colour space: `core/color.py` maps it
+    is stored is the string a shooter wrote, not a color space: `core/color.py` maps it
     onto one, and QC-047 is what a string that maps onto nothing reports. Additive, so
     the schema version does not move and an older batch simply names no encoding.
     """
@@ -573,18 +573,18 @@ class ShotRow:
     """
 
     approved: InOut | None = None
-    """The In/Out the colour session's final EDL approved, or None until one is ingested.
+    """The In/Out the color session's final EDL approved, or None until one is ingested.
 
     A third range beside `snapshot` and `current`, and the three answer three different
     questions: what the turnover delivered, what will be rendered, and what Ben and the
     AD signed off (COLOR_AND_FORMAT section 1). Ingest writes `current` from it, so the
     two agree until the editor makes a one-off trim, and QC-045 is the gap between them.
     Additive, so the schema version does not move and a batch saved before this has
-    nothing approved, which is the state a batch with no colour session is in anyway.
+    nothing approved, which is the state a batch with no color session is in anyway.
     """
 
     grade: Grade | None = None
-    """This clip's colour from its AMF, or None when no AMF matched it (QC-075).
+    """This clip's color from its AMF, or None when no AMF matched it (QC-075).
 
     Additive; a batch saved before 2026-09-28 carried a CDL here instead, which is not
     read: its turnovers are re-scanned to pick up their AMFs.
@@ -780,7 +780,7 @@ class Turnover:
     turnover_id: str
     folder: Path
     edl_path: Path | None = None
-    """Ben's EDL, the carrier of the approved cut (OQ-74). Colour is in the AMFs beside it."""
+    """Ben's EDL, the carrier of the approved cut (OQ-74). Color is in the AMFs beside it."""
 
     csv_path: Path | None = None
     """Ben's metadata CSV, the carrier of identity and encoding.
@@ -801,11 +801,11 @@ class Turnover:
     """
 
     color_session_edl: Path | None = None
-    """The final EDL of the colour session ingested for this turnover, or None.
+    """The final EDL of the color session ingested for this turnover, or None.
 
     **Per turnover rather than per batch** (QC-008), because turnovers arrive on
     different days and the grade for one is finished while the next is still being shot:
-    one turnover can be waiting on colour while another renders. **On the batch rather
+    one turnover can be waiting on color while another renders. **On the batch rather
     than in the app settings**, for the reason UI_SPEC section 13 gives for the two
     roots: it is a record of what this work was rendered from, not a preference, so
     reopening a `.pibatch` restores it and a second batch does not disturb it.

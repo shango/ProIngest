@@ -440,7 +440,7 @@ def probe(
 
 
 def _color_tag(stream: dict[str, Any], key: str) -> str:
-    """A colour tag, or empty when the stream states none; ffprobe says "unknown"."""
+    """A color tag, or empty when the stream states none; ffprobe says "unknown"."""
     value = str(stream.get(key, ""))
     return "" if value in ("", "unknown", "unspecified") else value
 

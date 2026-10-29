@@ -1,9 +1,9 @@
 """Ben's per-clip AMF: which input transform, which looks, which output transform.
 
-COLOR_AND_FORMAT section 1. Since 2026-09-28 (user) the colour of a turnover is carried
+COLOR_AND_FORMAT section 1. Since 2026-09-28 (user) the color of a turnover is carried
 by one ACES Metadata File per EDL event, exported from Ben's Resolve session, and the CLF
 files each one names. The EDL is the cut and the CSV is the identity; neither carries
-colour any more. An AMF is Academy S-2019-001 XML:
+color any more. An AMF is Academy S-2019-001 XML:
 
     clipId            the file the clip is, or the sequence pattern of an EXR sequence
     inputTransform    a transform ID: the camera encoding to ACES2065-1, or for a display
@@ -12,7 +12,7 @@ colour any more. An AMF is Academy S-2019-001 XML:
     outputTransform   a transform ID: ACES to the display the session was viewed on
 
 **The IDs are resolved through the pinned config and nothing else.** The config lists,
-per colour space, look and view transform, the AMF transform IDs it implements
+per color space, look and view transform, the AMF transform IDs it implements
 (`interchange: amf_transform_ids`), so the answer is the config's own and there is no
 table here to go stale. An ID the config does not list resolves to None, and the rule
 that reads it says so (QC-047 for an input, QC-077 for a look, QC-079 for an output).
@@ -112,7 +112,7 @@ class Amf:
     input_applied: bool
     input_inverse_output: bool
     """The input transform is an `inverseOutputTransform`: a display referred render, such
-    as turnover144's colour chart, brought back through the session's view undone."""
+    as turnover144's color chart, brought back through the session's view undone."""
     looks: tuple[AmfLook, ...]
     output_transform: str
 
@@ -242,7 +242,7 @@ def _applied(element: ET.Element | None) -> bool:
 
 @dataclass(frozen=True)
 class _Index:
-    colour_spaces: dict[str, str]
+    color_spaces: dict[str, str]
     looks: dict[str, str]
     view_transforms: dict[str, str]
 
@@ -262,9 +262,9 @@ def _index() -> _Index:
     return _Index(spaces, looks, views)
 
 
-def colour_space_for(transform_id: str) -> str | None:
-    """The config colour space an input transform ID converts from, or None."""
-    return _index().colour_spaces.get(transform_id)
+def color_space_for(transform_id: str) -> str | None:
+    """The config color space an input transform ID converts from, or None."""
+    return _index().color_spaces.get(transform_id)
 
 
 def input_encoding_for(found: Amf) -> str | None:
@@ -275,7 +275,7 @@ def input_encoding_for(found: Amf) -> str | None:
     view undone (`color.inverse_view`).
     """
     if not found.input_inverse_output:
-        return colour_space_for(found.input_transform)
+        return color_space_for(found.input_transform)
     display_view = display_view_for(found.input_transform)
     return color.inverse_view(*display_view) if display_view is not None else None
 
@@ -288,13 +288,13 @@ def look_for(transform_id: str) -> str | None:
 def display_view_for(transform_id: str) -> tuple[str, str] | None:
     """The config display and view an output transform ID renders to, or None.
 
-    The config lists an ACES 2.0 output ID twice: on the display colour space it encodes
+    The config lists an ACES 2.0 output ID twice: on the display color space it encodes
     for and on the view transform that tone maps to it. The display is the one whose
-    colour space that is, and the view is the view on that display built from that view
+    color space that is, and the view is the view on that display built from that view
     transform, so both halves come from the config rather than from reading the ID.
     """
     index = _index()
-    display = index.colour_spaces.get(transform_id)
+    display = index.color_spaces.get(transform_id)
     view_transform = index.view_transforms.get(transform_id)
     config = color.config()
     if display is None or view_transform is None or display not in config.getDisplays():

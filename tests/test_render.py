@@ -172,7 +172,7 @@ class TestRawSequence:
 
 
 class TestPlateBranch:
-    """The colour the plate is delivered in. COLOR_AND_FORMAT section 1.
+    """The color the plate is delivered in. COLOR_AND_FORMAT section 1.
 
     The fixture writes a flat 0.2 into red, which is a code value in the source's log
     encoding and not a scene linear one. What lands in the EXR is what the chain makes
@@ -227,7 +227,7 @@ class TestPlateBranch:
         assert header[exr.SOURCE_ENCODING_ATTRIBUTE] == color_fixtures.SOURCE_ENCODING
 
     def test_alpha_does_not_go_through_the_chain(self) -> None:
-        """Coverage is not colour, and a transformed alpha only shows up over a comp."""
+        """Coverage is not color, and a transformed alpha only shows up over a comp."""
         branch = render._plate_branch(
             DeliverableJob(
                 kind="raw_dir",
@@ -424,7 +424,7 @@ class TestAuxStill:
     def test_one_whose_clip_named_no_encoding_is_refused_rather_than_converted(self, tmp_path: Path) -> None:
         """QC-046's claim, end to end: the deliverable is blocked rather than approximated.
 
-        A mis-converted colour chart still looks exactly like a chart, so a still with
+        A mis-converted color chart still looks exactly like a chart, so a still with
         nothing to convert it by is worth failing. Nothing is left behind, like every
         other failure here.
         """
@@ -525,7 +525,7 @@ def video_stream(path: Path) -> dict[str, object]:
 
 
 class TestViewBranch:
-    """The reference's colour, which reaches ffmpeg as a baked cube (section 1).
+    """The reference's color, which reaches ffmpeg as a baked cube (section 1).
 
     What these guard is the join: the cube has to exist, be a real LUT and be named in
     the command **while ffmpeg runs**, and be gone afterwards. A missing cube is an
@@ -1138,7 +1138,7 @@ class TestPostRenderQC:
 
 class TestAnAvidRef:
     """User, 2026-10-22: an Avid reference is never an EXR. A `Render` movie is an mp4 with its
-    colour as it is ("color is baked in"), a held still is delivered as it is, or as a JPG."""
+    color as it is ("color is baked in"), a held still is delivered as it is, or as a JPG."""
 
     def job(self, tmp_path: Path, source: Path, name: str, out_frame: int) -> DeliverableJob:
         return sequence_job(

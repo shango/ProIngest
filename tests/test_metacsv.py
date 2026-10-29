@@ -154,8 +154,8 @@ class TestColumnsNotRead:
         )
         assert result.rows[0].scene == "Laser/Melt"
 
-    def test_the_colour_columns_are_not_read(self, tmp_path: Path) -> None:
-        """Colour comes from each clip's AMF since 2026-09-28 (user); these are ignored."""
+    def test_the_color_columns_are_not_read(self, tmp_path: Path) -> None:
+        """Color comes from each clip's AMF since 2026-09-28 (user); these are ignored."""
         result = read(
             tmp_path,
             ["File Name", "Shot", "Shot Type", "Gamma Notes", "Color Space Notes", "Input Color Space"],

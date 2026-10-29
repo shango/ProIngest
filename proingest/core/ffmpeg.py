@@ -606,7 +606,7 @@ def extract_audio(
 def still_jpg_command(
     source: str, destination: Path, frame: int, is_sequence: bool, ffmpeg: Path | None = None
 ) -> list[str]:
-    """One frame of `source` as a JPG, its pixels as they are: an Avid reference's colour is
+    """One frame of `source` as a JPG, its pixels as they are: an Avid reference's color is
     baked in, so no transform is applied. `frame` is the first frame number of a sequence.
 
     `-f image2` and `-update 1` for the same reason `extract_audio_command` states `-f wav`:
@@ -731,7 +731,7 @@ is not something the delivered look should depend on.
 
 LUT_INTERPOLATION = "tetrahedral"
 """`lut3d` already defaults to this. It is written out for the same reason
-`color.INTERPOLATION` exists: trilinear is visibly worse on saturated colour and it is
+`color.INTERPOLATION` exists: trilinear is visibly worse on saturated color and it is
 a one word difference nobody notices being wrong."""
 
 
@@ -824,7 +824,7 @@ def encode_command(
       infer a muxer from. This is the same trap `extract_audio_command` documents.
     - **Both matrices are stated.** In through `to_rgb`, from the file's own tags, and
       out with `REFERENCE_TO_YUV`. Left to swscale, the conversion back to 4:2:0 used
-      BT.601 under a BT.709 tag, which shifts every saturated colour (F7).
+      BT.601 under a BT.709 tag, which shifts every saturated color (F7).
 
     `canvas` is the size the picture is letterboxed onto, given only when the source has
     another shape than the deliverable, which is how it keeps its shape (F9).

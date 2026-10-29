@@ -213,7 +213,7 @@ class TestRunCommand:
 
         A clean turnover has nothing for them to say, which since the scan ingests the
         EDL itself is the ordinary case: what used to print QC-008 here was a batch
-        waiting on a colour session that no longer exists as a separate step (OQ-74).
+        waiting on a color session that no longer exists as a separate step (OQ-74).
         So what this asserts is that the pre-flight ran and let the plan through.
         """
         batch_path = self.scanned(tmp_path)
@@ -281,7 +281,7 @@ class TestTheGrade:
         assert str(header[exr.AMF_ATTRIBUTE]).endswith(".amf")
         assert header[exr.COLORSPACE_ATTRIBUTE] == color.PLATE_SPACE
 
-    def test_there_is_no_colour_session_flag_any_more(self) -> None:
+    def test_there_is_no_color_session_flag_any_more(self) -> None:
         with pytest.raises(SystemExit):
             main(["run", "x.pibatch", "--color-session", "final.edl"])
 
