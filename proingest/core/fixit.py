@@ -692,14 +692,14 @@ def _e(text: str) -> str:
 
 
 _STYLE = """
-:root{--bg:#f6f7f9;--card:#fff;--fg:#1d2128;--muted:#5d6573;--line:#dfe3e8;--resolve:#b4231b;
+:root{--bg:#f6f7f9;--card:#fff;--fg:#1d2128;--muted:#5d6573;--line:#dfe3e8;--resolve:#c2410c;
 --folder:#8a5a00;--note:#2f5e9e;--sans:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;
 --mono:ui-monospace,Menlo,Consolas,monospace}
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--bg:#15181d;--card:#1d2127;
---fg:#e4e7ec;--muted:#9aa3b0;--line:#2c323a;--resolve:#ff8a80;--folder:#f0c060;--note:#8db8f0;
+--fg:#e4e7ec;--muted:#9aa3b0;--line:#2c323a;--resolve:#fb923c;--folder:#f0c060;--note:#8db8f0;
 color-scheme:dark}}
 :root[data-theme="dark"]{--bg:#15181d;--card:#1d2127;--fg:#e4e7ec;--muted:#9aa3b0;--line:#2c323a;
---resolve:#ff8a80;--folder:#f0c060;--note:#8db8f0;color-scheme:dark}
+--resolve:#fb923c;--folder:#f0c060;--note:#8db8f0;color-scheme:dark}
 body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--sans);font-size:16px;line-height:1.55;
 padding:32px 16px 48px}
 main{max-width:720px;margin:0 auto;display:grid;gap:28px}

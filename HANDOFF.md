@@ -1,4 +1,8 @@
-# Handoff, 28 October 2026 (Windows)
+# Handoff, 29 October 2026
+
+**29 October, 0.5.51 on branch `fixit-orange`**: PR #21 (the Windows build, 0.5.50) is merged,
+`main` is `81c0358`. The Fix-it report's Fix in Resolve colour is orange rather than red
+(`fixit._STYLE`, `--resolve`). Merge only when the user asks.
 
 **28 October, 0.5.50 on branch `windows`**: PR #20 is merged (`main` is `b8323cd`, 0.5.49). The
 Windows build is in progress for parity with the Mac: gyan.dev ffmpeg 9.0.1 pinned beside the
