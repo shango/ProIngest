@@ -1,11 +1,11 @@
 """Where the app's own files live, answered by Qt rather than built by hand.
 
-UI_SPEC section 11: use `QStandardPaths`. On macOS with the application and
-organisation names set, `AppDataLocation` is
-`~/Library/Application Support/ProIngest`, which is what PACKAGING.md specifies. This
-module is the only place that asks, and `core/settings.py` takes the answer as an
-argument, so there is one authority for the location rather than a core copy that
-cannot check Qt's.
+UI_SPEC section 11: use `QStandardPaths`. With the application name set,
+`AppDataLocation` is `~/Library/Application Support/ProIngest` on macOS and
+`%APPDATA%\\ProIngest` (`AppData\\Roaming\\ProIngest`) on Windows, which is what
+PACKAGING.md specifies. This module is the only place that asks, and `core/settings.py`
+takes the answer as an argument, so there is one authority for the location rather than
+a core copy that cannot check Qt's.
 """
 
 from __future__ import annotations
@@ -46,8 +46,8 @@ macOS keeps logs in `~/Library/Logs/<app>`, which PACKAGING.md names, and Qt has
 standard location for it: `QStandardPaths` models data, cache and config and stops
 there. So the folder is derived from the generic data location's parent rather than
 written out with a `~` in it, which keeps CLAUDE.md's rule about platform paths and
-still lands where the spec says. Everywhere else - the Linux dev machine and the Linux
-CI runner - a `logs` folder beside `settings.json` is the honest answer.
+still lands where the spec says. Everywhere else - Windows, the Linux dev machine and
+the Linux CI runner - a `logs` folder beside `settings.json` is the honest answer.
 """
 
 

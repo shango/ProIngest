@@ -1,15 +1,17 @@
-"""Build the frozen app, and on macOS the dmg beside it. Writes into `dist/`.
+"""Build the frozen app, and its installer beside it. Writes into `dist/`.
 
 Usage:
-    python build/build.py              # app, and a dmg if this is macOS
-    python build/build.py --no-dmg     # app only
-    python build/build.py --clean      # throw away build/ and dist/ first
+    python build/build.py                  # app, and the installer on macOS or Windows
+    python build/build.py --no-installer   # app only (--no-dmg is the same)
+    python build/build.py --clean          # throw away build/ and dist/ first
 
-macOS on Apple Silicon is the target (PACKAGING.md). The script runs on Linux too and
-produces a Linux `onedir` that no one ships: it is there so that `build/proingest.spec`
-can be exercised - a missing hidden import or an uncollected plugin manifest fails a
-build the same way on either platform, and finding that on a rented Mac is the expensive
-way to find it (`docs/MAC_SESSION.md`).
+Two products (PACKAGING.md): macOS on Apple Silicon, installed from a dmg, and Windows
+x64, installed by `ProIngest-Setup-<version>.exe`, which Inno Setup builds from
+`build/proingest.iss`. The script runs on Linux too and produces a Linux `onedir` that
+no one ships: it is there so that `build/proingest.spec` can be exercised - a missing
+hidden import or an uncollected plugin manifest fails a build the same way on every
+platform, and finding that on a rented Mac is the expensive way to find it
+(`docs/MAC_SESSION.md`).
 """
 
 from __future__ import annotations
@@ -29,13 +31,14 @@ from build import bundle
 
 REPO_ROOT = bundle.REPO_ROOT
 SPEC_PATH = REPO_ROOT / "build" / "proingest.spec"
+INSTALLER_SCRIPT = REPO_ROOT / "build" / "proingest.iss"
 DIST_DIR = REPO_ROOT / "dist"
 WORK_DIR = REPO_ROOT / "build" / "pyinstaller"
 
 INSTALLER_BUDGET_BYTES = 300 * 1024 * 1024
-"""PRD section 8: "Installer under 300 MB". The installer is the dmg, so this is
-measured against the compressed disk image and the installed size is reported beside it
-as the number that explains it. Printed rather than enforced: a budget that fails a
+"""PRD section 8: "Installer under 300 MB". The installer is the dmg or the setup exe,
+so this is measured against that and the installed size is reported beside it as the
+number that explains it. Printed rather than enforced: a budget that fails a
 build is a red `main` the first time PySide6 gains a megabyte, and the decision about
 what to drop is a person's."""
 
@@ -57,14 +60,21 @@ def app_dir(platform: str = sys.platform) -> Path:
 
 
 def executable_path(platform: str = sys.platform) -> Path:
-    """The binary to run, inside whichever of those two layouts this platform built."""
+    """The binary to run, inside whichever of those layouts this platform built."""
     if platform == bundle.MACOS:
         return app_dir(platform) / "Contents" / "MacOS" / bundle.APP_NAME
+    if platform == bundle.WINDOWS:
+        return app_dir(platform) / f"{bundle.APP_NAME}.exe"
     return app_dir(platform) / bundle.APP_NAME
 
 
+def setup_path(version: str) -> Path:
+    """`ProIngest-Setup-0.5.50.exe`, which is the name `build/proingest.iss` gives it."""
+    return DIST_DIR / f"{bundle.APP_NAME}-Setup-{version}.exe"
+
+
 def dmg_path(version: str) -> Path:
-    """`ProIngest-0.5.49.dmg`. The version is in the filename so two builds cannot be
+    """`ProIngest-0.5.50.dmg`. The version is in the filename so two builds cannot be
     confused for each other on a machine that has downloaded both."""
     return DIST_DIR / f"{bundle.APP_NAME}-{version}.dmg"
 
@@ -91,17 +101,18 @@ def format_size(size: int) -> str:
 
 
 def check_ffmpeg(platform: str = sys.platform) -> None:
-    """Refuse a macOS build that would silently ship without ffmpeg.
+    """Refuse a macOS or Windows build that would silently ship without ffmpeg.
 
     The binaries are untracked and fetched by `build/fetch_ffmpeg.py`, so a fresh clone
     has none. PyInstaller would not complain - a missing file in `binaries` is a warning
     it prints among hundreds - and the app would install, start, and fail on the first
-    probe with `FFmpegNotFound`. Off macOS there is nothing to check: `core/ffmpeg.py`
-    does not use the bundled pair there.
+    probe with `FFmpegNotFound`. On Linux there is nothing to check: `core/ffmpeg.py`
+    does not use a bundled pair there.
     """
-    if platform != bundle.MACOS:
+    if platform not in bundle.SHIPPED_PLATFORMS:
         return
-    missing = [tool for tool in bundle.FFMPEG_TOOLS if not (REPO_ROOT / bundle.FFMPEG_DIR / tool).is_file()]
+    folder = REPO_ROOT / bundle.FFMPEG_DIR
+    missing = [name for name in bundle.ffmpeg_files(platform) if not (folder / name).is_file()]
     if missing:
         raise BuildError(
             f"{', '.join(missing)} missing from {bundle.FFMPEG_DIR}. "
@@ -175,8 +186,49 @@ def build_dmg(version: str) -> Path:
     return output
 
 
+def build_setup(version: str) -> Path:
+    """`ProIngest-Setup-<version>.exe`, from the `onedir` PyInstaller left, by Inno Setup.
+
+    `ISCC` is found on PATH rather than at the folder Inno Setup installs itself to, so
+    no Windows path is written here: CI puts that folder on PATH, and so does anyone who
+    builds on their own machine (PACKAGING.md).
+    """
+    source = app_dir()
+    if not source.is_dir():
+        raise BuildError(f"{source} does not exist; the app was not built")
+    compiler = shutil.which("ISCC")
+    if compiler is None:
+        raise BuildError("ISCC (Inno Setup 6) is not on PATH; add the folder it is installed in")
+
+    output = setup_path(version)
+    output.unlink(missing_ok=True)
+    command = [
+        compiler,
+        f"/DAppVersion={version}",
+        f"/DSourceDir={source}",
+        f"/DOutputDir={DIST_DIR}",
+        str(INSTALLER_SCRIPT),
+    ]
+    print(" ".join(command))
+    result = subprocess.run(command, check=False)
+    if result.returncode != 0:
+        raise BuildError(f"ISCC exited {result.returncode}")
+    if not output.is_file():
+        raise BuildError(f"ISCC finished but wrote no {output.name}")
+    return output
+
+
+def build_installer(version: str, platform: str = sys.platform) -> Path | None:
+    """The dmg on macOS, the setup exe on Windows, and nothing on Linux."""
+    if platform == bundle.MACOS:
+        return build_dmg(version)
+    if platform == bundle.WINDOWS:
+        return build_setup(version)
+    return None
+
+
 def report_sizes(version: str, image: Path | None) -> None:
-    """Print the installed size, and the dmg against the budget when there is one."""
+    """Print the installed size, and the installer against the budget when there is one."""
     installed = directory_size(app_dir())
     print(f"\n{bundle.APP_NAME} {version}")
     print(f"  {app_dir()}")
@@ -192,7 +244,9 @@ def report_sizes(version: str, image: Path | None) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--no-dmg", action="store_true", help="build the app but not the disk image")
+    parser.add_argument(
+        "--no-installer", "--no-dmg", action="store_true", help="build the app but not the dmg or setup exe"
+    )
     parser.add_argument("--clean", action="store_true", help="discard previous build and dist output")
     args = parser.parse_args(argv)
 
@@ -204,9 +258,7 @@ def main(argv: list[str] | None = None) -> int:
             shutil.rmtree(DIST_DIR, ignore_errors=True)
         print(f"release date stamped: {stamp_release().read_text(encoding='utf-8').strip()}")
         run_pyinstaller(args.clean)
-        image = None
-        if sys.platform == bundle.MACOS and not args.no_dmg:
-            image = build_dmg(version)
+        image = None if args.no_installer else build_installer(version)
     except BuildError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2

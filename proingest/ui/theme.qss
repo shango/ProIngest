@@ -335,7 +335,7 @@ QLineEdit:focus {
    name read slowly. */
 #settings_readonly {
   color: #868d9a;
-  font-family: "SF Mono", Menlo, monospace;
+  font-family: "SF Mono", Menlo, Consolas, monospace;
   font-size: 12px;
 }
 

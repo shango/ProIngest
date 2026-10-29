@@ -281,9 +281,7 @@ class TestDeliverableRuleColumns:
         """An mp4 has no opinion about EXR compression, so QC-105 is NA and not PASS."""
         log = exports.write_qc_log(batch_of(row()), tmp_path / "log.xlsx")
         header, *rows = sheet_rows(log, "Deliverables")
-        by_name = {
-            str(values[5]).rsplit("/", 1)[-1]: dict(zip(header, values, strict=True)) for values in rows
-        }
+        by_name = {Path(str(values[5])).name: dict(zip(header, values, strict=True)) for values in rows}
         assert by_name["MELT0001_pl01_ref_HD_v01.mp4"]["QC-105"] == "NA"
         assert by_name["MELT0001_pl01_raw_4k_v01"]["QC-105"] == "PASS"
 

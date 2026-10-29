@@ -11,6 +11,7 @@ from __future__ import annotations
 import logging
 import re
 import shutil
+import sys
 from dataclasses import replace
 from pathlib import Path
 
@@ -767,7 +768,13 @@ class TestDestinationWritable:
         assert qc.check_destination_writable(tmp_path / "absent" / "deeper") == []
 
     def test_an_unreachable_root_is_qc_062(self) -> None:
-        assert ids(qc.check_destination_writable(Path("/nonexistent-volume/x"))) == ["QC-062"]
+        """A volume that is not mounted. On Windows a rooted path is on the current drive,
+        so the absent thing is a drive letter, which is what an unmounted `G:` is."""
+        if sys.platform == "win32":
+            absent = next(f"{d}:\\" for d in "ZYXWVUTSRQ" if not Path(f"{d}:\\").exists())
+            assert ids(qc.check_destination_writable(Path(absent) / "x")) == ["QC-062"]
+        else:
+            assert ids(qc.check_destination_writable(Path("/nonexistent-volume/x"))) == ["QC-062"]
 
     def test_a_mount_that_refuses_to_answer_is_qc_062_rather_than_a_crash(
         self, monkeypatch: pytest.MonkeyPatch
@@ -778,6 +785,7 @@ class TestDestinationWritable:
         monkeypatch.setattr(Path, "exists", refuse)
         assert ids(qc.check_destination_writable(Path("/mnt/g/x"))) == ["QC-062"]
 
+    @pytest.mark.skipif(sys.platform == "win32", reason="a Windows folder has no mode to make it read only")
     def test_a_read_only_root_is_qc_062(self, tmp_path: Path) -> None:
         """Existence is not permission, which is the whole point on a network mount."""
         locked = tmp_path / "locked"

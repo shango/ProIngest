@@ -360,7 +360,11 @@ class TestTheWidget:
     def test_a_path_gets_a_copy_button_and_a_plain_value_does_not(self, pane: MetadataPane) -> None:
         box = _box(pane, describe([row()], batch(row())), "Source media")
         buttons = [b for b in box.findChildren(type(pane.copy_all)) if b.text() == COPY]
-        paths = [f for f in box.findChildren(ElidedLabel) if f.full_text.startswith("/")]
+        paths = [
+            f
+            for f in box.findChildren(ElidedLabel)
+            if f.full_text == str(Path("/turnover/MELT0001_pl01.mov"))
+        ]
         assert len(buttons) == len(paths) == 1
 
     def test_a_copied_path_is_the_whole_one_not_the_elided_one(self, pane: MetadataPane) -> None:
@@ -370,7 +374,7 @@ class TestTheWidget:
         box = next(b for b in pane._boxes if b.title == "Source media")
         button = next(b for b in box.findChildren(type(pane.copy_all)) if b.text() == COPY)
         button.click()
-        assert copied == ["/turnover/MELT0001_pl01.mov"]
+        assert copied == [str(Path("/turnover/MELT0001_pl01.mov"))]
 
     def test_copy_all_puts_the_whole_pane_on_the_clipboard(self, pane: MetadataPane) -> None:
         copied: list[str] = []
@@ -412,7 +416,11 @@ class TestTheWidget:
         label.show()
         qt_app.processEvents()
         assert label.text() != label.full_text
-        assert label.text().endswith(".1001.exr"), "elided in the middle, never at the end"
+        # How much survives depends on the font, so only where the ellipsis went is asserted.
+        shown = label.text()
+        assert shown.endswith("exr") and "\u2026" in shown[:-3], (
+            f"elided in the middle, never at the end: {shown!r}"
+        )
         assert label.toolTip() == label.full_text
 
     def test_a_value_that_fits_is_left_exactly_as_it_is(self, qt_app: QApplication) -> None:

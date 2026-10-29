@@ -51,6 +51,12 @@ answered with a Developer ID. Settings, window state and logs are unaffected eit
 
 MACOS = "darwin"
 
+WINDOWS = "win32"
+
+SHIPPED_PLATFORMS = (MACOS, WINDOWS)
+"""Where a bundle is a product, with a pinned ffmpeg inside it. A Linux build is the spec
+check CI runs and nobody installs (`build/build.py`)."""
+
 MINIMUM_MACOS = "12.0"
 """`LSMinimumSystemVersion`. PySide6 6.7's own floor, per PACKAGING.md."""
 
@@ -66,6 +72,13 @@ binaries out under the same relative path is what makes that resolution work unc
 """
 
 FFMPEG_TOOLS = ("ffmpeg", "ffprobe")
+
+
+def ffmpeg_files(platform: str = sys.platform) -> list[str]:
+    """The two binaries' file names as this platform spells them: `.exe` on Windows."""
+    suffix = ".exe" if platform == WINDOWS else ""
+    return [f"{tool}{suffix}" for tool in FFMPEG_TOOLS]
+
 
 RELEASE_FILE = Path("proingest") / "resources" / "release.txt"
 """The build's date, which `core/expiry.py` counts a month from. `build.py` writes it."""
@@ -108,18 +121,18 @@ def datas(platform: str = sys.platform) -> list[tuple[str, str]]:
     collected += [(str(REPO_ROOT / FONTS_DIR / name), str(FONTS_DIR)) for name in FONT_FILES]
     collected.append((str(REPO_ROOT / RELEASE_FILE), str(RELEASE_FILE.parent)))
 
-    if platform == MACOS:
+    if platform in SHIPPED_PLATFORMS:
         for name in ("LICENSE.ffmpeg.txt", "PROVENANCE.md"):
             collected.append((str(REPO_ROOT / FFMPEG_DIR / name), str(FFMPEG_DIR)))
     return collected
 
 
 def binaries(platform: str = sys.platform) -> list[tuple[str, str]]:
-    """The bundled ffmpeg pair, on macOS only.
+    """The bundled ffmpeg pair, on macOS and Windows only.
 
-    They are macOS arm64 Mach-O and `core/ffmpeg.py` skips them off macOS for that
-    reason, so collecting them on a Linux build would put 132 MB into an artifact that
-    could never run them.
+    They are macOS arm64 Mach-O or Windows x64 executables and `core/ffmpeg.py` skips
+    them anywhere else for that reason, so collecting them on a Linux build would put
+    132 MB into an artifact that could never run them.
 
     Listed as *binaries* rather than as data so PyInstaller lays them out the way the
     `.app` needs and re-signs them ad-hoc after it rewrites their load commands, which
@@ -128,9 +141,9 @@ def binaries(platform: str = sys.platform) -> list[tuple[str, str]]:
     on them; if ProIngest is ever signed for real, PACKAGING.md's note about signing
     the nested binaries as part of the bundle is what applies.
     """
-    if platform != MACOS:
+    if platform not in SHIPPED_PLATFORMS:
         return []
-    return [(str(REPO_ROOT / FFMPEG_DIR / tool), str(FFMPEG_DIR)) for tool in FFMPEG_TOOLS]
+    return [(str(REPO_ROOT / FFMPEG_DIR / name), str(FFMPEG_DIR)) for name in ffmpeg_files(platform)]
 
 
 def hidden_imports() -> list[str]:

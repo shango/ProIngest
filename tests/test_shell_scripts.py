@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import os
 import re
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -39,7 +40,11 @@ def test_the_script_is_executable(script: Path) -> None:
 def test_bash_parses_it(script: Path) -> None:
     """The only syntax check these files ever get. `-n` reads one without running a line
     of it, which matters for a script whose first act is to refuse to run here."""
-    result = subprocess.run(["bash", "-n", str(script)], capture_output=True, text=True)
+    # Found on PATH: Windows' own lookup takes System32's WSL `bash.exe` before Git's.
+    bash = shutil.which("bash")
+    if bash is None:
+        pytest.skip("no bash on PATH")
+    result = subprocess.run([bash, "-n", str(script)], capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
 
 

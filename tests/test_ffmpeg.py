@@ -13,13 +13,14 @@ to prevent.
 from __future__ import annotations
 
 import subprocess
+import sys
 from collections.abc import Iterator
 from pathlib import Path
 
 import numpy as np
 import pytest
 
-from proingest.core import ffmpeg, media
+from proingest.core import ffmpeg, media, stringout
 from tests.fixtures import media as fixtures
 
 WIDTH, HEIGHT = fixtures.SMALL
@@ -422,7 +423,7 @@ class TestEncodeCommand:
         assert filters[-6:] == [
             "scale=1920:1080:flags=lanczos:in_color_matrix=bt709:in_range=limited",
             "format=gbrpf32le",
-            "lut3d=/tmp/lut/MELT0001_ref_HD_v01.cube:interp=tetrahedral",
+            ffmpeg.lut_filter(Path("/tmp/lut/MELT0001_ref_HD_v01.cube")),
             "scale=out_color_matrix=bt709:out_range=limited",
             "format=yuv420p",
             "setparams=color_primaries=bt709:color_trc=iec61966-2-1:colorspace=bt709:range=tv",
@@ -441,19 +442,13 @@ class TestEncodeCommand:
             shaper=Path("/tmp/lut/shaper.cube"),
         )
         filters = command[command.index("-vf") + 1].split(",")
-        at = filters.index("lut1d=/tmp/lut/shaper.cube:interp=linear")
+        at = filters.index(ffmpeg.shaper_filter(Path("/tmp/lut/shaper.cube")))
         assert filters[at - 1] == "format=gbrpf32le"
-        assert filters[at + 1] == "lut3d=/tmp/lut/view.cube:interp=tetrahedral"
+        assert filters[at + 1] == ffmpeg.lut_filter(Path("/tmp/lut/view.cube"))
 
     def test_the_lut_is_applied_tetrahedrally(self) -> None:
         """`lut3d` defaults to it. Stated anyway: trilinear is one word and looks wrong."""
         assert "interp=tetrahedral" in ffmpeg.lut_filter(Path("/tmp/a.cube"))
-
-    def test_a_colon_in_the_lut_path_is_escaped_not_pasted(self) -> None:
-        """A filter argument is colon separated, so an unescaped path ends the filter."""
-        assert ffmpeg.lut_filter(Path("/tmp/a:b/lut.cube")).endswith(
-            "lut3d=/tmp/a\\:b/lut.cube:interp=tetrahedral"
-        )
 
     def test_no_lut_still_states_both_matrices(self) -> None:
         """`encode_command` still has to build a command without one, for the tests above."""
@@ -670,3 +665,62 @@ class TestTheBurnInBox:
         drawn = ffmpeg.drawtext_filter(Path("t.txt"), Path("f.ttf"), 42, "0", "0")
         assert ":box=1:boxcolor=black@0.3:boxborderw=8" in drawn
         assert ":y_align=font" in drawn
+
+
+POSIX_ONLY = pytest.mark.skipif(sys.platform == "win32", reason="not a legal Windows file name")
+
+
+class TestAPathInAFilter:
+    """Run rather than compared: ffmpeg reads a filter's path at two levels, and only
+    ffmpeg can say whether an escape survived both (2026-10-28). A Windows path brings
+    its own colon and backslashes, so every folder name here is one a real path has."""
+
+    @pytest.mark.parametrize(
+        "folder",
+        [
+            pytest.param("a:b", marks=POSIX_ONLY),
+            pytest.param("c\\d", marks=POSIX_ONLY),
+            "it's",
+            "x[1],y;z",
+            "Turnover 144",
+        ],
+    )
+    def test_a_burn_in_and_both_luts_read_their_files(self, tmp_path: Path, folder: str) -> None:
+        here = tmp_path / folder
+        here.mkdir()
+        font = here / "font.ttf"
+        font.write_bytes(stringout.FONT.read_bytes())
+        text = here / "text.txt"
+        text.write_text("INCA5002", encoding="utf-8")
+        shaper = here / "shaper.cube"
+        shaper.write_text("LUT_1D_SIZE 2\n0 0 0\n1 1 1\n", encoding="utf-8")
+        cube = here / "view.cube"
+        cube.write_text(
+            "LUT_3D_SIZE 2\n" + "".join(f"{b} {g} {r}\n" for r in (0, 1) for g in (0, 1) for b in (0, 1)),
+            encoding="utf-8",
+        )
+        graph = ",".join(
+            (
+                ffmpeg.shaper_filter(shaper),
+                ffmpeg.lut_filter(cube),
+                ffmpeg.drawtext_filter(text, font, 12, "0", "0"),
+            )
+        )
+        command = [
+            str(ffmpeg.resolve_tool("ffmpeg")), "-v", "error",
+            "-f", "lavfi", "-i", "color=s=64x64:d=0.04",
+            "-vf", graph, "-f", "null", "-",
+        ]  # fmt: skip
+        result = subprocess.run(command, capture_output=True, text=True, check=False)
+        assert result.returncode == 0, result.stderr
+
+
+class TestTheLoggedCommand:
+    def test_it_is_quoted_for_the_shell_it_will_be_pasted_into(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """CLAUDE.md: a render is reproduced by pasting its logged command. cmd.exe reads
+        double quotes, a POSIX shell single ones."""
+        command = ["ffmpeg", "-i", "My Drive/a b.mov"]
+        monkeypatch.setattr(sys, "platform", "win32")
+        assert ffmpeg.command_line(command) == 'ffmpeg -i "My Drive/a b.mov"'
+        monkeypatch.setattr(sys, "platform", "darwin")
+        assert ffmpeg.command_line(command) == "ffmpeg -i 'My Drive/a b.mov'"

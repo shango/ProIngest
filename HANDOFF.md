@@ -1,3 +1,18 @@
+# Handoff, 28 October 2026 (Windows)
+
+**28 October, 0.5.50 on branch `windows`**: PR #20 is merged (`main` is `b8323cd`, 0.5.49). The
+Windows build is in progress for parity with the Mac: gyan.dev ffmpeg 9.0.1 pinned beside the
+Mac's, an Inno Setup per user installer, `windows` and `package-windows` CI jobs, and a filter
+path escape fixed on both platforms. `PROGRESS.md` has the entry, OQ-89 the assumptions, and
+`docs/WINDOWS_SESSION.md` what a person on Windows has to check. **Draft PR #21; CI run
+40731521748 is green on all six jobs** and uploaded both `ProIngest-macos-arm64` and
+`ProIngest-windows-x64`. Merge only when the user asks.
+
+**Open with the user (28 October)**: "We need to also export an RTF file with the turnover
+metadata." Asked, not yet answered: one per shot as the spec sheet's
+`<shot>_pl01_camData_v01.rtf` or one per turnover; which CSV fields; a sample camData file to
+copy; where it goes. Nothing built yet.
+
 # Handoff, 28 October 2026
 
 **28 October, 0.5.49**: `meas##` and `recon##` are delivered as an Avid reference is (a movie

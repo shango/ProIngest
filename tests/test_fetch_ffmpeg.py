@@ -7,7 +7,7 @@ is not the pinned build is rejected whether it was downloaded or handed over by 
 and that a rejected one leaves nothing behind that looks finished.
 
 Nothing here touches the network. The download path is exercised by CI on every push,
-which fetches the real 132 MB pair on both runners.
+which fetches the real pair on the macOS and Windows runners.
 """
 
 from __future__ import annotations
@@ -16,6 +16,7 @@ import hashlib
 import json
 import re
 import stat
+import sys
 import zipfile
 from pathlib import Path
 from typing import Any
@@ -26,6 +27,8 @@ from build import bundle, fetch_ffmpeg
 from proingest.core import ffmpeg as core_ffmpeg
 
 PAYLOAD = b"not really a video tool" * 100
+
+POSIX_MODES = pytest.mark.skipif(sys.platform == "win32", reason="Windows has no exec bit")
 
 
 def entry_for(payload: bytes, *, dest_name: str = "ffmpeg", member: str | None = "ffmpeg") -> dict[str, Any]:
@@ -46,25 +49,44 @@ def zip_containing(path: Path, member: str, payload: bytes) -> Path:
     return path
 
 
+SHIPPED = pytest.mark.parametrize("platform", bundle.SHIPPED_PLATFORMS)
+
+
 class TestTheRealLockFile:
-    def test_it_parses_and_every_entry_carries_what_the_installer_reads(self) -> None:
-        spec = json.loads(fetch_ffmpeg.LOCK_PATH.read_text())["ffmpeg"]
+    def test_it_pins_exactly_the_platforms_that_ship(self) -> None:
+        platforms = json.loads(fetch_ffmpeg.LOCK_PATH.read_text(encoding="utf-8"))["platforms"]
+        assert set(platforms) == set(bundle.SHIPPED_PLATFORMS) == core_ffmpeg.BUNDLED_PLATFORMS
+
+    @SHIPPED
+    def test_it_parses_and_every_entry_carries_what_the_installer_reads(self, platform: str) -> None:
+        spec = fetch_ffmpeg.load_spec(platform)
         assert spec["downloads"]
         for entry in spec["downloads"]:
             assert {"dest_name", "url", "size", "sha256", "executable"} <= entry.keys()
             assert len(str(entry["sha256"])) == 64
 
-    def test_it_installs_where_core_resolves_the_bundled_pair(self) -> None:
+    @SHIPPED
+    def test_it_installs_where_core_resolves_the_bundled_pair(self, platform: str) -> None:
         """The lock says where the binaries go and `core/ffmpeg.py` says where they are
         looked for. They are two literals in two files and this is what holds them
         together; drift gives a build that fetches 132 MB into a folder nothing reads."""
-        spec = json.loads(fetch_ffmpeg.LOCK_PATH.read_text())["ffmpeg"]
+        spec = fetch_ffmpeg.load_spec(platform)
         assert fetch_ffmpeg.REPO_ROOT / str(spec["dest_dir"]) == core_ffmpeg.BUNDLED_DIR
 
-    def test_the_pinned_binaries_are_the_two_the_bundle_collects(self) -> None:
-        spec = json.loads(fetch_ffmpeg.LOCK_PATH.read_text())["ffmpeg"]
-        names = {str(e["dest_name"]) for e in spec["downloads"]}
-        assert set(bundle.FFMPEG_TOOLS) <= names
+    @SHIPPED
+    def test_the_pinned_binaries_are_the_two_the_bundle_collects(self, platform: str) -> None:
+        names = {str(e["dest_name"]) for e in fetch_ffmpeg.load_spec(platform)["downloads"]}
+        assert set(bundle.ffmpeg_files(platform)) <= names
+
+    def test_both_platforms_render_with_the_same_ffmpeg(self) -> None:
+        """Parity (2026-10-28): the two apps are one tool, so a render on either machine
+        is the same ffmpeg release, and a difference between them is never the encoder."""
+        versions = {fetch_ffmpeg.load_spec(p)["version"].split("-")[0] for p in bundle.SHIPPED_PLATFORMS}
+        assert versions == {"9.0.1"}
+
+    def test_linux_has_none_and_says_what_it_uses_instead(self) -> None:
+        with pytest.raises(SystemExit, match="ffmpeg on PATH"):
+            fetch_ffmpeg.load_spec("linux")
 
 
 class TestAcceptedNames:
@@ -97,6 +119,7 @@ class TestFindLocal:
 
 
 class TestInstallLocal:
+    @POSIX_MODES
     def test_a_bare_binary_lands_executable(self, tmp_path: Path) -> None:
         source = tmp_path / "src" / "ffmpeg"
         source.parent.mkdir()
@@ -158,6 +181,7 @@ class TestInstallLocal:
 
 
 class TestIsSatisfied:
+    @POSIX_MODES
     def test_the_right_bytes_without_the_exec_bit_are_not_enough(self, tmp_path: Path) -> None:
         dest = tmp_path / "ffmpeg"
         dest.write_bytes(PAYLOAD)
@@ -170,18 +194,13 @@ class TestIsSatisfied:
 class TestMain:
     def fake_lock(self, tmp_path: Path, payload: bytes) -> Path:
         lock = tmp_path / "ffmpeg.lock.json"
-        lock.write_text(
-            json.dumps(
-                {
-                    "ffmpeg": {
-                        "version": "0.0.0-test",
-                        "license": "GPL-3.0-or-later",
-                        "dest_dir": "resources",
-                        "downloads": [entry_for(payload)],
-                    }
-                }
-            )
-        )
+        spec = {
+            "version": "0.0.0-test",
+            "license": "GPL-3.0-or-later",
+            "dest_dir": "resources",
+            "downloads": [entry_for(payload)],
+        }
+        lock.write_text(json.dumps({"platforms": {sys.platform: {"label": "test", "ffmpeg": spec}}}))
         return lock
 
     @pytest.fixture(autouse=True)
@@ -245,3 +264,35 @@ class TestMain:
         out = capsys.readouterr().out
         assert "https://example.invalid/download/ffmpeg.zip" in out
         assert hashlib.sha256(PAYLOAD).hexdigest() in out
+
+
+class TestASharedArchive:
+    def test_it_is_downloaded_once_for_every_file_in_it(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The Windows build's ffmpeg, ffprobe and licence are one 111 MB zip."""
+        tool, probe = b"tool" * 50, b"probe" * 50
+        archive = zip_containing(tmp_path / "source.zip", "build/bin/ffmpeg.exe", tool)
+        with zipfile.ZipFile(archive, "a") as zf:
+            zf.writestr("build/bin/ffprobe.exe", probe)
+        url = "https://example.invalid/build.zip"
+        entries = [
+            {**entry_for(tool, dest_name="ffmpeg.exe", member="build/bin/ffmpeg.exe"), "url": url},
+            {**entry_for(probe, dest_name="ffprobe.exe", member="build/bin/ffprobe.exe"), "url": url},
+        ]
+        fetched: list[str] = []
+
+        def download(source: str, dest: Path) -> None:
+            fetched.append(source)
+            dest.write_bytes(archive.read_bytes())
+
+        monkeypatch.setattr(fetch_ffmpeg, "download", download)
+        dest_dir, work = tmp_path / "resources", tmp_path / "work"
+        dest_dir.mkdir()
+        work.mkdir()
+        for entry in entries:
+            fetch_ffmpeg.fetch(entry, dest_dir, work)
+
+        assert fetched == [url]
+        assert (dest_dir / "ffmpeg.exe").read_bytes() == tool
+        assert (dest_dir / "ffprobe.exe").read_bytes() == probe

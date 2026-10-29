@@ -5,10 +5,11 @@ runs so the user can paste it into a terminal and reproduce a render, which is a
 stated requirement in CLAUDE.md.
 
 Binary resolution order is: an explicit Settings override, then the bundled binary
-for this platform, then PATH. The bundled binaries are macOS arm64 Mach-O executables,
-so the bundled step is skipped off macOS and the Linux dev machine falls through to
-PATH. That guard is load bearing: `ffmpeg` and `ffprobe` are spelled the same on both
-platforms, so without it a Mach-O binary resolves as a perfectly good file on Linux and
+for this platform, then PATH. The bundle holds macOS arm64 Mach-O `ffmpeg` and
+`ffprobe` on a Mac and Windows x64 `ffmpeg.exe` and `ffprobe.exe` on Windows, so the
+bundled step is skipped everywhere else and the Linux dev machine falls through to
+PATH. That guard is load bearing: `ffmpeg` and `ffprobe` are spelled the same on macOS
+and Linux, so without it a Mach-O binary resolves as a perfectly good file on Linux and
 then fails every subprocess with a bare "Exec format error".
 """
 
@@ -37,8 +38,13 @@ log = logging.getLogger(__name__)
 
 BUNDLED_DIR = Path(__file__).resolve().parent.parent / "resources" / "ffmpeg"
 
-BUNDLED_PLATFORM = "darwin"
-"""The lock file pins macOS arm64 binaries, so the bundle only applies on macOS."""
+BUNDLED_PLATFORMS = frozenset({"darwin", "win32"})
+"""The platforms `build/ffmpeg.lock.json` pins binaries for: macOS arm64, Windows x64."""
+
+_NO_WINDOW: int = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+"""Windows only. The app is a windowed program with no console, so every ffmpeg it starts
+would otherwise open a console window of its own and flash it for the length of the
+encode. Zero, which changes nothing, everywhere else."""
 
 DEFAULT_TIMEOUT = 120
 
@@ -112,7 +118,7 @@ def resolve_tool(tool: str, override: Path | None = None) -> Path:
         raise FFmpegNotFound(f"{tool} override {override} does not exist")
 
     bundled = BUNDLED_DIR / _platform_binary(tool)
-    if sys.platform == BUNDLED_PLATFORM and bundled.is_file():
+    if sys.platform in BUNDLED_PLATFORMS and bundled.is_file():
         return bundled
 
     found = shutil.which(tool)
@@ -125,15 +131,29 @@ def resolve_tool(tool: str, override: Path | None = None) -> Path:
     )
 
 
+def command_line(command: Sequence[str]) -> str:
+    """A command as the user would type it to reproduce it, quoted for this platform's
+    shell: `cmd.exe` on Windows does not read the POSIX quoting `shlex` writes."""
+    return subprocess.list2cmdline(command) if sys.platform == "win32" else shlex.join(command)
+
+
 def run(command: list[str], timeout: int = DEFAULT_TIMEOUT) -> subprocess.CompletedProcess[str]:
-    """Run a command, logging it verbatim first. Does not raise on a non-zero exit."""
-    log.info("running: %s", shlex.join(command))
+    """Run a command, logging it verbatim first. Does not raise on a non-zero exit.
+
+    The output is read as UTF-8, which is what ffmpeg writes on every platform, rather
+    than in the locale's encoding: on Windows that is cp1252, and a non-ASCII name in
+    ffprobe's JSON would come back garbled or not at all.
+    """
+    log.info("running: %s", command_line(command))
     return subprocess.run(
         command,
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         timeout=timeout,
         check=False,
+        creationflags=_NO_WINDOW,
     )
 
 
@@ -430,12 +450,12 @@ def decode_frames(
         color_space=color_space,
         color_range=color_range,
     )
-    log.info("running: %s", shlex.join(command))
+    log.info("running: %s", command_line(command))
 
     with tempfile.TemporaryFile() as errors:
         # stderr goes to a file rather than a pipe nobody drains: a decode that fails
         # on every frame can write more than a pipe buffer holds and deadlock.
-        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=errors)
+        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=errors, creationflags=_NO_WINDOW)
         stdout = process.stdout
         assert stdout is not None
         try:
@@ -486,10 +506,10 @@ def write_frames(
         "-f", "rawvideo", "-pix_fmt", "gbrpf32le", "-s", f"{width}x{height}", "-r", rate, "-i", "-",
         *VIEW_CODEC, "-f", "matroska", str(destination),
     ]  # fmt: skip
-    log.info("running: %s", shlex.join(command))
+    log.info("running: %s", command_line(command))
     written = 0
     with tempfile.TemporaryFile() as errors:
-        process = subprocess.Popen(command, stdin=subprocess.PIPE, stderr=errors)
+        process = subprocess.Popen(command, stdin=subprocess.PIPE, stderr=errors, creationflags=_NO_WINDOW)
         stdin = process.stdin
         assert stdin is not None
         try:
@@ -969,9 +989,24 @@ def inset_graph(chain: Sequence[str], insets: Sequence[Inset], after: Sequence[s
     return ";".join(links)
 
 
+_OPTION_SPECIALS = "\\:'"
+"""What ends or quotes an option value inside one filter's arguments."""
+
+_GRAPH_SPECIALS = "\\'[],;"
+"""What the filtergraph itself splits on, read before the filter sees its arguments."""
+
+
+def _escaped(text: str, specials: str) -> str:
+    return "".join(f"\\{char}" if char in specials else char for char in text)
+
+
 def _filter_path(path: Path) -> str:
-    """A path inside a filtergraph argument: colon separated and backslash escaped."""
-    return str(path).replace("\\", "\\\\").replace(":", "\\:").replace("'", "\\'")
+    """A path inside a filtergraph argument, escaped for both levels ffmpeg reads it at:
+    once by the graph, which splits on `,` `;` and brackets, and once by the filter, which
+    splits its options on `:`. One level was not enough (2026-10-28): the graph took the
+    escape off a colon and the filter then split on it, so every Windows path, colon after
+    its drive letter, broke every burn-in, LUT and inset."""
+    return _escaped(_escaped(str(path), _OPTION_SPECIALS), _GRAPH_SPECIALS)
 
 
 def black_command(

@@ -23,6 +23,7 @@ from proingest import __version__
 from proingest.core import expiry, ffmpeg, stringout
 
 DARWIN = bundle.MACOS
+WINDOWS = bundle.WINDOWS
 LINUX = "linux"
 
 
@@ -53,9 +54,20 @@ class TestBinaries:
         assert set(destinations) == set(bundle.FFMPEG_TOOLS)
         assert set(destinations.values()) == {str(bundle.FFMPEG_DIR)}
 
-    def test_no_binaries_off_macos(self) -> None:
-        """They are arm64 Mach-O and `core/ffmpeg.py` skips them off macOS, so
-        collecting them elsewhere would be 132 MB in an artifact that cannot run them."""
+    def test_windows_collects_both_exes(self) -> None:
+        destinations = {Path(source).name: dest for source, dest in bundle.binaries(WINDOWS)}
+        assert set(destinations) == {"ffmpeg.exe", "ffprobe.exe"}
+        assert set(destinations.values()) == {str(bundle.FFMPEG_DIR)}
+
+    def test_the_names_are_the_ones_core_resolves(self) -> None:
+        """`core/ffmpeg.py` adds `.exe` itself on Windows; the bundle has to agree."""
+        assert bundle.ffmpeg_files(WINDOWS) == ["ffmpeg.exe", "ffprobe.exe"]
+        assert bundle.ffmpeg_files(DARWIN) == ["ffmpeg", "ffprobe"]
+        assert set(bundle.SHIPPED_PLATFORMS) == ffmpeg.BUNDLED_PLATFORMS
+
+    def test_no_binaries_on_linux(self) -> None:
+        """The bundle holds Mach-O or Windows executables and `core/ffmpeg.py` skips it on
+        Linux, so collecting it there would be 132 MB in an artifact that cannot run it."""
         assert bundle.binaries(LINUX) == []
 
 
@@ -68,7 +80,7 @@ class TestDatas:
         run time would report its absence: it would simply ship looking wrong."""
         assert str(bundle.REPO_ROOT / "proingest" / "ui" / "theme.qss") in self.sources(LINUX)
 
-    @pytest.mark.parametrize("platform", [LINUX, DARWIN])
+    @pytest.mark.parametrize("platform", [LINUX, DARWIN, WINDOWS])
     def test_the_burn_in_font_and_its_licence_ship_everywhere(self, platform: str) -> None:
         """`core/stringout.py` reads it by path; without it every stringout is QC-142."""
         wanted = {str(bundle.REPO_ROOT / bundle.FONTS_DIR / name) for name in bundle.FONT_FILES}
@@ -93,8 +105,9 @@ class TestDatas:
         """Gone 2026-09-23: `clf.read_final_edl` reads the EDL, and nothing imports otio."""
         assert not any("otio" in name or "opentimelineio" in name for name in self.sources(LINUX))
 
-    def test_ffmpeg_s_licence_ships_with_the_binaries_on_macos(self) -> None:
-        names = {Path(source).name for source in self.sources(DARWIN)}
+    @pytest.mark.parametrize("platform", [DARWIN, WINDOWS])
+    def test_ffmpeg_s_licence_ships_with_the_binaries(self, platform: str) -> None:
+        names = {Path(source).name for source in self.sources(platform)}
         assert {"LICENSE.ffmpeg.txt", "PROVENANCE.md"} <= names
         assert not {"LICENSE.ffmpeg.txt", "PROVENANCE.md"} & {
             Path(source).name for source in self.sources(LINUX)
@@ -128,3 +141,33 @@ class TestEntryPoint:
         """
         source = (bundle.REPO_ROOT / "build" / "entry.py").read_text(encoding="utf-8")
         assert source.index("freeze_support()") < source.index("main()")
+
+
+class TestTheInstaller:
+    def test_each_shipped_platform_has_one_and_linux_none(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(build, "build_dmg", lambda version: Path(f"{version}.dmg"))
+        monkeypatch.setattr(build, "build_setup", lambda version: Path(f"{version}.exe"))
+        assert build.build_installer("1.0", DARWIN) == Path("1.0.dmg")
+        assert build.build_installer("1.0", WINDOWS) == Path("1.0.exe")
+        assert build.build_installer("1.0", LINUX) is None
+
+    def test_the_setup_exe_is_named_as_the_inno_script_names_it(self) -> None:
+        """`build.py` checks for the file `proingest.iss` writes, so the two must agree."""
+        script = build.INSTALLER_SCRIPT.read_text(encoding="utf-8")
+        assert "OutputBaseFilename=ProIngest-Setup-{#AppVersion}" in script
+        assert build.setup_path("0.5.50").name == "ProIngest-Setup-0.5.50.exe"
+
+    def test_it_installs_per_user_for_the_exe_the_build_makes(self) -> None:
+        """No administrator rights, as a dmg needs none; and the shortcuts point at the
+        executable PyInstaller writes, not at a name that only looks right."""
+        script = build.INSTALLER_SCRIPT.read_text(encoding="utf-8")
+        assert "PrivilegesRequired=lowest" in script
+        assert f"{{app}}\\{build.executable_path(WINDOWS).name}" in script
+
+    def test_a_missing_ffmpeg_stops_a_windows_build(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(build, "REPO_ROOT", tmp_path)
+        with pytest.raises(build.BuildError, match=r"ffmpeg\.exe, ffprobe\.exe missing"):
+            build.check_ffmpeg(WINDOWS)
+        build.check_ffmpeg(LINUX)

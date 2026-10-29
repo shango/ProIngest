@@ -1,0 +1,4 @@
+# The Mac shell scripts run under bash, which reads a CR as part of the line: a Windows
+# checkout must not give them CRLF endings.
+*.sh text eol=lf
+*.command text eol=lf

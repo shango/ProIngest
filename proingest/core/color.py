@@ -340,7 +340,7 @@ def _uncached_config() -> ocio.Config:
 
 def _write_lut(destination: Path, lines: list[str]) -> Path:
     temp = destination.with_name(f".{destination.name}.part")
-    temp.write_text("\n".join(lines) + "\n")
+    temp.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
     temp.replace(destination)
     return destination
 
