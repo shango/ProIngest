@@ -788,6 +788,7 @@ def encode_command(
     audio_format: Sequence[str] = (),
     display: str = DEFAULT_DISPLAY,
     insets: Sequence[Inset] = (),
+    pad_short: bool = False,
 ) -> list[str]:
     """The command that encodes `[in_frame, out_frame]` to one reference mp4.
 
@@ -799,6 +800,11 @@ def encode_command(
 
     With `hold` longer than the range, the last frame is repeated until the reference
     is `hold` frames long: a freeze delivers one frame shown for five seconds.
+
+    `pad_short` repeats the last frame that decodes until the output is as long as asked,
+    for a stringout segment: turnover150's `C2075.MP4` says it holds 388 frames and decodes
+    386, so a cut to its end came out two short and the stringout failed its frame count. A
+    deliverable never pads; a short one fails its own check.
 
     The seek is `decode_command`'s, for the same reasons: `-start_number` for a
     sequence, the frame-counting `trim` filter for a container, never `-ss`, which
@@ -854,10 +860,12 @@ def encode_command(
             f"trim=start_frame={in_frame}:end_frame={out_frame + 1}",
             "setpts=PTS-STARTPTS",
         ]
-    if written > count:
+    if written > count or pad_short:
         # Cut the range first: a sequence input runs on past it, and the hold repeats the
-        # range's last frame, not whatever follows it.
-        filters += [f"trim=end_frame={count}", f"tpad=stop_mode=clone:stop={written - count}"]
+        # range's last frame, not whatever follows it. Padding without end (-1) leaves the
+        # length to `-frames:v`, so a file that decodes short still fills it.
+        stop = -1 if pad_short else written - count
+        filters += [f"trim=end_frame={count}", f"tpad=stop_mode=clone:stop={stop}"]
     command += ["-i", source]
 
     if audio is not None:

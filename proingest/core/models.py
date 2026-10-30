@@ -744,7 +744,8 @@ class ShotRow:
             delivered_range=InOut.from_dict(data["delivered_range"]) if data.get("delivered_range") else None,
             freeze=bool(data.get("freeze", False)),
             deliverables=[Deliverable.from_dict(item) for item in data.get("deliverables", [])],
-            qc=[QCResult.from_dict(item) for item in data.get("qc", [])],
+            # QC-086, an HDRI's EXR not in the folder, went on 2026-10-30: Ben delivers it by hand.
+            qc=[QCResult.from_dict(item) for item in data.get("qc", []) if item.get("rule_id") != "QC-086"],
         )
 
 

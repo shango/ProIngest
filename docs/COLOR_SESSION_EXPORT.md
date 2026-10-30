@@ -122,7 +122,7 @@ tool cannot build a shot list without it:
 - `Shot`, the shot code
 - `Shot Type`, what the clip is: `pl`, `cp`, `el`, `wit`, `re`, or a reference type. `HDRI` is
   **the HDRI EXR held on the timeline with its pan** (user, 2026-10-07). The tool delivers the
-  EXR byte for byte. **Render the event, pan included, into the turnover folder under the
+  render as an mp4; the EXR is Ben's to deliver by hand (user, 2026-10-30). **Render the event, pan included, into the turnover folder under the
   EXR's name as a video** (`xxxx_001.mp4` beside `xxxx_001.exr`), **in sRGB Linear and
   ungraded**: the stringout shows it through the clip's AMF. Without it the stringout holds the
   EXR still (QC-080, QC-083)

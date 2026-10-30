@@ -83,8 +83,9 @@ class MetaRow:
     plate: str = ""
     """The plate a witness cam covers, `pl02` for `pl02_wit01` (user, 2026-10-23)."""
     hdri: bool = False
-    """An HDRI or LDRI (QC-080): the tool copies its file as it is and runs no row rule on it, and
-    the stringout shows Ben's pre-render of its timeline event (user, 2026-10-07)."""
+    """An HDRI or LDRI (QC-080): no row rule runs on it, the stringout shows Ben's pre-render of
+    its timeline event, and the pre-render is delivered as an mp4. Its EXR, JPG or PNG is Ben's to
+    deliver by hand (user, 2026-10-30)."""
 
 
 @dataclass
@@ -312,20 +313,21 @@ def read(path: Path, show_pattern: str = naming.DEFAULT_SHOW_PATTERN) -> MetaCsv
 
 
 def _hdri(file_name: str, shot: str, shot_type: str, scene: str, named: bool, take: str) -> MetaRow:
-    """An HDRI or LDRI row (user, 2026-10-07 and 2026-10-08): its file is delivered as it is,
-    with no checks, and the stringout shows the pre-render of its timeline event. One whose
-    `Shot` is no shot code has nowhere to be delivered, and only the stringout shows it.
+    """An HDRI or LDRI row (user, 2026-10-07 and 2026-10-08): the stringout shows the pre-render
+    of its timeline event, and the pre-render is delivered as an mp4, with no checks. The EXR,
+    JPG or PNG is Ben's to deliver by hand (user, 2026-10-30). One whose `Shot` is no shot code
+    has nowhere to be delivered, and only the stringout shows it.
 
     Its number (`SECA0009_pl01_LDRI02_v01.jpg`) is its `Shot Type`'s, `LDRI02`, and a bare `LDRI`
     is `01` (user, 2026-10-27). It was the CSV's `Take` from 2026-10-12."""
     hdri = naming.hdri_kind(shot_type) or naming.HDRI_KIND
-    image = "HDRI EXR" if hdri == naming.HDRI_KIND else "LDRI image"
+    image = "EXR" if hdri == naming.HDRI_KIND else "image"
     what = (
-        f"{file_name} is an {hdri}'s pre-render: the stringout shows it, and the tool delivers the "
-        f"{image} it is named after as it is, with no checks"
+        f"{file_name} is an {hdri}'s pre-render: the stringout shows it and the tool delivers it as "
+        f"an mp4, with no checks; the {hdri} {image} is delivered by hand"
         if Path(file_name).suffix.lower() in media.VIDEO_EXTENSIONS
-        else f"{file_name} is an {hdri}: the tool delivers it as it is, with no checks, and the "
-        "stringout shows its pre-render"
+        else f"{file_name} is an {hdri}: the stringout shows its pre-render and the tool delivers "
+        f"that as an mp4, with no checks; the {hdri} {image} is delivered by hand"
     )
     notes = [QCResult("QC-080", "info", "row", what)]
     index = naming.hdri_index(shot_type)

@@ -88,29 +88,30 @@ def kinds(jobs: list[planner.DeliverableJob]) -> list[str]:
 
 
 class TestAnHdriPreRender:
-    """User, 2026-10-27: the HDRI's file is delivered, and its pre-render, which the stringout
-    shows, is delivered beside it as an mp4."""
+    """User, 2026-10-27: the HDRI's pre-render, which the stringout shows, is delivered as an
+    mp4. User, 2026-10-30: only that; the EXR (or an LDRI's image) is Ben's to deliver by hand."""
 
-    def hdri(self, kind: str, clip_name: str = "SECA0009_pl01_HDRI.exr", render: bool = True) -> ShotRow:
+    def hdri(
+        self, kind: str, clip_name: str = "SECA0009_pl01_HDRI.exr", render: bool = True, file: bool = True
+    ) -> ShotRow:
         graded = Grade(amf=Path("/t/x.amf"), input_transform="", looks=(GradeLook("clf", "/t/x.clf"),))
         return row(
             clip_name,
             identity=naming.ShotIdentity("SECA0009", kind, "02"),
             csv_shot_type=f"{kind}02",
             grade=graded,
-            media=media("/t/hdri.exr" if kind == naming.HDRI_KIND else "/t/ldri.jpg", is_sequence=False),
+            media=media("/t/hdri.exr" if kind == naming.HDRI_KIND else "/t/ldri.jpg", is_sequence=False)
+            if file
+            else None,
             hdri_render=replace(media("/t/hdri.mp4", is_sequence=False), start_frame=0, frame_count=48)
             if render
             else None,
         )
 
-    def test_an_hdri_delivers_its_exr_and_its_pre_render_graded(self) -> None:
+    def test_an_hdri_delivers_its_pre_render_graded_and_never_its_exr(self) -> None:
         jobs = planner.plan_row(self.hdri(naming.HDRI_KIND), ROOT, 1, shot_color=GRADE_COLOR).jobs
-        assert [(job.kind, job.name) for job in jobs] == [
-            ("hdri", "SECA0009_pl01_HDRI02_v01.exr"),
-            ("hdri_ref", "SECA0009_pl01_HDRI02_v01.mp4"),
-        ]
-        mp4 = jobs[1]
+        assert [(job.kind, job.name) for job in jobs] == [("hdri_ref", "SECA0009_pl01_HDRI02_v01.mp4")]
+        (mp4,) = jobs
         assert (mp4.source, mp4.in_frame, mp4.out_frame, mp4.audio_source, mp4.res) == (
             Path("/t/hdri.mp4"),
             0,
@@ -122,12 +123,16 @@ class TestAnHdriPreRender:
 
     def test_an_ldri_pre_render_is_delivered_as_it_is(self) -> None:
         jobs = planner.plan_row(self.hdri(naming.LDRI_KIND), ROOT, 1, shot_color=GRADE_COLOR).jobs
-        assert [job.name for job in jobs][1] == "SECA0009_pl01_LDRI02_v01.mp4"
-        assert jobs[1].shot_color == clf.ShotColor(display=GRADE_COLOR.display)
+        assert [job.name for job in jobs] == ["SECA0009_pl01_LDRI02_v01.mp4"]
+        assert jobs[0].shot_color == clf.ShotColor(display=GRADE_COLOR.display)
 
-    def test_no_pre_render_delivers_the_exr_alone(self) -> None:
-        jobs = planner.plan_row(self.hdri(naming.HDRI_KIND, render=False), ROOT, 1).jobs
-        assert [job.kind for job in jobs] == ["hdri"]
+    def test_no_pre_render_delivers_nothing(self) -> None:
+        assert planner.plan_row(self.hdri(naming.HDRI_KIND, render=False), ROOT, 1).jobs == []
+
+    def test_the_pre_render_is_delivered_with_no_exr_in_the_folder(self) -> None:
+        """Turnover150 (2026-10-30): Ben delivers the EXR later, so the scan never found one."""
+        jobs = planner.plan_row(self.hdri(naming.HDRI_KIND, file=False), ROOT, 1).jobs
+        assert [job.name for job in jobs] == ["SECA0009_pl01_HDRI02_v01.mp4"]
 
 
 class TestAnAvidRef:

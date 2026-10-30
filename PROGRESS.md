@@ -8,7 +8,7 @@ commit.
 
 ## 1. Resume here
 
-**State at 2026-10-29, version 0.5.52 on branch `fixit-orange`, draft PR #22, from `main` after PR #21 (0.5.50) merged as `81c0358`** (0.5.52: US spelling, "color" everywhere; 0.5.51: the Fix-it report's Fix in Resolve color orange rather than red; 0.5.50: the Windows build, in parity with the Mac; the filter path escape fixed on both; 0.5.49: `meas##` and `recon##` delivered as they are, `re` retired, `HDRI01`/`HDRI02` numbered by the Shot Type with no underscore, the pre-render delivered as an mp4; 0.5.48: a witness cam named under its plate, `pl02_wit01`; 0.5.47: the Avid reference delivered, never an EXR; 0.5.46: the Avid reference typed `avidRef##`; 0.5.40: no Fix-it line claims what the tool did not verify; 0.5.39: the Fix-it report by timeline clip name, each message once; 0.5.38: an HDRI's or LDRI's number is its take; 0.5.37: the LDRI; 0.5.36 and before merged to `main` with PR #19 as `a85cd53`; 0.5.36: the stringout from 26 minutes to 3 on turnover135; 0.5.35: the stringout's time left on its line; 0.5.34: the HDRI pre-render on the timeline; 0.5.33: the QC overhaul, nothing stops a batch or a turnover; 0.5.32: style frames on the stringout, the stringout line in the shot list; 0.5.31: every Fix-it line names its shot; 0.5.30: the take on the burn-in; 0.5.29: reference clips play in the stringout; 0.5.28: everything in the stringout graded; 0.5.27: the stringout from the EXRs; 0.5.26: the HDRI pre-render and delivery, QC-084, Accept As Is runs what it can; 0.5.25, merged to `main` with PR #18: `User_Generated` and `User_Uploads` at the delivery root; 0.5.24: the Fix-it
+**State at 2026-10-30, version 0.5.53 on branch `fixit-orange`, draft PR #22, from `main` after PR #21 (0.5.50) merged as `81c0358`** (0.5.53: turnover150, the stringout reads a cut as the scan does, and an HDRI delivers only its pre-render's mp4; 0.5.52: US spelling, "color" everywhere; 0.5.51: the Fix-it report's Fix in Resolve color orange rather than red; 0.5.50: the Windows build, in parity with the Mac; the filter path escape fixed on both; 0.5.49: `meas##` and `recon##` delivered as they are, `re` retired, `HDRI01`/`HDRI02` numbered by the Shot Type with no underscore, the pre-render delivered as an mp4; 0.5.48: a witness cam named under its plate, `pl02_wit01`; 0.5.47: the Avid reference delivered, never an EXR; 0.5.46: the Avid reference typed `avidRef##`; 0.5.40: no Fix-it line claims what the tool did not verify; 0.5.39: the Fix-it report by timeline clip name, each message once; 0.5.38: an HDRI's or LDRI's number is its take; 0.5.37: the LDRI; 0.5.36 and before merged to `main` with PR #19 as `a85cd53`; 0.5.36: the stringout from 26 minutes to 3 on turnover135; 0.5.35: the stringout's time left on its line; 0.5.34: the HDRI pre-render on the timeline; 0.5.33: the QC overhaul, nothing stops a batch or a turnover; 0.5.32: style frames on the stringout, the stringout line in the shot list; 0.5.31: every Fix-it line names its shot; 0.5.30: the take on the burn-in; 0.5.29: reference clips play in the stringout; 0.5.28: everything in the stringout graded; 0.5.27: the stringout from the EXRs; 0.5.26: the HDRI pre-render and delivery, QC-084, Accept As Is runs what it can; 0.5.25, merged to `main` with PR #18: `User_Generated` and `User_Uploads` at the delivery root; 0.5.24: the Fix-it
 report, one error per cause, a lone EXR read as one frame, AMFs falling back to the clip they name) (`HANDOFF.md` is the short version, with the session's open items); 0.5.22 went to `main` earlier (PR #17 merged as `70e1160` at the user's request, after its CI
 run 37276656318 built the 0.5.22 dmg). The 2026-09-23 review is built (chunks A
 to H of `docs/REVIEW_2026-09-23.md`), and so are the fixes that a second official turnover,
@@ -17,6 +17,48 @@ renders; Turnover121, every clip 8 bit 4:2:0, runs again with a QC-020 warning o
 since 2026-09-28 (user). What is left is the Mac: `docs/MAC_SESSION.md`, from "The 0.5.0 build, in
 order" down, and Ben's 4.886 slope. Entries are newest first; anything older than 2026-09-22
 describes the tool before the review and is history.
+
+**2026-10-30, 0.5.53: turnover150 (user's test on Windows and the Mac).** "the tool was not
+seeing the render.mov files that are the HDRI on the timeline ... Also, it was unable to make the
+stringout." Reproduced on the user's Windows machine against the G: folder itself, with the
+installed app's ffmpeg and the same code (a throwaway venv in `%TEMP%\pi-test`, the turnover
+read in place, the stringout written to local temp).
+
+**The stringout** (QC-142, on Windows and the Mac alike): `event 002: ... Value -98.000000 for
+parameter 'start_frame' out of range`. `C2098.MP4`'s own timecode is 22:15:05:14 and Resolve's
+`Start TC` is 22:14:59:12. The scan's conform already reads a cut by the file's clock and then by
+Resolve's (QC-029, since 2026-10-07), and got frames 48 to 195; `stringout._cut` read the file's
+clock alone, so asked for frames from 98 before the file began. **Fixed** by one rule for both,
+`scan.cut_in_file` (`_outside` keeps QC-029 on top of it); test
+`TestACutOutsideItsFile.test_the_stringout_reads_the_same_frames`.
+
+**The HDRI renders were found**: every row had its `hdri_render` and no QC-083. What failed was
+the EXR each was taken to be named after: turnover150 names the render
+`INCA3001_pl01_HDRI01_Render.mov` beside `SHOT3001_pl01_HDRI_01_v01.exr`, so `hdri_source_name`
+found none, QC-086 fired and printed the render's name as the missing file, and with no EXR as the
+row's media `planner.plan_row` planned nothing, the pre-render's mp4 included. **The user's rule**:
+"Those exr files are delivered manually by Ben. I would not expect him to deliver them before the
+scan. He may deliver them after this process for whatever reason. The scan should only check for
+the existance of the render files it needs to build the stringout and other mp4s." So
+`scan._resolve_prerender` looks only for the render; QC-086 is retired (dropped from old batches on
+load); `planner.plannable_identity` and `plan_row` plan an HDRI or LDRI from its pre-render alone,
+and `_hdri_plan` delivers only `<shot>_pl01_HDRI01_v01.mp4`, never the EXR or image. A missing
+render (QC-083) is now black on the stringout with no mp4. An HDRI whose EXR is itself cut on the
+timeline still holds it on the stringout when there is no render. **The tracker's HDRI column
+names the pre-render's mp4** (user: "name the mp4 in the HDRI column"), and an old batch's still
+names the EXR it copied. **A third bug the rebuilt
+stringout showed**: events 013 (`C2112`) and 021 (`C2075`) were black (QC-144). Each is a shot's
+`colorChart02`, folded by QC-072 into its `colorChart01` because `scan._delivers` keyed a still by
+shot and kind and not its number; it now includes the number (test
+`test_two_numbered_charts_of_one_shot_are_two_rows`). **And a fourth**, which the separated chart
+then showed: the stringout failed its own check, 10,785 frames for the EDL's 10,787, because
+`C2075.MP4` says it holds 388 frames and decodes 386, and event 021 cuts to its end. A stringout
+segment now pads with its last decoded frame up to the length asked (`encode_command(pad_short=True)`,
+`tpad=stop=-1` capped by `-frames:v`); a deliverable never pads and still fails its own check
+(test `test_a_file_that_decodes_short_is_padded_to_the_length_asked`, real ffmpeg). After the cut fix, before this one, the
+stringout was written on Windows from G: in 20 minutes: 10,787 frames, 496 MB. Docs: QC_RULES (QC-029,
+080, 083, 086), NAMING_SPEC, COLOR_AND_FORMAT, UI_SPEC, WORKFLOW, COLOR_SESSION_EXPORT, PRD, OQ-88,
+`docs/Shot_Types.xlsx` and `.docx`.
 
 **2026-10-29, 0.5.52: US spelling, "color" everywhere (user).** "Why am I seeing instances of
 the word color spelled "colour"", then "yes, change it all to color. This is a US company and

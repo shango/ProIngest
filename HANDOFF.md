@@ -1,4 +1,11 @@
-# Handoff, 29 October 2026
+# Handoff, 30 October 2026
+
+**30 October, 0.5.53**: turnover150. The stringout read a cut by the file's own timecode alone and
+failed on `C2098.MP4` (now `scan.cut_in_file`, shared with the scan). An HDRI or LDRI now delivers
+only its pre-render's mp4; the EXR is Ben's to deliver by hand and is never looked for (QC-086
+retired); the tracker's HDRI column names the mp4 (user). A shot's `colorChart02` is no longer
+folded into its `colorChart01` (QC-072), and a stringout segment whose file decodes a frame or two
+short holds its last frame rather than failing the stringout.
 
 **29 October, 0.5.52 on branch `fixit-orange`, draft PR #22**: PR #21 (the Windows build, 0.5.50) is merged,
 `main` is `81c0358`. The Fix-it report's Fix in Resolve color is orange rather than red

@@ -103,8 +103,9 @@ source encoding  ->  ACES2065-1  ->  the AMF's looks, in order  ->  linear ACESc
   and it renders through its input transform and the Reference Gamut Compress alone.
 - **No AMF in the turnover grades any clip** is QC-008, because then nothing names an input
   transform.
-- **An HDRI row** (`Shot Type` `HDRI`) delivers its EXR byte for byte, with no color applied and
-  no check run (QC-080, user 2026-10-07). Its AMF is read only for the grade the stringout gives
+- **An HDRI row** (`Shot Type` `HDRI`) delivers its pre-render as an mp4, and not its EXR, which
+  Ben delivers by hand (user, 2026-10-30; it was copied byte for byte from 2026-10-07). No check
+  runs on it (QC-080). Its AMF is read only for the grade the stringout gives
   its pre-render: Ben renders the event, pan included, in **sRGB Linear**, ungraded, so the
   stringout reads it as `Linear Rec.709 (sRGB)` in place of an input transform (turnover097's and
   turnover134's HDRI AMFs name none), then the AMF's CLF and output transform. A linear source
@@ -803,7 +804,7 @@ look very nearly right.
 | ref mp4 4k | 3840x2160, H.264 High, yuv420p, CRF 18 (x264 `-preset slow`) or `h264_videotoolbox` when hardware encoding is enabled, keyint 24, `-movflags +faststart`, AAC 192k if audio associated. **Only a plate's reference carries sound** (2026-09-23): a cp or el is delivered silent even when its own file has a track |
 | ref mp4 HD | same, 1920x1080 |
 | audio | PCM 16 bit, same sample rate and channel count, no resampling. Cut to the delivered range and sped up with the picture (1.001 for a 24000/1001 source, D2 of `docs/REVIEW_2026-09-23.md`), padded with silence where the range runs past the recorded sound. Only a row with no range is delivered as-is: a wav source byte for byte, audio in a container extracted whole. QC-044 if the source was not 16 bit |
-| HDRI | **copied byte for byte** (QC-080, user 2026-10-07); the stringout shows its pre-render, graded (QC-083) |
+| HDRI | **not delivered by the tool** since 2026-10-30 (Ben delivers the EXR by hand); its pre-render is delivered as an mp4 and shown on the stringout, graded (QC-080, QC-083) |
 | BTS stills, camData | **not delivered by the tool** (2026-09-22) |
 | lens grid | not written in v01; moved and renamed by hand (OQ-20) |
 

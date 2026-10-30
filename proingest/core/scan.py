@@ -331,29 +331,12 @@ def _resolve_prerender(
 ) -> None:
     """An HDRI or LDRI whose timeline event is Ben's pre-render (user, 2026-10-07).
 
-    The pre-render is found by the name the timeline uses, and is only ever the stringout's
-    event. The EXR (or an LDRI's JPG or PNG) it is named after is what is delivered; when the
-    turnover folder lacks it, nothing is delivered and QC-086 says so. Neither is ever a block.
+    The pre-render is found by the name the timeline uses. It is the stringout's event, and
+    what is delivered, as an mp4. **The EXR (or an LDRI's JPG or PNG) is not looked for**
+    (user, 2026-10-30): Ben delivers it by hand, maybe after the tool has run, and the
+    pre-render need not be named after it (turnover150 names it `INCA3001_pl01_HDRI01_Render.mov`
+    beside `SHOT3001_pl01_HDRI_01_v01.exr`). A pre-render missing from the folder is QC-083.
     """
-    exr_name = hdri_source_name(file_name)
-    # "HDRI EXR", the user's own words for QC-086, and "LDRI JPG" or "LDRI PNG" the same way.
-    what = f"{hdri} {Path(exr_name).suffix.lstrip('.').upper()}" if exr_name else hdri
-    matches = index.media_matching(Path(exr_name).stem) if exr_name else []
-    images = [item for item in matches if _suffix(item) not in media_module.VIDEO_EXTENSIONS]
-    if len(images) == 1:
-        _probe_into(row, images[0], cache, timeline_rate)
-    elif images:
-        _resolve_media(exr_name or file_name, _only(index, images), row)  # says QC-013
-    else:
-        row.qc.append(
-            QCResult(
-                "QC-086",
-                "warning",
-                "row",
-                f"{what} File Missing from turnover folder, omitted from delivery: {exr_name or file_name}",
-            )
-        )
-
     found = index.media_matching(Path(file_name).stem)
     renders = [item for item in found if _suffix(item) in media_module.VIDEO_EXTENSIONS]
     if len(renders) == 1:
@@ -368,8 +351,8 @@ def _resolve_prerender(
         else f"the timeline's pre-render {file_name} is not in the turnover folder: it was rendered "
         "somewhere else, or the timeline event points at a file in another folder"
     )
-    shown = f"the {what} held still" if row.media is not None else "black"
-    row.qc.append(QCResult("QC-083", "warning", "row", f"{why}, so its stringout event is {shown}"))
+    shown = f"its stringout event is black and no {hdri} mp4 is delivered"
+    row.qc.append(QCResult("QC-083", "warning", "row", f"{why}, so {shown}"))
 
 
 def _resolve_hdri(
@@ -380,7 +363,9 @@ def _resolve_hdri(
     cache: dict[str, MediaInfo],
     timeline_rate: FrameRate,
 ) -> None:
-    """An HDRI's EXR, which is delivered, and its pre-render, which the stringout shows.
+    """An HDRI's EXR cut on the timeline itself, and its pre-render. The pre-render is what the
+    stringout shows and what is delivered, as an mp4; the EXR is held on the stringout when
+    there is no pre-render, and is Ben's to deliver by hand (user, 2026-10-30).
 
     The two share a name and differ by extension (`xxxx_001.exr` and `xxxx_001.mp4`, user
     2026-10-07), so the one stem resolves to both rather than being ambiguous (QC-013).
@@ -642,8 +627,9 @@ def _refuse_retimes(row: ShotRow, events: list[clf.ConformEvent], rate: FrameRat
 def _collapse(rows: list[ShotRow]) -> list[ShotRow]:
     """One row per thing delivered, in timeline order of first use (user, 2026-09-23).
 
-    A reference still (a color chart, a grey ball) is delivered **once per shot code**,
-    from its first use: a chart cut at two frames is the same chart. Any other clip cut
+    A reference still (a color chart, a grey ball) is delivered **once per shot code and
+    number**, from its first use: a chart cut at two frames is the same chart, and
+    `colorChart02` is another one (turnover150, 2026-10-30). Any other clip cut
     twice to the same frames, as two holds of one frame are, is delivered once too. The row
     kept says so (QC-072). A row that did not conform is never folded: its error has to show.
     """
@@ -682,7 +668,9 @@ def _delivers(row: ShotRow) -> tuple[object, ...] | None:
     if row.approved is None or row.identity is None or row.errors():
         return None
     if row.identity.is_still:
-        return ("still", row.identity.shot_code, row.identity.kind)
+        # Its number too: turnover150's `colorChart01` and `colorChart02` are two charts, and
+        # without it the second was folded into the first and its stringout event went black.
+        return ("still", row.identity.shot_code, row.identity.kind, row.identity.index)
     return ("same", Path(row.clip_name).stem.casefold(), row.identity.kind, row.identity.index, row.current)
 
 
@@ -691,7 +679,7 @@ def _conform(row: ShotRow, event: clf.ConformEvent, grades: _Grades) -> None:
 
     row.record_in, row.record_out = event.record_in, event.record_out
     # A file that is not there (QC-012) has its AMF checked once it is. A pre-render on the
-    # timeline is graded by its own AMF whether or not the HDRI EXR is there (QC-086).
+    # timeline is graded by its own AMF whether or not the HDRI EXR is there, which is never looked for.
     if row.media is not None or row.hdri_render is not None:
         before = len(row.qc)
         grades.attach(row, event)
@@ -706,7 +694,7 @@ def _conform(row: ShotRow, event: clf.ConformEvent, grades: _Grades) -> None:
     approved = clf.approved_in_out(event, media)
     unchecked = qc.is_hdri(row) or qc.is_stringout_only(row)
     if not unchecked and not _fits(approved, media):
-        approved = _outside(row, event, media, approved)
+        approved = _outside(row, event, media)
     row.approved = approved
     row.snapshot = approved
     row.current = approved
@@ -716,27 +704,44 @@ def _fits(cut: InOut, media: MediaInfo) -> bool:
     return media.start_frame <= cut.in_frame and cut.out_frame <= media.max_available_out
 
 
-def _outside(row: ShotRow, event: clf.ConformEvent, media: MediaInfo, cut: InOut) -> InOut:
-    """A cut the file's own timecode puts outside it, taken at face value (user, 2026-10-07:
-    "take the timeline at face value"; Ben sees any gap on his timeline).
+def cut_in_file(event: clf.ConformEvent, media: MediaInfo, resolve_start_tc: str = "") -> tuple[InOut, bool]:
+    """The event's frames in its file, and whether the file holds them all.
 
     The EDL counts in Resolve's clock, which is the file's own timecode (Turnover199) or,
-    after Resolve's media management, the CSV's `Start TC` (turnover134's mirror balls). So
-    the file's is tried first and Resolve's second, with nothing said. When neither puts the
-    cut inside the file, the frames the file has are rendered and QC-029 notes it.
+    after Resolve's media management, the CSV's `Start TC` (turnover134's mirror balls;
+    turnover150's camera clips, whose own timecode is six seconds off Resolve's). So the
+    file's is tried first and Resolve's second, with nothing said. When neither puts the cut
+    inside the file, the frames the file has are taken (user, 2026-10-07: "take the timeline
+    at face value"; Ben sees any gap on his timeline), and the second value is False.
+
+    The scan's conform and the stringout both read the cut here, so they cannot disagree
+    about which frames a clip shows (turnover150, 2026-10-30: the stringout counted from the
+    file's timecode alone, 98 frames before the file began, and was not written).
     """
+    cut = clf.approved_in_out(event, media)
+    if _fits(cut, media):
+        return cut, True
     rate = (media.stated_rate or media.rate).as_float()
-    said = media.start_timecode or 0
-    resolve = _resolve_start(row, rate)
-    if resolve is not None and resolve != said:
+    resolve = _resolve_start(resolve_start_tc, rate)
+    if resolve is not None and resolve != (media.start_timecode or 0):
         moved = clf.approved_in_out(event, replace(media, start_timecode=resolve))
         if _fits(moved, media):
-            return moved
+            return moved, True
     first, last = media.start_frame, media.max_available_out
     kept = InOut(max(cut.in_frame, first), min(cut.out_frame, last))
     if kept.in_frame > kept.out_frame:
         kept = InOut(first, min(first + cut.duration - 1, last))
-    own, edl = _span(said, media.frame_count, rate), _span(event.source_in, event.duration, rate)
+    return kept, False
+
+
+def _outside(row: ShotRow, event: clf.ConformEvent, media: MediaInfo) -> InOut:
+    """`cut_in_file`, with QC-029 noting a cut the file does not hold all of."""
+    kept, whole = cut_in_file(event, media, row.resolve_start_tc)
+    if whole:
+        return kept
+    rate = (media.stated_rate or media.rate).as_float()
+    own = _span(media.start_timecode or 0, media.frame_count, rate)
+    edl = _span(event.source_in, event.duration, rate)
     row.qc.append(
         QCResult(
             "QC-029",
@@ -754,9 +759,9 @@ def _span(first: int, count: int, rate: float) -> str:
     return f"{frames.frames_to_timecode(first, rate)} to {frames.frames_to_timecode(first + count - 1, rate)}"
 
 
-def _resolve_start(row: ShotRow, rate: float) -> int | None:
+def _resolve_start(start_tc: str, rate: float) -> int | None:
     try:
-        return frames.timecode_to_frames(row.resolve_start_tc, rate) if row.resolve_start_tc else None
+        return frames.timecode_to_frames(start_tc, rate) if start_tc else None
     except ValueError:
         return None
 

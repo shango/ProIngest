@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import Literal, NamedTuple
 
 from proingest import __version__
-from proingest.core import exports, frames, models, naming, qc, scan
+from proingest.core import exports, frames, models, naming, qc
 from proingest.core.models import Batch, QCResult, ShotRow, Turnover
 
 Where = Literal["resolve", "folder", "look"]
@@ -213,15 +213,10 @@ ADVICE: dict[str, Advice] = {
         "folder",
         "An HDRI's or LDRI's render is missing.",
         "The timeline's HDRI or LDRI render is not in the turnover folder, so the stringout cannot show "
-        "it. It was probably rendered into another folder, or the timeline event points at a file in "
-        "another folder. Please render it into the turnover folder and relink the timeline event to it.",
+        "it and no mp4 of it is delivered. It was probably rendered into another folder, or the "
+        "timeline event points at a file in another folder. Please render it into the turnover "
+        "folder and relink the timeline event to it.",
         "message",
-    ),
-    "QC-086": Advice(
-        "folder",
-        "HDRI EXR or LDRI File Missing from turnover folder, omitted from delivery.",
-        "The timeline's HDRI or LDRI render is named after an EXR, JPG or PNG that is not in the folder, "
-        "so nothing was delivered for it. Please copy the file in.",
     ),
     "QC-022": Advice(
         "folder",
@@ -461,8 +456,6 @@ def _looked_for(row: ShotRow, result: QCResult, turnover: Turnover) -> str:
         return str(row.media.path)
     if rule in ("QC-012", "QC-013", "QC-014", "QC-022", "QC-083"):
         return str(folder / row.clip_name)
-    if rule == "QC-086":
-        return str(folder / (scan.hdri_source_name(row.clip_name) or row.clip_name))
     if rule == "QC-076" and (named := _CLF_NAMED.match(_plain(result.message))):
         return str(folder / named["clf"])
     return ""
@@ -480,9 +473,6 @@ def _named_by(row: ShotRow, result: QCResult, turnover: Turnover, rate: int) -> 
         return f"{csv}, File Name column" + (f", and {edl}{at}" if cut else "")
     if rule == "QC-083":
         return f"{edl}{at}, and {csv}, File Name column"
-    if rule == "QC-086":
-        hdri = "LDRI" if qc.is_ldri(row) else "HDRI"
-        return f"the name of the {hdri} render {row.clip_name}, in {edl}{at}, and in {csv}"
     if rule == "QC-076" and (named := _CLF_NAMED.match(_plain(result.message))):
         return f"the AMF ({named['amf']})"
     if rule in ("QC-010", "QC-065"):

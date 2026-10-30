@@ -410,7 +410,7 @@ it is hidden rather than shown empty.
 
 There is **no Side files section** since 2026-09-22: HDRI and camData carry no `Shot Type`, so
 the tool reads neither and the pane has nothing to show for them. An HDRI row with `Shot Type`
-`HDRI` delivers its EXR byte for byte and carries QC-080 (user, 2026-10-07).
+`HDRI` delivers its pre-render as an mp4, never its EXR, which Ben delivers by hand (user, 2026-10-30), and carries QC-080.
 
 ### 12.3 Empty and edge states
 

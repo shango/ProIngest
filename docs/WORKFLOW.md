@@ -131,7 +131,7 @@ writes is either a deliverable named from the spec or a report about one.
 | `sizeRef` | `sizeRef_01` | reference still | one 4k EXR, converted, never graded |
 | `BTS` | - | behind the scenes, phone stills | **nothing** (user, 2026-09-22) |
 | `lensgrid` | - | lens distortion chart | **nothing. Ben delivers it** (user, 2026-09-22) |
-| `HDRI` | `pl01_HDRI_01` | HDRI, on the timeline as a frame hold with a pan | **the EXR, copied byte for byte, never checked**; the stringout shows the pre-render Ben puts beside it (`xxxx_001.mp4` beside `xxxx_001.exr`, QC-083) (QC-080, user 2026-10-07) |
+| `HDRI` | `pl01_HDRI_01` | HDRI, on the timeline as a frame hold with a pan | **its pre-render as an mp4**; the EXR is Ben's to deliver by hand (user, 2026-10-30); the stringout shows the pre-render (`xxxx_001.mp4` beside `xxxx_001.exr`, QC-083) (QC-080, user 2026-10-07) |
 | *anything else, or blank* | - | - | **nothing. The clip is ignored** |
 
 The first nine rows are the tool's entire output. `BTS` and `lensgrid` stay in the vocabulary

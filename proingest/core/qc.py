@@ -770,8 +770,9 @@ def check_duplicate_name(row: ShotRow, counts: dict[str, int]) -> list[QCResult]
 
 
 def is_hdri(row: ShotRow) -> bool:
-    """An HDRI or LDRI row (QC-080): its file is copied as it is and no row rule runs on it
-    (user, 2026-10-07). Its source fps or range said as errors was noise (2026-09-29)."""
+    """An HDRI or LDRI row (QC-080): no row rule runs on it (user, 2026-10-07), and only its
+    pre-render is delivered, as an mp4 (user, 2026-10-30). Its source fps or range said as
+    errors was noise (2026-09-29)."""
     return any(result.rule_id == "QC-080" for result in row.qc)
 
 

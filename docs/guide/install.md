@@ -13,7 +13,7 @@ files. On Windows, skip to [Windows](#windows) at the end; the first run is the 
 
 ## Putting it on
 
-You are handed one file, `ProIngest-0.5.52.dmg`. The version is in the name so two builds can
+You are handed one file, `ProIngest-0.5.53.dmg`. The version is in the name so two builds can
 sit in the same folder.
 
 1. Double-click the dmg. It opens on a window with the app and a shortcut to Applications.
@@ -93,7 +93,7 @@ your own folders and are not touched.
 The same app, the same checks and the same video tools as the Mac, on **Windows 11** (an ARM
 PC runs it too, through Windows' own emulation).
 
-**Putting it on.** You are handed one file, `ProIngest-Setup-0.5.52.exe`. Double-click it.
+**Putting it on.** You are handed one file, `ProIngest-Setup-0.5.53.exe`. Double-click it.
 It asks for no administrator password: it installs for you alone, into
 `%LOCALAPPDATA%\Programs\ProIngest`, and puts ProIngest in the Start menu. Tick the box for a
 desktop shortcut if you want one.

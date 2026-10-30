@@ -318,6 +318,16 @@ class TestAHeldReference:
         ffmpeg.encode_reference(str(source), output, 1003, 1003, is_sequence=True, rate="24/1", hold=24)
         assert ffmpeg.container_frame_count(output) == 24
 
+    def test_a_file_that_decodes_short_is_padded_to_the_length_asked(self, tmp_path: Path) -> None:
+        """Turnover150 (2026-10-30): `C2075.MP4` says 388 frames and decodes 386, so its stringout
+        segment came out two short. Here a ten frame file is asked for twelve."""
+        source = fixtures.make_mp4(tmp_path / "short.mp4", count=10)
+        for pad, expected in ((True, 12), (False, 10)):
+            output = tmp_path / f"padded_{pad}.mp4"
+            command = ffmpeg.encode_command(str(source), output, 0, 11, False, "24/1", pad_short=pad)
+            subprocess.run(command, check=True)
+            assert ffmpeg.container_frame_count(output) == expected
+
 
 class TestEncodeCommand:
     """The reference encode's argv. COLOR_AND_FORMAT section 3.
