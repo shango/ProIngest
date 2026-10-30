@@ -38,7 +38,7 @@ STATUS_COLORS = {
     "rendering": QColor("#4d8fd6"),
     "skipped": QColor("#868d9a"),
 }
-"""The shot list's own colours for the same states (UI_SPEC section 3): green for a
+"""The shot list's own colors for the same states (UI_SPEC section 3): green for a
 file that is there, red for one that failed, the accent for one being written."""
 
 NO_DELIVERABLES = "Nothing planned yet. A run plans a row's deliverables and writes them."
@@ -107,9 +107,9 @@ class DeliverablesDock(QTreeWidget):
                         str(item.path),
                     ]
                 )
-                colour = STATUS_COLORS.get(item.status)
-                if colour is not None:
-                    line.setForeground(COLUMNS.index("Status"), QBrush(colour))
+                color = STATUS_COLORS.get(item.status)
+                if color is not None:
+                    line.setForeground(COLUMNS.index("Status"), QBrush(color))
                 line.setToolTip(COLUMNS.index("Path"), str(item.path))
                 line.setData(0, Qt.ItemDataRole.UserRole, len(self._paths))
                 self._paths.append(item.path)

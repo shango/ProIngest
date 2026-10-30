@@ -204,7 +204,7 @@ class TestChannelOrder:
     """`gbrpf32le` is planar G, B, R. Getting this wrong swaps red and blue silently."""
 
     def test_red_green_and_blue_land_in_that_order(self, tmp_path: Path) -> None:
-        source = fixtures.make_solid_dpx(tmp_path / "flat.dpx", colour="0x804020")
+        source = fixtures.make_solid_dpx(tmp_path / "flat.dpx", color="0x804020")
         frame = decode(str(source), 0, 0)[0]
         red, green, blue = (float(frame[:, :, index].mean()) for index in range(3))
         assert red > green > blue
@@ -241,7 +241,7 @@ class TestTargetSize:
 
     def test_the_downscale_is_not_a_crop(self, tmp_path: Path) -> None:
         """A subsample would keep the corner values; an integrating filter averages."""
-        source = fixtures.make_solid_dpx(tmp_path / "flat.dpx", colour="0x804020")
+        source = fixtures.make_solid_dpx(tmp_path / "flat.dpx", color="0x804020")
         full = decode(str(source), 0, 0)[0]
         small = decode(str(source), 0, 0, target_size=HALF)[0]
         assert small.mean() == pytest.approx(float(full.mean()), abs=1e-3)
@@ -317,6 +317,16 @@ class TestAHeldReference:
         output = tmp_path / "held.mp4.part"
         ffmpeg.encode_reference(str(source), output, 1003, 1003, is_sequence=True, rate="24/1", hold=24)
         assert ffmpeg.container_frame_count(output) == 24
+
+    def test_a_file_that_decodes_short_is_padded_to_the_length_asked(self, tmp_path: Path) -> None:
+        """Turnover150 (2026-10-30): `C2075.MP4` says 388 frames and decodes 386, so its stringout
+        segment came out two short. Here a ten frame file is asked for twelve."""
+        source = fixtures.make_mp4(tmp_path / "short.mp4", count=10)
+        for pad, expected in ((True, 12), (False, 10)):
+            output = tmp_path / f"padded_{pad}.mp4"
+            command = ffmpeg.encode_command(str(source), output, 0, 11, False, "24/1", pad_short=pad)
+            subprocess.run(command, check=True)
+            assert ffmpeg.container_frame_count(output) == expected
 
 
 class TestEncodeCommand:

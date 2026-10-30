@@ -1,4 +1,4 @@
-"""The final EDL, which is the cut, and a shot's colour chain from its AMF.
+"""The final EDL, which is the cut, and a shot's color chain from its AMF.
 
 COLOR_AND_FORMAT section 1. Two failures are what these tests exist for and neither
 looks like a failure: a row conformed from a neighbour's event delivers the wrong
@@ -316,7 +316,7 @@ class TestSession:
 
 
 class TestShotColor:
-    """What rides on a render job: a colour space name, the AMF's looks and its display.
+    """What rides on a render job: a color space name, the AMF's looks and its display.
 
     The failure these guard against is the one COLOR_AND_FORMAT section 1 warns about
     under the chain diagram: a look applied in the wrong space, or a conversion applied

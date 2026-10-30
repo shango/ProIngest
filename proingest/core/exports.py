@@ -122,7 +122,7 @@ SHOTS_HEADERS = (
 )  # fmt: skip
 """The QC log's own columns, QC_RULES "QC log structure".
 
-Source encoding is the colour space the clip's AMF input transform resolved to in the
+Source encoding is the color space the clip's AMF input transform resolved to in the
 pinned config (user, 2026-09-28); empty means the AMF named none the config has, which
 is QC-046 or QC-047. The looks applied after it are in the delivered EXR header
 (`exr.LOOKS_ATTRIBUTE`).
@@ -131,7 +131,7 @@ The eight **Source** columns after it are the file as ffprobe read it, so whoeve
 checks a turnover can see whether the media is usable for VFX without opening it: an
 8 bit 4:2:0 clip labelled BT.709 beside a log encoding is visible here at a glance
 (user, 2026-09-24). They report and never block; QC-020 is the rule that warns. A
-colour tag the file does not state reads `not stated`, so an absent label is told apart
+color tag the file does not state reads `not stated`, so an absent label is told apart
 from a row with no media, whose cells are empty."""
 
 NOT_STATED = "not stated"
@@ -187,7 +187,7 @@ def _row_state(row: ShotRow) -> str:
     """`skipped`, `held`, `failed` or `delivered`, which is what the Summary counts.
 
     Held is a row an error kept back until it is fixed and re-scanned (missing media, or
-    colour the tool cannot recreate). A row with nothing planned counts as delivered: the
+    color the tool cannot recreate). A row with nothing planned counts as delivered: the
     planner had nothing to do for it, which is not a render that did not finish.
     """
     if row.skipped:
@@ -287,7 +287,7 @@ def _checksum(item: Deliverable) -> str:
 ISSUES_HEADERS = ("Turnover", "Shot code", "Clip name", "Rule", "Level", "Effect", "Message")
 
 RECORD_ONLY_RULES = frozenset({"QC-048", "QC-060", "QC-061", "QC-080", "QC-085", "QC-088"})
-"""Results that record what the tool did rather than anything about the clip: the colour
+"""Results that record what the tool did rather than anything about the clip: the color
 chain, the version, an HDRI or style frame being what it is. Kept off the Issues sheet."""
 
 
@@ -435,11 +435,19 @@ def tracker_row(shot_code: str, rows: list[ShotRow], stringout: str = "") -> lis
     cells[2] = shot_code
     cells[3] = shot_code
     cells[4] = reference.name if reference is not None else ""
+    # The HDRI's pre-render mp4 (user, 2026-10-30: "name the mp4 in the HDRI column"), since the
+    # EXR is Ben's to deliver by hand; a batch from before then names the EXR the tool copied.
+    # CAM Data stays the studio's column. An LDRI has no column: the HDRI cell is left empty,
+    # which says there is no HDRI (user, 2026-10-08).
     hdri = next(
-        (item for row in rows if not qc.is_ldri(row) and (item := _delivered(row, "hdri")) is not None), None
+        (
+            item
+            for kind in ("hdri_ref", "hdri")
+            for row in rows
+            if not qc.is_ldri(row) and (item := _delivered(row, kind)) is not None
+        ),
+        None,
     )
-    # The HDRI the tool copied (user, 2026-10-07). CAM Data stays the studio's column. An LDRI
-    # has no column: the HDRI cell is left empty, which says there is no HDRI (user, 2026-10-08).
     cells[5] = hdri.name if hdri is not None else ""
     cells[7] = _plate_marks(plate)
     cells[8] = TRACKER_FPS

@@ -1,8 +1,8 @@
 """The Fix-it report: what Ben needs to change, in plain words, as one HTML page.
 
 User, 2026-10-06: a link above the Details dock, named "Fix-it report", opening in the
-browser. Written for the colourist rather than the editor: he knows basic editing and
-colour, and is not a Resolve expert. So each QC rule he can act on gets a sentence in
+browser. Written for the colorist rather than the editor: he knows basic editing and
+color, and is not a Resolve expert. So each QC rule he can act on gets a sentence in
 his terms (`ADVICE`), every clip it applies to is listed once under it, and the rule IDs
 stay out of sight. Rules about the editor's own choices (In/Out edits, the delivery
 root, a run) are not his and are left out.
@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import Literal, NamedTuple
 
 from proingest import __version__
-from proingest.core import exports, frames, models, naming, qc, scan
+from proingest.core import exports, frames, models, naming, qc
 from proingest.core.models import Batch, QCResult, ShotRow, Turnover
 
 Where = Literal["resolve", "folder", "look"]
@@ -106,17 +106,17 @@ ADVICE: dict[str, Advice] = {
     ),
     "QC-046": Advice(
         "resolve",
-        "Nothing says what colour space a clip was recorded in.",
+        "Nothing says what color space a clip was recorded in.",
         "Without it the tool cannot convert the clip, so it holds the clip back. Each clip below says "
-        "what the tool found. Please set its input colour space in Resolve and export its AMF (or the "
+        "what the tool found. Please set its input color space in Resolve and export its AMF (or the "
         "metadata) again.",
         "message",
     ),
     "QC-047": Advice(
         "resolve",
-        "A clip's input colour space is one the tool does not know.",
-        "This is the colour space Resolve reads the camera footage as, not its grade. Each clip below "
-        "says which of the exported files gave it. Please check the clip's input colour space in "
+        "A clip's input color space is one the tool does not know.",
+        "This is the color space Resolve reads the camera footage as, not its grade. Each clip below "
+        "says which of the exported files gave it. Please check the clip's input color space in "
         "Resolve. If it is right, let the editor know which camera this is.",
         "message",
     ),
@@ -152,7 +152,7 @@ ADVICE: dict[str, Advice] = {
     ),
     "QC-075": Advice(
         "resolve",
-        "A colour file (AMF) cannot be used.",
+        "A color file (AMF) cannot be used.",
         "Each line below names the AMF and why. Where two AMFs claim one clip the tool cannot tell which "
         "grade is right, so it holds that clip back. Please export the AMFs again from the timeline, one "
         "per clip.",
@@ -174,15 +174,15 @@ ADVICE: dict[str, Advice] = {
     ),
     "QC-079": Advice(
         "look",
-        "A clip's colour file (AMF) names a viewing setup the tool does not know.",
+        "A clip's color file (AMF) names a viewing setup the tool does not know.",
         "Its reference movies were made for a standard Rec.709 screen instead. Please check the "
-        "project's output colour space.",
+        "project's output color space.",
         "message",
     ),
     "QC-082": Advice(
         "resolve",
         "A clip is missing a CLF file.",
-        "Defaulting to the CDL in its AMF for colour.",
+        "Defaulting to the CDL in its AMF for color.",
     ),
     "QC-012": Advice(
         "folder",
@@ -213,15 +213,10 @@ ADVICE: dict[str, Advice] = {
         "folder",
         "An HDRI's or LDRI's render is missing.",
         "The timeline's HDRI or LDRI render is not in the turnover folder, so the stringout cannot show "
-        "it. It was probably rendered into another folder, or the timeline event points at a file in "
-        "another folder. Please render it into the turnover folder and relink the timeline event to it.",
+        "it and no mp4 of it is delivered. It was probably rendered into another folder, or the "
+        "timeline event points at a file in another folder. Please render it into the turnover "
+        "folder and relink the timeline event to it.",
         "message",
-    ),
-    "QC-086": Advice(
-        "folder",
-        "HDRI EXR or LDRI File Missing from turnover folder, omitted from delivery.",
-        "The timeline's HDRI or LDRI render is named after an EXR, JPG or PNG that is not in the folder, "
-        "so nothing was delivered for it. Please copy the file in.",
     ),
     "QC-022": Advice(
         "folder",
@@ -309,7 +304,7 @@ KIND_WORDS = {
     "meas": "measurement",
     "recon": "recon",
     "avidRef": "Avid reference",
-    "colorChart": "colour chart",
+    "colorChart": "color chart",
     "greyBall": "grey ball",
     "mirrorBall": "mirror ball",
     "sizeRef": "size reference",
@@ -461,8 +456,6 @@ def _looked_for(row: ShotRow, result: QCResult, turnover: Turnover) -> str:
         return str(row.media.path)
     if rule in ("QC-012", "QC-013", "QC-014", "QC-022", "QC-083"):
         return str(folder / row.clip_name)
-    if rule == "QC-086":
-        return str(folder / (scan.hdri_source_name(row.clip_name) or row.clip_name))
     if rule == "QC-076" and (named := _CLF_NAMED.match(_plain(result.message))):
         return str(folder / named["clf"])
     return ""
@@ -480,9 +473,6 @@ def _named_by(row: ShotRow, result: QCResult, turnover: Turnover, rate: int) -> 
         return f"{csv}, File Name column" + (f", and {edl}{at}" if cut else "")
     if rule == "QC-083":
         return f"{edl}{at}, and {csv}, File Name column"
-    if rule == "QC-086":
-        hdri = "LDRI" if qc.is_ldri(row) else "HDRI"
-        return f"the name of the {hdri} render {row.clip_name}, in {edl}{at}, and in {csv}"
     if rule == "QC-076" and (named := _CLF_NAMED.match(_plain(result.message))):
         return f"the AMF ({named['amf']})"
     if rule in ("QC-010", "QC-065"):
@@ -520,7 +510,7 @@ def _who(row: ShotRow) -> str:
 
 def _detail(row: ShotRow, result: QCResult) -> str:
     if result.rule_id == "QC-047":
-        return _colour_space_detail(row, result)
+        return _color_space_detail(row, result)
     kind = ADVICE[result.rule_id].detail
     if kind == "message":
         return _plain(result.message)
@@ -529,8 +519,8 @@ def _detail(row: ShotRow, result: QCResult) -> str:
     return ""
 
 
-def _colour_space_detail(row: ShotRow, result: QCResult) -> str:
-    """Where the unknown input colour space came from, as far as the tool can show it (user,
+def _color_space_detail(row: ShotRow, result: QCResult) -> str:
+    """Where the unknown input color space came from, as far as the tool can show it (user,
     2026-10-12: "If an issue is not coming from somewhere the tool can verify, I'd rather it
     say, This clip is appearing as a rec709, please investigate why")."""
     space = row.source_encoding
@@ -692,14 +682,14 @@ def _e(text: str) -> str:
 
 
 _STYLE = """
-:root{--bg:#f6f7f9;--card:#fff;--fg:#1d2128;--muted:#5d6573;--line:#dfe3e8;--resolve:#b4231b;
+:root{--bg:#f6f7f9;--card:#fff;--fg:#1d2128;--muted:#5d6573;--line:#dfe3e8;--resolve:#c2410c;
 --folder:#8a5a00;--note:#2f5e9e;--sans:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;
 --mono:ui-monospace,Menlo,Consolas,monospace}
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--bg:#15181d;--card:#1d2127;
---fg:#e4e7ec;--muted:#9aa3b0;--line:#2c323a;--resolve:#ff8a80;--folder:#f0c060;--note:#8db8f0;
+--fg:#e4e7ec;--muted:#9aa3b0;--line:#2c323a;--resolve:#fb923c;--folder:#f0c060;--note:#8db8f0;
 color-scheme:dark}}
 :root[data-theme="dark"]{--bg:#15181d;--card:#1d2127;--fg:#e4e7ec;--muted:#9aa3b0;--line:#2c323a;
---resolve:#ff8a80;--folder:#f0c060;--note:#8db8f0;color-scheme:dark}
+--resolve:#fb923c;--folder:#f0c060;--note:#8db8f0;color-scheme:dark}
 body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--sans);font-size:16px;line-height:1.55;
 padding:32px 16px 48px}
 main{max-width:720px;margin:0 auto;display:grid;gap:28px}

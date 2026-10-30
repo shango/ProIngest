@@ -123,7 +123,7 @@ class DeliverableJob:
 
     A copy job carries the default and ignores it; bytes are bytes. So does an **aux
     still**, deliberately: the aux names are `colorChart`, `mirrorBall`, `greyBall` and
-    `sizeRef`, and a grade applied to a colour chart destroys the one thing the chart is
+    `sizeRef`, and a grade applied to a color chart destroys the one thing the chart is
     delivered for. It still gets the input transform, so it lands in ACEScg like every
     other EXR the tool writes, but never the shot's grade.
     """
@@ -224,9 +224,6 @@ class _Shot:
     audio: Path | None
     color: clf.ShotColor
     freeze: bool = False
-    prerender: MediaInfo | None = None
-    """An HDRI's or LDRI's pre-render, delivered as an mp4 beside its file (user, 2026-10-27)."""
-    prerender_color: clf.ShotColor | None = None
 
 
 def effective_identity(row: ShotRow, show_pattern: str = naming.DEFAULT_SHOW_PATTERN) -> ShotIdentity | None:
@@ -251,7 +248,7 @@ def holding_errors(row: ShotRow) -> list[QCResult]:
 
     **An error holds one shot and nothing else** (user, 2026-10-07: "nothing prevents
     rendering an entire batch or turnover"). What is an error is what leaves the tool
-    nothing to render or no way to recreate the colour: missing or unreadable media, no
+    nothing to render or no way to recreate the color: missing or unreadable media, no
     name to give it, no cut, or a grade it cannot rebuild (QC_RULES). Everything else is a
     warning or a note in the report and renders.
     """
@@ -273,11 +270,16 @@ def plannable_identity(row: ShotRow, show_pattern: str = naming.DEFAULT_SHOW_PAT
 
     A row is not planned when the editor skipped it, when it carries an error, which
     FR-6 says blocks the row but not the batch, or when it has no media and no chosen
-    range, because then there is nothing to read.
+    range, because then there is nothing to read. An HDRI or LDRI reads only its pre-render
+    (user, 2026-10-30), so it owes something exactly when the pre-render is there.
     """
-    if row.skipped or holding_errors(row) or row.media is None or row.current is None:
+    if row.skipped or holding_errors(row):
         return None
     identity = effective_identity(row, show_pattern)
+    if identity is not None and identity.is_hdri:
+        return identity if row.hdri_render is not None else None
+    if row.media is None or row.current is None:
+        return None
     # A style frame is only ever on the stringout (QC-085).
     if identity is not None and identity.is_style_frame:
         return None
@@ -304,6 +306,10 @@ def plan_row(
 ) -> RowPlan:
     """The deliverables one row owes at `version`. Pure: it touches no filesystem."""
     identity = plannable_identity(row, show_pattern)
+    if identity is not None and identity.is_hdri:
+        plan = _hdri_plan(row, identity, delivery_root, version, shot_color)
+        plan.jobs = [replace(job, show_pattern=show_pattern) for job in plan.jobs]
+        return plan
     media, current = row.media, row.current
     if identity is None or media is None or current is None:
         return RowPlan()
@@ -317,13 +323,9 @@ def plan_row(
         audio=_audio_source(row),
         color=shot_color,
         freeze=row.freeze,
-        prerender=row.hdri_render,
-        prerender_color=prerender_color(row, shot_color),
     )
     if identity.is_still:
         plan = _aux_plan(shot)
-    elif identity.is_hdri:
-        plan = _hdri_plan(shot)
     elif identity.is_as_is:
         plan = _avidref_plan(shot)
     else:
@@ -352,7 +354,7 @@ def plan_batch(
     run rather than when a batch is opened: the state recorded against a row belongs to
     the version that produced it, not to the one about to be written.
 
-    **The colour session is not a parameter here.** The scan put it on the rows: the
+    **The color session is not a parameter here.** The scan put it on the rows: the
     approved In/Out off the EDL and the grade off each event's AMF, so planning reads them
     off the model like every other field. A row with an error is held here and nowhere
     else; only a batch scope error refuses the run (`qc.must_fix`).
@@ -556,40 +558,23 @@ def _audio_job(shot: _Shot) -> DeliverableJob | None:
     )
 
 
-def _hdri_plan(shot: _Shot) -> RowPlan:
-    """An HDRI delivers its EXR, copied byte for byte (user, 2026-10-07), and an LDRI its JPG
-    or PNG, under the extension it came with (user, 2026-10-08). A copy has no frame range
-    and no colour."""
-    identity, source = shot.identity, shot.media.path
-    name = (
-        naming.ldri_image(identity, shot.version, source.suffix)
-        if identity.is_ldri
-        else naming.hdri_exr(identity, shot.version)
-    )
-    jobs = [
-        DeliverableJob(
-            kind="hdri",
-            source=source,
-            destination=shot.directory / name,
-            version=shot.version,
-            shot_code=shot.identity.shot_code,
-            elem=naming.HDRI_ELEMENT,
-        )
-    ]
-    if shot.prerender is not None:
-        jobs.append(_prerender_job(shot, shot.prerender))
-    return RowPlan(jobs=jobs)
-
-
-def _prerender_job(shot: _Shot, render: MediaInfo) -> DeliverableJob:
-    """Ben's pre-render as an mp4 (user, 2026-10-27): the whole of it, the size it is, silent,
-    coloured as the stringout shows it (`prerender_color`)."""
-    return DeliverableJob(
+def _hdri_plan(
+    row: ShotRow, identity: ShotIdentity, delivery_root: Path, version: int, shot_color: clf.ShotColor
+) -> RowPlan:
+    """An HDRI or LDRI delivers its pre-render as an mp4, and only that (user, 2026-10-30:
+    "Those exr files are delivered manually by Ben ... The scan should only check for the
+    existance of the render files it needs to build the stringout and other mp4s"). The
+    EXR, JPG or PNG is Ben's to deliver, before the tool runs or after. With no pre-render
+    in the folder (QC-083) there is nothing to deliver."""
+    render = row.hdri_render
+    if render is None:
+        return RowPlan()
+    job = DeliverableJob(
         kind="hdri_ref",
         source=render.path,
-        destination=shot.directory / naming.hdri_prerender_mp4(shot.identity, shot.version),
-        version=shot.version,
-        shot_code=shot.identity.shot_code,
+        destination=naming.shot_dir(delivery_root, identity) / naming.hdri_prerender_mp4(identity, version),
+        version=version,
+        shot_code=identity.shot_code,
         elem=naming.HDRI_ELEMENT,
         in_frame=render.start_frame,
         out_frame=render.max_available_out,
@@ -599,9 +584,11 @@ def _prerender_job(shot: _Shot, render: MediaInfo) -> DeliverableJob:
         source_color_space=render.color_space,
         source_color_range=render.color_range,
         source_start_frame=render.start_frame,
-        # The display alone labels an ungraded one; no input transform and no cube.
-        shot_color=shot.prerender_color or clf.ShotColor(display=shot.color.display),
+        # Colored as the stringout shows it (user, 2026-10-27); the display alone labels an
+        # ungraded one, with no input transform and no cube.
+        shot_color=prerender_color(row, shot_color) or clf.ShotColor(display=shot_color.display),
     )
+    return RowPlan(jobs=[job])
 
 
 def prerender_color(row: ShotRow, shot_color: clf.ShotColor) -> clf.ShotColor | None:
@@ -617,7 +604,7 @@ def prerender_color(row: ShotRow, shot_color: clf.ShotColor) -> clf.ShotColor | 
 
 def _avidref_plan(shot: _Shot) -> RowPlan:
     """An Avid reference, never an EXR (user, 2026-10-22), and a measurement or a recon the
-    same way (user, 2026-10-27). Its colour is baked in, or it is never colour corrected, so
+    same way (user, 2026-10-27). Its color is baked in, or it is never color corrected, so
     nothing is graded. A movie (an mp4, a `.mov` pre-render, or an image sequence) is encoded to an
     mp4 over its cut at 24, the size it is; a held still, one image file, is copied byte for
     byte when it is a JPG or PNG and otherwise becomes a JPG. No audio: only a plate

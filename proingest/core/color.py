@@ -1,11 +1,11 @@
-"""The colour transforms every deliverable is built from.
+"""The color transforms every deliverable is built from.
 
-COLOR_AND_FORMAT section 1. Colour is decided before the tool runs: the colour session in
+COLOR_AND_FORMAT section 1. Color is decided before the tool runs: the color session in
 Resolve exports one AMF per clip, naming the input transform, the looks and the output
 transform, and a CLF per corrector node of the grade (user, 2026-09-28). Nothing here
-authors colour, and nothing here is a hand written curve or matrix. Every transform comes
+authors color, and nothing here is a hand written curve or matrix. Every transform comes
 from OpenColorIO's built-in ACES config, which travels inside the wheel, or is one of the
-colourist's CLFs, which OCIO reads as they are.
+colorist's CLFs, which OCIO reads as they are.
 
 The chain, in the AMF's own order, with this module supplying each leg:
 
@@ -34,13 +34,13 @@ import PyOpenColorIO as ocio
 
 
 class ColorError(RuntimeError):
-    """A colour space that does not exist, or pixels that cannot be transformed."""
+    """A color space that does not exist, or pixels that cannot be transformed."""
 
 
 BUILTIN_CONFIG = "studio-config-v4.0.0_aces-v2.0_ocio-v2.5"
 """The config, pinned rather than tracking latest (OQ-29).
 
-ACES 2.0 because that is what the colour session runs (user, 2026-09-25; it was 1.3 until
+ACES 2.0 because that is what the color session runs (user, 2026-09-25; it was 1.3 until
 then), and matching the session matters more than being current: a dependency bump must
 not change what the references look like. Moving from the 1.3 config left the plate branch
 bit for bit the same, measured on frame 30 of `C0148.MP4`; only the view changed.
@@ -72,7 +72,7 @@ every one of Resolve's CLFs takes it in and gives it back."""
 INTERPOLATION = ocio.INTERP_TETRAHEDRAL
 """Read from here, never re-derived, wherever a LUT is loaded or baked.
 
-The default in several tools is trilinear, it is visibly worse on saturated colour, and
+The default in several tools is trilinear, it is visibly worse on saturated color, and
 it is a one word difference that nobody notices being wrong.
 """
 
@@ -84,7 +84,7 @@ def config() -> ocio.Config:
 
 
 def check_encoding(name: str) -> None:
-    """Raise unless `name` is a colour space the pinned config knows.
+    """Raise unless `name` is a color space the pinned config knows.
 
     Worth doing at the edge rather than at the first frame, because a source encoding
     is a setting a human typed and OCIO's own failure for an unknown space arrives deep
@@ -97,7 +97,7 @@ def check_encoding(name: str) -> None:
             raise ColorError(f"{view!r} is not a view of {display!r} the tool knows")
         return
     if config().getColorSpace(name) is None:
-        raise ColorError(f"{name!r} is not a colour space the tool knows")
+        raise ColorError(f"{name!r} is not a color space the tool knows")
 
 
 _INVERSE_VIEW = ", inverse of "
@@ -107,8 +107,8 @@ def inverse_view(display: str, view: str) -> str:
     """The encoding of a display referred render: `display` seen through `view`, undone.
 
     Resolve's AMF says so with an `inverseOutputTransform` for its input transform
-    (turnover144's colour chart, 2026-10-13). It is not a colour space in the config, which
-    has no colour space for an inverse tone map, so it is written as one name here and only
+    (turnover144's color chart, 2026-10-13). It is not a color space in the config, which
+    has no color space for an inverse tone map, so it is written as one name here and only
     this module reads it back (`to_aces`, `input_transform`).
     """
     return f"{display}{_INVERSE_VIEW}{view}"
@@ -120,10 +120,10 @@ def _inverse_parts(name: str) -> tuple[str, str] | None:
 
 
 def resolve_encoding(name: str) -> str:
-    """A colour space name as the config's canonical one, aliases and casing included.
+    """A color space name as the config's canonical one, aliases and casing included.
 
     Raises `ColorError` for a name the config does not know. The name comes from the
-    config itself since 2026-09-28 (`amf.colour_space_for`), so this is a check that a
+    config itself since 2026-09-28 (`amf.color_space_for`), so this is a check that a
     saved batch still names something the pinned config has, not a lookup of what a
     shooter typed.
     """
@@ -132,7 +132,7 @@ def resolve_encoding(name: str) -> str:
         return name
     known = config().getColorSpace(" ".join(name.split()))
     if known is None:
-        raise ColorError(f"{name!r} is not a colour space the tool knows")
+        raise ColorError(f"{name!r} is not a color space the tool knows")
     return str(known.getName())
 
 
@@ -188,7 +188,7 @@ def cdl_transform(numbers: tuple[float, ...], working: str) -> ocio.GroupTransfo
 
 
 def clf_transform(path: Path) -> ocio.FileTransform:
-    """One of the colourist's CLFs, as it is: ACES2065-1 in and out (Resolve's export)."""
+    """One of the colorist's CLFs, as it is: ACES2065-1 in and out (Resolve's export)."""
     return ocio.FileTransform(src=str(path), interpolation=INTERPOLATION)
 
 
@@ -235,7 +235,7 @@ that only shows up on the delivered reference.
 def output_transform(display: str, view: str) -> ocio.DisplayViewTransform:
     """Linear ACEScg to the display and view the clip's AMF names: the view branch's tail.
 
-    From the AMF since 2026-09-28 (user), so a reference is viewed the way the colour
+    From the AMF since 2026-09-28 (user), so a reference is viewed the way the color
     session was; turnover097's AMFs name Gamma 2.2 Rec.709 through the ACES 2.0 SDR
     100 nit rendering. The plates never see it.
     """
@@ -350,7 +350,7 @@ def _identity_grid(size: int) -> npt.NDArray[np.float32]:
 
     Red fastest is the `.cube` format's own ordering, so the array is written out in
     the order it is sampled in. One frame shaped row rather than a real image because
-    `apply` transforms a frame, and the LUT is a frame of every colour that matters.
+    `apply` transforms a frame, and the LUT is a frame of every color that matters.
     """
     axis = np.linspace(0.0, 1.0, size, dtype=np.float32)
     grid = np.empty((1, size**3, 3), dtype=np.float32)

@@ -6,7 +6,7 @@ Rewritten 2026-09-23 from the files on disk (review 2026-09-23, section 3). Ther
 `core/timeline.py`, `core/camdata.py`, `ui/delegates.py`, `ui/docks.py`, `ui/workers.py`,
 `ui/platform_mac.py` or `ui/color_session.py`: the conform is read from the EDL and, since
 2026-09-28, the grade from each event's AMF and its CLFs, all in the turnover folder at scan, and
-there is no timeline input and no separate colour session step.
+there is no timeline input and no separate color session step.
 
 ```
 proingest/
@@ -17,7 +17,7 @@ proingest/
     batchfile.py         # .pibatch load/save written temp-then-rename, .bak on open, and status
                          #   reconciled against the filesystem so the display never lies after a crash
     settings.py          # AppSettings: defaults, load/save as JSON; the path is handed in by ui/paths.py
-    metacsv.py           # Ben's metadata CSV: File Name, Shot, Shot Type. Identity only (its colour
+    metacsv.py           # Ben's metadata CSV: File Name, Shot, Shot Type. Identity only (its color
                          #   columns are not read since 2026-09-28); QC-010, QC-065, HDRI rows (QC-080),
                          #   and the ignored clips for QC-064
     amf.py               # Ben's per-event AMF: clip, input transform, looks, output transform, the
@@ -25,7 +25,7 @@ proingest/
                          #   amf_transform_ids (2026-09-28)
     clf.py               # Ben's EDL: its own CMX 3600 parser, the approved In/Out per event (its CDL is
                          #   not read), an event matched to a row by source timecode inside the file
-                         #   (QC-066, QC-067), and ShotColor, the per-row colour chain from the AMF
+                         #   (QC-066, QC-067), and ShotColor, the per-row color chain from the AMF
     color.py             # OpenColorIO from the pinned built-in ACES config: into ACES2065-1, a config
                          #   look, a CLF, out to ACEScg, the AMF's display/view, the view LUT
     naming.py            # ShotIdentity from Shot + Shot Type, every output name, the delivery layout,
@@ -74,7 +74,7 @@ proingest/
     theme.qss
   resources/ffmpeg/      # the bundled binaries, untracked (build/fetch_ffmpeg.py)
 tests/
-  fixtures/              # synthetic media generated with ffmpeg, never committed; names, colour, batches
+  fixtures/              # synthetic media generated with ffmpeg, never committed; names, color, batches
   test_<module>.py       # broadly one per module, plus test_guide.py for the user guide
 build/
   build.py bundle.py proingest.spec # PyInstaller .app, then the dmg with hdiutil; the spec is a shim

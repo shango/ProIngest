@@ -1,4 +1,4 @@
-"""A colour session's exports, built at test time rather than committed.
+"""A color session's exports, built at test time rather than committed.
 
 COLOR_AND_FORMAT section 1 specifies what the session exports, and since 2026-09-28 (user)
 that is one AMF per EDL event, naming the input transform, the looks and the output

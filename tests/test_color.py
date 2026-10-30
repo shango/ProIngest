@@ -1,4 +1,4 @@
-"""The colour pipeline: the pinned config, the two legs of the chain, and applying them.
+"""The color pipeline: the pinned config, the two legs of the chain, and applying them.
 
 COLOR_AND_FORMAT section 1. Every failure this guards against is a plausible looking
 wrong image rather than a crash, which is why the anchors here are real numbers and not
@@ -45,7 +45,7 @@ class TestConfig:
         assert color.config().getName() == color.BUILTIN_CONFIG
 
     def test_it_is_an_aces_2_0_config(self) -> None:
-        """The colour session is ACES 2.0 and the tool has to match it, not track latest."""
+        """The color session is ACES 2.0 and the tool has to match it, not track latest."""
         assert "aces-v2.0" in color.BUILTIN_CONFIG
 
     def test_it_is_cached(self) -> None:
@@ -68,15 +68,15 @@ class TestConfig:
 class TestResolveEncoding:
     """A name the AMF's input transform resolved to, checked against the pinned config."""
 
-    def test_a_colour_space_the_config_knows_resolves_to_itself(self) -> None:
+    def test_a_color_space_the_config_knows_resolves_to_itself(self) -> None:
         assert color.resolve_encoding("S-Log3 S-Gamut3.Cine") == "S-Log3 S-Gamut3.Cine"
 
     def test_it_comes_back_as_the_config_s_own_spelling(self) -> None:
         """So two clips that named the same space the two ways record one provenance."""
         assert color.resolve_encoding("acescg") == color.PLATE_SPACE
 
-    def test_a_curve_without_a_gamut_is_not_a_colour_space(self) -> None:
-        with pytest.raises(color.ColorError, match="not a colour space"):
+    def test_a_curve_without_a_gamut_is_not_a_color_space(self) -> None:
+        with pytest.raises(color.ColorError, match="not a color space"):
             color.resolve_encoding("S-Log3")
 
 
@@ -128,7 +128,7 @@ class TestInputTransform:
 
 class TestAnInverseView:
     """A display referred render, which Resolve's AMF brings in through the inverse of an
-    output transform (turnover144's colour chart, 2026-10-13)."""
+    output transform (turnover144's color chart, 2026-10-13)."""
 
     VIEW = color.DEFAULT_VIEW
 
@@ -411,7 +411,7 @@ class TestBakedProcessor:
         error = self.error(np.stack([ramp] * 3, axis=-1)[None], [self.out()])
         assert error.max() < 1.0
 
-    def test_saturated_colours_are_close_on_average(self) -> None:
+    def test_saturated_colors_are_close_on_average(self) -> None:
         """A primary pushed up to 50 against a grey of 0.18. On average well under a code
         value; the worst is a very bright, very saturated green, where ACES 2.0's gamut
         compression bends sharply and no cube size samples it cleanly (9/255 at 65,

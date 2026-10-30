@@ -1,7 +1,7 @@
 # CLAUDE.md - ProIngest
 
 ## What this is
-A single-user desktop app for macOS and Windows (PySide6, Python 3.11+) that ingests VFX shot turnovers. It reads a CMX 3600 EDL and a Resolve metadata CSV, both exported by the colourist, matches their rows to media in a turnover folder on a Google Drive mount, lets the VFX editor adjust In/Out per shot, then transcodes and names all deliverables per the studio spec, runs automated QC, and exports spreadsheets.
+A single-user desktop app for macOS and Windows (PySide6, Python 3.11+) that ingests VFX shot turnovers. It reads a CMX 3600 EDL and a Resolve metadata CSV, both exported by the colorist, matches their rows to media in a turnover folder on a Google Drive mount, lets the VFX editor adjust In/Out per shot, then transcodes and names all deliverables per the studio spec, runs automated QC, and exports spreadsheets.
 
 Read `PROGRESS.md` section 1 first: it is the handoff record, it says what is built, what is next and what was decided, and it is written to be picked up cold. Then `docs/WORKFLOW.md`, which is who does what in twenty lines. Then `PRD.md` and the docs it points to.
 
@@ -29,6 +29,7 @@ The docs are the spec. `PROGRESS.md` is the state. When code and docs disagree, 
 - Dataclasses or pydantic for data models; batch files are JSON with a schema version.
 - Short functions, explicit names. Comments explain why, not what.
 - No em dashes in UI strings or docs.
+- US English everywhere, code and docs alike: "color", "colorist", never "colour" (user, 2026-10-29: a US company, and the British spelling confuses people).
 
 ## Commands
 ```

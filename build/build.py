@@ -69,12 +69,12 @@ def executable_path(platform: str = sys.platform) -> Path:
 
 
 def setup_path(version: str) -> Path:
-    """`ProIngest-Setup-0.5.50.exe`, which is the name `build/proingest.iss` gives it."""
+    """`ProIngest-Setup-0.5.53.exe`, which is the name `build/proingest.iss` gives it."""
     return DIST_DIR / f"{bundle.APP_NAME}-Setup-{version}.exe"
 
 
 def dmg_path(version: str) -> Path:
-    """`ProIngest-0.5.50.dmg`. The version is in the filename so two builds cannot be
+    """`ProIngest-0.5.53.dmg`. The version is in the filename so two builds cannot be
     confused for each other on a machine that has downloaded both."""
     return DIST_DIR / f"{bundle.APP_NAME}-{version}.dmg"
 

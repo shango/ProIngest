@@ -11,7 +11,7 @@ are the planner's, which is where a version is decided.
 
 Rules are scoped by what the row actually is. An aux still and a BTS frame are single
 frames with no timeline range, so the duration, handle and timecode rules skip them:
-firing QC-033 on every colour chart in a turnover would bury the warnings that matter.
+firing QC-033 on every color chart in a turnover would bury the warnings that matter.
 `is_picture_row` is the one place that decision is made.
 """
 
@@ -312,7 +312,7 @@ def check_color_tags(row: ShotRow) -> list[QCResult]:
         return []
     decoded = f"{ffmpeg.input_matrix(media.color_space)}, {ffmpeg.input_range(media.color_range)} range"
     if not media.color_space:
-        said = "states no colour matrix, so it is decoded as BT.709 (provisional)"
+        said = "states no color matrix, so it is decoded as BT.709 (provisional)"
     else:
         said = f"states the {media.color_space} matrix, so it is decoded with that"
     return [QCResult("QC-018", "info", "row", f"{media.path.name} {said}: {decoded}")]
@@ -343,7 +343,7 @@ def check_source_resolution(row: ShotRow, settings: RuleSettings) -> list[QCResu
 
     A source of another size is resampled to fit and letterboxed rather than stretched
     (F9). A warning in the report and never a block (user, 2026-10-07: nothing but missing
-    media or colour holds a shot), so the setting that allowed it has nothing left to do.
+    media or color holds a shot), so the setting that allowed it has nothing left to do.
     """
     if row.media is None or not is_picture_row(row):
         return []
@@ -509,7 +509,7 @@ def check_edits(row: ShotRow) -> list[QCResult]:
 
 
 def check_approved(row: ShotRow) -> list[QCResult]:
-    """QC-045: the row will be delivered at an In/Out the colour session did not approve.
+    """QC-045: the row will be delivered at an In/Out the color session did not approve.
 
     A warning where QC-035 is info, and the difference is what the comparison is
     against. QC-035 compares with the turnover snapshot, which records what the editor
@@ -530,7 +530,7 @@ def check_approved(row: ShotRow) -> list[QCResult]:
             "QC-045",
             "warning",
             "row",
-            f"delivered at {current.in_frame}-{current.out_frame}, but the colour session "
+            f"delivered at {current.in_frame}-{current.out_frame}, but the color session "
             f"approved {approved.in_frame}-{approved.out_frame}",
         )
     ]
@@ -666,7 +666,7 @@ def check_source_rate(row: ShotRow, project_rate: FrameRate) -> list[QCResult]:
 def check_aux_still(row: ShotRow) -> list[QCResult]:
     """QC-055: an aux still that is really a clip.
 
-    `planner._aux_plan` delivers the In frame and nothing else, so a colour chart cut as a
+    `planner._aux_plan` delivers the In frame and nothing else, so a color chart cut as a
     hundred frames loses ninety-nine of them silently without this. **Judged on the cut,
     not the file** (2026-09-23): every real still is one timeline frame inside a longer
     file, and the EDL choosing that one frame is the case working, not a finding. It
@@ -727,7 +727,7 @@ def check_source_encoding(row: ShotRow) -> list[QCResult]:
         f"{grade.amf.name} names no input transform"
         if grade is not None
         else "no AMF grades the clip and the CSV gives no Input Color Space, so nothing says what "
-        "colour it is in"
+        "color it is in"
     )
     return [QCResult("QC-046", "error" if blocking else "info", "row", said)]
 
@@ -770,8 +770,9 @@ def check_duplicate_name(row: ShotRow, counts: dict[str, int]) -> list[QCResult]
 
 
 def is_hdri(row: ShotRow) -> bool:
-    """An HDRI or LDRI row (QC-080): its file is copied as it is and no row rule runs on it
-    (user, 2026-10-07). Its source fps or range said as errors was noise (2026-09-29)."""
+    """An HDRI or LDRI row (QC-080): no row rule runs on it (user, 2026-10-07), and only its
+    pre-render is delivered, as an mp4 (user, 2026-10-30). Its source fps or range said as
+    errors was noise (2026-09-29)."""
     return any(result.rule_id == "QC-080" for result in row.qc)
 
 
@@ -930,7 +931,7 @@ def check_clf(row: ShotRow) -> list[QCResult]:
     **No CLF, no AMF or no CDL is an ungraded clip, never a block** (user, 2026-10-07: "If
     there is no CLF, AMF or CDL, assume ungraded"). With no AMF the input transform is the
     CSV's `Input Color Space`; with neither, QC-046 holds the shot, because then nothing
-    says what colour it is in. Silent on a still, which is delivered ungraded by design.
+    says what color it is in. Silent on a still, which is delivered ungraded by design.
     """
     if not is_picture_row(row) or clf.has_grade(row) or clf.resolved_encoding(row) is None:
         return []
@@ -942,7 +943,7 @@ def check_clf(row: ShotRow) -> list[QCResult]:
 
 
 def check_color_chain(row: ShotRow) -> list[QCResult]:
-    """QC-048: which colour chain this row is about to be rendered through.
+    """QC-048: which color chain this row is about to be rendered through.
 
     **Not a check and deliberately not one** (OQ-46). It says what the tool did, so a
     delivery that turns out to have been graded wrong is identifiable afterwards rather

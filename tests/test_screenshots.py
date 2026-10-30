@@ -41,7 +41,7 @@ def window(qt_app: QApplication, tmp_path: Path) -> Iterator[MainWindow]:
 
 
 def blank_like(image: QImage) -> QImage:
-    """One flat colour, taken from the image's own top left corner."""
+    """One flat color, taken from the image's own top left corner."""
     empty = QImage(image.size(), image.format())
     empty.fill(image.pixelColor(0, 0))
     return empty
@@ -59,7 +59,7 @@ class TestTheScenes:
     ) -> None:
         """The failure this exists for: a widget grabbed before Qt has laid it out, or
         a dock that is hidden when its own picture is taken, comes back as a rectangle
-        of one colour and the script still reports success."""
+        of one color and the script still reports success."""
         for name, widget in screenshots.scenes(window, tmp_path):
             screenshots.settle(qt_app)
             image = widget.grab().toImage()

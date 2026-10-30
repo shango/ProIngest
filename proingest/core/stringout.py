@@ -27,12 +27,12 @@ ffmpeg. The user's decisions, all in OQ-38:
   one EXR frame, which cannot play). It was held for a second until then.
 - **Any held frame plays for one second** (user, 2026-09-29): a frame hold or a one frame cut,
   a reference clip's from its delivered EXR. **Except a held HDRI, which keeps the EDL's
-  length** (user, 2026-09-30). Taken from the source, it is **coloured through its AMF**
+  length** (user, 2026-09-30). Taken from the source, it is **colored through its AMF**
   (input transform, CLF nodes, output transform) the way Resolve shows it.
 - **An HDRI on the timeline is a frame hold on the HDRI EXR with a pan** (user, 2026-10-07),
   which no EDL carries. Ben renders the event, pan included, beside the EXR under its name as
   a video (`xxxx_001.mp4` beside `xxxx_001.exr`), in sRGB Linear and ungraded. **The event
-  is cut from that pre-render**, from its first frame for the event's length, and **coloured
+  is cut from that pre-render**, from its first frame for the event's length, and **colored
   through the HDRI's AMF**, its own encoding taking the input transform's place. With no
   pre-render (QC-083) the EXR is held for the event's length, graded the same way, read as
   linear Rec.709 like its pre-render.
@@ -191,7 +191,7 @@ class Segment:
 
     identity: naming.ShotIdentity | None = None
     color: clf.ShotColor | None = None
-    """A held frame's AMF colour, baked into a LUT for its source segment."""
+    """A held frame's AMF color, baked into a LUT for its source segment."""
 
     insets: tuple[PictureInPicture, ...] = ()
     """A plate's cp and wit, laid over it (`INSET_CORNERS`)."""
@@ -224,7 +224,7 @@ class Plan:
     display: str = ffmpeg.DEFAULT_DISPLAY
     """What the joined file is labelled for: the display the turnover's AMFs name, which is
     what its references were rendered for (2026-09-28). The first graded row's, since one
-    colour session views every clip on one display."""
+    color session views every clip on one display."""
 
     @property
     def total(self) -> int:
@@ -334,7 +334,11 @@ def _segment(
     if style is not None:
         return _style_frame(event, style, length, show_pattern, folder)
     known = next((row for row in claimed if row.media is not None), None)
-    cut = _cut(event, known.media) if known is not None and known.media is not None else None
+    cut = (
+        _cut(event, known.media, known.resolve_start_tc)
+        if known is not None and known.media is not None
+        else None
+    )
     if known is None or cut is None:
         held = event.freeze or length == 1
         if claimed:
@@ -475,7 +479,7 @@ def _prerender(event: clf.ConformEvent, row: ShotRow, length: int, show_pattern:
 
 
 def _prerender_color(row: ShotRow) -> clf.ShotColor | None:
-    """The pre-render's colour, as its delivered mp4 has it (`planner.prerender_color`)."""
+    """The pre-render's color, as its delivered mp4 has it (`planner.prerender_color`)."""
     return prerender_color(row, clf.shot_color(row))
 
 
@@ -489,7 +493,13 @@ def _style_frame(
     identity = effective_identity(row, show_pattern)
     media = row.media
     plays = media is not None and identity is not None and identity.is_as_is
-    start = 0 if media is None else _cut(event, media).in_frame if plays else media.start_frame
+    start = (
+        0
+        if media is None
+        else _cut(event, media, row.resolve_start_tc).in_frame
+        if plays
+        else media.start_frame
+    )
     return Segment(
         kind="black" if media is None else "source",
         length=length,
@@ -506,15 +516,16 @@ def _style_frame(
     )
 
 
-def _cut(event: clf.ConformEvent, source: MediaInfo) -> InOut:
+def _cut(event: clf.ConformEvent, source: MediaInfo, resolve_start_tc: str = "") -> InOut:
     """The event's frames in its file. **Never None: a file that is there plays** (user,
     2026-09-29). A file with no timecode is counted from 00:00:00:00, which is where Resolve
     starts one and what the EDL's source In counts from (turnover097's events 008 and 015
     cut from 00:00:00:00), as a delivery is since 2026-10-07. A single image with no
-    timecode has only its one frame."""
+    timecode has only its one frame. Read as the scan's conform reads it (`scan.cut_in_file`),
+    so the file's own timecode, then Resolve's `Start TC`, then the frames the file has."""
     if source.start_timecode is None and not source.is_sequence and source.frame_count <= 1:
         return InOut(source.start_frame, source.start_frame)
-    return clf.approved_in_out(event, source)
+    return scan.cut_in_file(event, source, resolve_start_tc)[0]
 
 
 def _held(event: clf.ConformEvent, cut: InOut) -> bool:
@@ -867,6 +878,7 @@ def _encode(made: Plan, segment: Segment, parts: Path, index: int) -> Path:
             audio_format=ffmpeg.STRINGOUT_AUDIO,
             display=made.display,
             insets=_labelled(segment, parts / f"{index:04d}"),
+            pad_short=True,
         )
     elif segment.kind == "source" and segment.path is not None and segment.media is not None:
         source = segment.media
@@ -897,6 +909,7 @@ def _encode(made: Plan, segment: Segment, parts: Path, index: int) -> Path:
             audio_format=ffmpeg.STRINGOUT_AUDIO,
             display=made.display,
             insets=_labelled(segment, parts / f"{index:04d}"),
+            pad_short=True,
         )
     else:
         command = ffmpeg.black_command(destination, SIZE, RATE, segment.length, overlay, display=made.display)
@@ -908,7 +921,7 @@ LUT_SUFFIX = ".cube"
 
 
 def _still_lut(segment: Segment, destination: Path) -> Path | None:
-    """A source segment's AMF colour as the LUT it is encoded through, as a reference's is;
+    """A source segment's AMF color as the LUT it is encoded through, as a reference's is;
     None, and the source as it is, when its AMF resolves to no chain."""
     if segment.color is None:
         return None

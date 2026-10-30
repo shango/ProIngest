@@ -82,7 +82,7 @@ so the header never carries a source for a name it does not state.
 """
 
 AMF_ATTRIBUTE = "proingest/amf"
-"""The AMF the colour came from, by file name (user, 2026-09-28)."""
+"""The AMF the color came from, by file name (user, 2026-09-28)."""
 
 LOOKS_ATTRIBUTE = "proingest/looks"
 """The looks applied, in order, as the AMF lists them: config looks by name, CLFs by file
@@ -208,7 +208,7 @@ def header_timecode_frames(header: ExrHeader, fps: float) -> int | None:
 
 
 def read_pixels(path: Path) -> npt.NDArray[np.float32]:
-    """Read one EXR's colour channels as float32 `(h, w, channels)`.
+    """Read one EXR's color channels as float32 `(h, w, channels)`.
 
     Float32 rather than the file's own type because everything downstream, the
     resample in particular, works in float and half would lose precision twice.
@@ -221,7 +221,7 @@ def read_pixels(path: Path) -> npt.NDArray[np.float32]:
             for grouped in (RGBA_CHANNELS, RGB_CHANNELS):
                 if grouped in channels:
                     return np.array(channels[grouped].pixels, dtype=np.float32)
-            names = _colour_channel_names(channels, path)
+            names = _color_channel_names(channels, path)
             return np.stack([np.asarray(channels[name].pixels, dtype=np.float32) for name in names], axis=-1)
     except ExrError:
         raise
@@ -229,7 +229,7 @@ def read_pixels(path: Path) -> npt.NDArray[np.float32]:
         raise ExrError(f"could not read pixels from {path}: {exc}") from exc
 
 
-def _colour_channel_names(channels: Any, path: Path) -> tuple[str, ...]:
+def _color_channel_names(channels: Any, path: Path) -> tuple[str, ...]:
     """R, G, B and A when they are separate channels rather than one grouped array."""
     if not all(name in channels for name in RGB_CHANNELS):
         raise ExrError(f"{path} has no RGB channels (found {sorted(channels)})")

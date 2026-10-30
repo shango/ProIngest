@@ -22,12 +22,12 @@ It hands the source to ffmpeg and lets x264 read it directly, so there is no pro
 between its start and its finish, and a cancelled run waits for an encode already in
 flight rather than stopping it. The stringout is not here at all; it is M6.
 
-**Colour is where the two split.** COLOR_AND_FORMAT section 1 branches after the shot's
+**Color is where the two split.** COLOR_AND_FORMAT section 1 branches after the shot's
 CLF, and so does this module: the plate branch builds one OCIO processor per job and
 applies it to every frame on its way to an EXR, and the view branch bakes the same chain
 plus the ACES output transform into a `.cube` that ffmpeg applies as it encodes. Neither
-branch decides anything about colour. What to apply arrives on the job as a
-`clf.ShotColor`, which is a colour space name, the AMF's looks as names and CLF paths,
+branch decides anything about color. What to apply arrives on the job as a
+`clf.ShotColor`, which is a color space name, the AMF's looks as names and CLF paths,
 and a display and view, because that is what survives the pickle into a worker process.
 """
 
@@ -85,8 +85,8 @@ def render_job(
 ) -> Deliverable:
     """Produce one deliverable and return the record of what was written.
 
-    The colour chain comes off `job.shot_color`, which the planner resolved from the
-    colour session. A job with no session carries the default, which renders the same
+    The color chain comes off `job.shot_color`, which the planner resolved from the
+    color session. A job with no session carries the default, which renders the same
     plate ungraded rather than refusing: QC-008 is what stops a run that needs a grade
     and has none, and it is a rule about the batch rather than about this frame.
 
@@ -182,7 +182,7 @@ def _copy_hdri(job: DeliverableJob, deliverable: Deliverable) -> None:
 
 def _deliver_avidref(job: DeliverableJob, deliverable: Deliverable) -> None:
     """An Avid reference as it is, never an EXR (user, 2026-10-22): an mp4 encoded with no
-    colour transform, a JPG or PNG copied, or another still written as a JPG."""
+    color transform, a JPG or PNG copied, or another still written as a JPG."""
     suffix = job.destination.suffix.lower()
     if suffix == ".mp4":
         _render_reference(job, deliverable)
@@ -215,7 +215,7 @@ class _PlateBranch:
         In place when the frame is already contiguous float32 RGB, which is what both
         sources yield: a 4k frame is 95 MB and the branch holds one at a time.
 
-        **Alpha does not go through the chain.** It is coverage rather than colour, and
+        **Alpha does not go through the chain.** It is coverage rather than color, and
         a transform applied to it would make an edge that was already correct wrong in
         a way that only shows up over a comp.
         """
@@ -228,7 +228,7 @@ class _PlateBranch:
 
 
 def _plate_branch(job: DeliverableJob) -> _PlateBranch:
-    """Resolve the job's colour: compose the chain and build the processor."""
+    """Resolve the job's color: compose the chain and build the processor."""
     return _PlateBranch(cpu=color.processor(*job.shot_color.plate_transforms()))
 
 
@@ -395,7 +395,7 @@ def _render_reference(job: DeliverableJob, deliverable: Deliverable) -> None:
             is_sequence=job.source_is_sequence,
             rate=f"{job.rate.numerator}/{job.rate.denominator}",
             target_size=scale,
-            # An Avid reference's colour is baked in (user, 2026-10-22): no cube at all. A
+            # An Avid reference's color is baked in (user, 2026-10-22): no cube at all. A
             # pre-render is linear, so its cube goes behind a shaper, as on the stringout.
             lut=_view_lut(job, Path(folder)) if _graded(job) else None,
             shaper=color.shaper_lut(Path(folder) / f"shaper{LUT_SUFFIX}") if _shaped(job) else None,

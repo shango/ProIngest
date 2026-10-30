@@ -12,14 +12,14 @@ part-by-part version of everything skimmed over here.
 
 Three things have to exist, and only the third one usually does not.
 
-- **The turnover folder**, as the colourist handed it over: the media, his `.edl`, his `.csv`,
+- **The turnover folder**, as the colorist handed it over: the media, his `.edl`, his `.csv`,
   his `.amf` and `.clf` files, and the per shot extras. It can be on a Drive mount, an external volume or the
   local disk, and ProIngest does not care which.
 - **Somewhere to deliver to.** Any folder you can write into. The show and shot folders are
   made under it.
-- **The colourist's exports, in that same folder**: his `.edl`, whose events carry the approved
+- **The colorist's exports, in that same folder**: his `.edl`, whose events carry the approved
   In/Out; his `.csv`, which carries the shot code and the clip type; and **one `.amf` per EDL
-  event with the `.clf` files it names**, which carry the colour: the camera encoding, the grade
+  event with the `.clf` files it names**, which carry the color: the camera encoding, the grade
   and the display the references are made for. **The EDL and the CSV are required and the
   turnover cannot be scanned without them**; without the AMFs it scans but nothing renders -
   there is nothing to deliver until they arrive, which is by design.
@@ -40,7 +40,7 @@ A batch can hold several turnovers. Press Add Turnover again for each.
 
 ![The shot list](images/shot-list.png)
 
-One row per shot, grouped by turnover. The coloured dot at the left of each row is its state,
+One row per shot, grouped by turnover. The colored dot at the left of each row is its state,
 and a row with something wrong is tinted. Anything you want to know about the selected shot
 that has no column - codec, timecode, file sizes, the camera data, the paths themselves - is
 in the pane on the right (**⌘I** hides and shows it).
@@ -63,7 +63,7 @@ to press. **⌘S** names the batch file the first time.
 
 **4. Nothing to do here in the normal case.** The cut and the grade are read at scan, from the
 files sitting in the turnover folder: the approved In and Out from the `.edl`, and each shot's
-colour from its `.amf` and the `.clf` files beside it.
+color from its `.amf` and the `.clf` files beside it.
 
 **When something needs fixing, fix the folder and press Scan.** A revised EDL, a corrected CSV, a
 re-exported AMF or CLF, or a missing clip goes into the turnover folder, and Scan reads it again. Your trims, skips and notes
@@ -94,16 +94,16 @@ Under the delivery root, `<show>/<shot>/` per shot:
 | | |
 |---|---|
 | plates | 4k and HD EXR sequences, graded, scene linear ACEScg, frames numbered from 1001 |
-| references | 4k and HD H.264 mp4, made for the display the colourist's AMF names, with the shot's audio on them |
+| references | 4k and HD H.264 mp4, made for the display the colorist's AMF names, with the shot's audio on them |
 | audio | the wav, cut to the delivered range |
-| reference stills | one 4k EXR each for the colour chart, grey ball, mirror ball and size reference, converted to ACEScg but never graded |
+| reference stills | one 4k EXR each for the color chart, grey ball, mirror ball and size reference, converted to ACEScg but never graded |
 
 And under `<show>/_reports/`, two spreadsheets, each named for the batch and the day it was
 written. `shot_tracker_...xlsx` is rows to paste into the production's own tracker, and it fills
 only the columns that are the tool's to fill - the thirty the vendor's team maintains are not
 touched. `qc_ingest_log_...xlsx` is the full report: every shot, every delivered file, and a
 column per check reading pass, fail or NA. Its Shots sheet also says what each source file is -
-codec, bit depth, chroma, and the colour labels the file carries - so an 8 bit 4:2:0 clip, or one
+codec, bit depth, chroma, and the color labels the file carries - so an 8 bit 4:2:0 clip, or one
 labelled Rec.709 when its AMF says camera log, is visible before anyone opens it. **Export**
 writes it straight after a scan, before anything is rendered.
 
@@ -125,11 +125,11 @@ The commonest one is not a fault. **A turnover with no `.amf` files renders noth
 nothing then says what the camera encoding is, let alone the approved look, and delivering the
 plates wrong is worse than delivering them late. A shot whose AMF is missing, or names a `.clf`
 that is not in the folder or has changed since it was exported, is held back the same way
-(QC-075, QC-076). A shot the colourist left ungraded is not: its AMF names no `.clf`, and it
+(QC-075, QC-076). A shot the colorist left ungraded is not: its AMF names no `.clf`, and it
 renders through the camera conversion alone with a note (QC-009). Run says so in its tooltip before you press it,
 and if every turnover in the batch is in that state it opens a dialog naming each one and the
 rule holding it back, then brings up the Issues tab, rather than starting a run that does
-nothing. One turnover waiting on colour beside one that is ready is only a line in the status
+nothing. One turnover waiting on color beside one that is ready is only a line in the status
 bar, and the ready one delivers.
 
 Otherwise: hover any greyed button and it says why it is greyed. That is what the tooltips are

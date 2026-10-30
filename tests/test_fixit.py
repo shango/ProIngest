@@ -43,8 +43,8 @@ class TestTheReport:
         page = fixit.render(batch, DAY)
         assert fixit.NOTHING_TO_FIX in page and "Nothing held back" in page
 
-    def test_a_clip_with_no_colour_at_all_is_one_item_and_it_holds_the_clip(self, tmp_path: Path) -> None:
-        """No AMF and no Input Color Space in the CSV: nothing says what colour it is in (QC-046)."""
+    def test_a_clip_with_no_color_at_all_is_one_item_and_it_holds_the_clip(self, tmp_path: Path) -> None:
+        """No AMF and no Input Color Space in the CSV: nothing says what color it is in (QC-046)."""
         folder = turnover(tmp_path, shots=3)
         next(folder.glob("*_0_*.amf")).unlink()
         report = only(scanned(folder))
@@ -54,7 +54,7 @@ class TestTheReport:
         assert item.clips[0].who == "MELT0001 plate"
         assert report.blocked == 1 and fixit._status(report) == "1 of 3 clips held back"
 
-    def test_a_clip_with_no_amf_but_a_colour_space_is_ungraded_not_an_item(self, tmp_path: Path) -> None:
+    def test_a_clip_with_no_amf_but_a_color_space_is_ungraded_not_an_item(self, tmp_path: Path) -> None:
         """User, 2026-10-07: "If there is no CLF, AMF or CDL, assume ungraded". A note in the
         QC log (QC-009), nothing for Ben to fix."""
         folder = turnover(tmp_path, shots=3)
@@ -74,9 +74,9 @@ class TestTheReport:
         assert [clip.who for clip in item.clips] == ["MELT0001 plate", "MELT0002 plate", "MELT0003 plate"]
         assert fixit._status(report) == "Every clip held back"
 
-    def test_an_unknown_colour_space_from_the_csv_is_reported_by_the_csv(self, tmp_path: Path) -> None:
+    def test_an_unknown_color_space_from_the_csv_is_reported_by_the_csv(self, tmp_path: Path) -> None:
         """INCA6010 (2026-10-12): no AMF, and the CSV's Input Color Space is 'Rec.709 (Scene)',
-        which the config lacks. It is the clip's input colour space, not its grade, and the
+        which the config lacks. It is the clip's input color space, not its grade, and the
         CSV said it, not an AMF."""
         folder = turnover(tmp_path, shots=2)
         rows = [("MELT0001_pl01", "MELT0001", "pl01"), ("MELT0002_pl01", "MELT0002", "pl01")]
@@ -92,7 +92,7 @@ class TestTheReport:
         assert "<code>MELT0001_pl01</code> - MELT0001 plate, at 01:00:00:00 on the timeline" in page
         assert "<code>MELT0002_pl01</code> - MELT0002 plate, at 01:00:00:04 on the timeline" in page
 
-    def test_the_csv_s_colour_space_says_so_and_names_no_amf(self, tmp_path: Path) -> None:
+    def test_the_csv_s_color_space_says_so_and_names_no_amf(self, tmp_path: Path) -> None:
         folder = turnover(tmp_path, shots=1)
         fixtures.make_meta_csv(
             folder / "metadata.csv",
@@ -109,23 +109,23 @@ class TestTheReport:
         assert "'Rec.709 (Scene)'" in clip.detail
         assert "the clip's AMF" not in fixit.render(batch, DAY)
 
-    def test_an_amf_passed_over_is_named_with_the_csv_s_colour_space(self) -> None:
+    def test_an_amf_passed_over_is_named_with_the_csv_s_color_space(self) -> None:
         """An AMF at the clip's index that names another clip is not used (QC-075, info)."""
         passed = QCResult(
             "QC-075", "info", "row", "x_3.amf grades video clip 4 of the EDL (event 004) but names B.mov"
         )
         row = ShotRow(turnover_id="t1", clip_name="A.mov", source_encoding="Rec.709 (Scene)", qc=[passed])
         row.source_encoding_origin = "CSV"
-        said = fixit._colour_space_detail(row, QCResult("QC-047", "error", "row", "source encoding"))
+        said = fixit._color_space_detail(row, QCResult("QC-047", "error", "row", "source encoding"))
         assert said.startswith(
             "x_3.amf grades video clip 4 of the EDL (event 004) but names B.mov. So the metadata"
         )
 
-    def test_a_colour_space_from_nowhere_the_tool_can_show_asks_for_a_look(self) -> None:
+    def test_a_color_space_from_nowhere_the_tool_can_show_asks_for_a_look(self) -> None:
         """User, 2026-10-12: "This clip is appearing as a rec709, please investigate why"."""
         row = ShotRow(turnover_id="t1", clip_name="A.mov", source_encoding="Rec.709 (Scene)")
         result = QCResult("QC-047", "error", "row", "source encoding")
-        said = fixit._colour_space_detail(row, result)
+        said = fixit._color_space_detail(row, result)
         assert said == "This clip is appearing as 'Rec.709 (Scene)', please investigate why."
         assert fixit._named_by(row, result, Turnover(turnover_id="t1", folder=Path("/t")), 24) == ""
 

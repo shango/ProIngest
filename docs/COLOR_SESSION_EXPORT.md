@@ -1,16 +1,16 @@
-# What the colour session exports, per turnover
+# What the color session exports, per turnover
 
-The page to hand the colourist. What each turnover's export is, and the Resolve setup behind it.
+The page to hand the colorist. What each turnover's export is, and the Resolve setup behind it.
 `COLOR_AND_FORMAT.md` section 1 is the reasoning; this is the instruction. Rewritten 2026-09-18,
 the day the grade became the CDL in the final EDL (OQ-46), corrected 2026-09-22 for the
-single-folder handover, and **rewritten again 2026-09-28** (user), when the colour moved to **one
+single-folder handover, and **rewritten again 2026-09-28** (user), when the color moved to **one
 AMF per EDL event and the CLFs it names**. The CDL is no longer read and nothing falls back to it:
 there will be no older turnovers.
 
 ## Where
 
 **Put the EDL, the CSV, the AMFs and their CLFs in the same folder as the media, and hand that one
-folder over.** There is no separate colour folder and no `_color` convention: the handover is one
+folder over.** There is no separate color folder and no `_color` convention: the handover is one
 folder holding all of it together (OQ-74, user 2026-09-21; the AMFs since 2026-09-28). The tool
 reads the AMFs and the CLFs **directly in that folder**, not in a subfolder, and ignores the
 `.otio` and `.drt` Resolve may write beside them.
@@ -41,9 +41,9 @@ offered on scan; that is retired with the two-phase flow it belonged to.
 
 | | |
 |---|---|
-| Colour management | **ACES 2.0**. Every ID the AMF writes is resolved through the tool's pinned config, `studio-config-v4.0.0_aces-v2.0_ocio-v2.5`, so an ACES 1.3 ID it lacks does not resolve |
+| Color management | **ACES 2.0**. Every ID the AMF writes is resolved through the tool's pinned config, `studio-config-v4.0.0_aces-v2.0_ocio-v2.5`, so an ACES 1.3 ID it lacks does not resolve |
 | Input transform, per clip | **the clip's camera encoding.** It leaves in the clip's AMF as a transform ID (turnover097: `CSC.Sony.SLog3_SGamut3Cine_to_ACES.a2.v1`, which the config names `S-Log3 S-Gamut3.Cine`), and that is the only place the tool reads it. A clip whose AMF names none is QC-046, one the config lacks QC-047 |
-| Timeline colour space | **no longer the tool's concern** (2026-09-28). The 2026-09-18 version of this page made ACEScct a standard because the tool replayed the CDL in it. Each CLF now carries its own trip into the working space and back (ACEScct in turnover097), so the tool needs no working space of its own |
+| Timeline color space | **no longer the tool's concern** (2026-09-28). The 2026-09-18 version of this page made ACEScct a standard because the tool replayed the CDL in it. Each CLF now carries its own trip into the working space and back (ACEScct in turnover097), so the tool needs no working space of its own |
 | Reference Gamut Compress | turnover097's AMFs list it as their first look (`Look.Academy.ReferenceGamutCompress.a2.v1`, the config's `ACES 1.3 Reference Gamut Compression`), and the tool applies it where the AMF puts it |
 | Output transform | **what the references are viewed through** (2026-09-28): the tool follows the AMF rather than a fixed sRGB. turnover097: `Output.Academy.Rec709-D65_100nit_in_Rec709-D65_Gamma2pt2.a2.v1`, the config's `ACES 2.0 - SDR 100 nits (Rec.709)` on `Gamma 2.2 Rec.709 - Display`. One the config lacks is QC-079. The plates never see it |
 
@@ -70,7 +70,7 @@ still works as the cut, and its `*ASC_SOP` / `*ASC_SAT` lines are passed over. T
 instruction on this page, to grade in node one with the wheels because only node one's primaries
 survive a CDL export, is retired with it.
 
-### 1a. One AMF per EDL event, and the CLFs it names. This is the colour.
+### 1a. One AMF per EDL event, and the CLFs it names. This is the color.
 
 Export an ACES Metadata File for every clip on the stringout timeline. Turnover097 was exported
 with Resolve's **`Dailies Request`** preset, and the tool notes that on each row (QC-078, info);
@@ -122,12 +122,12 @@ tool cannot build a shot list without it:
 - `Shot`, the shot code
 - `Shot Type`, what the clip is: `pl`, `cp`, `el`, `wit`, `re`, or a reference type. `HDRI` is
   **the HDRI EXR held on the timeline with its pan** (user, 2026-10-07). The tool delivers the
-  EXR byte for byte. **Render the event, pan included, into the turnover folder under the
+  render as an mp4; the EXR is Ben's to deliver by hand (user, 2026-10-30). **Render the event, pan included, into the turnover folder under the
   EXR's name as a video** (`xxxx_001.mp4` beside `xxxx_001.exr`), **in sRGB Linear and
   ungraded**: the stringout shows it through the clip's AMF. Without it the stringout holds the
   EXR still (QC-080, QC-083)
 
-**Its colour columns are no longer read** (user, 2026-09-28): `Gamma Notes`, `Color Space Notes`
+**Its color columns are no longer read** (user, 2026-09-28): `Gamma Notes`, `Color Space Notes`
 and `Input Color Space` may be in the export and change nothing. The encoding comes from the AMF.
 
 The shooters fill those fields in their own project; they have to reach yours, and the export has

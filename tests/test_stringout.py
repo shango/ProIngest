@@ -357,8 +357,8 @@ class TestInsets:
     def test_an_inset_is_drawn_and_then_gone(self, tmp_path: Path) -> None:
         """Rendered: red in the top left for the inset's frames, then the plate again."""
 
-        def clip(path: Path, colour: str, count: int) -> Path:
-            source = f"color=c={colour}:s=192x108:r=24"
+        def clip(path: Path, color: str, count: int) -> Path:
+            source = f"color=c={color}:s=192x108:r=24"
             subprocess.run(
                 ["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", source, "-frames:v", str(count),
                  "-pix_fmt", "yuv420p", str(path)],
@@ -406,7 +406,7 @@ class TestReferenceClips:
         assert clip.color is not None and clip.color.looks, "graded"
         assert planned(batch).total == 2 * FRAMES
 
-    def test_its_colour_is_baked_as_a_reference_is(self, batch: Batch, tmp_path: Path) -> None:
+    def test_its_color_is_baked_as_a_reference_is(self, batch: Batch, tmp_path: Path) -> None:
         self.as_chart(batch)
         still = planned(batch).segments[1]
         lut = stringout._still_lut(still, tmp_path / "still.cube")
@@ -433,8 +433,9 @@ class TestReferenceClips:
 
 class TestAnHdri:
     """The HDRI on the timeline is a frame hold on the HDRI EXR with a pan (user, 2026-10-07).
-    Its EXR is delivered byte for byte; its event is cut from Ben's pre-render, a video under
-    the EXR's name, graded through the HDRI's AMF. No pre-render: QC-083, the EXR as it is."""
+    Its event is cut from Ben's pre-render, a video under the EXR's name, graded through the
+    HDRI's AMF, and the pre-render is delivered as an mp4; the EXR is Ben's to deliver by hand
+    (user, 2026-10-30). No pre-render: QC-083, the EXR held on the stringout, nothing delivered."""
 
     @staticmethod
     def scanned(folder: Path, batch: Batch) -> Batch:
@@ -458,12 +459,11 @@ class TestAnHdri:
         fixtures.make_mp4(folder / "media" / "MELT0002_pl01.mp4", count=FRAMES)
         return self.scanned(folder, Batch(delivery_root=tmp_path / "delivery"))
 
-    def test_its_exr_is_delivered_byte_for_byte(self, with_hdri: Batch) -> None:
+    def test_its_exr_is_not_delivered(self, with_hdri: Batch) -> None:
+        """User, 2026-10-30: "Those exr files are delivered manually by Ben"."""
         hdri = with_hdri.rows[1]
         assert qc.is_hdri(hdri) and not hdri.skipped and hdri.media is not None
-        (item,) = hdri.deliverables
-        assert (item.kind, item.name, item.status) == ("hdri", "MELT0002_pl01_HDRI01_v01.exr", "done")
-        assert item.path.read_bytes() == hdri.media.path.read_bytes()
+        assert hdri.deliverables == [] and not hdri.errors()
 
     def test_with_no_pre_render_it_asks_for_one_and_holds_the_exr_graded(self, with_hdri: Batch) -> None:
         hdri = with_hdri.rows[1]
@@ -490,14 +490,14 @@ class TestAnHdri:
         assert segment.color is not None and segment.color.source_encoding == "Linear Rec.709 (sRGB)"
         assert stringout._still_lut(segment, tmp_path / "hdri.cube") is not None, "graded, not as it is"
 
-    def test_its_pre_render_is_delivered_too_as_a_graded_mp4(self, with_render: Batch) -> None:
-        """User, 2026-10-27: the pre-render on the stringout "get[s] an mp4"; the EXR is the file."""
+    def test_its_pre_render_is_delivered_as_a_graded_mp4(self, with_render: Batch) -> None:
+        """User, 2026-10-27: the pre-render on the stringout "get[s] an mp4"; since 2026-10-30
+        it is the only thing delivered."""
         hdri = with_render.rows[1]
         assert [(item.kind, item.name, item.status) for item in hdri.deliverables] == [
-            ("hdri", "MELT0002_pl01_HDRI01_v01.exr", "done"),
             ("hdri_ref", "MELT0002_pl01_HDRI01_v01.mp4", "done"),
         ]
-        assert hdri.deliverables[1].frame_count == FRAMES and not hdri.errors()
+        assert hdri.deliverables[0].frame_count == FRAMES and not hdri.errors()
 
     def test_its_pre_render_is_held_on_a_frame_hold_too(self, with_render: Batch) -> None:
         """The EDL's event is an `M2` hold on the EXR; the pre-render plays, for the event's length."""
@@ -528,8 +528,8 @@ class TestAnHdri:
 class TestAPreRenderOnTheTimeline:
     """Turnover134 (2026-10-07): the timeline cuts Ben's pre-render, typed HDRI, and the
     HDRI EXR is not in the folder. Its AMF carries no grade, so the stringout shows it as
-    it is (user: "If there's not color files, you can skip any color correction"), and
-    nothing is delivered for it (QC-086)."""
+    it is (user: "If there's not color files, you can skip any color correction"). The EXR
+    is not looked for (user, 2026-10-30: Ben delivers it by hand)."""
 
     RENDER = "MELT0002_pl01_HDRI_01_v01.exr Render 1.mp4"
 
@@ -542,10 +542,10 @@ class TestAPreRenderOnTheTimeline:
         fixtures.make_final_edl(folder / "FINAL_v01.edl", ["MELT0001_pl01", self.RENDER], duration=FRAMES)
         return TestAnHdri.scanned(folder, Batch(delivery_root=tmp_path / "delivery"))
 
-    def test_it_is_shown_as_it_is_and_nothing_is_delivered(self, batch: Batch, tmp_path: Path) -> None:
+    def test_it_is_shown_as_it_is(self, batch: Batch, tmp_path: Path) -> None:
         hdri = batch.rows[1]
-        assert hdri.media is None and hdri.deliverables == [] and not hdri.errors()
-        assert {"QC-009", "QC-086"} <= {q.rule_id for q in hdri.qc}
+        assert hdri.media is None and not hdri.errors()
+        assert "QC-009" in {q.rule_id for q in hdri.qc} and "QC-086" not in {q.rule_id for q in hdri.qc}
         segment = planned(batch).segments[1]
         assert segment.prerender and hdri.hdri_render is not None and segment.path == hdri.hdri_render.path
         assert segment.color is None and stringout._still_lut(segment, tmp_path / "x.cube") is None
@@ -557,9 +557,9 @@ class TestAPreRenderOnTheTimeline:
 
 
 class TestAnLdri:
-    """User, 2026-10-08: an LDRI is treated as an HDRI on the stringout, its file a JPG or PNG
-    delivered byte for byte. A JPG or PNG is display referred, so its pre-render, and the
-    image held when there is none, are shown as they are, graded or not."""
+    """User, 2026-10-08: an LDRI is treated as an HDRI on the stringout, its file a JPG or PNG,
+    which Ben delivers by hand (user, 2026-10-30). A JPG or PNG is display referred, so its
+    pre-render, and the image held when there is none, are shown as they are, graded or not."""
 
     RENDER = "MELT0002_pl01_LDRI_01_v01.jpg Render 1.mp4"
     IMAGE = "MELT0002_pl01_LDRI_01_v01.jpg"
@@ -577,13 +577,15 @@ class TestAnLdri:
         fixtures.make_final_edl(folder / "FINAL_v01.edl", ["MELT0001_pl01", name], duration=FRAMES)
         return TestAnHdri.scanned(folder, Batch(delivery_root=tmp_path / "delivery"))
 
-    def test_its_image_is_delivered_byte_for_byte(self, tmp_path: Path) -> None:
+    def test_only_its_pre_render_is_delivered(self, tmp_path: Path) -> None:
         ldri = self.batch(tmp_path, render=True).rows[1]
-        assert qc.is_ldri(ldri) and ldri.media is not None
-        item, prerender = ldri.deliverables
-        assert (item.kind, item.name, item.status) == ("hdri", "MELT0002_pl01_LDRI01_v01.jpg", "done")
-        assert item.path.read_bytes() == ldri.media.path.read_bytes()
-        assert (prerender.name, prerender.status) == ("MELT0002_pl01_LDRI01_v01.mp4", "done")
+        assert qc.is_ldri(ldri)
+        (prerender,) = ldri.deliverables
+        assert (prerender.kind, prerender.name, prerender.status) == (
+            "hdri_ref",
+            "MELT0002_pl01_LDRI01_v01.mp4",
+            "done",
+        )
 
     def test_its_pre_render_is_shown_as_it_is_though_graded(self, tmp_path: Path) -> None:
         batch = self.batch(tmp_path, render=True)

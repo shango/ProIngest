@@ -52,7 +52,7 @@ WHAT_IT_DOES = {
     RUN: "Renders every shot that is not skipped, then writes both spreadsheets.",
     STOP: "Stops the run. What is in flight finishes; nothing further starts.",
     EXPORT: "Writes the QC log and the shot tracker without rendering.",
-    SETTINGS: "Opens the settings page: thresholds, naming, colour and logging.",
+    SETTINGS: "Opens the settings page: thresholds, naming, color and logging.",
 }
 """One sentence each, in the order section 1 draws the toolbar.
 

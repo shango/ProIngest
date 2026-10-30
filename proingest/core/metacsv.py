@@ -3,8 +3,8 @@
 Resolve writes it from the Media Pool and it sits in the turnover folder beside the
 media and the EDL (docs/WORKFLOW.md). One thing reaches the tool through this file and
 through nothing else: **which shot and which clip type each file is** (`Shot` and
-`Shot Type`). The EDL carries the cut and each clip's AMF carries its colour; since
-2026-09-28 (user) the CSV's colour columns are not read.
+`Shot Type`). The EDL carries the cut and each clip's AMF carries its color; since
+2026-09-28 (user) the CSV's color columns are not read.
 
 Three properties of the real file drive the whole module, all measured in
 docs/SAMPLE_TURNOVER_199.md sections 7 and 8:
@@ -47,7 +47,7 @@ SCENE_COLUMN = "Scene"
 TAKE_COLUMN = "Take"
 """The clip's take, burned into the stringout after its label when above 1 (user, 2026-10-07)."""
 INPUT_COLOR_SPACE_COLUMN = "Input Color Space"
-"""Resolve's input colour space for the clip, `Apple Log` in turnovers 134 and 135. Read only
+"""Resolve's input color space for the clip, `Apple Log` in turnovers 134 and 135. Read only
 for a clip no AMF grades, which renders ungraded from it (QC-009, user 2026-10-07)."""
 START_TC_COLUMN = "Start TC"
 """Where the clip starts as Resolve has it, which the EDL's source timecodes count from.
@@ -83,8 +83,9 @@ class MetaRow:
     plate: str = ""
     """The plate a witness cam covers, `pl02` for `pl02_wit01` (user, 2026-10-23)."""
     hdri: bool = False
-    """An HDRI or LDRI (QC-080): the tool copies its file as it is and runs no row rule on it, and
-    the stringout shows Ben's pre-render of its timeline event (user, 2026-10-07)."""
+    """An HDRI or LDRI (QC-080): no row rule runs on it, the stringout shows Ben's pre-render of
+    its timeline event, and the pre-render is delivered as an mp4. Its EXR, JPG or PNG is Ben's to
+    deliver by hand (user, 2026-10-30)."""
 
 
 @dataclass
@@ -312,20 +313,21 @@ def read(path: Path, show_pattern: str = naming.DEFAULT_SHOW_PATTERN) -> MetaCsv
 
 
 def _hdri(file_name: str, shot: str, shot_type: str, scene: str, named: bool, take: str) -> MetaRow:
-    """An HDRI or LDRI row (user, 2026-10-07 and 2026-10-08): its file is delivered as it is,
-    with no checks, and the stringout shows the pre-render of its timeline event. One whose
-    `Shot` is no shot code has nowhere to be delivered, and only the stringout shows it.
+    """An HDRI or LDRI row (user, 2026-10-07 and 2026-10-08): the stringout shows the pre-render
+    of its timeline event, and the pre-render is delivered as an mp4, with no checks. The EXR,
+    JPG or PNG is Ben's to deliver by hand (user, 2026-10-30). One whose `Shot` is no shot code
+    has nowhere to be delivered, and only the stringout shows it.
 
     Its number (`SECA0009_pl01_LDRI02_v01.jpg`) is its `Shot Type`'s, `LDRI02`, and a bare `LDRI`
     is `01` (user, 2026-10-27). It was the CSV's `Take` from 2026-10-12."""
     hdri = naming.hdri_kind(shot_type) or naming.HDRI_KIND
-    image = "HDRI EXR" if hdri == naming.HDRI_KIND else "LDRI image"
+    image = "EXR" if hdri == naming.HDRI_KIND else "image"
     what = (
-        f"{file_name} is an {hdri}'s pre-render: the stringout shows it, and the tool delivers the "
-        f"{image} it is named after as it is, with no checks"
+        f"{file_name} is an {hdri}'s pre-render: the stringout shows it and the tool delivers it as "
+        f"an mp4, with no checks; the {hdri} {image} is delivered by hand"
         if Path(file_name).suffix.lower() in media.VIDEO_EXTENSIONS
-        else f"{file_name} is an {hdri}: the tool delivers it as it is, with no checks, and the "
-        "stringout shows its pre-render"
+        else f"{file_name} is an {hdri}: the stringout shows its pre-render and the tool delivers "
+        f"that as an mp4, with no checks; the {hdri} {image} is delivered by hand"
     )
     notes = [QCResult("QC-080", "info", "row", what)]
     index = naming.hdri_index(shot_type)
@@ -364,7 +366,7 @@ _AS_IS_WORDS = {
 
 def _as_is(file_name: str, shot: str, shot_type: str, scene: str, named: bool) -> MetaRow:
     """An Avid reference, `avidRef01` (QC-088, user 2026-10-15), a measurement, `meas01`, or a
-    recon, `recon01` (user, 2026-10-27). No colour correction, and delivered as it is, never as
+    recon, `recon01` (user, 2026-10-27). No color correction, and delivered as it is, never as
     an EXR (user, 2026-10-22); the stringout plays its cut as it is."""
     match = _AS_IS.fullmatch(shot_type.strip())
     assert match is not None

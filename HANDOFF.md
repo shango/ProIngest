@@ -1,4 +1,16 @@
-# Handoff, 28 October 2026 (Windows)
+# Handoff, 30 October 2026
+
+**30 October, 0.5.53**: turnover150. The stringout read a cut by the file's own timecode alone and
+failed on `C2098.MP4` (now `scan.cut_in_file`, shared with the scan). An HDRI or LDRI now delivers
+only its pre-render's mp4; the EXR is Ben's to deliver by hand and is never looked for (QC-086
+retired); the tracker's HDRI column names the mp4 (user). A shot's `colorChart02` is no longer
+folded into its `colorChart01` (QC-072), and a stringout segment whose file decodes a frame or two
+short holds its last frame rather than failing the stringout.
+
+**29 October, 0.5.52 on branch `fixit-orange`, draft PR #22**: PR #21 (the Windows build, 0.5.50) is merged,
+`main` is `81c0358`. The Fix-it report's Fix in Resolve color is orange rather than red
+(`fixit._STYLE`, `--resolve`), and **US spelling throughout** (0.5.52): "color", never "colour",
+in code, UI, reports and docs. Merge only when the user asks.
 
 **28 October, 0.5.50 on branch `windows`**: PR #20 is merged (`main` is `b8323cd`, 0.5.49). The
 Windows build is in progress for parity with the Mac: gyan.dev ffmpeg 9.0.1 pinned beside the
@@ -31,7 +43,7 @@ shooters' spec sheet is out of date (user) and wants remaking.
 # Handoff, 22 October 2026
 
 **22 October, 0.5.47**: an `avidRef##` is now delivered, never as an EXR: a movie or an image
-sequence as `<shot>_avidRef01_v01.mp4` with no colour transform (its colour is baked in), a held
+sequence as `<shot>_avidRef01_v01.mp4` with no color transform (its color is baked in), a held
 JPG or PNG as it is, any other still as a JPG; not on the tracker. Frame rate confirmed as already
 24 throughout. `PROGRESS.md` has the entry and OQ-86 the assumptions. The rest of this file is
 the 15 October handoff and still stands, except where it says an avidRef is never delivered.

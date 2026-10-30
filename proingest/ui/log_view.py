@@ -94,7 +94,7 @@ LEVEL_COLORS = {
     logging.CRITICAL: QColor("#cf5a52"),
 }
 """The same two the Issues dock paints a warning and an error with (UI_SPEC section 3).
-Info is left in the default text colour, because almost every line is one."""
+Info is left in the default text color, because almost every line is one."""
 
 
 @dataclass(frozen=True)
@@ -317,10 +317,10 @@ class LogView(QWidget):
         for line in arrived:
             item = QTreeWidgetItem([line.time, line.level_name, line.shot, line.message])
             item.setData(0, Qt.ItemDataRole.UserRole, line)
-            colour = LEVEL_COLORS.get(line.level)
-            if colour is not None:
-                item.setForeground(1, QBrush(colour))
-                item.setForeground(3, QBrush(colour))
+            color = LEVEL_COLORS.get(line.level)
+            if color is not None:
+                item.setForeground(1, QBrush(color))
+                item.setForeground(3, QBrush(color))
             # Added before it is hidden: `setHidden` on an item with no tree yet does
             # nothing at all, which reads as a filter that ignores everything new.
             self.tree.addTopLevelItem(item)

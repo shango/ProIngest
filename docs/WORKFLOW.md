@@ -1,6 +1,6 @@
 # Workflow
 
-Who does what, in order. Three entities: **Shooters**, **Ben** (colour), **Tool**.
+Who does what, in order. Three entities: **Shooters**, **Ben** (color), **Tool**.
 
 This page is the one-line version, for checking that everyone means the same thing. The spec
 behind it is `COLOR_AND_FORMAT.md` section 1 and `PRD.md`.
@@ -10,9 +10,9 @@ behind it is `COLOR_AND_FORMAT.md` section 1 and `PRD.md`.
 > here about an `.otio`, ProRes 4444, `Input Color Space` and per-shot `.cube` files was
 > describing a delivery that does not happen.
 >
-> **Colour moved to the AMF on 2026-09-28** (user). Ben's session exports one ACES Metadata File
-> per EDL event and the CLFs each one names, and those are the whole of the colour: the CDL in the
-> EDL and the CSV's colour columns are no longer read, and there is no fallback, because there
+> **Color moved to the AMF on 2026-09-28** (user). Ben's session exports one ACES Metadata File
+> per EDL event and the CLFs each one names, and those are the whole of the color: the CDL in the
+> EDL and the CSV's color columns are no longer read, and there is no fallback, because there
 > will be no older turnovers. Steps 5, 8, 10, 11, 13 to 16, 18, 20 and 21 and rules 3, 4 and 7 are
 > rewritten for it.
 
@@ -21,7 +21,7 @@ behind it is `COLOR_AND_FORMAT.md` section 1 and `PRD.md`.
 | # | step | output |
 |---|---|---|
 | 1 | Shoot. **Some camera systems record RAW, some do not.** | camera media |
-| 2 | **Only where RAW was recorded**, debayer to a basic file type, **baking in nothing and choosing no colours**. The encoding stays camera-native log. | a decodable mezzanine per clip. RAW itself never leaves this step |
+| 2 | **Only where RAW was recorded**, debayer to a basic file type, **baking in nothing and choosing no colors**. The encoding stays camera-native log. | a decodable mezzanine per clip. RAW itself never leaves this step |
 | 3 | Bring the clips into Resolve and **set every clip to 24.000 even**. | the project conform |
 | 4 | Cut a **stringout**. | offline stringout. **Superseded by Ben's** and the tool reads it never |
 | 5 | **Fill in the clip metadata**: the shot code in `Shot` and what the clip is in `Shot Type` (`pl`, `cp`, or a reference type - see the table below). `Gamma Notes` and `Color Space Notes` are **no longer read** (2026-09-28): the encoding reaches the tool in Ben's AMFs. | the metadata that every deliverable's name depends on |
@@ -43,12 +43,12 @@ behind it is `COLOR_AND_FORMAT.md` section 1 and `PRD.md`.
 | # | step | output |
 |---|---|---|
 | 9 | Import the consolidated timeline, and the shooters' metadata with it. | his session |
-| 10 | Take the AD meeting's decisions into a **colour managed** Resolve session, ACES 2.0, each clip's input transform set to its camera encoding (`COLOUR_SESSION_EXPORT.md`). The timeline space no longer reaches the tool: each exported CLF carries its own trip into and out of it (ACEScct in turnover097). | nothing yet, this is setup |
+| 10 | Take the AD meeting's decisions into a **color managed** Resolve session, ACES 2.0, each clip's input transform set to its camera encoding (`COLOR_SESSION_EXPORT.md`). The timeline space no longer reaches the tool: each exported CLF carries its own trip into and out of it (ACEScct in turnover097). | nothing yet, this is setup |
 | 11 | **Final trims** with the AD, and grade: **primaries plus simple sky secondaries** (user, 2026-09-28), in as many corrector nodes as it takes. | the approved cut and the approved look |
 | 12 | Cut the **final stringout timeline**. **Ben does not render or export a stringout** (user, 2026-09-29): the tool builds it from his EDL (step 24). | the final timeline, in his session |
 | 13 | Export the **EDL** from that same stringout timeline. **This is the cut**, and because it comes off the stringout its events state the final clip durations. Any `*ASC_SOP` / `*ASC_SAT` lines in it are **not read** (2026-09-28). | `.edl`: the approved In/Out per event, and any retimes |
-| 13a | Export **one AMF per EDL event** from the same timeline, with the **CLF** for each corrector node it names (user, 2026-09-28). **This is the colour.** Turnover097 used Resolve's `Dailies Request` preset (QC-078, info); whichever preset arrives is used. | `.amf` per event, named with the timeline index (event number less one), and `..._ClipGraph_CorrectorNode_<n>.clf` beside it |
-| 14 | Export the **metadata CSV**. **This is identity only** since 2026-09-28. | `.csv`: `File Name`, `Shot`, `Shot Type`. Its colour columns (`Gamma Notes`, `Color Space Notes`, `Input Color Space`) are not read |
+| 13a | Export **one AMF per EDL event** from the same timeline, with the **CLF** for each corrector node it names (user, 2026-09-28). **This is the color.** Turnover097 used Resolve's `Dailies Request` preset (QC-078, info); whichever preset arrives is used. | `.amf` per event, named with the timeline index (event number less one), and `..._ClipGraph_CorrectorNode_<n>.clf` beside it |
+| 14 | Export the **metadata CSV**. **This is identity only** since 2026-09-28. | `.csv`: `File Name`, `Shot`, `Shot Type`. Its color columns (`Gamma Notes`, `Color Space Notes`, `Input Color Space`) are not read |
 | 15 | Put the EDL, the CSV, the AMFs and their CLFs **and the ALE** in the same folder as the media and hand that one folder over (OQ-74; the ALE since 2026-09-23). | one folder holding the media, the EDL, the CSV, the AMFs and CLFs, and the ALE. The `.otio` and `.drt` Resolve may write beside them are ignored. A folder missing the EDL or the CSV does not scan at all (QC-001); the ALE is what names the EDL's events, which timecode alone cannot do for cameras without time of day |
 
 ## Tool
@@ -70,17 +70,17 @@ behind it is `COLOR_AND_FORMAT.md` section 1 and `PRD.md`.
 ## What the tool is for
 
 **Checking all media, running QC, and producing every turnover output.** It does not author
-colour, it does not cut a stringout, and it does not decide anything creative. Everything it
+color, it does not cut a stringout, and it does not decide anything creative. Everything it
 writes is either a deliverable named from the spec or a report about one.
 
 ## The rules that hold it together
 
-1. **Colour and the cut are both decided once, by Ben and the AD.** The shooters' stringout is a
-   starting point, superseded by Ben's final timeline. The tool has no colour controls and no viewers, and its
+1. **Color and the cut are both decided once, by Ben and the AD.** The shooters' stringout is a
+   starting point, superseded by Ben's final timeline. The tool has no color controls and no viewers, and its
    In/Out editing exists for the one-off trim not worth a new EDL.
 2. **Nothing final renders before step 18.** Steps 16 and 17 work without Ben; step 20 onward do
    not.
-3. **The colour is each clip's AMF and its CLFs** (user, 2026-09-28). The AMF names the input
+3. **The color is each clip's AMF and its CLFs** (user, 2026-09-28). The AMF names the input
    transform, the looks and the output transform by ACES transform ID, and the pinned OCIO config
    resolves every ID itself (`interchange: amf_transform_ids`), so the tool holds no table. Every
    look is applied in ACES2065-1, because that is where the AMF puts them: each Resolve CLF takes
@@ -131,7 +131,7 @@ writes is either a deliverable named from the spec or a report about one.
 | `sizeRef` | `sizeRef_01` | reference still | one 4k EXR, converted, never graded |
 | `BTS` | - | behind the scenes, phone stills | **nothing** (user, 2026-09-22) |
 | `lensgrid` | - | lens distortion chart | **nothing. Ben delivers it** (user, 2026-09-22) |
-| `HDRI` | `pl01_HDRI_01` | HDRI, on the timeline as a frame hold with a pan | **the EXR, copied byte for byte, never checked**; the stringout shows the pre-render Ben puts beside it (`xxxx_001.mp4` beside `xxxx_001.exr`, QC-083) (QC-080, user 2026-10-07) |
+| `HDRI` | `pl01_HDRI_01` | HDRI, on the timeline as a frame hold with a pan | **its pre-render as an mp4**; the EXR is Ben's to deliver by hand (user, 2026-10-30); the stringout shows the pre-render (`xxxx_001.mp4` beside `xxxx_001.exr`, QC-083) (QC-080, user 2026-10-07) |
 | *anything else, or blank* | - | - | **nothing. The clip is ignored** |
 
 The first nine rows are the tool's entire output. `BTS` and `lensgrid` stay in the vocabulary

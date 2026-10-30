@@ -146,11 +146,11 @@ class TestMediaInfo:
         del data["tags"]
         assert MediaInfo.from_dict(data).tags == {}
 
-    def test_round_trip_with_colour_tags(self) -> None:
+    def test_round_trip_with_color_tags(self) -> None:
         media = make_media(color_space="bt709", color_range="pc", color_transfer="bt709")
         assert MediaInfo.from_dict(media.to_dict()) == media
 
-    def test_media_saved_before_colour_tags_existed_reads_back_empty(self) -> None:
+    def test_media_saved_before_color_tags_existed_reads_back_empty(self) -> None:
         data = make_media().to_dict()
         del data["color_space"], data["color_range"]
         assert MediaInfo.from_dict(data).color_space == ""
@@ -244,7 +244,7 @@ class TestShotRow:
         assert read.source_encoding == "C-Log3"
         assert read.source_encoding_origin is None
 
-    def test_round_trip_of_what_the_colour_session_wrote(self) -> None:
+    def test_round_trip_of_what_the_color_session_wrote(self) -> None:
         """A batch reopened after the package is archived renders the same grade."""
         row = make_row(
             approved=InOut(1008, 1223),

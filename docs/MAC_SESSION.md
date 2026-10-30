@@ -36,7 +36,7 @@ Do not rent for any of these. Listed because the instinct to rent is usually wro
 - **Spreadsheets, QC rules, naming, frame math, the batch file.** Pure logic, fully covered by
   the suite.
 - **Most of the UI.** Qt is cross-platform: the shot list, delegates, keyboard model,
-  validation colouring, docks, metadata pane and theme are all built and iterated locally.
+  validation coloring, docks, metadata pane and theme are all built and iterated locally.
   Only the platform-specific surface below needs a Mac.
 
 ## The 0.5.0 build, in order (2026-09-23)
@@ -53,7 +53,7 @@ chunk 7 of `docs/TO_A_WORKING_BUILD.md`, in the order that wastes least.
       mode, and that the link is greyed during a scan.
 - [ ] **The AMF's CDL as the grade (2026-10-06, 0.5.23).** Run turnover134 once Ben's fixes are
       in. Open `SECA0009_pl01_ref_HD_v01.mp4` beside Ben's own Resolve playback of the same frame:
-      the brightness and colour should match. The tool applies the CDL in ACEScg, unclamped, as
+      the brightness and color should match. The tool applies the CDL in ACEScg, unclamped, as
       the AMF states; CI proves the maths, only Ben's screen says it is what Resolve does.
 - [ ] **No unverified Fix-it claims (2026-10-12, 0.5.40).** Rescan the INCA turnover with
       `DJI_0293_S005.mov`: its line says which file gave 'Rec.709 (Scene)' (the CSV's Input Color
@@ -62,18 +62,24 @@ chunk 7 of `docs/TO_A_WORKING_BUILD.md`, in the order that wastes least.
       Safari: each clip line starts with its timeline name in code type, then its shot and
       `at <timecode> on the timeline`, and a message shared by several clips appears once above
       them. Jump Resolve's playhead to one of the timecodes: that clip is there.
+- [ ] **Turnover150 (2026-10-30, 0.5.53).** Scan `turnover150_10_08_26_ericscheid-footage` and
+      Build Stringout from its heading: it is written (it failed with `start_frame` out of range
+      before), event 002 (`C2098.MP4`) shows the same frames as Resolve's timeline, and events
+      013 (`C2112`) and 021 (`C2075`), each shot's second color chart, show their charts rather
+      than black. No QC-086 on the three HDRI renders. Run it: each of INCA3001, 3004 and 3005
+      gets `<shot>_pl01_HDRI01_v01.mp4` and no EXR, and the tracker's HDRI column names that mp4.
+      Checked on Windows from G: by script on 2026-10-30, not in the app window.
 - [ ] **The LDRI (2026-10-08, 0.5.37).** Once Ben sends a turnover with an LDRI (`Shot Type`
       `LDRI`, a JPG or PNG, its pre-render `<image> Render 1.mov` on the timeline), scan and run it.
       Its stringout event plays the pre-render exactly as Ben's Resolve timeline shows it, with no
-      grade; the shot folder gets `<shotcode>_pl01_LDRI_01_v01.jpg` (or `.png`), byte identical to
-      the source (`cmp`); the tracker's HDRI cell for that shot is empty. Move the pre-render
-      out and re-scan: QC-083, and the event holds the image as it is. No sample has one yet.
-      Since 2026-10-12 the `_01_` is the clip's Take: set an LDRI's Take to 2 in Resolve, re-export
-      the CSV and re-scan, and it delivers `..._LDRI_02_v01.jpg` and burns in `..._LDRI_02` alone.
+      grade; **since 2026-10-30 the shot folder gets only `<shotcode>_pl01_LDRI01_v01.mp4`**, its
+      pre-render, and no copy of the image (Ben delivers it by hand); the tracker's HDRI cell for
+      that shot is empty. Move the pre-render out and re-scan: QC-083, the event is black and no
+      mp4 is delivered. No sample has one yet.
 - [ ] **The stringout optimised (2026-10-08, 0.5.36).** Build turnover135's stringout from the
       app with Workers at 4 and time it: 3m00s on the Linux dev box (26m15s in 0.5.35). Activity
       Monitor shows several ProIngest processes busy at once early on, then several ffmpeg. Open it
-      beside a 0.5.35 stringout of the same turnover: the same picture and colour (the views are
+      beside a 0.5.35 stringout of the same turnover: the same picture and color (the views are
       now a baked LUT, measured at 0.06/255 off on average). Confirm nothing appears in the
       delivery root's `_reports` but the stringout itself while it builds (the scratch files now
       go to the Mac's temp folder), and that the bundled ffmpeg has `utvideo`
@@ -100,18 +106,18 @@ chunk 7 of `docs/TO_A_WORKING_BUILD.md`, in the order that wastes least.
       no Accept As Is.
 - [ ] **Style frames and the stringout line (2026-10-07, 0.5.32).** Once Ben sends a turnover
       with a `styleFrame` PNG or JPG before a plate, build its stringout: the frame holds for its
-      EDL length before the plate, looks as it does in Preview (no grade, no colour shift), and
+      EDL length before the plate, looks as it does in Preview (no grade, no color shift), and
       reads `SECA0009_styleFrame` bottom right with no `Frame:` at bottom left. In the shot list,
       the `Stringout` line under the turnover shows a moving bar and a percentage while it builds,
       then a green ball; move the PNG out of the folder, Scan, build again: red, and hovering the
       ball says which event is black.
 - [ ] **The stringout from the EXRs (2026-10-07, 0.5.27).** Run a turnover and open its
-      stringout beside a plate's HD reference mp4: the same picture, brightness and colour, and
-      the plate's sound in sync. A colour chart is graded, with its clip's looks, though its delivered EXR is not.
-      CI proves it builds; only the eye says the two colour paths agree.
+      stringout beside a plate's HD reference mp4: the same picture, brightness and color, and
+      the plate's sound in sync. A color chart is graded, with its clip's looks, though its delivered EXR is not.
+      CI proves it builds; only the eye says the two color paths agree.
 - [ ] **The HDRI pre-render (2026-10-07, 0.5.26). Once Ben renders an HDRI's timeline event
       into a turnover as a video under the EXR's name, build the stringout and compare the HDRI
-      event with his Resolve playback of it: same pan, same brightness and colour, no banding in
+      event with his Resolve playback of it: same pan, same brightness and color, no banding in
       the shadows. The tool reads the render as sRGB Linear and applies the HDRI's AMF; only his
       screen says that matches Resolve. Check the delivered `..._pl01_HDRI_01_v01.exr` is the
       same size as the EXR in the turnover.
@@ -131,7 +137,7 @@ chunk 7 of `docs/TO_A_WORKING_BUILD.md`, in the order that wastes least.
       not refused). Run: twelve deliverables land, named to the spec, verified, and both
       spreadsheets are written. The tracker has one line, `TEST0002`.
 - [ ] Work the four 2026-09-23 lines at the end of Session 2 below: the reference against its
-      wav (chunk B), colour against Resolve (chunk G), locks and a moved folder (chunk E), and
+      wav (chunk B), color against Resolve (chunk G), locks and a moved folder (chunk E), and
       failure and re-run (chunk D).
 - [ ] **The stringout on the Mac** (2026-09-25): run a turnover, then open
       `<show>/_reports/turnover###_..._SO_v01.mp4`. The burn-ins draw (the bundled ffmpeg's
@@ -240,7 +246,7 @@ Append to this as M5 and M6 are built.
       reason: a style that indented further on a Mac would take the room away again, and the
       test that holds it asserts the view's own geometry rather than a picture.
 - [ ] **The inline red on a mistyped In or Out is legible against the editor's own background.**
-      The cell editor colours what was typed rather than replacing it (M5.3, `UI_SPEC.md`
+      The cell editor colors what was typed rather than replacing it (M5.3, `UI_SPEC.md`
       section 5), and the red is the same `#cf5a52` as the error dot, chosen against the list's
       dark rows rather than against a macOS line edit, which draws itself in the system palette.
 - [ ] **Tab across the editable cells does what an editor expects on a Mac.** Shot, In, Out and
@@ -349,11 +355,11 @@ Treat it as a working session with the editor rather than a delivery.
 - [ ] **ANSWERED 2026-09-21, no Mac needed.** The encoding is not in `Input Color Space`, which
       is a Resolve clip property rather than a metadata field and never appears in an export. It
       is in **`Gamma Notes` + `Color Space Notes`**, typed by the shooter, reaching the tool
-      through the colourist's CSV, and verified to resolve on all five clips of the sample
+      through the colorist's CSV, and verified to resolve on all five clips of the sample
       turnover. What is still worth doing on a Mac: **open a real turnover and confirm
       `Shot Type` is filled**, since the sample's was empty (OQ-70).
 - [ ] **Read what the shooters actually wrote in it.** "S-Log3" on its own resolves to nothing,
-      deliberately, because it names four colour spaces. If that is what arrives, the outcome is
+      deliberately, because it names four color spaces. If that is what arrives, the outcome is
       an instruction to the shooters rather than a change to the tool: ask for the Resolve input
       transform name verbatim. OQ-34, OQ-44.
 - [ ] 100 shots scanned in under 60 seconds from a warm mount. `PRD.md` section 8.
@@ -377,7 +383,7 @@ Treat it as a working session with the editor rather than a delivery.
       than one grade file naming the shot. It is the first time `clf.ingest` meets an EDL it did not
       write. Watch whether a modal is the right place for it, or whether a long list of
       unmatched rows wants somewhere it can be read twice. OQ-31.
-- [ ] **Look at `Ingest Colour Session` in the toolbar.** Its label is two and a half times the
+- [ ] **Look at `Ingest Color Session` in the toolbar.** Its label is two and a half times the
       width of every other button, so a once-per-turnover action sits wider than Run. Decide in
       front of the real window whether it should read `Ingest`, remembering that this is a tool
       called ProIngest and `Ingest` alone can be read as the whole job. **The tooltip it needed
@@ -416,7 +422,7 @@ Treat it as a working session with the editor rather than a delivery.
       "wrong" on the dark bar, is a judgement for a screen.
 - [ ] **Select a delivered shot and read the Deliverables tab** (2026-09-17). Ten columns
       with the path stretched; what a test cannot judge is whether the widths suit a real path
-      on a Drive mount and whether the status colours read against the dock. Double-click a
+      on a Drive mount and whether the status colors read against the dock. Double-click a
       line: Finder should open the shot's delivery folder.
 - [ ] **Hover every toolbar button on the real window and read the tooltips.** Written and
       measured offscreen on Linux, where the shortcut renders as `Ctrl+R` and on the Mac it is
@@ -430,12 +436,12 @@ Treat it as a working session with the editor rather than a delivery.
   frames bit for bit, the wav exactly the plate's length, the mp4 timecode the In frame's. Confirm
   on the bundled 9.0.1 that QC-113 passes, the timecode tag reads the EXR's first `timeCode`, and
   the sound stays in sync to the last frame of a long plate.
-- [ ] **Chunk G, colour and format (2026-09-23).** Every decode now states its matrix and range, and a
+- [ ] **Chunk G, color and format (2026-09-23).** Every decode now states its matrix and range, and a
   file with no matrix tag is decoded as BT.709 (D17, provisional). Measured on Linux with ffmpeg
   6.1; the suite's `test_a_pure_red_reference_measures_bt709` and
   `test_an_untagged_bt709_file_decodes_to_its_primary` pin it on CI. By eye on the Mac: open
   `TEST0002_pl01_ref_HD_v01.mp4` beside the same frame in Resolve's viewer and say whether the
-  colours agree; saturated reds and greens are where a matrix error shows.
+  colors agree; saturated reds and greens are where a matrix error shows.
 - [ ] **Chunk E, locks and recovery (2026-09-23).** On the Mac, with the real turnover: (1) press Run
   and try to edit a cell, press Ctrl+K, click the delivery root, open Settings: all refused until
   the banner shows. (2) The window stays responsive while "Checking the batch" and "Writing the QC
@@ -458,8 +464,8 @@ Treat it as a working session with the editor rather than a delivery.
   (an ffmpeg command line whole in one cell), the ABOUT rows name 0.5.4 and the bundled ffmpeg, and
   the records reach back to the oldest dated file in `~/Library/Logs/ProIngest`. The File menu item
   does the same with no batch open.
-- [ ] **Colour from the AMF (2026-09-28, 0.5.14).** Scan turnover097's `collected files`: every
-  C42xx row's metadata pane Colour section names S-Log3 S-Gamut3.Cine, its AMF and its CLF nodes, C4271
+- [ ] **Color from the AMF (2026-09-28, 0.5.14).** Scan turnover097's `collected files`: every
+  C42xx row's metadata pane Color section names S-Log3 S-Gamut3.Cine, its AMF and its CLF nodes, C4271
   shows QC-009 as info, the two HDRIs are skipped with QC-080, and nothing blocks (since 0.5.14 the
   length limits are for pl rows only, so C4261 cp01 and C4271 el01 pass). Run: open a delivered EXR in Nuke and check the header's
   `proingest/amf` and `proingest/looks`; play a pl reference mp4 in QuickTime beside Ben's own
@@ -479,7 +485,7 @@ Treat it as a working session with the editor rather than a delivery.
   started on macOS-...`.
 - [ ] **Turnover121 in the app (2026-09-23, 0.5.4).** Scan the folder with its ALE: 7 rows, no
   errors. The chart and the clean plate each show QC-072. Run it: the cp01 references play five
-  seconds of one held frame with no sound in QuickTime, and the SECA0002 colour chart is one EXR.
+  seconds of one held frame with no sound in QuickTime, and the SECA0002 color chart is one EXR.
   Worth a look at any pl reference too, to see the 4.886 slope Ben is being asked about.
 - [ ] **References on ACES 2.0 (2026-09-25).** Put one pl reference mp4 beside the same frame in
   Ben's session viewer (ACES 2.0, output sRGB) on the same display. The tone and saturation should
