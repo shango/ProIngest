@@ -54,6 +54,14 @@ class TestTheReport:
         assert item.clips[0].who == "MELT0001 plate"
         assert report.blocked == 1 and fixit._status(report) == "1 of 3 clips held back"
 
+    def test_a_red_warning_is_worth_a_look_and_holds_nothing_back(self, tmp_path: Path) -> None:
+        batch = scanned(turnover(tmp_path, shots=1))
+        batch.rows[0].qc.append(QCResult("QC-089", "error", "row", "EXR shot was 260 frames on the timeline"))
+        report = only(batch)
+        item = titled(report, fixit.ADVICE["QC-089"].title)
+        assert not item.blocks and item.advice.where == "look"
+        assert report.blocked == 0
+
     def test_a_clip_with_no_amf_but_a_color_space_is_ungraded_not_an_item(self, tmp_path: Path) -> None:
         """User, 2026-10-07: "If there is no CLF, AMF or CDL, assume ungraded". A note in the
         QC log (QC-009), nothing for Ben to fix."""

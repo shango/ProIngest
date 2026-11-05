@@ -163,6 +163,15 @@ class TestQcLogSheets:
         tracked = exports.tracker_rows(batch)
         assert len(tracked) == 1 and "MELT0001" in tracked[0]
 
+    def test_a_red_warning_renders_and_is_delivered_and_tracked(self, tmp_path: Path) -> None:
+        long = row(qc=[QCResult("QC-089", "error", "row", "EXR shot was 260 frames on the timeline")])
+        batch = batch_of(long)
+        log = exports.write_qc_log(batch, tmp_path / "log.xlsx", date(2026, 11, 5))
+        summary: dict[object, object] = {key: value for key, value in sheet_rows(log, "Summary")[1:]}
+        assert (summary["Rows delivered"], summary["Rows held back"]) == (1, 0)
+        assert exports.issue_lines(batch)[0][5] == "rendered"
+        assert len(exports.tracker_rows(batch)) == 1
+
     def test_a_row_with_an_error_is_held_back_and_untracked(self, tmp_path: Path) -> None:
         batch = batch_of(row(qc=[QCResult("QC-012", "error", "row", "no such file")]))
         log = exports.write_qc_log(batch, tmp_path / "log.xlsx", date(2026, 10, 7))

@@ -314,7 +314,7 @@ def issue_lines(batch: Batch) -> list[list[str]]:
     for row in batch.rows:
         where = names.get(row.turnover_id, row.turnover_id)
         for result in row.qc:
-            held = result.severity == "error" and not result.rule_id.startswith("QC-1")
+            held = result.holds and not result.rule_id.startswith("QC-1")
             add(where, row, result, "held this shot back" if held else "rendered")
         for item in row.deliverables:
             for result in item.qc:

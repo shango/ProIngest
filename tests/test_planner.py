@@ -445,6 +445,11 @@ class TestAnErrorHoldsOneShot:
         assert planner.holding_errors(held) == held.errors()
         assert planner.plan_batch(self.batch(held), tmp_path) == []
 
+    def test_a_red_warning_renders(self, tmp_path: Path) -> None:
+        long = row(qc=[QCResult("QC-089", "error", "row", "EXR shot was 260 frames on the timeline")])
+        assert planner.holding_errors(long) == []
+        assert planner.plan_batch(self.batch(long), tmp_path)
+
     def test_one_held_row_holds_back_no_other(self, tmp_path: Path) -> None:
         held = row(clip_name="MELT0002_pl01", qc=[QCResult("QC-012", "error", "row", "no file")])
         assert {job.shot_code for job in planner.plan_batch(self.batch(row(), held), tmp_path)} == {

@@ -1,4 +1,9 @@
-# Handoff, 30 October 2026
+# Handoff, 5 November 2026
+
+**5 November, 0.5.54**: QC-089, a red warning on any shot delivered as an EXR sequence over
+Settings' Longest EXR shot (default 250). It is an error by severity, so the row goes red, but it
+is in `models.RED_WARNING_RULES` and holds nothing back: the shot renders (OQ-90, assumed, for the
+user to confirm). A plate over both limits reports QC-034 and QC-089.
 
 **30 October, 0.5.53**: turnover150. The stringout read a cut by the file's own timecode alone and
 failed on `C2098.MP4` (now `scan.cut_in_file`, shared with the scan). An HDRI or LDRI now delivers

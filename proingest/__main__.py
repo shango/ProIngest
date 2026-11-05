@@ -369,7 +369,7 @@ def _report_run(written: list[Deliverable], batch_path: Path) -> int:
 
 def _has_errors(batch: Batch) -> bool:
     turnover_errors = any(r.severity == "error" for t in batch.turnovers for r in t.qc)
-    return turnover_errors or any(row.errors() for row in batch.rows)
+    return turnover_errors or any(planner.holding_errors(row) for row in batch.rows)
 
 
 def _print_batch(batch: Batch) -> None:

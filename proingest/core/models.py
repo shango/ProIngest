@@ -102,6 +102,9 @@ class FrameRate:
 
 FIX_IN_RESOLVE = "Fix in Resolve - "
 
+RED_WARNING_RULES = frozenset({"QC-089"})
+"""Errors that color a row red and hold nothing back: the shot still renders."""
+
 RESOLVE_FIX_RULES = frozenset(
     {
         "QC-001",  # the EDL or the metadata CSV is missing
@@ -139,6 +142,11 @@ class QCResult:
     severity: Severity
     scope: Scope
     message: str
+
+    @property
+    def holds(self) -> bool:
+        """Whether this result keeps its row from rendering: every error but a red warning."""
+        return self.severity == "error" and self.rule_id not in RED_WARNING_RULES
 
     def __post_init__(self) -> None:
         if (

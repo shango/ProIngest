@@ -99,7 +99,7 @@ Scrolling: Source file, Res, FPS, In (editable), Out (editable), Duration, Max A
 |---|---|---|
 | ok, not rendered | grey | none |
 | warning | amber | faint amber |
-| error (blocked) | red | faint red |
+| error (blocked), or a red warning (QC-089, renders) | red | faint red |
 | skipped by user | hollow | dimmed text |
 | rendering | accent, animated | none |
 | done | green | none |

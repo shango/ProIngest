@@ -131,6 +131,14 @@ def sections() -> tuple[Section, ...]:
                     maximum=100_000,
                 ),
                 Field(
+                    "rules.max_exr_frames",
+                    "Longest EXR shot",
+                    "int",
+                    "Frames. A shot delivered as an EXR sequence longer than this is QC-089, red.",
+                    minimum=1,
+                    maximum=100_000,
+                ),
+                Field(
                     "rules.expected_handle_frames",
                     "Expected handles",
                     "int",
@@ -298,6 +306,7 @@ def to_values(app: AppSettings, rules: qc.RuleSettings) -> dict[str, Any]:
     for name in (
         "min_duration_frames",
         "max_duration_frames",
+        "max_exr_frames",
         "expected_handle_frames",
         "sync_tolerance_frames",
     ):
@@ -333,6 +342,7 @@ def apply_values(
     applied = qc.RuleSettings(
         min_duration_frames=int(values.get("rules.min_duration_frames", current.min_duration_frames)),
         max_duration_frames=int(values.get("rules.max_duration_frames", current.max_duration_frames)),
+        max_exr_frames=int(values.get("rules.max_exr_frames", current.max_exr_frames)),
         expected_handle_frames=int(
             values.get("rules.expected_handle_frames", current.expected_handle_frames)
         ),

@@ -75,6 +75,7 @@ class RuleSettings:
 
     min_duration_frames: int = 120
     max_duration_frames: int = 240
+    max_exr_frames: int = 250
     expected_handle_frames: int = 8
     target_resolution: tuple[int, int] = (3840, 2160)
     sync_tolerance_frames: int = SYNC_TOLERANCE_FRAMES
@@ -83,6 +84,7 @@ class RuleSettings:
         return {
             "min_duration_frames": self.min_duration_frames,
             "max_duration_frames": self.max_duration_frames,
+            "max_exr_frames": self.max_exr_frames,
             "expected_handle_frames": self.expected_handle_frames,
             "target_resolution": list(self.target_resolution),
             "sync_tolerance_frames": self.sync_tolerance_frames,
@@ -103,6 +105,7 @@ class RuleSettings:
         return cls(
             min_duration_frames=int(data.get("min_duration_frames", cls.min_duration_frames)),
             max_duration_frames=int(data.get("max_duration_frames", cls.max_duration_frames)),
+            max_exr_frames=int(data.get("max_exr_frames", cls.max_exr_frames)),
             expected_handle_frames=int(data.get("expected_handle_frames", cls.expected_handle_frames)),
             target_resolution=(
                 (int(resolution[0]), int(resolution[1])) if resolution is not None else cls.target_resolution
@@ -142,6 +145,7 @@ OWNED_ROW_RULES = frozenset(
         "QC-046",
         "QC-047",
         "QC-055",
+        "QC-089",
     }
 )
 """Row rule IDs this module produces, cleared before it produces them again.
@@ -477,6 +481,26 @@ def check_duration(row: ShotRow, settings: RuleSettings) -> list[QCResult]:
             )
         ]
     return []
+
+
+def check_exr_length(row: ShotRow, settings: RuleSettings) -> list[QCResult]:
+    """QC-089: an EXR sequence longer than the limit, red on the row and rendered as cut.
+
+    Every Shot Type that delivers a sequence, where QC-034 asks only of a plate. A still, an
+    HDRI, a freeze, an Avid reference, a measurement and a recon deliver no sequence, and
+    `run_row_rules` keeps the last three from here.
+    """
+    if row.current is None or not is_picture_row(row) or row.current.duration <= settings.max_exr_frames:
+        return []
+    return [
+        QCResult(
+            "QC-089",
+            "error",
+            "row",
+            f"EXR shot was {row.current.duration} frames on the timeline, above the "
+            f"{settings.max_exr_frames} frame limit",
+        )
+    ]
 
 
 def check_edits(row: ShotRow) -> list[QCResult]:
@@ -851,6 +875,7 @@ def run_row_rules(
     results.extend(check_range(row))
     if not row.freeze:
         results.extend(check_duration(row, settings))
+        results.extend(check_exr_length(row, settings))
     results.extend(check_edits(row))
     results.extend(check_approved(row))
     if not row.freeze:

@@ -104,6 +104,12 @@ ADVICE: dict[str, Advice] = {
         "It was delivered as cut. Fine if intended.",
         "message",
     ),
+    "QC-089": Advice(
+        "look",
+        "An EXR shot is over the frame limit.",
+        "It was delivered as cut.",
+        "message",
+    ),
     "QC-046": Advice(
         "resolve",
         "Nothing says what color space a clip was recorded in.",
@@ -391,7 +397,7 @@ def _turnover_report(batch: Batch, turnover: Turnover) -> TurnoverReport:
             if result.rule_id in ADVICE and result.severity != "info":
                 clip = _clip(row, result, turnover, rate)
                 _add(items, result.rule_id, ADVICE[result.rule_id], result, [clip])
-                row_blocks |= result.severity == "error"
+                row_blocks |= result.holds
         blocked += row_blocks
     if orphans := _without_a_plate(delivered):
         _add(items, "NO_PLATE", NO_PLATE, None, orphans)
@@ -404,7 +410,7 @@ def _add(
     items: dict[str, Item], key: str, advice: Advice, result: QCResult | None, clips: list[Clip]
 ) -> None:
     item = items.setdefault(key, Item(advice))
-    if result is not None and result.severity == "error":
+    if result is not None and result.holds:
         item.blocks = True
     item.clips.extend(clip for clip in clips if clip not in item.clips)
 

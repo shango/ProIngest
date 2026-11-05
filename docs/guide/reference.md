@@ -265,7 +265,7 @@ button that opens with no batch loaded, because it is where a new batch's number
 | section | what is in it |
 |---|---|
 | General | how many shots render at once, and a media path rewrite for timelines exported on Windows |
-| Rules | every threshold the checks compare against: shortest and longest shot, expected handles, expected resolution, audio sync tolerance |
+| Rules | every threshold the checks compare against: shortest and longest shot, longest EXR shot, expected handles, expected resolution, audio sync tolerance |
 | Color | read only: the ACES config, and that the color and the output transform both come from each clip's AMF |
 | Naming | the pattern every shot code is parsed with and every delivered name is built from |
 | Output | the reference mp4's quality and the EXR compression level |

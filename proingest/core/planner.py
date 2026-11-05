@@ -244,7 +244,7 @@ def effective_identity(row: ShotRow, show_pattern: str = naming.DEFAULT_SHOW_PAT
 
 
 def holding_errors(row: ShotRow) -> list[QCResult]:
-    """The errors that keep this row from rendering, which is every error it has.
+    """The errors that keep this row from rendering: every error but a red warning (QC-089).
 
     **An error holds one shot and nothing else** (user, 2026-10-07: "nothing prevents
     rendering an entire batch or turnover"). What is an error is what leaves the tool
@@ -252,7 +252,7 @@ def holding_errors(row: ShotRow) -> list[QCResult]:
     name to give it, no cut, or a grade it cannot rebuild (QC_RULES). Everything else is a
     warning or a note in the report and renders.
     """
-    return row.errors()
+    return [result for result in row.errors() if result.holds]
 
 
 def held_turnovers(batch: Batch) -> set[str]:

@@ -450,6 +450,35 @@ class TestDuration:
         assert results[0].severity == "warning", "rendered as it is since 2026-10-07 (user)"
         assert results[0].message.startswith("Plate was 264 frames on the timeline")
 
+
+class TestExrLength:
+    def test_the_limit_itself_is_clean(self) -> None:
+        assert qc.check_exr_length(row(current=InOut(1001, 1250)), qc.DEFAULT_SETTINGS) == []
+
+    def test_one_frame_over_is_red(self) -> None:
+        results = qc.check_exr_length(row(current=InOut(1001, 1251)), qc.DEFAULT_SETTINGS)
+        assert ids(results) == ["QC-089"]
+        assert results[0].severity == "error"
+        assert not results[0].holds, "red on the row, and the shot still renders"
+        assert results[0].message == "EXR shot was 251 frames on the timeline, above the 250 frame limit"
+
+    def test_the_limit_is_a_setting(self) -> None:
+        settings = qc.RuleSettings(max_exr_frames=300)
+        assert qc.check_exr_length(row(current=InOut(1001, 1251)), settings) == []
+        assert qc.RuleSettings.from_dict(settings.to_dict()) == settings
+
+    def test_every_sequence_type_is_asked_not_only_a_plate(self) -> None:
+        element = replace(row(current=InOut(1001, 1300)), identity=identity_of("MELT0001_el01"))
+        assert ids(qc.check_exr_length(element, qc.DEFAULT_SETTINGS)) == ["QC-089"]
+
+    def test_a_still_has_no_sequence(self) -> None:
+        still = replace(row(current=InOut(1001, 1300)), identity=identity_of("MELT0001_pl01_colorChart_01"))
+        assert qc.check_exr_length(still, qc.DEFAULT_SETTINGS) == []
+
+    def test_a_freeze_has_no_sequence(self) -> None:
+        frozen = replace(row(current=InOut(1001, 1300)), freeze=True)
+        assert "QC-089" not in ids(qc.run_row_rules(frozen, RATE_24))
+
     @pytest.mark.parametrize("kind", ["cp01", "el01", "wit01"])
     def test_only_a_plate_has_limits(self, kind: str) -> None:
         """User, 2026-09-29: no min or max for anything but the pl shot type."""
