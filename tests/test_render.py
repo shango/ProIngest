@@ -163,12 +163,15 @@ class TestRawSequence:
         first = sorted(job.destination.iterdir())[0]
         assert exr.start_timecode_frames(first, 24.0) == 1001
 
-    def test_every_delivered_frame_states_acescg(self, tmp_path: Path) -> None:
-        """The plate branch put it there, so the label is a fact rather than a setting."""
+    def test_every_delivered_frame_states_its_display(self, tmp_path: Path) -> None:
+        """User, 2026-11-06: a plate is display referred, and the header says through what."""
         job = raw_job(tmp_path, count=1)
         render.render_job(job)
         with OpenEXR.File(str(job.frame_path(1001))) as handle:
-            assert handle.header()[exr.COLORSPACE_ATTRIBUTE] == color.PLATE_SPACE
+            header = dict(handle.header())
+        assert header[exr.COLORSPACE_ATTRIBUTE] == color_fixtures.DISPLAY
+        assert header[exr.VIEW_ATTRIBUTE] == color_fixtures.VIEW
+        assert exr.is_display_referred(job.frame_path(1001))
 
 
 class TestPlateBranch:
@@ -196,7 +199,7 @@ class TestPlateBranch:
     def expected(self, shot_color: clf.ShotColor) -> float:
         """The source pixel through the same chain, asked of OCIO rather than typed out."""
         pixels = np.array([[list(self.SOURCE_PIXEL)]], dtype=np.float32)
-        color.apply(pixels, color.processor(*shot_color.plate_transforms()))
+        color.apply(pixels, color.processor(*shot_color.view_transforms()))
         return float(pixels[0, 0, 0])
 
     def test_the_source_is_transformed_and_not_passed_through(self, tmp_path: Path) -> None:
@@ -210,6 +213,8 @@ class TestPlateBranch:
         graded = clf.ShotColor(
             source_encoding=color_fixtures.SOURCE_ENCODING,
             looks=(GradeLook("look", "ACES 1.3 Reference Gamut Compression"), GradeLook("clf", str(node))),
+            display=color_fixtures.DISPLAY,
+            view=color_fixtures.VIEW,
         )
         with_grade = self.delivered(tmp_path / "graded", shot_color=graded)
         without = self.delivered(tmp_path / "plain")
@@ -217,8 +222,7 @@ class TestPlateBranch:
         assert float(with_grade[0, 0, 0]) == pytest.approx(self.expected(graded), abs=0.002)
 
     def test_the_header_names_the_encoding_that_was_applied(self, tmp_path: Path) -> None:
-        shot_color = clf.ShotColor(source_encoding=color_fixtures.SOURCE_ENCODING)
-        job = raw_job(tmp_path, count=1, shot_color=shot_color)
+        job = raw_job(tmp_path, count=1)
         render.render_job(job)
         with OpenEXR.File(str(job.frame_path(1001))) as handle:
             # Copied rather than held: the mapping the bindings hand back empties when
@@ -420,6 +424,20 @@ class TestAuxStill:
         assert deliverable.frame_count == 1
         assert deliverable.checksum == render.file_digest(job.destination)
         assert exr.start_timecode_frames(job.destination, 24.0) == 1001
+
+    def test_a_still_stays_linear_acescg_when_a_plate_does_not(self, tmp_path: Path) -> None:
+        """OQ-91: only the plates moved to display referred on 2026-11-06."""
+        fixture = fixtures.make_exr_sequence(tmp_path / "src", count=1, first=1001)
+        job = sequence_job(
+            fixture.path_for(1001),
+            tmp_path / "out" / "MELT0001_pl01_colorChart_01_4k_v01.exr",
+            1001,
+            1001,
+            kind="aux_still",
+        )
+        render.render_job(job)
+        assert exr.read_header(job.destination).colorspace == color.PLATE_SPACE
+        assert not exr.is_display_referred(job.destination)
 
     def test_one_whose_clip_named_no_encoding_is_refused_rather_than_converted(self, tmp_path: Path) -> None:
         """QC-046's claim, end to end: the deliverable is blocked rather than approximated.

@@ -5,8 +5,35 @@
 **Color is decided before the tool runs. The final grade session delivers one final EDL, which
 is the cut, and one AMF per EDL event with the CLFs it names, which is the color. The tool
 converts each clip into ACES2065-1 through the AMF's input transform, applies the AMF's looks in
-order, and converts to linear ACEScg for the plate; the references add the AMF's own output
-transform. The plate is delivered graded, scene linear ACEScg.**
+order, converts to linear ACEScg, and goes on through the AMF's own output transform, for the
+plates and the references alike. The plate is delivered graded and display referred (2026-11-06).**
+
+### 2026-11-06: a plate is display referred, through the AMF's output transform
+
+**Decided 2026-11-06 (user, confirmed with the camera department lead): delivered plates are
+"display referred, sRGB gamma 2.2", no longer scene linear ACEScg.** This supersedes every line
+below that calls a plate scene linear ACEScg. Ben's Resolve export of turnover150's `C2103` is
+what a plate is to match.
+
+- The chain is unchanged as far as ACEScg, then a plate goes on through the output transform the
+  clip's AMF names, the same leg a reference has always had (`ShotColor.view_transforms`, exact,
+  never baked). `Gamma 2.2 Rec.709 - Display` through `ACES 2.0 - SDR 100 nits (Rec.709)`,
+  `Output.Academy.Rec709-D65_100nit_in_Rec709-D65_Gamma2pt2.a2.v1`, is the spec's "sRGB gamma 2.2":
+  sRGB and Rec.709 share primaries, and `sRGB - Display` is the piecewise curve, a different
+  transform. A clip with no AMF or an output transform the config lacks takes `color.DEFAULT_VIEW`,
+  which is this one (QC-079).
+- The header says so: `chromaticities` are Rec.709, `proingest/colorspace` is the display and
+  `proingest/view` the view. A plate has nothing above the display range: highlight detail is
+  gone from the deliverable, and it cannot be recovered from it.
+- **A reference still stays linear ACEScg, never graded** (assumed, OQ-91). An HDRI's EXR is not
+  the tool's to deliver (OQ-79, 0.5.53).
+- The stringout shows a display referred plate as it is, and still gives a plate delivered
+  before this change, whose header says `ACEScg`, its output transform, so an old delivery is
+  not tone mapped twice.
+- **Measured on `C2103` frame 115 against Ben's EXR:** the range now matches (0.025 to 0.873
+  against 0.025 to 0.887), and the tool sits about 5/255 darker on average, 15/255 at the 99th
+  percentile. About a 2% gain on the source code values accounts for most of it, and its cause
+  is not known (OQ-91).
 
 ### 2026-09-28: the color is each clip's AMF and the CLFs it names
 
@@ -89,9 +116,9 @@ lists in its order, and converts out once. **There is no working space of its ow
 `color.WORKING_SPACE` constant (ACEScct) is gone from the tool.
 
 ```
-source encoding  ->  ACES2065-1  ->  the AMF's looks, in order  ->  linear ACEScg          plate
+source encoding  ->  ACES2065-1  ->  the AMF's looks, in order  ->  linear ACEScg
  (AMF input)         (tool)          (RGC, then each CLF node)      (tool)
-                                                                 ->  the AMF's display/view  reference
+                                                                 ->  the AMF's display/view  plate and reference
 ```
 
 - **The reference follows the AMF** (user, 2026-09-28), no longer a fixed sRGB: turnover097's
@@ -563,9 +590,9 @@ camera native or debayered log, encoding named by the clip's AMF (one file per c
    |                                                  |
  (linear ACEScg)                                  (linear ACEScg)
    |                                                  |
- resize in numpy, unbounded                       the AMF's output transform
+ the AMF's output transform (2026-11-06)          the AMF's output transform
    |                                              (color.output_transform(display, view))
- EXR: ACEScg, AP1, graded                         ... looks and output transform
+ EXR: display referred, Rec.709, graded           ... looks and output transform
                                                       collapsed into one 3D LUT
                                                       |
                                                   ffmpeg lut3d, tetrahedral, resize bounded
@@ -675,10 +702,11 @@ enforced in `planner._aux_plan` rather than left to the renderer.
 The header carries provenance, because a graded plate is only auditable if the file says what
 was done to it.
 
-- `chromaticities` states **AP1** primaries. That constant is the difference between a file
-  that is ACEScg and a file that lies about being ACEScg.
-- `proingest/colorspace` states `ACEScg`. It is a constant rather than a setting: the tool
-  transforms every plate into it, so the value is a fact about the deliverable.
+- `chromaticities` states **Rec.709** primaries on a plate since 2026-11-06, and **AP1** on a
+  reference still. On a display other than Rec.709 or sRGB it is left out rather than guessed.
+- `proingest/colorspace` states the AMF's display on a plate, with `proingest/view` beside it,
+  and `ACEScg` on a reference still. The stringout reads it to tell a plate from before
+  2026-11-06, which says `ACEScg`.
 - `proingest/source_encoding` names the color space the source was read as: the config color
   space the clip's AMF input transform resolved to (2026-09-28), the leg the tool applied into
   ACES2065-1, on a plate as on an aux still. It is what the plate was made from, so the file can
@@ -800,7 +828,7 @@ look very nearly right.
 
 | output | spec |
 |---|---|
-| raw EXR | OpenEXR 2 scanline, DWAA compression level 45, half float RGB (alpha dropped unless source has real alpha, then RGBA), data window = display window, frame numbers start 1001 (OQ-35). **ACEScg, scene linear, AP1 chromaticities, graded with the looks of the clip's AMF**, with the source encoding, the AMF's file name and the looks applied carried in the header (section 1) |
+| raw EXR | OpenEXR 2 scanline, DWAA compression level 45, half float RGB (alpha dropped unless source has real alpha, then RGBA), data window = display window, frame numbers start 1001 (OQ-35). **Display referred through the AMF's output transform, Rec.709 chromaticities, graded with the looks of the clip's AMF** (2026-11-06), with the source encoding, the AMF's file name and the looks applied carried in the header (section 1) |
 | ref mp4 4k | 3840x2160, H.264 High, yuv420p, CRF 18 (x264 `-preset slow`) or `h264_videotoolbox` when hardware encoding is enabled, keyint 24, `-movflags +faststart`, AAC 192k if audio associated. **Only a plate's reference carries sound** (2026-09-23): a cp or el is delivered silent even when its own file has a track |
 | ref mp4 HD | same, 1920x1080 |
 | audio | PCM 16 bit, same sample rate and channel count, no resampling. Cut to the delivered range and sped up with the picture (1.001 for a 24000/1001 source, D2 of `docs/REVIEW_2026-09-23.md`), padded with silence where the range runs past the recorded sound. Only a row with no range is delivered as-is: a wav source byte for byte, audio in a container extracted whole. QC-044 if the source was not 16 bit |
@@ -875,7 +903,7 @@ Editing:
 
 ```
 ffmpeg -i <src> -f rawvideo -pix_fmt gbrpf32le - | numpy frames
-    -> OCIO GroupTransform (input -> ACES2065-1 -> the AMF's looks -> ACEScg; or the source-to-ACEScg leg for an aux still), tetrahedral
+    -> OCIO GroupTransform (input -> ACES2065-1 -> the AMF's looks -> ACEScg -> the AMF's display; or the source-to-ACEScg leg for an aux still), tetrahedral
     -> float16 -> OpenEXR (DWAA, level 45)
 ```
 

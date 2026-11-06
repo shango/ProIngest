@@ -9,8 +9,12 @@ colorist's CLFs, which OCIO reads as they are.
 
 The chain, in the AMF's own order, with this module supplying each leg:
 
-    source encoding -> ACES2065-1 -> [the AMF's looks, in order] -> linear ACEScg  plate
-                                                                 -> the AMF's display  view
+    source encoding -> ACES2065-1 -> [the AMF's looks, in order] -> linear ACEScg
+                                                                 -> the AMF's display
+
+**A plate and a reference both end at the AMF's display** (user, 2026-11-06: "display
+referred, sRGB gamma 2.2"), so a plate holds what Ben's Resolve export holds. Linear ACEScg
+is the step before it, and what a reference still is delivered in.
 
 **Every look is applied in ACES2065-1**, because that is where the AMF puts them: the
 Reference Gamut Compress is a look the config defines in ACES2065-1, and each of Resolve's
@@ -50,7 +54,8 @@ bakes into the viewing LUT.
 """
 
 PLATE_SPACE = "ACEScg"
-"""Scene linear, AP1 primaries. What a delivered EXR is, and where every CLF ends."""
+"""Scene linear, AP1 primaries. Where the chain stands before the output transform, what a
+reference still is delivered in, and what a plate was until 2026-11-06."""
 
 # There is no default source encoding, and that is deliberate. A constant lived here
 # until M4.6.1, standing in for the clip metadata nothing read yet. The encoding is a
@@ -233,11 +238,11 @@ that only shows up on the delivered reference.
 
 
 def output_transform(display: str, view: str) -> ocio.DisplayViewTransform:
-    """Linear ACEScg to the display and view the clip's AMF names: the view branch's tail.
+    """Linear ACEScg to the display and view the clip's AMF names: the chain's tail.
 
-    From the AMF since 2026-09-28 (user), so a reference is viewed the way the color
+    From the AMF since 2026-09-28 (user), so a deliverable is seen the way the color
     session was; turnover097's AMFs name Gamma 2.2 Rec.709 through the ACES 2.0 SDR
-    100 nit rendering. The plates never see it.
+    100 nit rendering. The plates go through it too since 2026-11-06 (user).
     """
     return ocio.DisplayViewTransform(src=PLATE_SPACE, display=display, view=view)
 

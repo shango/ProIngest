@@ -17,7 +17,7 @@ from pathlib import Path
 
 import pytest
 
-from proingest.core import naming, qc, render
+from proingest.core import color, naming, qc, render
 from proingest.core.models import (
     AudioInfo,
     Batch,
@@ -663,7 +663,8 @@ class TestColorChain:
         assert results[0].severity == "info"
         assert results[0].message == (
             "rendered through CanonLog3 CinemaGamut D55 to ACES2065-1, then ACES 1.3 Reference Gamut "
-            "Compression, C4261_1_ClipGraph_CorrectorNode_1.clf, then ACEScg"
+            "Compression, C4261_1_ClipGraph_CorrectorNode_1.clf, then ACEScg, then "
+            f"{color.DEFAULT_VIEW[0]}"
         )
 
     def test_a_row_with_no_look_names_the_input_transform(self) -> None:

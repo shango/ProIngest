@@ -989,13 +989,15 @@ def check_color_chain(row: ShotRow) -> list[QCResult]:
     if encoding is None:
         return [QCResult("QC-048", "info", "row", "no source encoding: nothing to render through")]
     looks = row.grade.looks if row.grade is not None else ()
+    display = clf.shot_color(row).display
     if not looks:
         return [
             QCResult(
                 "QC-048",
                 "info",
                 "row",
-                f"no look: rendered through the input transform alone, {encoding} to {color.PLATE_SPACE}",
+                f"no look: rendered through the input transform alone, {encoding} to {color.PLATE_SPACE}, "
+                f"then {display}",
             )
         ]
     names = ", ".join(look.label for look in looks)
@@ -1004,7 +1006,8 @@ def check_color_chain(row: ShotRow) -> list[QCResult]:
             "QC-048",
             "info",
             "row",
-            f"rendered through {encoding} to {color.ACES}, then {names}, then {color.PLATE_SPACE}",
+            f"rendered through {encoding} to {color.ACES}, then {names}, then {color.PLATE_SPACE}, "
+            f"then {display}",
         )
     ]
 

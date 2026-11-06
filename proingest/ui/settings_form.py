@@ -184,14 +184,13 @@ def sections() -> tuple[Section, ...]:
                     "Where each clip's color comes from. Its AMF names the input "
                     "transform, the looks and the output transform, and the CLFs beside it "
                     "carry the grade; the tool applies them in that order, in ACES2065-1, "
-                    "and carries the result to ACEScg.",
+                    "and carries the result to the AMF's display, plates included.",
                 ),
                 Field(
                     "readonly.output_transform",
                     "Output transform",
                     "readonly",
-                    "What a reference mp4 is viewed through: the one each clip's AMF names. "
-                    "The plates never see it.",
+                    "What a plate and a reference mp4 are rendered through: the one each clip's AMF names.",
                 ),
             ),
             note=(

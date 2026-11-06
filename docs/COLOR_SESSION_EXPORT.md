@@ -45,7 +45,7 @@ offered on scan; that is retired with the two-phase flow it belonged to.
 | Input transform, per clip | **the clip's camera encoding.** It leaves in the clip's AMF as a transform ID (turnover097: `CSC.Sony.SLog3_SGamut3Cine_to_ACES.a2.v1`, which the config names `S-Log3 S-Gamut3.Cine`), and that is the only place the tool reads it. A clip whose AMF names none is QC-046, one the config lacks QC-047 |
 | Timeline color space | **no longer the tool's concern** (2026-09-28). The 2026-09-18 version of this page made ACEScct a standard because the tool replayed the CDL in it. Each CLF now carries its own trip into the working space and back (ACEScct in turnover097), so the tool needs no working space of its own |
 | Reference Gamut Compress | turnover097's AMFs list it as their first look (`Look.Academy.ReferenceGamutCompress.a2.v1`, the config's `ACES 1.3 Reference Gamut Compression`), and the tool applies it where the AMF puts it |
-| Output transform | **what the references are viewed through** (2026-09-28): the tool follows the AMF rather than a fixed sRGB. turnover097: `Output.Academy.Rec709-D65_100nit_in_Rec709-D65_Gamma2pt2.a2.v1`, the config's `ACES 2.0 - SDR 100 nits (Rec.709)` on `Gamma 2.2 Rec.709 - Display`. One the config lacks is QC-079. The plates never see it |
+| Output transform | **what the plates and references are rendered through** (2026-09-28, plates since 2026-11-06): the tool follows the AMF rather than a fixed sRGB. turnover097: `Output.Academy.Rec709-D65_100nit_in_Rec709-D65_Gamma2pt2.a2.v1`, the config's `ACES 2.0 - SDR 100 nits (Rec.709)` on `Gamma 2.2 Rec.709 - Display`. One the config lacks is QC-079 |
 
 ## One timeline per turnover
 

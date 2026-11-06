@@ -93,7 +93,7 @@ Under the delivery root, `<show>/<shot>/` per shot:
 
 | | |
 |---|---|
-| plates | 4k and HD EXR sequences, graded, scene linear ACEScg, frames numbered from 1001 |
+| plates | 4k and HD EXR sequences, graded, display referred through the clip's output transform (Gamma 2.2 Rec.709), frames numbered from 1001 |
 | references | 4k and HD H.264 mp4, made for the display the colorist's AMF names, with the shot's audio on them |
 | audio | the wav, cut to the delivered range |
 | reference stills | one 4k EXR each for the color chart, grey ball, mirror ball and size reference, converted to ACEScg but never graded |

@@ -4,13 +4,15 @@ the delivered HD references, the ungraded source or black where there is none.""
 from __future__ import annotations
 
 import copy
+import shutil
 import subprocess
 from dataclasses import replace
 from pathlib import Path
 
+import numpy as np
 import pytest
 
-from proingest.core import clf, color, ffmpeg, naming, planner, qc, render, scan, stringout
+from proingest.core import clf, color, exr, ffmpeg, naming, planner, qc, render, scan, stringout
 from proingest.core.models import Batch, Deliverable, FrameRate, InOut, MediaInfo
 from tests.fixtures import color as color_fixtures
 from tests.fixtures import media as fixtures
@@ -137,6 +139,28 @@ class TestPlan:
         cpu = color.processor(*segment.exr.color.view_transforms())
         shown = stringout._shown(first, cpu)
         assert shown.shape == (1080, 1920, 3) and float(shown.min()) >= 0.0 and float(shown.max()) <= 1.0
+
+    def test_a_display_referred_plate_is_shown_as_it_is(self, batch: Batch, tmp_path: Path) -> None:
+        """User, 2026-11-06. The output transform is in the pixels, so a second one would
+        tone map the picture twice."""
+        segment = planned(batch).segments[0]
+        assert segment.exr is not None and segment.exr.as_is
+        frame = tmp_path / "frame.exr"
+        exr.write_frame(frame, np.full((1080, 1920, 3), 0.25, dtype=np.float32))
+        assert float(stringout._shown(frame, None)[540, 960, 0]) == pytest.approx(0.25, abs=0.002)
+
+    def test_a_plate_from_before_the_change_still_gets_its_output_transform(
+        self, batch: Batch, tmp_path: Path
+    ) -> None:
+        """An old delivery a new stringout re-uses says ACEScg in its header."""
+        hd = next(item for item in batch.rows[0].deliverables if item.kind == "raw_dir" and item.res == "HD")
+        old = tmp_path / "old"
+        shutil.copytree(hd.path, old)
+        for frame in old.glob("*.exr"):
+            exr.write_frame(frame, exr.read_pixels(frame))
+        hd.path = old
+        segment = planned(batch).segments[0]
+        assert segment.exr is not None and not segment.exr.as_is
 
     def test_a_skipped_shot_is_the_ungraded_source(self, batch: Batch) -> None:
         batch.rows[1].skipped = True

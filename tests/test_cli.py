@@ -9,8 +9,9 @@ import OpenEXR
 import pytest
 
 from proingest.__main__ import _ProgressPrinter, main
-from proingest.core import batchfile, color, expiry, exr, qc, render
+from proingest.core import batchfile, expiry, exr, qc, render
 from proingest.core.models import Batch, QCResult
+from tests.fixtures import color as color_fixtures
 from tests.fixtures import media as fixtures
 
 FOLDER = "turnover001_02_23_2026_danielluckett"
@@ -279,7 +280,7 @@ class TestTheGrade:
             "ACES 1.3 Reference Gamut Compression; MELT0001_pl01_0_ClipGraph_CorrectorNode_1.clf"
         )
         assert str(header[exr.AMF_ATTRIBUTE]).endswith(".amf")
-        assert header[exr.COLORSPACE_ATTRIBUTE] == color.PLATE_SPACE
+        assert header[exr.COLORSPACE_ATTRIBUTE] == color_fixtures.DISPLAY
 
     def test_there_is_no_color_session_flag_any_more(self) -> None:
         with pytest.raises(SystemExit):

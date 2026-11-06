@@ -143,9 +143,10 @@ class ShotColor:
     """What the AMF's output transform resolved to: where a reference is viewed."""
 
     def plate_transforms(self) -> list[ocio.Transform]:
-        """The plate branch: into ACES2065-1, the looks in order, out to ACEScg.
+        """Into ACES2065-1, the looks in order, out to ACEScg: the scene linear chain.
 
-        One leg when there is no look, which is the same pixels in one transform.
+        One leg when there is no look, which is the same pixels in one transform. A plate
+        goes on through `view_transforms` since 2026-11-06 (user).
         """
         if self.source_encoding is None:
             raise ClfError(
@@ -166,10 +167,10 @@ class ShotColor:
         return legs
 
     def view_transforms(self) -> list[ocio.Transform]:
-        """The view branch: the plate branch, then the AMF's output transform.
+        """The scene linear chain, then the AMF's output transform: a plate and a reference.
 
-        The two branches share everything up to linear ACEScg, which is why this is the
-        plate chain plus one leg rather than a chain of its own.
+        Everything up to linear ACEScg is shared with `plate_transforms`, which is why
+        this is that chain plus one leg rather than a chain of its own.
         """
         if self.display is None or self.view is None:
             raise ClfError("no output transform: the clip's AMF names none the config has (QC-079)")

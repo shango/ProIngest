@@ -104,8 +104,8 @@ class TestWriteFrame:
 
 
 class TestWrittenMetadata:
-    def test_every_delivered_frame_states_acescg(self, tmp_path: Path) -> None:
-        """The tool transforms every plate into it, so the value is not a parameter."""
+    def test_a_scene_linear_frame_states_acescg(self, tmp_path: Path) -> None:
+        """A reference still, and a plate delivered before 2026-11-06."""
         path = tmp_path / "frame.exr"
         exr.write_frame(path, image())
         with OpenEXR.File(str(path)) as handle:
@@ -140,6 +140,30 @@ class TestWrittenMetadata:
         exr.write_frame(path, image())
         with OpenEXR.File(str(path)) as handle:
             assert exr.SOURCE_ENCODING_ATTRIBUTE not in handle.header()
+
+    def test_a_display_referred_frame_states_its_display_and_rec709(self, tmp_path: Path) -> None:
+        path = tmp_path / "frame.exr"
+        shown = clf.ShotColor(display="Gamma 2.2 Rec.709 - Display", view="ACES 2.0 - SDR 100 nits (Rec.709)")
+        exr.write_frame(path, image(), shot_color=shown, display_referred=True)
+        with OpenEXR.File(str(path)) as handle:
+            header = dict(handle.header())
+        assert header[exr.COLORSPACE_ATTRIBUTE] == shown.display
+        assert header[exr.VIEW_ATTRIBUTE] == shown.view
+        written = np.asarray(header["chromaticities"], dtype=np.float64)
+        assert np.allclose(written, exr.REC709_CHROMATICITIES, atol=1e-6)
+
+    def test_a_display_of_other_primaries_states_none_rather_than_a_guess(self, tmp_path: Path) -> None:
+        path = tmp_path / "frame.exr"
+        shown = clf.ShotColor(display="P3-D65 - Display", view="ACES 2.0 - SDR 100 nits (P3 D65)")
+        exr.write_frame(path, image(), shot_color=shown, display_referred=True)
+        with OpenEXR.File(str(path)) as handle:
+            assert "chromaticities" not in handle.header()
+
+    def test_a_frame_with_no_colorspace_is_not_display_referred(self, tmp_path: Path) -> None:
+        path = tmp_path / "frame.exr"
+        channels = {"RGB": image(channels=3).astype(np.float16)}
+        OpenEXR.File({"compression": OpenEXR.ZIP_COMPRESSION}, channels).write(str(path))
+        assert not exr.is_display_referred(path)
 
     def test_primaries_are_written(self, tmp_path: Path) -> None:
         path = tmp_path / "frame.exr"

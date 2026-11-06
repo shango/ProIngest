@@ -1,4 +1,14 @@
-# Handoff, 5 November 2026
+# Handoff, 6 November 2026
+
+**6 November, 0.5.55**: plates are display referred, no longer ACEScg (user, confirmed with the
+camera department lead: "display referred, sRGB gamma 2.2"; `docs/COLOR_AND_FORMAT.md` section 1,
+OQ-91). A plate now takes the AMF's output transform, the same leg a reference has, which is
+`Gamma 2.2 Rec.709 - Display` through `ACES 2.0 - SDR 100 nits (Rec.709)`. The header says Rec.709
+and names the display and view. A reference still stays linear ACEScg. The stringout shows a new
+plate as it is and still gives an old ACEScg plate its output transform, read off the header.
+**Open:** measured on `C2103` frame 115, the range matches Ben's EXR (0.025 to 0.873 against 0.025
+to 0.887), but the tool is about 5/255 darker, cause unknown. The exact chain costs 3.4 s a 4k
+frame on one process (WSL, 14 cores), so a long plate is slow; baking is the option if it hurts.
 
 **5 November, 0.5.54**: QC-089, a red warning on any shot delivered as an EXR sequence over
 Settings' Longest EXR shot (default 250). It is an error by severity, so the row goes red, but it

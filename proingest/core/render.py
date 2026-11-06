@@ -210,7 +210,7 @@ class _PlateBranch:
     cpu: ocio.CPUProcessor
 
     def apply(self, pixels: npt.NDArray[np.float32]) -> npt.NDArray[np.float32]:
-        """One decoded frame, transformed into linear ACEScg.
+        """One decoded frame, transformed through the job's chain.
 
         In place when the frame is already contiguous float32 RGB, which is what both
         sources yield: a 4k frame is 95 MB and the branch holds one at a time.
@@ -228,8 +228,11 @@ class _PlateBranch:
 
 
 def _plate_branch(job: DeliverableJob) -> _PlateBranch:
-    """Resolve the job's color: compose the chain and build the processor."""
-    return _PlateBranch(cpu=color.processor(*job.shot_color.plate_transforms()))
+    """Resolve the job's color: compose the chain and build the processor. A plate ends at
+    the AMF's display (user, 2026-11-06), a reference still in linear ACEScg."""
+    shot_color = job.shot_color
+    chain = shot_color.view_transforms() if job.kind == "raw_dir" else shot_color.plate_transforms()
+    return _PlateBranch(cpu=color.processor(*chain))
 
 
 def _render_sequence(
@@ -305,6 +308,7 @@ def _write_frame(
         timecode_frames=job.timecode_for(output_frame),
         fps=job.rate.as_float() if job.rate else 24.0,
         shot_color=job.shot_color,
+        display_referred=job.kind == "raw_dir",
     )
 
 

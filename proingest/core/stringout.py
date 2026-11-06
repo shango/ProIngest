@@ -9,7 +9,9 @@ ffmpeg. The user's decisions, all in OQ-38:
   in the stringout is graded** (user, 2026-10-07): a plate's EXR has its grade in it already
   and gets its clip's output transform alone; a still's EXR, delivered ungraded, gets its
   clip's looks in ACEScg first. Each is read with OpenEXR, transformed and fitted to HD into
-  a lossless intermediate the segment is cut from. The HD EXR's frame 1001 is the HD
+  a lossless intermediate the segment is cut from. **A plate delivered since 2026-11-06 is
+  display referred (user), so it has its output transform in it too and is shown as it is;** one
+  delivered before then is linear ACEScg and still gets it. The HD EXR's frame 1001 is the HD
   reference's first frame, so every offset is the same either way. **The one exception is an
   HDRI**, cut from its pre-render (below). ffmpeg's own EXR decoder is not used: it left the last rows of a
   small DWAA frame black (measured on ffmpeg 6.1.1, 2026-10-07).
@@ -146,10 +148,12 @@ class StringoutError(RuntimeError):
 @dataclass(frozen=True)
 class ExrView:
     """A delivered EXR, a sequence's folder or a still's file, and the chain it is seen
-    through, ending in its clip's AMF output transform. Made into a picture at render time."""
+    through, ending in its clip's AMF output transform. Made into a picture at render time.
+    `as_is` is a display referred plate, which already ends there and goes through nothing."""
 
     source: Path
     color: clf.ShotColor
+    as_is: bool = False
 
 
 @dataclass(frozen=True)
@@ -550,7 +554,15 @@ def _exr(row: ShotRow, cut: InOut, event: clf.ConformEvent) -> ExrView | None:
         inside = held.in_frame <= cut.in_frame and cut.out_frame <= held.out_frame
         path = _landed(row, "raw_dir", "HD") if inside else None
         chain = clf.ShotColor(source_encoding=color.PLATE_SPACE, display=shot.display, view=shot.view)
+        if path is not None and _display_referred(path):
+            return ExrView(path, chain, as_is=True)
     return ExrView(path, chain) if path is not None else None
+
+
+def _display_referred(folder: Path) -> bool:
+    """Whether a delivered sequence has its output transform in it, read off its first frame."""
+    first = min(folder.glob("*.exr"), default=None)
+    return first is not None and exr_module.is_display_referred(first)
 
 
 def _landed(row: ShotRow, kind: str, res: str | None = None) -> Path | None:
@@ -824,9 +836,7 @@ def _count_frame() -> None:
 def _write_view(exr: ExrView, files: list[Path], destination: Path, tick: Callable[[], None]) -> None:
     """One EXR seen through its output transform and fitted to HD, as a lossless file,
     with `tick` called as each frame is handed to ffmpeg."""
-    chain = exr.color.view_transforms()  # refuses a picture with no encoding (QC-046)
-    assert exr.color.source_encoding is not None
-    cpu = color.baked_processor(exr.color.source_encoding, *chain)
+    cpu = None if exr.as_is else _view_processor(exr)
 
     def shown() -> Iterable[npt.NDArray[np.float32]]:
         for path in files:
@@ -836,14 +846,21 @@ def _write_view(exr: ExrView, files: list[Path], destination: Path, tick: Callab
     ffmpeg.write_frames(shown(), SIZE, destination, RATE)
 
 
-def _shown(path: Path, cpu: ocio.CPUProcessor) -> npt.NDArray[np.float32]:
+def _view_processor(exr: ExrView) -> ocio.CPUProcessor:
+    chain = exr.color.view_transforms()  # refuses a picture with no encoding (QC-046)
+    assert exr.color.source_encoding is not None
+    return color.baked_processor(exr.color.source_encoding, *chain)
+
+
+def _shown(path: Path, cpu: ocio.CPUProcessor | None) -> npt.NDArray[np.float32]:
     """One delivered EXR frame as display values 0..1 on the HD canvas."""
     pixels = np.ascontiguousarray(exr_module.read_pixels(path)[..., :3], dtype=np.float32)
     height, width = pixels.shape[:2]
     if (width, height) != SIZE:
         fitted = resize.fit_inside((width, height), SIZE)
         pixels = np.ascontiguousarray(resize.lanczos_resize(pixels, *fitted), dtype=np.float32)
-    color.apply(pixels, cpu)
+    if cpu is not None:
+        color.apply(pixels, cpu)
     return resize.letterbox(np.clip(pixels, 0.0, 1.0), SIZE)
 
 

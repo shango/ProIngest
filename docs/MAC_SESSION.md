@@ -490,3 +490,7 @@ Treat it as a working session with the editor rather than a delivery.
 - [ ] **References on ACES 2.0 (2026-09-25).** Put one pl reference mp4 beside the same frame in
   Ben's session viewer (ACES 2.0, output sRGB) on the same display. The tone and saturation should
   match; a consistent contrast or gamma shift means his display is not sRGB (OQ-29).
+- [ ] **Display referred plates (2026-11-06, 0.5.55).** Run one plate and put its 4k EXR beside
+  Ben's EXR of the same frame, both shown with no view transform. They should match closely; the
+  tool was about 5/255 darker on `C2103` (OQ-91). Note how long the plate takes: the exact chain
+  was 3.4 s a 4k frame on Linux, and this Mac's figure decides whether it needs baking.
