@@ -181,7 +181,7 @@ class SettingsDialog(QDialog):
 
     def _readonly(self, text: str) -> QWidget:
         """A value the tool states rather than takes. Selectable, because the reason to
-        read it is usually to paste it into a message to the colourist."""
+        read it is usually to paste it into a message to the colorist."""
         label = QLabel(text, self)
         label.setObjectName("settings_readonly")
         label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)

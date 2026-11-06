@@ -78,7 +78,7 @@ def row(clip_name: str = "MELT0001_pl01", rate: FrameRate = RATE_24, **kwargs: o
         deliverable("ref_mp4", "MELT0001_pl01_ref_4k_v01.mp4", "4k", checksum="aa"),
         deliverable("ref_mp4", "MELT0001_pl01_ref_HD_v01.mp4", "HD", checksum="bb"),
         deliverable("audio", "MELT0001_pl01_audio_v01.wav", checksum="cc"),
-        deliverable("hdri", "MELT0001_pl01_HDRI_v01.exr", checksum="dd"),
+        deliverable("hdri_ref", "MELT0001_pl01_HDRI01_v01.mp4", checksum="dd"),
         deliverable("camdata", "MELT0001_pl01_camData_v01.txt", checksum="ee"),
     ]
     for key, value in kwargs.items():
@@ -162,6 +162,15 @@ class TestQcLogSheets:
         assert "QC bypassed (QC-074)" not in summary
         tracked = exports.tracker_rows(batch)
         assert len(tracked) == 1 and "MELT0001" in tracked[0]
+
+    def test_a_red_warning_renders_and_is_delivered_and_tracked(self, tmp_path: Path) -> None:
+        long = row(qc=[QCResult("QC-089", "error", "row", "EXR shot was 260 frames on the timeline")])
+        batch = batch_of(long)
+        log = exports.write_qc_log(batch, tmp_path / "log.xlsx", date(2026, 11, 5))
+        summary: dict[object, object] = {key: value for key, value in sheet_rows(log, "Summary")[1:]}
+        assert (summary["Rows delivered"], summary["Rows held back"]) == (1, 0)
+        assert exports.issue_lines(batch)[0][5] == "rendered"
+        assert len(exports.tracker_rows(batch)) == 1
 
     def test_a_row_with_an_error_is_held_back_and_untracked(self, tmp_path: Path) -> None:
         batch = batch_of(row(qc=[QCResult("QC-012", "error", "row", "no such file")]))
@@ -321,8 +330,16 @@ class TestShotTracker:
         assert values[2] == "MELT0001"
         assert values[3] == "MELT0001"
         assert values[4] == "MELT0001_pl01_ref_HD_v01.mp4"
-        assert values[5] == "MELT0001_pl01_HDRI_v01.exr", "the HDRI the tool copied (user, 2026-10-07)"
+        assert values[5] == "MELT0001_pl01_HDRI01_v01.mp4", "the HDRI's mp4 (user, 2026-10-30)"
         assert values[6] is None, "CAM Data likewise"
+
+    def test_a_batch_from_before_names_the_exr_it_copied(self, tmp_path: Path) -> None:
+        """Before 2026-10-30 the tool copied the HDRI EXR; an old batch's tracker still names it."""
+        plate = row()
+        plate.deliverables = [item for item in plate.deliverables if item.kind != "hdri_ref"]
+        plate.deliverables.append(deliverable("hdri", "MELT0001_pl01_HDRI_v01.exr", checksum="dd"))
+        tracker = exports.write_shot_tracker(batch_of(plate), tmp_path / "tracker.xlsx")
+        assert sheet_rows(tracker, "Shots")[1][5] == "MELT0001_pl01_HDRI_v01.exr"
 
     def test_an_ldri_leaves_the_hdri_cell_empty(self, tmp_path: Path) -> None:
         """User, 2026-10-08: no LDRI column; an empty HDRI cell says there is no HDRI."""
@@ -331,10 +348,10 @@ class TestShotTracker:
             identity=naming.ShotIdentity("MELT0001", naming.LDRI_KIND, "01"),
             csv_shot_type="LDRI",
             qc=[QCResult("QC-080", "info", "row", "an LDRI")],
-            deliverables=[deliverable("hdri", "MELT0001_pl01_LDRI_01_v01.jpg", checksum="dd")],
+            deliverables=[deliverable("hdri_ref", "MELT0001_pl01_LDRI01_v01.mp4", checksum="dd")],
         )
         plate = row()
-        plate.deliverables = [item for item in plate.deliverables if item.kind != "hdri"]
+        plate.deliverables = [item for item in plate.deliverables if item.kind != "hdri_ref"]
         tracker = exports.write_shot_tracker(batch_of(plate, ldri), tmp_path / "tracker.xlsx")
         values = sheet_rows(tracker, "Shots")[1]
         assert values[4] == "MELT0001_pl01_ref_HD_v01.mp4" and values[5] is None

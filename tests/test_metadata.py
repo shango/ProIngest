@@ -128,7 +128,7 @@ class TestWhatOneRowSays:
         labels = {f.label for f in section(describe([row()], batch(row())), "Range").fields}
         assert "Trimmed" not in labels
 
-    def test_the_colour_section_carries_what_m4_6_put_on_the_row(self) -> None:
+    def test_the_color_section_carries_what_m4_6_put_on_the_row(self) -> None:
         """Not in section 12.2's original table: the encoding and where it came from
         arrived with M4.6 and have no column in the list either."""
         graded = row(
@@ -136,10 +136,10 @@ class TestWhatOneRowSays:
             source_encoding_origin="AMF",
         )
         sections = describe([graded], batch(graded))
-        assert value(sections, "Colour", "Source encoding") == "Sony S-Log3/S-Gamut3.Cine"
-        assert value(sections, "Colour", "Named by") == "AMF"
+        assert value(sections, "Color", "Source encoding") == "Sony S-Log3/S-Gamut3.Cine"
+        assert value(sections, "Color", "Named by") == "AMF"
 
-    def test_the_colour_section_names_the_amf_and_its_looks(self) -> None:
+    def test_the_color_section_names_the_amf_and_its_looks(self) -> None:
         """What the AMF put on the row (2026-09-28), readable against the AMF itself."""
         graded = row(source_encoding="S-Log3 S-Gamut3.Cine", source_encoding_origin="AMF")
         graded.grade = Grade(
@@ -152,17 +152,17 @@ class TestWhatOneRowSays:
             view="ACES 2.0 - SDR 100 nits (Rec.709)",
         )
         sections = describe([graded], batch(graded))
-        assert value(sections, "Colour", "AMF") == "C4261.amf"
-        assert value(sections, "Colour", "Looks") == (
+        assert value(sections, "Color", "AMF") == "C4261.amf"
+        assert value(sections, "Color", "Looks") == (
             "ACES 1.3 Reference Gamut Compression; C4261_1_ClipGraph_CorrectorNode_1.clf"
         )
-        assert value(sections, "Colour", "Viewed on") == (
+        assert value(sections, "Color", "Viewed on") == (
             "ACES 2.0 - SDR 100 nits (Rec.709) on Gamma 2.2 Rec.709 - Display"
         )
 
-    def test_a_row_with_no_colour_facts_has_no_colour_section(self) -> None:
+    def test_a_row_with_no_color_facts_has_no_color_section(self) -> None:
         bare = row(source_encoding=None)
-        assert "Colour" not in titles(describe([bare], batch(bare)))
+        assert "Color" not in titles(describe([bare], batch(bare)))
 
     def test_audio_reports_its_own_length_against_the_picture(self) -> None:
         sounded = with_sides(row())
@@ -251,7 +251,7 @@ class TestTheEdgeStates:
 
     def test_a_section_with_nothing_in_it_is_dropped(self) -> None:
         bare = row(source_encoding=None)
-        assert "Colour" not in titles(describe([bare], batch(bare)))
+        assert "Color" not in titles(describe([bare], batch(bare)))
 
 
 class TestMoreThanOneRow:
@@ -279,7 +279,7 @@ class TestMoreThanOneRow:
 
     def test_a_field_only_one_row_has_is_a_disagreement(self) -> None:
         rows = [row(source_encoding_origin="clip metadata"), row("MELT0002_pl01")]
-        assert value(describe(rows, batch(*rows)), "Colour", "Named by") == MIXED
+        assert value(describe(rows, batch(*rows)), "Color", "Named by") == MIXED
 
     def test_qc_is_counted_across_the_selection_rather_than_merged(self) -> None:
         """Two rows with different problems agree on nothing, and `mixed` would be the
@@ -452,7 +452,7 @@ def test_describe_row_keeps_empty_sections_so_a_merge_can_line_them_up() -> None
         "Source media",
         "Frame rate",
         "Range",
-        "Colour",
+        "Color",
         "Audio",
         "Turnover",
         "QC",

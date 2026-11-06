@@ -446,7 +446,7 @@ its log handler. **Hygiene:** H1 and H2 as you asked.
 - **The em dash in the tracker export** (section 4). Kept at your instruction: it mirrors the
   studio sheet.
 - ~~**S1, `MainWindow` as a god class.**~~ **Done 2026-09-14**, in the session it was told it
-  would need. The run is `ui/run_controller.py` and the colour session ingest is
+  would need. The run is `ui/run_controller.py` and the color session ingest is
   `ui/color_session.py`; `main_window.py` is 1394 lines down to 1039. No behaviour changed, and
   the tests did survive it, though two of them had to start driving the seam rather than the
   slot behind it. PROGRESS section 1 has the whole note.

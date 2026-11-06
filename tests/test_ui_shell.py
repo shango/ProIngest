@@ -1428,7 +1428,7 @@ class TestRunningABatch:
         window.action_run.trigger()
         assert started and window.problems == []
 
-    def test_a_turnover_with_no_colour_session_still_runs(self, window: DrivenWindow, tmp_path: Path) -> None:
+    def test_a_turnover_with_no_color_session_still_runs(self, window: DrivenWindow, tmp_path: Path) -> None:
         """QC-008 went on 2026-10-07: a clip with no AMF is an ungraded clip, not a block."""
         window.set_batch(batch(row(), turnovers=[turnover(folder=tmp_path)], delivery_root=tmp_path))
         started = stub_runner(window)
@@ -1841,7 +1841,7 @@ class TestTheMetadataPane:
             "Source media",
             "Frame rate",
             "Range",
-            "Colour",
+            "Color",
             "Turnover",
             "QC",
         ]

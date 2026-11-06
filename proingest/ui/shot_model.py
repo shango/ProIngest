@@ -1,8 +1,8 @@
 """The shot list's model: a batch presented as turnovers with their rows beneath.
 
-UI_SPEC section 2 is the column list and section 3 the row colouring. Both live here
+UI_SPEC section 2 is the column list and section 3 the row coloring. Both live here
 rather than in the view, because what a cell says is a fact about the batch and what it
-looks like is one colour per state: a delegate that had to work either out would be
+looks like is one color per state: a delegate that had to work either out would be
 reading the model twice.
 
 Editing (M5.3) is here too, because the cell that writes has to write to the row the
@@ -109,7 +109,7 @@ DOT_COLORS = {
     RowState.DONE: QColor("#58a97a"),
     RowState.OK: QColor("#868d9a"),
 }
-"""One colour per state, the palette `ui/theme.qss` states at the top. A stylesheet
+"""One color per state, the palette `ui/theme.qss` states at the top. A stylesheet
 cannot see a model, so the dot and the tint are painted from here."""
 
 HOLLOW_STATES = frozenset({RowState.SKIPPED})
@@ -229,7 +229,7 @@ def turnover_state(turnover: Turnover, rows: list[ShotRow]) -> RowState:
     """The group header's aggregate: the worst state anything under it is in.
 
     A turnover's own rules count too, since QC-001 and QC-002 are turnover level and
-    leave it with no rows at all to carry the colour.
+    leave it with no rows at all to carry the color.
     """
     states = [row_state(row) for row in rows]
     if any(result.severity == "error" for result in turnover.qc):

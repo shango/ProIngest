@@ -226,8 +226,8 @@ def make_dpx_sequence(
     return directory
 
 
-def make_solid_dpx(path: Path, colour: str = "0x804020", size: tuple[int, int] = SMALL) -> Path:
-    """A single DPX frame of one flat colour, for pinning down channel order.
+def make_solid_dpx(path: Path, color: str = "0x804020", size: tuple[int, int] = SMALL) -> Path:
+    """A single DPX frame of one flat color, for pinning down channel order.
 
     `gbrp10le` so the RGB values survive without a YUV round trip. lavfi's `color`
     still lands a little off the requested value, so tests compare channels against
@@ -244,7 +244,7 @@ def make_solid_dpx(path: Path, colour: str = "0x804020", size: tuple[int, int] =
             "-f",
             "lavfi",
             "-i",
-            f"color=c={colour}:size={size[0]}x{size[1]}",
+            f"color=c={color}:size={size[0]}x{size[1]}",
             "-pix_fmt",
             "gbrp10le",
             "-frames:v",

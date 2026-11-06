@@ -22,7 +22,7 @@ INVERSE_SOURCE = (
     f"<aces:transformId>{INV_GAMMA22}</aces:transformId>"
     "</aces:inverseOutputTransform></aces:inputTransform>"
 )
-"""A display referred render's input transform, as turnover144's colour chart AMF has it
+"""A display referred render's input transform, as turnover144's color chart AMF has it
 (Resolve 20, 2026-10-13): the inverse of the session's output transform."""
 NAME = "Tool_Test2_turnover097_DailiesRequest_C4261_1_2026-09-28_180306Z.amf"
 
@@ -154,7 +154,7 @@ class TestResolvingThroughTheConfig:
     """The pinned config's `amf_transform_ids`, verified against turnover097 (2026-09-28)."""
 
     def test_the_sony_input_transform(self) -> None:
-        assert amf.colour_space_for(SLOG3) == "S-Log3 S-Gamut3.Cine"
+        assert amf.color_space_for(SLOG3) == "S-Log3 S-Gamut3.Cine"
 
     def test_the_reference_gamut_compress(self) -> None:
         assert amf.look_for(RGC) == "ACES 1.3 Reference Gamut Compression"
@@ -165,7 +165,7 @@ class TestResolvingThroughTheConfig:
             "ACES 2.0 - SDR 100 nits (Rec.709)",
         )
 
-    def test_a_camera_input_transform_is_its_colour_space(self, tmp_path: Path) -> None:
+    def test_a_camera_input_transform_is_its_color_space(self, tmp_path: Path) -> None:
         assert amf.input_encoding_for(amf.read(written(tmp_path))) == "S-Log3 S-Gamut3.Cine"
 
     def test_an_inverse_output_transform_is_that_view_undone(self, tmp_path: Path) -> None:
@@ -176,6 +176,6 @@ class TestResolvingThroughTheConfig:
         unknown = INVERSE_SOURCE.replace(INV_GAMMA22, URN + "InvOutput.Unknown.a2.v1")
         assert amf.input_encoding_for(amf.read(written(tmp_path, source=unknown))) is None
 
-    @pytest.mark.parametrize("lookup", [amf.colour_space_for, amf.look_for, amf.display_view_for])
+    @pytest.mark.parametrize("lookup", [amf.color_space_for, amf.look_for, amf.display_view_for])
     def test_an_id_the_config_does_not_list_is_none(self, lookup: object) -> None:
         assert lookup(URN + "IDT.Unknown.Camera.a1.v1") is None  # type: ignore[operator]

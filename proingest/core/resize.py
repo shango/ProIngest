@@ -11,7 +11,7 @@ installer budget. The kernel below widens with the scale factor, which is what t
 reduction into an average, and it needs nothing beyond numpy.
 
 Ringing is not clamped. Lanczos undershoot at a hard edge can push a scene linear
-value below zero, and half float carries that fine; clamping would be a colour
+value below zero, and half float carries that fine; clamping would be a color
 decision, and this tool does not make those on raw output.
 """
 
@@ -120,7 +120,7 @@ def letterbox_offset(fitted: tuple[int, int], target: tuple[int, int]) -> tuple[
 def letterbox(image: npt.NDArray[np.float32], target: tuple[int, int]) -> npt.NDArray[np.float32]:
     """Place an `(h, w, channels)` image on a target sized canvas of zeros.
 
-    Zero is linear black, and alpha zero outside the picture. Applied after the colour
+    Zero is linear black, and alpha zero outside the picture. Applied after the color
     chain, never before it: a zero in a log encoding is not black, and a bar decoded
     through the chain would come out below it.
     """

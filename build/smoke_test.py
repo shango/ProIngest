@@ -128,7 +128,7 @@ def check_scan(executable: Path, work: Path) -> Path:
 
 
 def check_run(executable: Path, work: Path, batch: Path) -> Path:
-    """Render the batch through a real worker pool and a real colour transform.
+    """Render the batch through a real worker pool and a real color transform.
 
     Everything the tool is for passes through here: the spawn pool, ffmpeg, OpenEXR,
     OpenColorIO's built-in ACES config, and the CDL the turnover's EDL carries.

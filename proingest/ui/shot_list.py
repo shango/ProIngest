@@ -1,6 +1,6 @@
 """The shot list itself: the view, its two line cells, and the search filter.
 
-UI_SPEC section 2. The view is thin on purpose - what a cell says and what colour it is
+UI_SPEC section 2. The view is thin on purpose - what a cell says and what color it is
 are the model's answers (`ui/shot_model.py`), and what is left here is how a row is
 drawn, which rows are shown, and what typing into one does.
 
@@ -110,7 +110,7 @@ def scrolled_by(widget: QWidget | None) -> int:
 def show_parse(editor: QLineEdit, parsed: ParsedInput) -> None:
     """Section 5's inline red text, while the editor is still open.
 
-    It colours what was typed rather than replacing it: the editor has to be able to see
+    It colors what was typed rather than replacing it: the editor has to be able to see
     the mistake to fix it, and Escape is what reverts. No result is recorded anywhere,
     because a value that was never committed is not a fact about the row.
     """

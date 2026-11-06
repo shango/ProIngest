@@ -18,7 +18,7 @@ than assuming: the hint says what to do, the editor does it in the cell.
 Ordering is the batch's own: what the batch says first, then each turnover, then the
 rows in list order with their deliverables. Not sorted by severity, because the dock is
 read next to the list and the two agreeing about where a shot is worth more than the
-errors being at the top of a table that is already coloured by severity.
+errors being at the top of a table that is already colored by severity.
 """
 
 from __future__ import annotations
@@ -134,9 +134,9 @@ class IssuesDock(QTreeWidget):
                     FIX_HINTS.get(issue.result.rule_id, ""),
                 ]
             )
-            colour = SEVERITY_COLORS.get(issue.result.severity)
-            if colour is not None:
-                item.setForeground(COLUMNS.index("Severity"), QBrush(colour))
+            color = SEVERITY_COLORS.get(issue.result.severity)
+            if color is not None:
+                item.setForeground(COLUMNS.index("Severity"), QBrush(color))
             item.setToolTip(COLUMNS.index("Message"), issue.result.message)
             item.setData(0, Qt.ItemDataRole.UserRole, len(self._rows))
             self._rows.append(issue.row)

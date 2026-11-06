@@ -16,7 +16,7 @@
 
    Row tints and the status dot (UI_SPEC section 3) are painted by the shot list's
    delegate rather than here, because they vary per row and a stylesheet cannot see a
-   model. The three state colours are listed above so both ends agree on them. */
+   model. The three state colors are listed above so both ends agree on them. */
 
 QMainWindow, QDialog {
   background: #0e0f12;
@@ -177,7 +177,7 @@ QHeaderView::section {
   color: #eef1f5;
 }
 
-/* The delivery root while there is none: amber, the warning colour, because it is the
+/* The delivery root while there is none: amber, the warning color, because it is the
    one thing Run stops to ask about. A path, once set, draws like the other flat buttons. */
 #delivery_root[unset="true"] {
   color: #cf9a3a;
@@ -351,7 +351,7 @@ QSpinBox:focus, QPlainTextEdit:focus {
   border-color: #4d8fd6;
 }
 
-/* Qt draws an unstyled checkbox in the platform's own colours, which on the near-black
+/* Qt draws an unstyled checkbox in the platform's own colors, which on the near-black
    ground is a white square that reads as the brightest thing on the page. */
 QCheckBox::indicator {
   background: #1b1e23;

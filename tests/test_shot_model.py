@@ -1,6 +1,6 @@
 """The shot list's model. `ui/shot_model.py`, M5.2.
 
-UI_SPEC section 2 for the columns and section 3 for the colouring. These ask what a cell
+UI_SPEC section 2 for the columns and section 3 for the coloring. These ask what a cell
 says rather than what it looks like: the model is the half of the list that can be
 checked without a screen, and it is where every fact in the list comes from.
 """
@@ -14,6 +14,7 @@ import pytest
 from PySide6.QtCore import QModelIndex, Qt
 from PySide6.QtWidgets import QApplication
 
+from proingest.core import planner
 from proingest.core.models import Deliverable, FrameRate, InOut, QCResult
 from proingest.core.planner import DeliverableJob
 from proingest.core.render import Progress
@@ -449,7 +450,7 @@ class TestTheGroupHeader:
         assert turnover_state(turnover(), [row(), warn(row())]) is RowState.WARNING
         assert turnover_state(turnover(), [row(), row()]) is RowState.OK
 
-    def test_a_turnover_that_failed_to_parse_carries_its_own_colour(self) -> None:
+    def test_a_turnover_that_failed_to_parse_carries_its_own_color(self) -> None:
         """QC-001 and QC-002 leave no rows at all, so nothing else could carry it."""
         broken = turnover()
         broken.qc.append(QCResult("QC-002", "error", "turnover", "failed to parse"))
@@ -695,9 +696,9 @@ class TestCommittingAnEdit:
         """QC-031 says it about the row. Refusing the keystroke would stop an editor who
         is typing Out before In on the way to a range that is fine."""
         assert self.commit(model, OUT, "900")
-        # Too long too (QC-034), which is a warning since 2026-10-07: only QC-031 holds the shot.
+        # Too long too (QC-034, QC-089), neither of which holds a shot: only QC-031 does.
         row = model.batch.rows[0]
-        assert [result.rule_id for result in row.errors()] == ["QC-031"]
+        assert [result.rule_id for result in planner.holding_errors(row)] == ["QC-031"]
         assert "QC-034" in [result.rule_id for result in row.warnings()]
 
     def test_a_range_before_the_media_s_timecode_still_renders(self, model: ShotListModel) -> None:

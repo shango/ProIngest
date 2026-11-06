@@ -9,7 +9,9 @@ ffmpeg. The user's decisions, all in OQ-38:
   in the stringout is graded** (user, 2026-10-07): a plate's EXR has its grade in it already
   and gets its clip's output transform alone; a still's EXR, delivered ungraded, gets its
   clip's looks in ACEScg first. Each is read with OpenEXR, transformed and fitted to HD into
-  a lossless intermediate the segment is cut from. The HD EXR's frame 1001 is the HD
+  a lossless intermediate the segment is cut from. **A plate delivered since 2026-11-06 is
+  display referred (user), so it has its output transform in it too and is shown as it is;** one
+  delivered before then is linear ACEScg and still gets it. The HD EXR's frame 1001 is the HD
   reference's first frame, so every offset is the same either way. **The one exception is an
   HDRI**, cut from its pre-render (below). ffmpeg's own EXR decoder is not used: it left the last rows of a
   small DWAA frame black (measured on ffmpeg 6.1.1, 2026-10-07).
@@ -27,12 +29,12 @@ ffmpeg. The user's decisions, all in OQ-38:
   one EXR frame, which cannot play). It was held for a second until then.
 - **Any held frame plays for one second** (user, 2026-09-29): a frame hold or a one frame cut,
   a reference clip's from its delivered EXR. **Except a held HDRI, which keeps the EDL's
-  length** (user, 2026-09-30). Taken from the source, it is **coloured through its AMF**
+  length** (user, 2026-09-30). Taken from the source, it is **colored through its AMF**
   (input transform, CLF nodes, output transform) the way Resolve shows it.
 - **An HDRI on the timeline is a frame hold on the HDRI EXR with a pan** (user, 2026-10-07),
   which no EDL carries. Ben renders the event, pan included, beside the EXR under its name as
   a video (`xxxx_001.mp4` beside `xxxx_001.exr`), in sRGB Linear and ungraded. **The event
-  is cut from that pre-render**, from its first frame for the event's length, and **coloured
+  is cut from that pre-render**, from its first frame for the event's length, and **colored
   through the HDRI's AMF**, its own encoding taking the input transform's place. With no
   pre-render (QC-083) the EXR is held for the event's length, graded the same way, read as
   linear Rec.709 like its pre-render.
@@ -146,10 +148,12 @@ class StringoutError(RuntimeError):
 @dataclass(frozen=True)
 class ExrView:
     """A delivered EXR, a sequence's folder or a still's file, and the chain it is seen
-    through, ending in its clip's AMF output transform. Made into a picture at render time."""
+    through, ending in its clip's AMF output transform. Made into a picture at render time.
+    `as_is` is a display referred plate, which already ends there and goes through nothing."""
 
     source: Path
     color: clf.ShotColor
+    as_is: bool = False
 
 
 @dataclass(frozen=True)
@@ -191,7 +195,7 @@ class Segment:
 
     identity: naming.ShotIdentity | None = None
     color: clf.ShotColor | None = None
-    """A held frame's AMF colour, baked into a LUT for its source segment."""
+    """A held frame's AMF color, baked into a LUT for its source segment."""
 
     insets: tuple[PictureInPicture, ...] = ()
     """A plate's cp and wit, laid over it (`INSET_CORNERS`)."""
@@ -224,7 +228,7 @@ class Plan:
     display: str = ffmpeg.DEFAULT_DISPLAY
     """What the joined file is labelled for: the display the turnover's AMFs name, which is
     what its references were rendered for (2026-09-28). The first graded row's, since one
-    colour session views every clip on one display."""
+    color session views every clip on one display."""
 
     @property
     def total(self) -> int:
@@ -334,7 +338,11 @@ def _segment(
     if style is not None:
         return _style_frame(event, style, length, show_pattern, folder)
     known = next((row for row in claimed if row.media is not None), None)
-    cut = _cut(event, known.media) if known is not None and known.media is not None else None
+    cut = (
+        _cut(event, known.media, known.resolve_start_tc)
+        if known is not None and known.media is not None
+        else None
+    )
     if known is None or cut is None:
         held = event.freeze or length == 1
         if claimed:
@@ -475,7 +483,7 @@ def _prerender(event: clf.ConformEvent, row: ShotRow, length: int, show_pattern:
 
 
 def _prerender_color(row: ShotRow) -> clf.ShotColor | None:
-    """The pre-render's colour, as its delivered mp4 has it (`planner.prerender_color`)."""
+    """The pre-render's color, as its delivered mp4 has it (`planner.prerender_color`)."""
     return prerender_color(row, clf.shot_color(row))
 
 
@@ -489,7 +497,13 @@ def _style_frame(
     identity = effective_identity(row, show_pattern)
     media = row.media
     plays = media is not None and identity is not None and identity.is_as_is
-    start = 0 if media is None else _cut(event, media).in_frame if plays else media.start_frame
+    start = (
+        0
+        if media is None
+        else _cut(event, media, row.resolve_start_tc).in_frame
+        if plays
+        else media.start_frame
+    )
     return Segment(
         kind="black" if media is None else "source",
         length=length,
@@ -506,15 +520,16 @@ def _style_frame(
     )
 
 
-def _cut(event: clf.ConformEvent, source: MediaInfo) -> InOut:
+def _cut(event: clf.ConformEvent, source: MediaInfo, resolve_start_tc: str = "") -> InOut:
     """The event's frames in its file. **Never None: a file that is there plays** (user,
     2026-09-29). A file with no timecode is counted from 00:00:00:00, which is where Resolve
     starts one and what the EDL's source In counts from (turnover097's events 008 and 015
     cut from 00:00:00:00), as a delivery is since 2026-10-07. A single image with no
-    timecode has only its one frame."""
+    timecode has only its one frame. Read as the scan's conform reads it (`scan.cut_in_file`),
+    so the file's own timecode, then Resolve's `Start TC`, then the frames the file has."""
     if source.start_timecode is None and not source.is_sequence and source.frame_count <= 1:
         return InOut(source.start_frame, source.start_frame)
-    return clf.approved_in_out(event, source)
+    return scan.cut_in_file(event, source, resolve_start_tc)[0]
 
 
 def _held(event: clf.ConformEvent, cut: InOut) -> bool:
@@ -539,7 +554,15 @@ def _exr(row: ShotRow, cut: InOut, event: clf.ConformEvent) -> ExrView | None:
         inside = held.in_frame <= cut.in_frame and cut.out_frame <= held.out_frame
         path = _landed(row, "raw_dir", "HD") if inside else None
         chain = clf.ShotColor(source_encoding=color.PLATE_SPACE, display=shot.display, view=shot.view)
+        if path is not None and _display_referred(path):
+            return ExrView(path, chain, as_is=True)
     return ExrView(path, chain) if path is not None else None
+
+
+def _display_referred(folder: Path) -> bool:
+    """Whether a delivered sequence has its output transform in it, read off its first frame."""
+    first = min(folder.glob("*.exr"), default=None)
+    return first is not None and exr_module.is_display_referred(first)
 
 
 def _landed(row: ShotRow, kind: str, res: str | None = None) -> Path | None:
@@ -813,9 +836,7 @@ def _count_frame() -> None:
 def _write_view(exr: ExrView, files: list[Path], destination: Path, tick: Callable[[], None]) -> None:
     """One EXR seen through its output transform and fitted to HD, as a lossless file,
     with `tick` called as each frame is handed to ffmpeg."""
-    chain = exr.color.view_transforms()  # refuses a picture with no encoding (QC-046)
-    assert exr.color.source_encoding is not None
-    cpu = color.baked_processor(exr.color.source_encoding, *chain)
+    cpu = None if exr.as_is else _view_processor(exr)
 
     def shown() -> Iterable[npt.NDArray[np.float32]]:
         for path in files:
@@ -825,14 +846,21 @@ def _write_view(exr: ExrView, files: list[Path], destination: Path, tick: Callab
     ffmpeg.write_frames(shown(), SIZE, destination, RATE)
 
 
-def _shown(path: Path, cpu: ocio.CPUProcessor) -> npt.NDArray[np.float32]:
+def _view_processor(exr: ExrView) -> ocio.CPUProcessor:
+    chain = exr.color.view_transforms()  # refuses a picture with no encoding (QC-046)
+    assert exr.color.source_encoding is not None
+    return color.baked_processor(exr.color.source_encoding, *chain)
+
+
+def _shown(path: Path, cpu: ocio.CPUProcessor | None) -> npt.NDArray[np.float32]:
     """One delivered EXR frame as display values 0..1 on the HD canvas."""
     pixels = np.ascontiguousarray(exr_module.read_pixels(path)[..., :3], dtype=np.float32)
     height, width = pixels.shape[:2]
     if (width, height) != SIZE:
         fitted = resize.fit_inside((width, height), SIZE)
         pixels = np.ascontiguousarray(resize.lanczos_resize(pixels, *fitted), dtype=np.float32)
-    color.apply(pixels, cpu)
+    if cpu is not None:
+        color.apply(pixels, cpu)
     return resize.letterbox(np.clip(pixels, 0.0, 1.0), SIZE)
 
 
@@ -867,6 +895,7 @@ def _encode(made: Plan, segment: Segment, parts: Path, index: int) -> Path:
             audio_format=ffmpeg.STRINGOUT_AUDIO,
             display=made.display,
             insets=_labelled(segment, parts / f"{index:04d}"),
+            pad_short=True,
         )
     elif segment.kind == "source" and segment.path is not None and segment.media is not None:
         source = segment.media
@@ -897,6 +926,7 @@ def _encode(made: Plan, segment: Segment, parts: Path, index: int) -> Path:
             audio_format=ffmpeg.STRINGOUT_AUDIO,
             display=made.display,
             insets=_labelled(segment, parts / f"{index:04d}"),
+            pad_short=True,
         )
     else:
         command = ffmpeg.black_command(destination, SIZE, RATE, segment.length, overlay, display=made.display)
@@ -908,7 +938,7 @@ LUT_SUFFIX = ".cube"
 
 
 def _still_lut(segment: Segment, destination: Path) -> Path | None:
-    """A source segment's AMF colour as the LUT it is encoded through, as a reference's is;
+    """A source segment's AMF color as the LUT it is encoded through, as a reference's is;
     None, and the source as it is, when its AMF resolves to no chain."""
     if segment.color is None:
         return None

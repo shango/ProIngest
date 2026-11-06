@@ -17,7 +17,7 @@ from pathlib import Path
 
 import pytest
 
-from proingest.core import naming, qc, render
+from proingest.core import color, naming, qc, render
 from proingest.core.models import (
     AudioInfo,
     Batch,
@@ -450,6 +450,35 @@ class TestDuration:
         assert results[0].severity == "warning", "rendered as it is since 2026-10-07 (user)"
         assert results[0].message.startswith("Plate was 264 frames on the timeline")
 
+
+class TestExrLength:
+    def test_the_limit_itself_is_clean(self) -> None:
+        assert qc.check_exr_length(row(current=InOut(1001, 1250)), qc.DEFAULT_SETTINGS) == []
+
+    def test_one_frame_over_is_red(self) -> None:
+        results = qc.check_exr_length(row(current=InOut(1001, 1251)), qc.DEFAULT_SETTINGS)
+        assert ids(results) == ["QC-089"]
+        assert results[0].severity == "error"
+        assert not results[0].holds, "red on the row, and the shot still renders"
+        assert results[0].message == "EXR shot was 251 frames on the timeline, above the 250 frame limit"
+
+    def test_the_limit_is_a_setting(self) -> None:
+        settings = qc.RuleSettings(max_exr_frames=300)
+        assert qc.check_exr_length(row(current=InOut(1001, 1251)), settings) == []
+        assert qc.RuleSettings.from_dict(settings.to_dict()) == settings
+
+    def test_every_sequence_type_is_asked_not_only_a_plate(self) -> None:
+        element = replace(row(current=InOut(1001, 1300)), identity=identity_of("MELT0001_el01"))
+        assert ids(qc.check_exr_length(element, qc.DEFAULT_SETTINGS)) == ["QC-089"]
+
+    def test_a_still_has_no_sequence(self) -> None:
+        still = replace(row(current=InOut(1001, 1300)), identity=identity_of("MELT0001_pl01_colorChart_01"))
+        assert qc.check_exr_length(still, qc.DEFAULT_SETTINGS) == []
+
+    def test_a_freeze_has_no_sequence(self) -> None:
+        frozen = replace(row(current=InOut(1001, 1300)), freeze=True)
+        assert "QC-089" not in ids(qc.run_row_rules(frozen, RATE_24))
+
     @pytest.mark.parametrize("kind", ["cp01", "el01", "wit01"])
     def test_only_a_plate_has_limits(self, kind: str) -> None:
         """User, 2026-09-29: no min or max for anything but the pl shot type."""
@@ -634,7 +663,8 @@ class TestColorChain:
         assert results[0].severity == "info"
         assert results[0].message == (
             "rendered through CanonLog3 CinemaGamut D55 to ACES2065-1, then ACES 1.3 Reference Gamut "
-            "Compression, C4261_1_ClipGraph_CorrectorNode_1.clf, then ACEScg"
+            "Compression, C4261_1_ClipGraph_CorrectorNode_1.clf, then ACEScg, then "
+            f"{color.DEFAULT_VIEW[0]}"
         )
 
     def test_a_row_with_no_look_names_the_input_transform(self) -> None:
@@ -985,13 +1015,13 @@ class TestClfRule:
         assert results[0].message.startswith(qc.UNGRADED)
         assert "C4261.amf carries no CLF and no CDL" in results[0].message
 
-    def test_a_row_with_no_amf_is_ungraded_from_the_csv_colour_space(self) -> None:
+    def test_a_row_with_no_amf_is_ungraded_from_the_csv_color_space(self) -> None:
         plain = row(source_encoding="Apple Log", grade=None)
         results = qc.check_clf(plain)
         assert ids(results) == ["QC-009"]
         assert "read as Apple Log, the CSV's Input Color Space" in results[0].message
 
-    def test_a_row_with_no_colour_at_all_leaves_it_to_qc_046(self) -> None:
+    def test_a_row_with_no_color_at_all_leaves_it_to_qc_046(self) -> None:
         assert qc.check_clf(row(source_encoding=None, grade=None)) == []
 
     def test_a_cdl_in_place_of_a_clf_is_a_grade(self) -> None:
@@ -1015,7 +1045,7 @@ class TestClfRule:
 
 
 class TestApprovedRule:
-    """QC-045: the row will be delivered at an In/Out the colour session did not approve."""
+    """QC-045: the row will be delivered at an In/Out the color session did not approve."""
 
     def test_a_trim_away_from_the_approved_cut_is_a_warning(self) -> None:
         trimmed = row(current=InOut(20, 200))

@@ -97,7 +97,7 @@ class TestWhatIsCollected:
 
     def test_the_order_follows_the_list_rather_than_the_severity(self) -> None:
         """The dock is read beside the list, and the two agreeing about where a shot is
-        is worth more than the errors being at the top of a table already coloured."""
+        is worth more than the errors being at the top of a table already colored."""
         found = issues_for(
             batch(
                 warn(row("MELT0001_pl01"), "QC-030"),

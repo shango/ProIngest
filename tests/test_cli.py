@@ -9,8 +9,9 @@ import OpenEXR
 import pytest
 
 from proingest.__main__ import _ProgressPrinter, main
-from proingest.core import batchfile, color, expiry, exr, qc, render
+from proingest.core import batchfile, expiry, exr, qc, render
 from proingest.core.models import Batch, QCResult
+from tests.fixtures import color as color_fixtures
 from tests.fixtures import media as fixtures
 
 FOLDER = "turnover001_02_23_2026_danielluckett"
@@ -213,7 +214,7 @@ class TestRunCommand:
 
         A clean turnover has nothing for them to say, which since the scan ingests the
         EDL itself is the ordinary case: what used to print QC-008 here was a batch
-        waiting on a colour session that no longer exists as a separate step (OQ-74).
+        waiting on a color session that no longer exists as a separate step (OQ-74).
         So what this asserts is that the pre-flight ran and let the plan through.
         """
         batch_path = self.scanned(tmp_path)
@@ -279,9 +280,9 @@ class TestTheGrade:
             "ACES 1.3 Reference Gamut Compression; MELT0001_pl01_0_ClipGraph_CorrectorNode_1.clf"
         )
         assert str(header[exr.AMF_ATTRIBUTE]).endswith(".amf")
-        assert header[exr.COLORSPACE_ATTRIBUTE] == color.PLATE_SPACE
+        assert header[exr.COLORSPACE_ATTRIBUTE] == color_fixtures.DISPLAY
 
-    def test_there_is_no_colour_session_flag_any_more(self) -> None:
+    def test_there_is_no_color_session_flag_any_more(self) -> None:
         with pytest.raises(SystemExit):
             main(["run", "x.pibatch", "--color-session", "final.edl"])
 

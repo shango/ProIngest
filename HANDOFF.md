@@ -1,4 +1,31 @@
-# Handoff, 28 October 2026 (Windows)
+# Handoff, 6 November 2026
+
+**6 November, 0.5.55**: plates are display referred, no longer ACEScg (user, confirmed with the
+camera department lead: "display referred, sRGB gamma 2.2"; `docs/COLOR_AND_FORMAT.md` section 1,
+OQ-91). A plate now takes the AMF's output transform, the same leg a reference has, which is
+`Gamma 2.2 Rec.709 - Display` through `ACES 2.0 - SDR 100 nits (Rec.709)`. The header says Rec.709
+and names the display and view. A reference still stays linear ACEScg. The stringout shows a new
+plate as it is and still gives an old ACEScg plate its output transform, read off the header.
+**Open:** measured on `C2103` frame 115, the range matches Ben's EXR (0.025 to 0.873 against 0.025
+to 0.887), but the tool is about 5/255 darker, cause unknown. The exact chain costs 3.4 s a 4k
+frame on one process (WSL, 14 cores), so a long plate is slow; baking is the option if it hurts.
+
+**5 November, 0.5.54**: QC-089, a red warning on any shot delivered as an EXR sequence over
+Settings' Longest EXR shot (default 250). It is an error by severity, so the row goes red, but it
+is in `models.RED_WARNING_RULES` and holds nothing back: the shot renders (OQ-90, assumed, for the
+user to confirm). A plate over both limits reports QC-034 and QC-089.
+
+**30 October, 0.5.53**: turnover150. The stringout read a cut by the file's own timecode alone and
+failed on `C2098.MP4` (now `scan.cut_in_file`, shared with the scan). An HDRI or LDRI now delivers
+only its pre-render's mp4; the EXR is Ben's to deliver by hand and is never looked for (QC-086
+retired); the tracker's HDRI column names the mp4 (user). A shot's `colorChart02` is no longer
+folded into its `colorChart01` (QC-072), and a stringout segment whose file decodes a frame or two
+short holds its last frame rather than failing the stringout.
+
+**29 October, 0.5.52 on branch `fixit-orange`, draft PR #22**: PR #21 (the Windows build, 0.5.50) is merged,
+`main` is `81c0358`. The Fix-it report's Fix in Resolve color is orange rather than red
+(`fixit._STYLE`, `--resolve`), and **US spelling throughout** (0.5.52): "color", never "colour",
+in code, UI, reports and docs. Merge only when the user asks.
 
 **28 October, 0.5.50 on branch `windows`**: PR #20 is merged (`main` is `b8323cd`, 0.5.49). The
 Windows build is in progress for parity with the Mac: gyan.dev ffmpeg 9.0.1 pinned beside the
@@ -31,7 +58,7 @@ shooters' spec sheet is out of date (user) and wants remaking.
 # Handoff, 22 October 2026
 
 **22 October, 0.5.47**: an `avidRef##` is now delivered, never as an EXR: a movie or an image
-sequence as `<shot>_avidRef01_v01.mp4` with no colour transform (its colour is baked in), a held
+sequence as `<shot>_avidRef01_v01.mp4` with no color transform (its color is baked in), a held
 JPG or PNG as it is, any other still as a JPG; not on the tracker. Frame rate confirmed as already
 24 throughout. `PROGRESS.md` has the entry and OQ-86 the assumptions. The rest of this file is
 the 15 October handoff and still stands, except where it says an avidRef is never delivered.
