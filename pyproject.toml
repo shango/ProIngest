@@ -18,7 +18,7 @@ dependencies = [
 # PyInstaller is a dev dependency rather than a build-only one because
 # `build/bundle.py` imports its hook helpers, and that module is linted,
 # type checked and covered by `tests/test_bundle.py` like any other.
-dev = ["pytest>=8.0", "ruff>=0.6", "mypy>=1.11", "pyinstaller>=6.11"]
+dev = ["pytest>=8.0", "pytest-xdist>=3.6", "ruff>=0.6", "mypy>=1.11", "pyinstaller>=6.11"]
 
 [project.scripts]
 proingest = "proingest.__main__:main"
@@ -58,3 +58,7 @@ ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+    "slow: renders full-size plates or a whole run; `pytest -m \"not slow\"` leaves them to CI",
+]
+addopts = "--strict-markers"

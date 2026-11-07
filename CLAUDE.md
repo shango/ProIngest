@@ -36,9 +36,11 @@ The docs are the spec. `PROGRESS.md` is the state. When code and docs disagree, 
 bash build/mac_build.sh      # a fresh Mac clone: environment, ffmpeg, checks, app, dmg (docs/MAC_SETUP.md)
 ./ProIngest.command          # run from the folder, no build; double-clickable in Finder
 uv sync --extra dev          # installs exactly what uv.lock pins; or: pip install -e .[dev]
-pytest
+pytest -n auto                # the whole suite in parallel, as CI runs it
+pytest -n auto -m "not slow"  # the everyday run; slow tests render full-size plates
 ruff check . && ruff format --check . && mypy proingest tests build
 python -m proingest          # run the app
+python build/bump.py         # next patch version in every place it is written; or bump.py 0.6.0
 python build/fetch_ffmpeg.py # the bundled binaries for this platform, untracked (macOS and Windows)
 python build/fetch_ffmpeg.py --verify        # are they the pinned build
 python build/fetch_ffmpeg.py --from ~/Downloads  # install ones downloaded by hand

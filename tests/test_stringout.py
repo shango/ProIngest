@@ -74,6 +74,7 @@ def _position(path: Path) -> int:
     return int(path.stem.rsplit("_", 1)[1])
 
 
+@pytest.mark.slow
 class TestPlan:
     def test_every_event_is_cut_from_its_delivered_exrs(self, batch: Batch) -> None:
         """User, 2026-10-07: the stringout is from the EXRs, the HD sequence of each plate."""
@@ -248,6 +249,7 @@ class TestPlan:
             planned(batch)
 
 
+@pytest.mark.slow
 class TestBuild:
     def test_it_is_written_checked_and_recorded(self, batch: Batch) -> None:
         batch.rows[1].skipped = True
@@ -316,6 +318,7 @@ class TestFfmpeg:
         assert command[command.index("-timecode") + 1] == "01:00:00:00"
 
 
+@pytest.mark.slow
 class TestInsets:
     """A plate carries its shot's cp top left and wit top right (user, 2026-09-29)."""
 
@@ -413,6 +416,7 @@ class TestInsets:
         assert not any(red_at(frame, 100, 60) for frame in frames), "only inside the inset"
 
 
+@pytest.mark.slow
 class TestReferenceClips:
     """A chart, ball or size ref is a video on the timeline: its event plays its cut at full
     speed, graded through its AMF (user, 2026-10-07). It is delivered as one EXR frame."""
@@ -455,6 +459,7 @@ class TestReferenceClips:
         assert plate.color is not None and plate.color.looks, "graded through its AMF (user, 2026-10-07)"
 
 
+@pytest.mark.slow
 class TestAnHdri:
     """The HDRI on the timeline is a frame hold on the HDRI EXR with a pan (user, 2026-10-07).
     Its event is cut from Ben's pre-render, a video under the EXR's name, graded through the
@@ -549,6 +554,7 @@ class TestAnHdri:
         assert made is not None and made.frame_count == 2 * FRAMES
 
 
+@pytest.mark.slow
 class TestAPreRenderOnTheTimeline:
     """Turnover134 (2026-10-07): the timeline cuts Ben's pre-render, typed HDRI, and the
     HDRI EXR is not in the folder. Its AMF carries no grade, so the stringout shows it as
@@ -580,6 +586,7 @@ class TestAPreRenderOnTheTimeline:
         assert made is not None and made.frame_count == 2 * FRAMES
 
 
+@pytest.mark.slow
 class TestAnLdri:
     """User, 2026-10-08: an LDRI is treated as an HDRI on the stringout, its file a JPG or PNG,
     which Ben delivers by hand (user, 2026-10-30). A JPG or PNG is display referred, so its
@@ -635,6 +642,7 @@ class TestAnLdri:
         assert made is not None and made.frame_count == 2 * FRAMES
 
 
+@pytest.mark.slow
 class TestAnAvidRef:
     """User, 2026-10-14: an Avid reference, `avidRef01`, is "treated just like styleframe type. No
     cc needed". A video, so it plays its cut as it is. Delivered since 2026-10-22, never an EXR."""
@@ -659,6 +667,7 @@ class TestAnAvidRef:
         assert segment.color is None and segment.label == "MELT0001_avidRef01"
 
 
+@pytest.mark.slow
 class TestAStyleFrame:
     """User, 2026-10-07: a pre-graded PNG or JPG before its shot's plate, held as it is for the
     EDL's length, burned in `SECA0009_styleFrame` with no counter, and never delivered."""
@@ -724,6 +733,7 @@ class TestAStyleFrame:
         assert [s for s in said if s[0] in stringout.STRINGOUT_RULES] == [("QC-144", "warning")]
 
 
+@pytest.mark.slow
 class TestAFileThatIsThereAlwaysPlays:
     """User, 2026-09-29: an event whose file is present is never black."""
 

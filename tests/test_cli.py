@@ -151,6 +151,7 @@ class TestTopLevel:
         assert "proingest" in capsys.readouterr().out
 
 
+@pytest.mark.slow
 class TestRunCommand:
     """`proingest run` is the whole pipeline headless: load, plan, render, save."""
 
@@ -261,6 +262,7 @@ class TestRunCommand:
         assert "delivery root" in capsys.readouterr().err
 
 
+@pytest.mark.slow
 class TestTheGrade:
     """The grade comes from each event's AMF in the turnover folder, read at scan (2026-09-28)."""
 
@@ -287,6 +289,7 @@ class TestTheGrade:
             main(["run", "x.pibatch", "--color-session", "final.edl"])
 
 
+@pytest.mark.slow
 class TestQcCommand:
     """`proingest qc` is M4.3 headless: reopen a batch, re-run the rules, write both sheets."""
 

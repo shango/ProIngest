@@ -56,7 +56,7 @@ jobs:
           .venv/bin/python -m mypy proingest tests build
 
       - name: Tests
-        run: .venv/bin/python -m pytest tests/ -q
+        run: .venv/bin/python -m pytest tests/ -q -n auto --durations=25
 
   macos:
     name: macOS (Apple Silicon)
@@ -108,7 +108,7 @@ jobs:
           .venv/bin/python -m mypy proingest tests build
 
       - name: Tests
-        run: .venv/bin/python -m pytest tests/ -q
+        run: .venv/bin/python -m pytest tests/ -q -n auto --durations=25
 
       - name: Does h264_videotoolbox actually open a session
         # OQ-23. Presence in the build is not proof the encoder initialises on real
@@ -166,7 +166,7 @@ jobs:
           .venv/Scripts/python -m mypy proingest tests build
 
       - name: Tests
-        run: .venv/Scripts/python -m pytest tests/ -q
+        run: .venv/Scripts/python -m pytest tests/ -q -n auto --durations=25
 
   # Packaging (M7). The macOS and Windows jobs are the products and the Linux one is the
   # cheap signal. Nothing ships from Linux, but
