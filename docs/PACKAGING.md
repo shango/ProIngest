@@ -163,7 +163,12 @@ installed size is larger than the Mac's because gyan.dev's two exes are 205 MB t
   copied from another machine, and `--verify` says whether what is installed is the pinned
   build. **The manual route verifies the same sha256 the download does**, so a hand-placed
   binary is as trustworthy as a fetched one and a wrong one is refused rather than silently
-  bundled. `docs/MAC_SETUP.md` is the clone-to-running-app version of all of this.
+  bundled. **`build/build.py` checks the same way before it starts** (review, 2026-11-08):
+  every file the lock pins for the platform, ffmpeg's license included, must be present
+  and match its size and sha256, so a manual build cannot package binaries left from an
+  older lock. A download stalled for 60 s, or cut off part way, stops with the `--from`
+  advice rather than hanging or printing a traceback. `docs/MAC_SETUP.md` is the
+  clone-to-running-app version of all of this.
 - Two macOS-specific traps, both already handled in `fetch_ffmpeg.py` and worth knowing before
   anyone rewrites it: Python's `zipfile` does not carry the archived mode across, so the
   **exec bit must be set explicitly** or the binary lands unrunnable; and

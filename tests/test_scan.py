@@ -7,8 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from proingest.core import planner, qc, scan
-from proingest.core.models import Batch, Deliverable, InOut, ShotRow, Turnover
+from proingest.core import naming, planner, qc, scan, stringout
+from proingest.core.models import Batch, Deliverable, FrameRate, InOut, ShotRow, Turnover
 from tests.fixtures import color as color_fixtures
 from tests.fixtures import media as fixtures
 from tests.test_amf import CDL_LOOK
@@ -510,6 +510,23 @@ class TestTheAleNamesTheEvents:
         assert "QC-072" in rules(chart)
         assert "QC-055" not in rules(chart), "one frame cut out of a longer file is the normal case"
 
+    def test_two_numbered_charts_of_one_shot_are_two_rows(self) -> None:
+        """Turnover150 (2026-10-30): `colorChart01` and `colorChart02` of INCA3001, two files,
+        were folded into one row, so the second's stringout event was black (QC-144)."""
+        charts = [
+            ShotRow(
+                turnover_id="t1",
+                clip_name=name,
+                identity=naming.ShotIdentity("MELT0001", "colorChart", index),
+                approved=InOut(1001, 1001),
+                current=InOut(1001, 1001),
+                record_in=record,
+            )
+            for name, index, record in (("C2099.MP4", "01", 10), ("C2112.MP4", "02", 20))
+        ]
+        assert [row.clip_name for row in scan._collapse(charts)] == ["C2099.MP4", "C2112.MP4"]
+        assert not [r for row in charts for r in row.qc if r.rule_id == "QC-072"]
+
     def test_a_freeze_is_one_frame_and_two_holds_of_it_are_one_row(self, tmp_path: Path) -> None:
         _, rows = self.scan(tmp_path, ALE_ORDER)
         plate = rows["C"]
@@ -565,7 +582,7 @@ class TestTheAleNamesTheEvents:
 
 
 class TestTheAmf:
-    """Each event's AMF is the clip's colour (user, 2026-09-28). QC-075 to QC-080."""
+    """Each event's AMF is the clip's color (user, 2026-09-28). QC-075 to QC-080."""
 
     def scanned(self, folder: Path) -> tuple[Turnover, ShotRow]:
         turnover, rows = scan.scan_turnover(folder, "t1", scan.ScanSettings(rules=fixtures.SMALL_RULES))
@@ -583,8 +600,8 @@ class TestTheAmf:
         assert row.grade is not None
         assert [look.kind for look in row.grade.looks] == ["look", "clf"]
 
-    def test_an_event_with_no_amf_and_no_csv_colour_space_is_held_by_qc_046(self, tmp_path: Path) -> None:
-        """Nothing says what colour it is in, so the tool cannot recreate it."""
+    def test_an_event_with_no_amf_and_no_csv_color_space_is_held_by_qc_046(self, tmp_path: Path) -> None:
+        """Nothing says what color it is in, so the tool cannot recreate it."""
         folder = self.folder(tmp_path)
         self.amf(folder).unlink()
         _, row = self.scanned(folder)
@@ -606,7 +623,7 @@ class TestTheAmf:
         assert said.severity == "info" and said.message.startswith("Clip ungraded in Resolve project")
         assert planner.plannable_identity(row) is not None
 
-    def test_the_amf_wins_over_the_csv_colour_space(self, tmp_path: Path) -> None:
+    def test_the_amf_wins_over_the_csv_color_space(self, tmp_path: Path) -> None:
         folder = self.folder(tmp_path)
         rows = [("MELT0001_pl01", "MELT0001", "pl01")]
         fixtures.make_meta_csv(folder / "metadata.csv", rows, input_color_space="Apple Log")
@@ -818,8 +835,9 @@ class TestTheAmf:
 class TestAPreRenderOnTheTimeline:
     """Turnover134 and 135 (2026-10-07): the timeline cuts Ben's pre-render, named
     `<HDRI EXR> Render 1.mov`, typed HDRI; the EXR is off the cut. The pre-render is the
-    stringout's event, and the EXR it is named after is delivered when it is in the folder
-    (user: "If the EXR isn't in the turnover folder ... do nothing for the HDRI delivery")."""
+    stringout's event and is delivered as an mp4. User, 2026-10-30: "Those exr files are
+    delivered manually by Ben ... The scan should only check for the existance of the render
+    files", so the EXR is never looked for, and never missed."""
 
     RENDER = "MELT0001_pl01_HDRI_01_v01.exr Render 1.mp4"
     EXR = "MELT0001_pl01_HDRI_01_v01.exr"
@@ -840,22 +858,34 @@ class TestAPreRenderOnTheTimeline:
         _, rows = scan.scan_turnover(folder, "t1", scan.ScanSettings(rules=fixtures.SMALL_RULES))
         return rows
 
-    def test_the_exr_it_is_named_after_is_delivered(self, tmp_path: Path) -> None:
+    def test_only_the_pre_render_is_delivered_with_the_exr_in_the_folder(self, tmp_path: Path) -> None:
         (row,) = self.scanned(self.folder(tmp_path, exr=True))
-        assert row.media is not None and row.media.path.name == self.EXR
+        assert row.media is None, "the EXR is not looked for"
         assert row.hdri_render is not None and row.hdri_render.path.name == self.RENDER
-        assert not row.errors() and not rules(row) & {"QC-083", "QC-086"}
-        jobs = planner.plan_row(row, tmp_path / "out", 1).jobs
-        assert [job.kind for job in jobs] == ["hdri", "hdri_ref"] and jobs[0].source.name == self.EXR
-        assert jobs[1].source.name == self.RENDER, "the pre-render is delivered as an mp4 (user, 2026-10-27)"
+        assert not row.errors() and "QC-083" not in rules(row)
+        (job,) = planner.plan_row(row, tmp_path / "out", 1).jobs
+        assert (job.kind, job.source.name) == ("hdri_ref", self.RENDER)
 
-    def test_no_exr_is_qc_086_and_nothing_is_delivered(self, tmp_path: Path) -> None:
+    def test_no_exr_in_the_folder_is_not_a_finding(self, tmp_path: Path) -> None:
         (row,) = self.scanned(self.folder(tmp_path, exr=False))
-        (note,) = [result for result in row.qc if result.rule_id == "QC-086"]
-        assert note.severity == "warning"
-        assert note.message.startswith("HDRI EXR File Missing from turnover folder, omitted from delivery")
-        assert row.hdri_render is not None and not row.errors()
-        assert planner.plan_row(row, tmp_path / "out", 1).jobs == []
+        assert "QC-086" not in rules(row) and not row.errors() and row.hdri_render is not None
+        (job,) = planner.plan_row(row, tmp_path / "out", 1).jobs
+        assert job.destination.name == "MELT0001_pl01_HDRI01_v01.mp4"
+
+    def test_a_pre_render_named_after_the_delivery_is_found(self, tmp_path: Path) -> None:
+        """Turnover150 (2026-10-30): `INCA3001_pl01_HDRI01_Render.mov`, named after nothing in
+        the folder, beside an EXR named `SHOT3001_pl01_HDRI_01_v01.exr`. It was reported as an
+        EXR missing, under the render's own name, and nothing was delivered."""
+        root = tmp_path / GOOD_FOLDER
+        render = "MELT0001_pl01_HDRI01_Render.mov"
+        fixtures.make_mp4(root / render, count=4)
+        fixtures.make_meta_csv(root / "metadata.csv", [(render, "MELT0001", "HDRI01")])
+        fixtures.make_final_edl(root / "FINAL_v01.edl", [render], duration=4)
+        (row,) = self.scanned(root)
+        assert row.hdri_render is not None and row.hdri_render.path.name == render
+        assert not row.errors() and not rules(row) & {"QC-083", "QC-086"}
+        (job,) = planner.plan_row(row, tmp_path / "out", 1).jobs
+        assert (job.source.name, job.destination.name) == (render, "MELT0001_pl01_HDRI01_v01.mp4")
 
     def test_the_csv_s_own_exr_row_folds_into_the_pre_render(self, tmp_path: Path) -> None:
         """Turnover135 lists the EXR too, which no EDL event cuts: not a second HDRI (QC-066)."""
@@ -868,7 +898,8 @@ class TestAPreRenderOnTheTimeline:
         (row,) = self.scanned(self.folder(tmp_path, exr=True, render=False))
         (note,) = [result for result in row.qc if result.rule_id == "QC-083"]
         assert note.severity == "warning" and "not in the turnover folder" in note.message
-        assert row.media is not None and not row.errors()
+        assert "is black and no HDRI mp4 is delivered" in note.message and not row.errors()
+        assert planner.plan_row(row, tmp_path / "out", 1).jobs == []
 
     def test_with_no_color_files_it_is_shown_as_it_is(self, tmp_path: Path) -> None:
         """User, 2026-10-07: "If there's not color files, you can skip any color correction"."""
@@ -879,8 +910,8 @@ class TestAPreRenderOnTheTimeline:
 
 class TestAnLdri:
     """User, 2026-10-08: an LDRI is an HDRI whose file is a JPG or PNG. Its pre-render is
-    named the same way (`<LDRI image> Render 1.mov`) and the image is delivered byte for
-    byte under its own extension."""
+    named the same way (`<LDRI image> Render 1.mov`). User, 2026-10-30: as for an HDRI, only
+    the pre-render is delivered, as an mp4; the image is Ben's to deliver by hand."""
 
     RENDER = "MELT0001_pl01_LDRI_01_v01.jpg Render 1.mp4"
     IMAGE = "MELT0001_pl01_LDRI_01_v01.jpg"
@@ -900,34 +931,27 @@ class TestAnLdri:
         _, rows = scan.scan_turnover(folder, "t1", scan.ScanSettings(rules=fixtures.SMALL_RULES))
         return rows
 
-    def test_the_image_it_is_named_after_is_delivered_as_an_ldri(self, tmp_path: Path) -> None:
+    def test_only_the_pre_render_is_delivered_as_an_ldri(self, tmp_path: Path) -> None:
         (row,) = self.scanned(self.folder(tmp_path, image=True))
         assert qc.is_hdri(row) and qc.is_ldri(row)
-        assert row.media is not None and row.media.path.name == self.IMAGE
-        assert row.hdri_render is not None and row.hdri_render.path.name == self.RENDER
-        assert not row.errors() and not rules(row) & {"QC-083", "QC-086"}
-        job, prerender = planner.plan_row(row, tmp_path / "out", 1).jobs
-        assert (job.kind, job.source.name, job.destination.name) == (
-            "hdri",
-            self.IMAGE,
-            "MELT0001_pl01_LDRI01_v01.jpg",
-        )
+        assert row.media is None and row.hdri_render is not None and row.hdri_render.path.name == self.RENDER
+        assert not row.errors() and "QC-083" not in rules(row)
+        (prerender,) = planner.plan_row(row, tmp_path / "out", 1).jobs
         assert (prerender.kind, prerender.destination.name) == ("hdri_ref", "MELT0001_pl01_LDRI01_v01.mp4")
 
-    def test_no_image_is_qc_086_in_ldri_words(self, tmp_path: Path) -> None:
+    def test_no_image_in_the_folder_is_not_a_finding(self, tmp_path: Path) -> None:
         (row,) = self.scanned(self.folder(tmp_path, image=False))
-        (note,) = [result for result in row.qc if result.rule_id == "QC-086"]
-        assert note.message.startswith("LDRI JPG File Missing from turnover folder, omitted from delivery")
-        assert planner.plan_row(row, tmp_path / "out", 1).jobs == []
+        assert "QC-086" not in rules(row) and not row.errors()
+        assert len(planner.plan_row(row, tmp_path / "out", 1).jobs) == 1
 
     def test_the_csv_s_own_image_row_folds_into_the_pre_render(self, tmp_path: Path) -> None:
         rows = self.scanned(self.folder(tmp_path, image=True, image_row=True))
         assert [row.clip_name for row in rows] == [self.RENDER]
 
-    def test_a_pre_render_not_in_the_folder_holds_the_image(self, tmp_path: Path) -> None:
+    def test_a_pre_render_not_in_the_folder_is_black(self, tmp_path: Path) -> None:
         (row,) = self.scanned(self.folder(tmp_path, image=True, render=False))
         (note,) = [result for result in row.qc if result.rule_id == "QC-083"]
-        assert "the LDRI JPG held still" in note.message and not row.errors()
+        assert "is black and no LDRI mp4 is delivered" in note.message and not row.errors()
 
 
 @pytest.mark.parametrize(
@@ -972,6 +996,16 @@ class TestACutOutsideItsFile:
         assert not rules(row) & {"QC-029", "QC-084"} and not row.errors()
         assert row.current == InOut(row.media.start_frame, row.media.start_frame + 3)
 
+    def test_the_stringout_reads_the_same_frames(self, tmp_path: Path) -> None:
+        """Turnover150 (2026-10-30): the stringout counted from the file's own timecode alone,
+        98 frames before C2098.MP4 began, and ffmpeg refused it, so no stringout was written."""
+        turnover, (row,) = scan.scan_turnover(
+            self.folder(tmp_path, "00:59:50:00"), "t1", scan.ScanSettings(rules=fixtures.SMALL_RULES)
+        )
+        (event,) = scan.read_session(turnover, FrameRate(24)).events
+        assert row.media is not None
+        assert stringout._cut(event, row.media, row.resolve_start_tc) == row.current
+
     def test_with_no_clock_that_fits_it_renders_what_the_file_has_with_a_note(self, tmp_path: Path) -> None:
         row = self.scanned(self.folder(tmp_path, None))
         assert row.media is not None and not row.errors()
@@ -981,3 +1015,178 @@ class TestACutOutsideItsFile:
         assert "rendered the 4 frames the file has" in said.message
         assert row.current == InOut(row.media.start_frame, row.media.start_frame + 3)
         assert planner.plannable_identity(row) is not None
+
+
+def _with_start_tc(folder: Path, start_tc: str) -> None:
+    """Resolve's `Start TC` on every row of the folder's CSV."""
+    csv = folder / "metadata.csv"
+    lines = csv.read_bytes().decode("utf-16").splitlines()
+    lines = [f'{lines[0]},"Start TC"'] + [f'{line},"{start_tc}"' for line in lines[1:]]
+    csv.write_bytes(("\r\n".join(lines) + "\r\n").encode("utf-16"))
+
+
+class TestReviewFindings:
+    """Review, 2026-11-08: the ingest and matching findings."""
+
+    def scanned(self, folder: Path) -> tuple[Turnover, list[ShotRow]]:
+        return scan.scan_turnover(folder, "t1", scan.ScanSettings(rules=fixtures.SMALL_RULES))
+
+    def test_an_hdri_exr_on_the_timeline_needs_only_its_pre_render(self, tmp_path: Path) -> None:
+        """The EXR is Ben's to deliver by hand (user, 2026-10-30), so one cut on the timeline
+        and missing from the folder held the row on QC-012 and its mp4 was never planned."""
+        root = tmp_path / GOOD_FOLDER
+        exr = "MELT0001_pl01_HDRI_01.exr"
+        fixtures.make_mp4(root / "MELT0001_pl01_HDRI_01.mp4", count=4)
+        fixtures.make_meta_csv(root / "metadata.csv", [(exr, "MELT0001", "HDRI")])
+        fixtures.make_final_edl(root / "FINAL_v01.edl", [exr], duration=4)
+        _, (row,) = self.scanned(root)
+        assert row.hdri_render is not None and not row.errors()
+        assert not rules(row) & {"QC-012", "QC-013", "QC-083"}
+        (job,) = planner.plan_row(row, tmp_path / "out", 1).jobs
+        assert job.destination.name == "MELT0001_pl01_HDRI01_v01.mp4"
+
+    def test_an_hdri_exr_with_neither_file_still_says_qc_012(self, tmp_path: Path) -> None:
+        """With no pre-render the stringout holds the EXR, so its absence still wants saying."""
+        root = tmp_path / GOOD_FOLDER
+        exr = "MELT0001_pl01_HDRI_01.exr"
+        fixtures.make_meta_csv(root / "metadata.csv", [(exr, "MELT0001", "HDRI")])
+        fixtures.make_final_edl(root / "FINAL_v01.edl", [exr], duration=4)
+        _, (row,) = self.scanned(root)
+        assert {"QC-012", "QC-083"} <= rules(row)
+
+    def test_an_avid_reference_is_delivered_from_the_frames_the_stringout_shows(self, tmp_path: Path) -> None:
+        """Turnover150's C2098 case on a row no check runs on: its raw cut by the file's own
+        timecode was stored, while the stringout read it by Resolve's `Start TC`."""
+        folder = TestACutOutsideItsFile().folder(tmp_path, None)
+        fixtures.make_meta_csv(folder / "metadata.csv", [("MELT0001_pl01", "MELT0001", "avidRef01")])
+        _with_start_tc(folder, "00:59:50:00")
+        turnover, (row,) = self.scanned(folder)
+        assert row.media is not None and qc.is_stringout_only(row)
+        assert row.current == InOut(row.media.start_frame, row.media.start_frame + 3) == row.approved
+        (event,) = scan.read_session(turnover, FrameRate(24)).events
+        assert stringout._cut(event, row.media, row.resolve_start_tc) == row.current
+        assert "QC-029" not in rules(row)
+
+    def test_an_hdri_exr_row_no_event_cuts_is_no_row(self, tmp_path: Path) -> None:
+        """Turnover150 names its pre-render after nothing in the folder, so the CSV's EXR row,
+        which no EDL event cuts, became a second row held on QC-066 for a file the tool no
+        longer touches."""
+        root = tmp_path / GOOD_FOLDER
+        render, exr = "MELT0001_pl01_HDRI01_Render.mov", "SHOT0001_pl01_HDRI_01_v01.exr"
+        fixtures.make_mp4(root / render, count=4)
+        fixtures.make_meta_csv(
+            root / "metadata.csv", [(render, "MELT0001", "HDRI01"), (exr, "MELT0001", "HDRI01")]
+        )
+        fixtures.make_final_edl(root / "FINAL_v01.edl", [render], duration=4)
+        turnover, rows = self.scanned(root)
+        assert [row.clip_name for row in rows] == [render] and not rows[0].errors()
+        (note,) = [result for result in turnover.qc if result.rule_id == "QC-080"]
+        assert note.severity == "info" and exr in note.message
+
+    def test_a_pre_render_no_event_cuts_is_still_a_row(self, tmp_path: Path) -> None:
+        """It is the deliverable, and its QC-066 is Ben's to fix."""
+        root = tmp_path / GOOD_FOLDER
+        render = "MELT0001_pl01_HDRI01_Render.mov"
+        fixtures.make_mp4(root / render, count=4)
+        fixtures.make_meta_csv(root / "metadata.csv", [(render, "MELT0001", "HDRI01")])
+        fixtures.make_final_edl(root / "FINAL_v01.edl", ["SomethingElse.mov"], duration=4)
+        _, (row,) = self.scanned(root)
+        assert "QC-066" in rules(row)
+
+    def test_a_freeze_matched_by_timecode_is_a_freeze(self, tmp_path: Path) -> None:
+        """Only the by-name path set `row.freeze`, so a lone `M2 000.0` in an EDL that names no
+        clip was given sound (against QC-073) and its reference was not held."""
+        folder = fixtures.make_turnover(tmp_path / GOOD_FOLDER, shots=1, frames=4)
+        edl = folder / "FINAL_v01.edl"
+        held = "M2   MELT0001       000.0                01:00:00:00"
+        edl.write_text(edl.read_text().replace("* FROM CLIP NAME: MELT0001_pl01", held))
+        _, (row,) = self.scanned(folder)
+        assert row.freeze and row.current == InOut(1001, 1001)
+        assert row.audio_path is not None, "the wav is there, and still not delivered"
+        assert all(job.kind != "audio" for job in planner.plan_row(row, tmp_path / "out", 1).jobs)
+
+    def test_resolve_s_clock_is_read_at_the_timeline_rate(self) -> None:
+        """A 25 fps file's own rate read the CSV's `Start TC` 36000 frames an hour off the EDL,
+        whose frames and the file's timecode are both counted at 24."""
+        from proingest.core import clf
+        from proingest.core.models import MediaInfo
+
+        media = MediaInfo(
+            path=Path("C2098.MP4"),
+            codec="h264",
+            pixel_format="yuv420p",
+            width=64,
+            height=36,
+            rate=FrameRate(24),
+            stated_rate=FrameRate(25),
+            frame_count=100,
+            start_timecode=86400,
+        )
+        event = clf.ConformEvent("001", "AX", "C2098.MP4", 86160, 86163, 0, 3)
+        assert scan.cut_in_file(event, media, "00:59:49:14") == (InOut(10, 13), True)
+        row = ShotRow(turnover_id="t1", clip_name="C2098.MP4", media=media)
+        said = scan._outside(row, clf.ConformEvent("001", "AX", "", 0, 3, 0, 3), media, InOut(0, 3))
+        assert "runs 01:00:00:00 to 01:00:04:03" in said.message
+
+    def test_an_upper_case_amf_suffix_is_read(self, tmp_path: Path) -> None:
+        """F27: `glob("*.amf")` is case sensitive on the Mac and not on Windows."""
+        folder = fixtures.make_turnover(tmp_path / GOOD_FOLDER, shots=1, frames=4)
+        found = next(folder.glob("*.amf"))
+        found.rename(found.with_suffix(".AMF"))
+        _, (row,) = self.scanned(folder)
+        assert row.grade is not None and row.grade.amf.suffix == ".AMF"
+
+    def test_a_truncated_csv_is_qc_002_not_a_crash(self, tmp_path: Path) -> None:
+        folder = fixtures.make_turnover(tmp_path / GOOD_FOLDER, shots=1, frames=4)
+        csv = folder / "metadata.csv"
+        csv.write_bytes(csv.read_bytes()[:-1])
+        turnover, rows = self.scanned(folder)
+        assert rows == [] and "QC-002" in turnover_rules_of(turnover)
+
+    def test_a_truncated_ale_is_qc_071_not_a_crash(self, tmp_path: Path) -> None:
+        folder = overlapping_turnover(tmp_path / GOOD_FOLDER, ALE_ORDER)
+        found = folder / "T.ale"
+        found.write_bytes(found.read_text().encode("utf-16")[:-1])
+        turnover, rows = self.scanned(folder)
+        assert rows and "QC-071" in turnover_rules_of(turnover)
+
+    def test_an_amf_sequence_with_no_frame_run_is_qc_075_not_a_crash(self, tmp_path: Path) -> None:
+        folder = fixtures.make_turnover(tmp_path / GOOD_FOLDER, shots=1, frames=4)
+        found = next(folder.glob("*.amf"))
+        sequence = '<aces:sequence min="1" max="2">MELT0001_pl01.exr</aces:sequence>'
+        found.write_text(re.sub(r"<aces:file>[^<]*</aces:file>", sequence, found.read_text(), count=1))
+        turnover, (row,) = self.scanned(folder)
+        assert "QC-075" in turnover_rules_of(turnover) and row.grade is None
+
+    def test_a_folder_that_cannot_be_listed_is_qc_001_not_a_crash(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        folder = fixtures.make_turnover(tmp_path / GOOD_FOLDER, shots=1, frames=4)
+        real = Path.iterdir
+
+        def dropped(path: Path) -> object:
+            if path == folder:
+                raise OSError(5, "Input/output error")
+            return real(path)
+
+        monkeypatch.setattr(Path, "iterdir", dropped)
+        turnover, rows = self.scanned(folder)
+        assert rows == [] and "QC-001" in turnover_rules_of(turnover)
+
+    def test_a_media_folder_that_cannot_be_listed_is_qc_001_and_its_clips_are_missing(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import os
+
+        folder = fixtures.make_turnover(tmp_path / GOOD_FOLDER, shots=1, frames=4)
+        real = os.scandir
+
+        def listing(path: str) -> object:
+            if Path(path).name == "media":
+                raise OSError(5, "Input/output error")
+            return real(path)
+
+        monkeypatch.setattr(os, "scandir", listing)
+        turnover, (row,) = self.scanned(folder)
+        (said,) = [result for result in turnover.qc if result.rule_id == "QC-001"]
+        assert "media could not be listed" in said.message and "QC-012" in rules(row)

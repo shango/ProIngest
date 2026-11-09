@@ -10,7 +10,10 @@ from __future__ import annotations
 
 import csv
 import logging
+import os
 import sys
+import threading
+import time
 from collections.abc import Callable, Iterator
 from dataclasses import replace
 from datetime import date, timedelta
@@ -30,14 +33,15 @@ from PySide6.QtWidgets import (
 )
 
 from proingest import __version__
-from proingest.core import batchfile, expiry, logsetup, naming, stringout
+from proingest.core import batchfile, expiry, logsetup, naming, qc, scan, stringout
 from proingest.core import settings as core_settings
 from proingest.core.models import Batch, Deliverable, QCResult, Turnover
 from proingest.core.planner import DeliverableJob
 from proingest.core.render import Progress
 from proingest.ui import app as ui_app
+from proingest.ui import background as ui_background
 from proingest.ui import deliverables, paths
-from proingest.ui.background import Inline
+from proingest.ui.background import Background, Inline
 from proingest.ui.batch_bar import NO_DELIVERY_ROOT
 from proingest.ui.log_view import SAVE_TEXT
 from proingest.ui.main_window import (
@@ -55,6 +59,8 @@ from proingest.ui.run_controller import (
     CHECKING_BATCH,
     MUST_FIX_TITLE,
     NOTHING_TO_RENDER,
+    STOPPING_STRINGOUT,
+    STRINGOUT_STOPPED,
     WRITING_REPORTS,
     turnovers_written,
 )
@@ -108,6 +114,7 @@ class DrivenWindow(MainWindow):
         # The run's disk steps answer straight away, so a test reads the result on the
         # next line; `tests/test_background.py` is where the thread itself is tested.
         self.run.background = Inline(self.run)
+        self.disk = Inline(self)
 
     def settings_dialog(self) -> SettingsDialog:
         dialog = super().settings_dialog()
@@ -167,6 +174,22 @@ def actions(window: DrivenWindow) -> dict[str, QAction]:
 
 
 class TestTheApplication:
+    def test_a_worker_left_running_ends_the_process_without_the_teardown(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Review, 2026-11-08 (E2): the interpreter's teardown destroys a running thread and
+        Qt aborts the process, so a close over a hung mount ends it before that."""
+        exits: list[int] = []
+        monkeypatch.setattr(ui_background, "still_running", lambda: True)
+        monkeypatch.setattr(logging, "shutdown", lambda: None)
+        monkeypatch.setattr(os, "_exit", exits.append)
+        ui_app.leave(3)
+        assert exits == [3]
+
+    def test_with_nothing_left_running_it_returns_the_code(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(ui_background, "still_running", lambda: False)
+        assert ui_app.leave(3) == 3
+
     def test_its_name_is_set_because_the_data_folder_is_built_from_it(self, qt_app: QApplication) -> None:
         assert qt_app.applicationName() == paths.APPLICATION_NAME
 
@@ -1129,8 +1152,11 @@ class TestAddingAndScanningTurnovers:
         seen: list[object] = []
         window.run.stringout_progressed.connect(lambda _turnover, fraction: seen.append(fraction))
 
-        def build(*_args: object, progress: Callable[[int, int], None], workers: int) -> None:
+        def build(
+            *_args: object, progress: Callable[[int, int], None], workers: int, cancel: Callable[[], bool]
+        ) -> None:
             assert workers == window.settings.workers, "the EXRs convert on the run's workers"
+            assert not cancel(), "Stop reaches the build"
             progress(6, 24)
             assert window.shot_model._building == {"t1": 0.25}
             return None
@@ -1235,7 +1261,7 @@ class TestTheIssuesDock:
     def test_double_clicking_an_issue_selects_its_shot_in_the_list(self, window: DrivenWindow) -> None:
         wanted = warn(row("MELT0002_pl01"))
         window.set_batch(batch(row(), wanted))
-        window.issues.itemDoubleClicked.emit(window.issues.topLevelItem(0), 0)
+        window.issues.itemActivated.emit(window.issues.topLevelItem(0), 0)
 
         assert window.shot_list.current_shot_row() is wanted
 
@@ -1245,10 +1271,23 @@ class TestTheIssuesDock:
         wanted = warn(row("MELT0002_pl01"))
         window.set_batch(batch(row(), wanted))
         window.batch_bar.search.setText("MELT0001")
-        window.issues.itemDoubleClicked.emit(window.issues.topLevelItem(0), 0)
+        window.issues.itemActivated.emit(window.issues.topLevelItem(0), 0)
 
         assert window.shot_list.current_shot_row() is wanted
         assert window.batch_bar.search.text() == "", "the box says what the list shows"
+
+    def test_clicking_a_status_dot_brings_the_dock_up_on_that_shot(self, window: DrivenWindow) -> None:
+        """Section 3: "Clicking the dot focuses the Issues dock on that row" (review,
+        2026-11-08: nothing was wired to it)."""
+        wanted = warn(row("MELT0002_pl01"))
+        window.set_batch(batch(warn(row()), wanted))
+        window.bottom_tabs.setCurrentIndex(BOTTOM_TABS.index("Log"))
+        window.shot_list.status_clicked.emit(wanted)
+
+        assert window.bottom_tabs.currentWidget() is window.issues
+        current = window.issues.currentItem()
+        assert current is not None
+        assert window.issues._rows[current.data(0, Qt.ItemDataRole.UserRole)] is wanted
 
     def test_the_empty_state_link_brings_the_dock_up(self, window: DrivenWindow) -> None:
         """Section 10: no clips found, plus a link to the Issues dock."""
@@ -1428,7 +1467,7 @@ class TestRunningABatch:
         window.action_run.trigger()
         assert started and window.problems == []
 
-    def test_a_turnover_with_no_colour_session_still_runs(self, window: DrivenWindow, tmp_path: Path) -> None:
+    def test_a_turnover_with_no_color_session_still_runs(self, window: DrivenWindow, tmp_path: Path) -> None:
         """QC-008 went on 2026-10-07: a clip with no AMF is an ungraded clip, not a block."""
         window.set_batch(batch(row(), turnovers=[turnover(folder=tmp_path)], delivery_root=tmp_path))
         started = stub_runner(window)
@@ -1460,6 +1499,20 @@ class TestRunningABatch:
         assert text.startswith("batch: QC-062")
         assert window.run_strip.state == "empty"
         assert not window.bottom_dock.isHidden()
+
+    def test_a_qc_151_from_the_last_run_does_not_stop_the_next(
+        self, window: DrivenWindow, tmp_path: Path
+    ) -> None:
+        """Review, 2026-11-08: QC-151 is batch scope, and the must-fix popup used to refuse
+        every Run after one, with nothing but an Export able to clear it."""
+        built = ingested(batch(row(), delivery_root=tmp_path), tmp_path)
+        built.qc.append(QCResult("QC-151", "error", "batch", "x.mp4: does not parse as a delivery name"))
+        window.set_batch(built)
+        started = stub_runner(window)
+        window.action_run.trigger()
+
+        assert window.problems == []
+        assert len(started) == 1
 
     def test_one_turnover_s_held_shot_holds_no_other_turnover(
         self, window: DrivenWindow, tmp_path: Path
@@ -1760,6 +1813,26 @@ class TestExportWithoutARun:
         assert window.run_strip.state == "empty"
         assert not (tmp_path / "MELT").exists()
 
+    def test_it_reparses_names_under_the_settings_show_pattern(
+        self, window: DrivenWindow, tmp_path: Path
+    ) -> None:
+        """Review, 2026-11-08: a run read names back under the Settings pattern and Export
+        under the default, so an Export after a clean run called every name a custom show
+        writes a QC-151."""
+        window._settings.show_pattern = "[a-z]{2}"
+        lower = row("mx0001_pl01", identity=identity_of("mx0001_pl01", "[a-z]{2}"))
+        window.set_batch(ingested(batch(lower, delivery_root=tmp_path), tmp_path))
+        started = stub_runner(window)
+        window.action_run.trigger()
+        finish_run(window, done(started[0]), False)
+        assert "QC-151" not in rules_shown(window)
+
+        window.action_export.trigger()
+
+        assert window.run_strip.state == "done"
+        assert "QC-151" not in rules_shown(window)
+        assert [result.rule_id for result in window.batch.qc if result.rule_id == "QC-151"] == []
+
 
 class TestTheDeliverablesTab:
     """Section 6.2: what the selected shot delivers, where, and in what state."""
@@ -1813,7 +1886,7 @@ class TestTheDeliverablesTab:
         window.shot_list.select_row(window.batch.rows[0])
         first = window.deliverables.topLevelItem(0)
         assert first is not None
-        window.deliverables.itemDoubleClicked.emit(first, 0)
+        window.deliverables.itemActivated.emit(first, 0)
         assert window.opened_folders == [Path("/delivery")]
 
     def test_sizes_read_as_a_person_reads_them(self) -> None:
@@ -1841,7 +1914,7 @@ class TestTheMetadataPane:
             "Source media",
             "Frame rate",
             "Range",
-            "Colour",
+            "Color",
             "Turnover",
             "QC",
         ]
@@ -2073,6 +2146,358 @@ class TestSavingTheLogs:
         window.log_answer = tmp_path / "missing" / "out.csv"
         window.log_view.save_button.click()
         assert [title for title, _ in window.problems] == ["Logs not saved"]
+
+
+def land(job: DeliverableJob) -> None:
+    """A job's file under its final name, the way a finished render leaves it (D11)."""
+    job.destination.parent.mkdir(parents=True, exist_ok=True)
+    job.destination.mkdir() if job.kind == "raw_dir" else job.destination.touch()
+
+
+def statuses_on_disk(path: Path) -> list[str]:
+    return [item.status for item in batchfile.load(path, reconcile=False).rows[0].deliverables]
+
+
+class TestARunThatDies:
+    """Review, 2026-11-08 (E1): reopening after a crash shows the state on disk (PRD line 197)
+    and the next Run neither renders a landed file again nor at the next version."""
+
+    def test_the_batch_is_written_with_the_run_in_flight_before_a_worker_starts(
+        self, window: DrivenWindow, tmp_path: Path
+    ) -> None:
+        saved = tmp_batch_path(window)
+        window.set_batch(ingested(batch(row(), delivery_root=tmp_path), tmp_path), saved)
+        on_disk_at_start: list[list[str]] = []
+        started = stub_runner(window)
+        original = window.run.runner.start
+
+        def start(jobs: list[DeliverableJob], workers: int = 4) -> None:
+            on_disk_at_start.append(statuses_on_disk(saved))
+            original(jobs, workers)
+
+        window.run.runner.start = start  # type: ignore[method-assign]
+        window.action_run.trigger()
+
+        assert started and on_disk_at_start == [["rendering"] * len(started[0])]
+        assert {item.status for item in window.batch.rows[0].deliverables} == {"planned"}, (
+            "the open batch is not marked: the list draws rendering from the live run"
+        )
+
+    def test_a_crash_mid_run_reopens_as_what_landed_and_finishes_at_the_same_version(
+        self, window: DrivenWindow, tmp_path: Path
+    ) -> None:
+        """Case A: the disk held the batch before the plan, so the next Run saw v01 and
+        rendered the whole shot again at v02, leaving the v01 files orphaned."""
+        saved = tmp_batch_path(window)
+        window.set_batch(ingested(batch(row(), delivery_root=tmp_path), tmp_path), saved)
+        started = stub_runner(window)
+        window.action_run.trigger()
+        first = started[0]
+        land(first[0])  # one file lands, then the app dies with no results applied
+
+        reopened = batchfile.load(saved)
+        assert [item.status for item in reopened.rows[0].deliverables] == ["done"] + ["planned"] * (
+            len(first) - 1
+        )
+        window.set_batch(reopened, saved)
+        window.action_run.trigger()
+        assert [job.destination for job in started[1]] == [job.destination for job in first[1:]]
+        assert {job.version for job in started[1]} == {1}
+
+    def test_a_batch_saved_during_the_run_does_not_hold_the_landed_files_back(
+        self, window: DrivenWindow, tmp_path: Path
+    ) -> None:
+        """Case B: Save during a run writes the plan; files that land after it said
+        planned, were planned again, and the render refused their occupied names (QC-100)."""
+        saved = tmp_batch_path(window)
+        window.set_batch(ingested(batch(row(), delivery_root=tmp_path), tmp_path), saved)
+        started = stub_runner(window)
+        window.action_run.trigger()
+        assert window.save_batch()
+        assert set(statuses_on_disk(saved)) == {"planned"}
+        land(started[0][0])
+
+        window.set_batch(batchfile.load(saved, reconcile=False), saved)
+        window.action_run.trigger()
+        assert [job.destination for job in started[1]] == [job.destination for job in started[0][1:]]
+
+    def test_a_resumed_run_that_dies_resumes_again(self, window: DrivenWindow, tmp_path: Path) -> None:
+        """Run 1 is stopped with two left skipped; run 2 lands one of them and dies."""
+        saved = tmp_batch_path(window)
+        window.set_batch(ingested(batch(row(), delivery_root=tmp_path), tmp_path), saved)
+        started = stub_runner(window)
+        window.action_run.trigger()
+        first = started[0]
+        for job in first[:2]:
+            land(job)
+        finish_run(window, done(first[:2]) + done(first[2:], "skipped"), cancelled=True)
+        window.autosave.flush()
+        assert statuses_on_disk(saved) == ["done", "done"] + ["skipped"] * (len(first) - 2)
+
+        window.action_run.trigger()
+        second = started[1]
+        assert [job.destination for job in second] == [job.destination for job in first[2:]]
+        assert statuses_on_disk(saved) == ["done", "done"] + ["rendering"] * len(second)
+        land(second[0])
+
+        window.set_batch(batchfile.load(saved), saved)
+        window.action_run.trigger()
+        assert [job.destination for job in started[2]] == [job.destination for job in second[1:]]
+        assert {job.version for job in started[2]} == {1}
+
+    def test_a_batch_that_was_never_saved_still_runs(self, window: DrivenWindow, tmp_path: Path) -> None:
+        window.set_batch(ingested(batch(row(), delivery_root=tmp_path), tmp_path))
+        started = stub_runner(window)
+        window.action_run.trigger()
+        assert started and window.problems == []
+
+    def test_a_batch_file_that_cannot_be_written_does_not_stop_the_run(
+        self, window: DrivenWindow, tmp_path: Path
+    ) -> None:
+        blocker = tmp_path / "a file"
+        blocker.write_text("")
+        window.set_batch(ingested(batch(row(), delivery_root=tmp_path), tmp_path), blocker / "melt.pibatch")
+        started = stub_runner(window)
+        window.action_run.trigger()
+        assert started and window.problems == []
+
+
+def slow_build(window: DrivenWindow, built: list[str]) -> Callable[..., Deliverable | None]:
+    """A stringout build that runs until it is stopped, as a long one does."""
+
+    def build(
+        _batch: Batch, turnover: Turnover, *_args: object, cancel: Callable[[], bool], **_kw: object
+    ) -> None:
+        built.append(turnover.turnover_id)
+        deadline = time.monotonic() + 10
+        while not cancel() and time.monotonic() < deadline:
+            time.sleep(0.01)
+        return None
+
+    return build
+
+
+class TestStoppingTheStringouts:
+    """Review, 2026-11-08 (E2): the stringouts after a render, and a heading's Build
+    Stringout, ran on a thread nothing could stop, with Stop grayed and a close waiting."""
+
+    def run_to_the_stringouts(
+        self, window: DrivenWindow, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, built: list[str]
+    ) -> None:
+        two = [turnover("t1"), turnover("t2")]
+        rows = [row("MELT0001_pl01", turnover_id="t1"), row("MELT0002_pl01", turnover_id="t2")]
+        window.set_batch(ingested(batch(*rows, turnovers=two, delivery_root=tmp_path), tmp_path))
+        started = stub_runner(window)
+        window.action_run.trigger()
+        monkeypatch.setattr(stringout, "build", slow_build(window, built))
+        window.run.background = Background(window.run)
+        finish_run(window, done(started[0]), False)
+        assert pump_until(lambda: bool(built))
+
+    def test_stop_is_live_while_they_build_and_stops_them(
+        self, window: DrivenWindow, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        built: list[str] = []
+        self.run_to_the_stringouts(window, tmp_path, monkeypatch, built)
+        assert window.action_stop.isEnabled()
+        window.action_stop.trigger()
+        assert STOPPING_STRINGOUT in window.statusBar().currentMessage()
+        assert not window.action_stop.isEnabled(), "pressed once"
+        assert pump_until(lambda: not window.run.busy)
+
+        assert built == ["t1"], "the second turnover's stringout is skipped"
+        text = window.statusBar().currentMessage()
+        assert text.startswith("Run stopped") and "Exports written to" in text, "the reports still are"
+
+    def test_closing_during_them_stops_them_and_then_closes(
+        self, window: DrivenWindow, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        built: list[str] = []
+        self.run_to_the_stringouts(window, tmp_path, monkeypatch, built)
+        assert not window.close(), "it waits for the stringout to stop and the reports"
+        assert pump_until(lambda: core_settings.load(window._settings_path).window_geometry != "")
+        assert built == ["t1"]
+
+    def test_a_heading_s_build_stringout_can_be_stopped(
+        self, window: DrivenWindow, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        built: list[str] = []
+        window.set_batch(ingested(batch(row(), delivery_root=tmp_path), tmp_path))
+        monkeypatch.setattr(stringout, "build", slow_build(window, built))
+        window.run.background = Background(window.run)
+        window.run.build_stringout(window.batch.turnovers[0])
+        assert pump_until(lambda: bool(built))
+        assert window.action_stop.isEnabled()
+        window.action_stop.trigger()
+        assert pump_until(lambda: not window.run.busy)
+        assert window.statusBar().currentMessage() == STRINGOUT_STOPPED
+        assert window.problems == []
+
+    def test_the_reports_after_them_are_not_a_step_stop_reaches(
+        self, window: DrivenWindow, tmp_path: Path
+    ) -> None:
+        window.set_batch(ingested(batch(row(), delivery_root=tmp_path), tmp_path))
+        started = stub_runner(window)
+        window.action_run.trigger()
+        stops: list[bool] = []
+
+        def reports(batch: Batch, pattern: str) -> Path:
+            stops.append(window.run.stoppable)
+            return tmp_path
+
+        window.run._write_reports = reports  # type: ignore[method-assign]
+        finish_run(window, done(started[0], "failed"), False)
+        assert stops == [False]
+
+
+class TestStopAfterAStoppedRun:
+    def test_stop_is_live_through_the_next_run_s_pre_flight(
+        self, window: DrivenWindow, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Review, 2026-11-08 (E4): the pool's stop flag was reset only once the next
+        run reached the pool, so Stop stayed grayed through its pre-flight and plan."""
+        window.set_batch(ingested(batch(row(), delivery_root=tmp_path), tmp_path))
+        started = stub_runner(window, busy=True)
+        window.run.runner.cancel = lambda: None  # type: ignore[method-assign]
+        window.action_run.trigger()
+        window.action_stop.trigger()
+        window.run.runner._cancelled = True  # what `Runner.cancel` leaves behind
+        window.run.runner._thread = None
+        finish_run(window, done(started[0], "skipped"), cancelled=True)
+
+        seen: list[bool] = []
+        preflight = qc.preflight
+
+        def watched(checked: Batch) -> None:
+            seen.append(window.run.stoppable)
+            preflight(checked)
+
+        monkeypatch.setattr(qc, "preflight", watched)
+        window.action_run.trigger()
+        assert seen == [True]
+
+
+class TestClosingRefusedAfterTheWait:
+    def test_a_close_refused_at_the_unsaved_question_is_forgotten(
+        self, window: DrivenWindow, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Review, 2026-11-08 (E5): after Cancel the window closed itself when the run ended,
+        and a later close skipped the wait for the run."""
+        from proingest.ui import run_controller as module
+
+        monkeypatch.setattr(module, "SHUTDOWN_WAIT_MS", 1)
+        window.set_batch(ingested(batch(row(), delivery_root=tmp_path), tmp_path))
+        edit(window, "never saved")
+        window.unsaved_answer = QMessageBox.StandardButton.Cancel
+        started = stub_runner(window, busy=True)
+        window.run.runner.cancel = lambda: None  # type: ignore[method-assign]
+        window.action_run.trigger()
+
+        assert not window.close()
+        assert pump_until(lambda: not window.run._close_wait.isActive())
+        assert not window.run.wait_expired and not window.run._closing_after_run
+
+        window.run.runner._thread = None
+        finish_run(window, done(started[0]), True)
+        assert core_settings.load(window._settings_path).window_geometry == "", "still open"
+
+
+class TestNothingStartsAfterTheClose:
+    def test_results_that_arrive_after_shutdown_are_dropped(
+        self, window: DrivenWindow, tmp_path: Path
+    ) -> None:
+        """Review, 2026-11-08 (E6): a timed out close could leave the pool's answer queued,
+        which then applied results and started the reports after the window had gone."""
+        window.set_batch(ingested(batch(row(), delivery_root=tmp_path), tmp_path))
+        started = stub_runner(window)
+        window.action_run.trigger()
+        window.run.runner.shutdown = lambda: None  # type: ignore[method-assign]
+        window.run.shutdown()
+        reports: list[object] = []
+
+        def write(batch: Batch, pattern: str) -> Path:
+            reports.append(batch)
+            return tmp_path
+
+        window.run._write_reports = write  # type: ignore[method-assign]
+        finish_run(window, done(started[0]), False)
+        assert reports == []
+        assert {item.status for item in window.batch.rows[0].deliverables} == {"planned"}
+
+
+class TestTheFixitLinkIsLocked:
+    def test_it_is_off_while_a_run_has_the_batch(self, window: DrivenWindow, tmp_path: Path) -> None:
+        """Review, 2026-11-08 (E7): it read and wrote the batch while a run's steps on another
+        thread changed it; only a scan locked it."""
+        window.set_batch(ingested(batch(row(), delivery_root=tmp_path), tmp_path))
+        assert window.fixit_link.isEnabled()
+        stub_runner(window, busy=True)
+        window.action_run.trigger()
+        assert not window.fixit_link.isEnabled()
+        window.open_fixit_report()
+        assert window.opened_pages == []
+
+
+class TestOpeningOffTheUiThread:
+    """Review, 2026-11-08 (E3): opening a batch stat'ed every deliverable, every turnover
+    folder and both roots on the UI thread, which on a Drive mount froze the window."""
+
+    def test_the_disk_checks_run_elsewhere_and_the_strip_says_so(
+        self, window: DrivenWindow, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        saved = batchfile.save(batch(row(), name="on disk", delivery_root=tmp_path), tmp_path / "m.pibatch")
+        window.disk = Background(window)
+        here = threading.get_ident()
+        ran_on: list[int] = []
+        reconcile = batchfile.reconcile_with_filesystem
+
+        def recorded(b: Batch) -> None:
+            ran_on.append(threading.get_ident())
+            reconcile(b)
+
+        monkeypatch.setattr(batchfile, "reconcile_with_filesystem", recorded)
+        window.open_answer = saved
+        window.action_open.trigger()
+        assert window.run_strip.line.text().startswith("Opening m.pibatch")
+        assert not window.action_open.isEnabled(), "locked while it reads"
+        assert pump_until(lambda: window.batch_open)
+        assert ran_on and ran_on[0] != here
+        assert window.batch.name == "on disk" and window.run_strip.state == "empty"
+
+    def test_a_missing_root_is_still_asked_about(self, window: DrivenWindow, tmp_path: Path) -> None:
+        saved = batchfile.save(batch(row(), delivery_root=tmp_path / "gone"), tmp_path / "m.pibatch")
+        window.open_answer = saved
+        window.action_open.trigger()
+        assert window.problems == [
+            ("Delivery root is missing", f"{tmp_path / 'gone'} is not there any more.")
+        ]
+        assert window.folders_asked == ["Delivery root"]
+
+    def test_a_file_that_is_not_a_batch_is_still_refused(self, window: DrivenWindow, tmp_path: Path) -> None:
+        bad = tmp_path / "bad.pibatch"
+        bad.write_text("not json")
+        window.open_answer = bad
+        window.action_open.trigger()
+        assert window.problems and window.problems[0][0] == "Could not open batch"
+        assert not window.batch_open
+
+    def test_a_drop_is_checked_elsewhere(
+        self, window: DrivenWindow, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        window.set_batch(batch(row()))
+        window.disk = Background(window)
+        here = threading.get_ident()
+        ran_on: list[int] = []
+
+        def is_turnover_folder(_path: Path) -> bool:
+            ran_on.append(threading.get_ident())
+            return False
+
+        monkeypatch.setattr(scan, "is_turnover_folder", is_turnover_folder)
+        window.add_turnovers([tmp_path])
+        assert pump_until(lambda: not window.disk.busy)
+        assert ran_on and ran_on[0] != here
+        assert window.problems and window.problems[0][0] == "Skipped 1 of 1"
 
 
 def stub_scanner(window: DrivenWindow, busy: bool = False) -> list[list[tuple[Path, str]]]:

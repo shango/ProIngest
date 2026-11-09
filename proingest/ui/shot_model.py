@@ -1,8 +1,8 @@
 """The shot list's model: a batch presented as turnovers with their rows beneath.
 
-UI_SPEC section 2 is the column list and section 3 the row colouring. Both live here
+UI_SPEC section 2 is the column list and section 3 the row coloring. Both live here
 rather than in the view, because what a cell says is a fact about the batch and what it
-looks like is one colour per state: a delegate that had to work either out would be
+looks like is one color per state: a delegate that had to work either out would be
 reading the model twice.
 
 Editing (M5.3) is here too, because the cell that writes has to write to the row the
@@ -109,7 +109,7 @@ DOT_COLORS = {
     RowState.DONE: QColor("#58a97a"),
     RowState.OK: QColor("#868d9a"),
 }
-"""One colour per state, the palette `ui/theme.qss` states at the top. A stylesheet
+"""One color per state, the palette `ui/theme.qss` states at the top. A stylesheet
 cannot see a model, so the dot and the tint are painted from here."""
 
 HOLLOW_STATES = frozenset({RowState.SKIPPED})
@@ -229,7 +229,7 @@ def turnover_state(turnover: Turnover, rows: list[ShotRow]) -> RowState:
     """The group header's aggregate: the worst state anything under it is in.
 
     A turnover's own rules count too, since QC-001 and QC-002 are turnover level and
-    leave it with no rows at all to carry the colour.
+    leave it with no rows at all to carry the color.
     """
     states = [row_state(row) for row in rows]
     if any(result.severity == "error" for result in turnover.qc):
@@ -742,12 +742,7 @@ class ShotListModel(QAbstractItemModel):
         return str(frame)
 
     def _context(self, row: ShotRow, mode: DisplayMode | None = None) -> frames.EditContext:
-        turnover = next((t for t in self._batch.turnovers if t.turnover_id == row.turnover_id), None)
-        return row.edit_context(
-            self._batch.project_rate,
-            turnover.timeline_start if turnover else 0,
-            (mode or self._mode).timecode_mode,
-        )
+        return row.edit_context(self._batch.project_rate, (mode or self._mode).timecode_mode)
 
     def _tooltip(self, row: ShotRow, column: int) -> str | None:
         """Only where the cell cannot hold the whole answer. Section 3 for the dot."""
@@ -889,12 +884,21 @@ class ShotListModel(QAbstractItemModel):
         A shot already delivered goes back for the next Run, as Re-scan puts it (user,
         2026-09-25): the files on disk carry the old code, so the next Run writes the
         shot under the new one, at whatever version that shot's folder allows.
+
+        Typing the parsed code is no correction at all, so it stores no override: the
+        editor opens on that code, and committing it unchanged (a Tab through the cell)
+        used to pin it as an override and send a delivered shot back for the next Run.
+        Only a change to the code the files are named for puts the shot back.
         """
+        parsed = row.identity.shot_code if row.identity else None
         override = text.strip() or None
+        if override == parsed:
+            override = None
         if override == row.shot_code_override:
             return False
+        was = row.shot_code
         row.shot_code_override = override
-        if row.deliverables:
+        if row.deliverables and row.shot_code != was:
             row.rerun = True
         return True
 

@@ -13,6 +13,7 @@ point it is verified.
 from __future__ import annotations
 
 import multiprocessing
+import shutil
 import subprocess
 from collections.abc import Callable, Generator
 from dataclasses import replace
@@ -163,16 +164,19 @@ class TestRawSequence:
         first = sorted(job.destination.iterdir())[0]
         assert exr.start_timecode_frames(first, 24.0) == 1001
 
-    def test_every_delivered_frame_states_acescg(self, tmp_path: Path) -> None:
-        """The plate branch put it there, so the label is a fact rather than a setting."""
+    def test_every_delivered_frame_states_its_display(self, tmp_path: Path) -> None:
+        """User, 2026-11-06: a plate is display referred, and the header says through what."""
         job = raw_job(tmp_path, count=1)
         render.render_job(job)
         with OpenEXR.File(str(job.frame_path(1001))) as handle:
-            assert handle.header()[exr.COLORSPACE_ATTRIBUTE] == color.PLATE_SPACE
+            header = dict(handle.header())
+        assert header[exr.COLORSPACE_ATTRIBUTE] == color_fixtures.DISPLAY
+        assert header[exr.VIEW_ATTRIBUTE] == color_fixtures.VIEW
+        assert exr.is_display_referred(job.frame_path(1001))
 
 
 class TestPlateBranch:
-    """The colour the plate is delivered in. COLOR_AND_FORMAT section 1.
+    """The color the plate is delivered in. COLOR_AND_FORMAT section 1.
 
     The fixture writes a flat 0.2 into red, which is a code value in the source's log
     encoding and not a scene linear one. What lands in the EXR is what the chain makes
@@ -196,7 +200,7 @@ class TestPlateBranch:
     def expected(self, shot_color: clf.ShotColor) -> float:
         """The source pixel through the same chain, asked of OCIO rather than typed out."""
         pixels = np.array([[list(self.SOURCE_PIXEL)]], dtype=np.float32)
-        color.apply(pixels, color.processor(*shot_color.plate_transforms()))
+        color.apply(pixels, color.processor(*shot_color.view_transforms()))
         return float(pixels[0, 0, 0])
 
     def test_the_source_is_transformed_and_not_passed_through(self, tmp_path: Path) -> None:
@@ -210,6 +214,8 @@ class TestPlateBranch:
         graded = clf.ShotColor(
             source_encoding=color_fixtures.SOURCE_ENCODING,
             looks=(GradeLook("look", "ACES 1.3 Reference Gamut Compression"), GradeLook("clf", str(node))),
+            display=color_fixtures.DISPLAY,
+            view=color_fixtures.VIEW,
         )
         with_grade = self.delivered(tmp_path / "graded", shot_color=graded)
         without = self.delivered(tmp_path / "plain")
@@ -217,8 +223,7 @@ class TestPlateBranch:
         assert float(with_grade[0, 0, 0]) == pytest.approx(self.expected(graded), abs=0.002)
 
     def test_the_header_names_the_encoding_that_was_applied(self, tmp_path: Path) -> None:
-        shot_color = clf.ShotColor(source_encoding=color_fixtures.SOURCE_ENCODING)
-        job = raw_job(tmp_path, count=1, shot_color=shot_color)
+        job = raw_job(tmp_path, count=1)
         render.render_job(job)
         with OpenEXR.File(str(job.frame_path(1001))) as handle:
             # Copied rather than held: the mapping the bindings hand back empties when
@@ -227,7 +232,7 @@ class TestPlateBranch:
         assert header[exr.SOURCE_ENCODING_ATTRIBUTE] == color_fixtures.SOURCE_ENCODING
 
     def test_alpha_does_not_go_through_the_chain(self) -> None:
-        """Coverage is not colour, and a transformed alpha only shows up over a comp."""
+        """Coverage is not color, and a transformed alpha only shows up over a comp."""
         branch = render._plate_branch(
             DeliverableJob(
                 kind="raw_dir",
@@ -421,10 +426,24 @@ class TestAuxStill:
         assert deliverable.checksum == render.file_digest(job.destination)
         assert exr.start_timecode_frames(job.destination, 24.0) == 1001
 
+    def test_a_still_stays_linear_acescg_when_a_plate_does_not(self, tmp_path: Path) -> None:
+        """OQ-91: only the plates moved to display referred on 2026-11-06."""
+        fixture = fixtures.make_exr_sequence(tmp_path / "src", count=1, first=1001)
+        job = sequence_job(
+            fixture.path_for(1001),
+            tmp_path / "out" / "MELT0001_pl01_colorChart_01_4k_v01.exr",
+            1001,
+            1001,
+            kind="aux_still",
+        )
+        render.render_job(job)
+        assert exr.read_header(job.destination).colorspace == color.PLATE_SPACE
+        assert not exr.is_display_referred(job.destination)
+
     def test_one_whose_clip_named_no_encoding_is_refused_rather_than_converted(self, tmp_path: Path) -> None:
         """QC-046's claim, end to end: the deliverable is blocked rather than approximated.
 
-        A mis-converted colour chart still looks exactly like a chart, so a still with
+        A mis-converted color chart still looks exactly like a chart, so a still with
         nothing to convert it by is worth failing. Nothing is left behind, like every
         other failure here.
         """
@@ -525,7 +544,7 @@ def video_stream(path: Path) -> dict[str, object]:
 
 
 class TestViewBranch:
-    """The reference's colour, which reaches ffmpeg as a baked cube (section 1).
+    """The reference's color, which reaches ffmpeg as a baked cube (section 1).
 
     What these guard is the join: the cube has to exist, be a real LUT and be named in
     the command **while ffmpeg runs**, and be gone afterwards. A missing cube is an
@@ -979,7 +998,7 @@ class TestAWorkerThatDies:
             def __exit__(self, *args: object) -> None:
                 pass
 
-            def submit(self, _fn: object, job: DeliverableJob) -> Future[Deliverable]:
+            def submit(self, _fn: object, job: DeliverableJob, *_args: object) -> Future[Deliverable]:
                 future: Future[Deliverable] = Future()
                 if dies(job, rounds[0]):
                     future.set_exception(BrokenProcessPool("a worker died abruptly"))
@@ -1138,7 +1157,7 @@ class TestPostRenderQC:
 
 class TestAnAvidRef:
     """User, 2026-10-22: an Avid reference is never an EXR. A `Render` movie is an mp4 with its
-    colour as it is ("color is baked in"), a held still is delivered as it is, or as a JPG."""
+    color as it is ("color is baked in"), a held still is delivered as it is, or as a JPG."""
 
     def job(self, tmp_path: Path, source: Path, name: str, out_frame: int) -> DeliverableJob:
         return sequence_job(
@@ -1224,3 +1243,255 @@ class TestAnAvidRef:
         before, after = first_frame(source), first_frame(job.destination)
         assert len(before) == len(after)
         assert max(abs(a - b) for a, b in zip(before, after, strict=True)) <= 1
+
+
+class TestAnOddSizedAvidRef:
+    """x264 refuses an odd 4:2:0 frame, and an Avid reference keeps its source's size, so a
+    1919x1080 screen recording failed (review, 2026-11-08). It is padded, never cropped."""
+
+    def test_an_odd_source_is_padded_to_the_next_even_size(self, tmp_path: Path) -> None:
+        source = fixtures.make_mov(tmp_path / "src" / "screen Render.mov", count=4, size=(63, 35))
+        job = replace(
+            sequence_job(
+                source,
+                tmp_path / "out" / "MELT0001_avidRef01_v01.mp4",
+                0,
+                3,
+                kind="avidref",
+                is_sequence=False,
+                start_frame=0,
+            ),
+            source_size=(63, 35),
+        )
+        deliverable = render.render_job(job)
+        assert deliverable.status == "done", deliverable.qc
+        video = video_stream(job.destination)
+        assert (video["width"], video["height"]) == (64, 36)
+
+    def test_an_even_source_is_not_padded(self) -> None:
+        job = sequence_job(Path("/s.mov"), Path("/o/x.mp4"), 0, 3, kind="avidref", is_sequence=False)
+        assert render._canvas(job) is None
+        assert render._canvas(replace(job, source_size=(1919, 1080))) == (1920, 1080)
+
+
+class TestALinearSourcesReference:
+    """A plate whose AMF reads it as scene linear gets the shaper a pre-render gets, or its
+    33 point cube puts one sample in the darkest 3% (review, 2026-11-08)."""
+
+    def handed(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, encoding: str) -> dict[str, object]:
+        seen: dict[str, object] = {}
+
+        def fake_encode(*args: object, **kwargs: object) -> None:
+            seen.update(kwargs)
+            Path(str(args[1])).write_bytes(b"")
+
+        monkeypatch.setattr(ffmpeg, "encode_reference", fake_encode)
+        monkeypatch.setattr(ffmpeg, "container_frame_count", lambda path: 4)
+        monkeypatch.setattr(qc, "run_phase_b", lambda _job, _deliverable: [])
+        source = fixtures.make_mov(tmp_path / "src" / "plate.mov", count=4)
+        job = ref_job(tmp_path, source, 0, 3)
+        render.render_job(replace(job, shot_color=replace(job.shot_color, source_encoding=encoding)))
+        return seen
+
+    @pytest.mark.parametrize("encoding", ["ACEScg", "ACES2065-1", "Linear Rec.709 (sRGB)"])
+    def test_a_linear_plate_goes_through_the_shaper(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, encoding: str
+    ) -> None:
+        assert self.handed(tmp_path, monkeypatch, encoding)["shaper"] is not None
+
+    @pytest.mark.parametrize("encoding", ["ACEScct", "S-Log3 S-Gamut3.Cine"])
+    def test_a_log_plate_does_not(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, encoding: str
+    ) -> None:
+        assert self.handed(tmp_path, monkeypatch, encoding)["shaper"] is None
+
+    def test_an_avid_reference_has_neither_cube(self) -> None:
+        job = sequence_job(Path("/s.mov"), Path("/o/x.mp4"), 0, 3, kind="avidref", is_sequence=False)
+        linear = replace(job, shot_color=clf.ShotColor(source_encoding="ACEScg"))
+        assert not render._graded(linear) and not render._shaped(linear)
+
+
+class TestACgPlateWithABoundingBox:
+    """A CG EXR storing only a data window inside its display window was stretched across
+    the frame, since the job is sized from the display window (review, 2026-11-08)."""
+
+    def test_the_box_stays_where_it_is_on_the_plate(self, tmp_path: Path) -> None:
+        source = tmp_path / "src" / "MELT0001_el01.1001.exr"
+        source.parent.mkdir(parents=True)
+        box = np.full((20, 40, 3), 0.6, dtype=np.float32)
+        header = {
+            "compression": OpenEXR.ZIP_COMPRESSION,
+            "type": OpenEXR.scanlineimage,
+            "dataWindow": ((30, 10), (69, 29)),
+            "displayWindow": ((0, 0), (99, 49)),
+        }
+        with OpenEXR.File(header, {"RGB": box}) as handle:
+            handle.write(str(source))
+        job = replace(
+            sequence_job(source, tmp_path / "out" / "MELT0001_el01_raw_4k_v01", 1001, 1001),
+            source_size=(100, 50),
+        )
+        assert render.render_job(job).status == "done"
+        written = exr.read_pixels(job.frame_path(1001))[..., 1]
+        assert written.shape == (50, 100)
+        # Away from the box's edges, which DWAA's 8 pixel blocks ring around.
+        outside, inside = written[0, 0], written[20, 50]
+        assert np.allclose(written[:2], outside, atol=0.01) and np.allclose(
+            written[:, :22], outside, atol=0.01
+        )
+        assert np.allclose(written[14:26, 38:62], inside, atol=0.01) and abs(inside - outside) > 0.1
+
+
+class TestTheProgressOfAFailedCheck:
+    def test_a_deliverable_that_failed_its_checks_is_published_as_failed(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """It read as written on the row until `apply_results` (review, 2026-11-08)."""
+        published: list[render.Progress] = []
+        monkeypatch.setattr(render, "_publish", published.append)
+        monkeypatch.setattr(
+            qc,
+            "run_phase_b",
+            lambda _job, _deliverable: [QCResult("QC-105", "error", "deliverable", "wrong")],
+        )
+        deliverable = render._worker(raw_job(tmp_path, count=2))
+        assert deliverable.status == "failed"
+        assert [(m.state, m.message) for m in published if m.state != "frame"] == [
+            ("started", ""),
+            ("failed", "wrong"),
+        ]
+
+
+class TestTheEnvelopeHoldsTheChecksAndTheRename:
+    """A check that raises, or a rename Windows refuses while Drive syncs, left a .part that
+    could be gigabytes; a leftover that would not go then failed as a bare FileExistsError
+    (review, 2026-11-08)."""
+
+    @pytest.fixture(autouse=True)
+    def no_waiting(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(render, "_PATIENCE", (0.0, 0.0))
+
+    def refuse(self, monkeypatch: pytest.MonkeyPatch, times: int) -> list[Path]:
+        """Path.replace raises PermissionError the first `times` calls, then works."""
+        real = Path.replace
+        calls: list[Path] = []
+
+        def replace_(self: Path, target: Path) -> Path:
+            calls.append(self)
+            if len(calls) <= times:
+                raise PermissionError(13, "Access is denied", str(self))
+            return real(self, target)
+
+        monkeypatch.setattr(Path, "replace", replace_)
+        return calls
+
+    def test_a_check_that_raises_leaves_no_part(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        job = raw_job(tmp_path, count=2)
+
+        def broken(_job: object, _deliverable: object) -> list[QCResult]:
+            raise OSError("the mount went away")
+
+        monkeypatch.setattr(qc, "run_phase_b", broken)
+        with pytest.raises(OSError, match="mount went away"):
+            render.render_job(job)
+        assert not job.temp.exists() and not job.destination.exists()
+
+    def test_a_rename_refused_for_good_leaves_no_part(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        job = raw_job(tmp_path, count=2)
+        self.refuse(monkeypatch, times=99)
+        with pytest.raises(PermissionError):
+            render.render_job(job)
+        assert not job.temp.exists() and not job.destination.exists()
+
+    def test_a_rename_refused_for_a_moment_lands(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        job = raw_job(tmp_path, count=2)
+        calls = self.refuse(monkeypatch, times=1)
+        assert render.render_job(job).status == "done"
+        assert len(calls) == 2 and job.destination.is_dir() and not job.temp.exists()
+
+    def test_a_leftover_that_will_not_go_is_a_render_error_that_says_so(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        job = raw_job(tmp_path, count=2)
+        job.temp.mkdir(parents=True)
+        (job.temp / "locked.exr").touch()
+
+        def locked(path: Path, *args: object, **kwargs: object) -> None:
+            raise PermissionError(13, "Access is denied", str(path))
+
+        monkeypatch.setattr(shutil, "rmtree", locked)
+        with pytest.raises(render.RenderError, match="left from an earlier run"):
+            render.render_job(job)
+        assert not job.destination.exists()
+
+
+class TestARetryFindsItsOwnDelivery:
+    """A worker killed with the pool after its rename lost the result, and the retry failed
+    the job with "already exists" (review, 2026-11-08)."""
+
+    def test_a_landed_sequence_that_passes_its_checks_is_kept(self, tmp_path: Path) -> None:
+        job = raw_job(tmp_path, count=3)
+        first = render.render_job(job)
+        again = render.render_job(job, landed_ok=True)
+        assert again.status == "done"
+        assert again.frame_checksums == first.frame_checksums and again.frame_count == 3
+        assert again.size == first.size
+
+    def test_a_landed_reference_is_kept_too(self, tmp_path: Path) -> None:
+        source = fixtures.make_mov(tmp_path / "src" / "plate.mov", count=4)
+        job = ref_job(tmp_path, source, 0, 3)
+        first = render.render_job(job)
+        again = render.render_job(job, landed_ok=True)
+        assert (again.status, again.checksum, again.frame_count) == ("done", first.checksum, 4)
+
+    def test_a_folder_that_is_not_the_delivery_is_refused_and_left_alone(self, tmp_path: Path) -> None:
+        job = raw_job(tmp_path, count=3)
+        job.destination.mkdir(parents=True)
+        stranger = job.destination / "notes.txt"
+        stranger.write_text("not a frame")
+        with pytest.raises(render.RenderError, match="not this job's finished delivery"):
+            render.render_job(job, landed_ok=True)
+        assert stranger.read_text() == "not a frame"
+
+    def test_without_the_retry_an_occupied_destination_is_still_refused(self, tmp_path: Path) -> None:
+        job = raw_job(tmp_path, count=2)
+        render.render_job(job)
+        with pytest.raises(render.RenderError, match="already exists"):
+            render.render_job(job)
+
+    def test_only_the_second_round_is_told_it_may_find_one(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from concurrent.futures import Future
+        from concurrent.futures.process import BrokenProcessPool
+
+        told: list[bool] = []
+
+        class Pool:
+            def __init__(self, *args: object, **kwargs: object) -> None:
+                pass
+
+            def __enter__(self) -> Pool:
+                return self
+
+            def __exit__(self, *args: object) -> None:
+                pass
+
+            def submit(self, _fn: object, job: DeliverableJob, landed_ok: bool) -> Future[Deliverable]:
+                told.append(landed_ok)
+                future: Future[Deliverable] = Future()
+                if not landed_ok:
+                    future.set_exception(BrokenProcessPool("a worker died abruptly"))
+                else:
+                    future.set_result(job.to_deliverable())
+                return future
+
+        monkeypatch.setattr(render, "ProcessPoolExecutor", Pool)
+        render.execute([raw_job(tmp_path, count=2)], workers=1)
+        assert told == [False, True]

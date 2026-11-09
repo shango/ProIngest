@@ -1,8 +1,8 @@
 """The Fix-it report: what Ben needs to change, in plain words, as one HTML page.
 
 User, 2026-10-06: a link above the Details dock, named "Fix-it report", opening in the
-browser. Written for the colourist rather than the editor: he knows basic editing and
-colour, and is not a Resolve expert. So each QC rule he can act on gets a sentence in
+browser. Written for the colorist rather than the editor: he knows basic editing and
+color, and is not a Resolve expert. So each QC rule he can act on gets a sentence in
 his terms (`ADVICE`), every clip it applies to is listed once under it, and the rule IDs
 stay out of sight. Rules about the editor's own choices (In/Out edits, the delivery
 root, a run) are not his and are left out.
@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import Literal, NamedTuple
 
 from proingest import __version__
-from proingest.core import exports, frames, models, naming, qc, scan
+from proingest.core import exports, frames, models, naming, planner, qc
 from proingest.core.models import Batch, QCResult, ShotRow, Turnover
 
 Where = Literal["resolve", "folder", "look"]
@@ -104,19 +104,25 @@ ADVICE: dict[str, Advice] = {
         "It was delivered as cut. Fine if intended.",
         "message",
     ),
+    "QC-089": Advice(
+        "look",
+        "An EXR shot is over the frame limit.",
+        "It was delivered as cut.",
+        "message",
+    ),
     "QC-046": Advice(
         "resolve",
-        "Nothing says what colour space a clip was recorded in.",
+        "Nothing says what color space a clip was recorded in.",
         "Without it the tool cannot convert the clip, so it holds the clip back. Each clip below says "
-        "what the tool found. Please set its input colour space in Resolve and export its AMF (or the "
+        "what the tool found. Please set its input color space in Resolve and export its AMF (or the "
         "metadata) again.",
         "message",
     ),
     "QC-047": Advice(
         "resolve",
-        "A clip's input colour space is one the tool does not know.",
-        "This is the colour space Resolve reads the camera footage as, not its grade. Each clip below "
-        "says which of the exported files gave it. Please check the clip's input colour space in "
+        "A clip's input color space is one the tool does not know.",
+        "This is the color space Resolve reads the camera footage as, not its grade. Each clip below "
+        "says which of the exported files gave it. Please check the clip's input color space in "
         "Resolve. If it is right, let the editor know which camera this is.",
         "message",
     ),
@@ -152,7 +158,7 @@ ADVICE: dict[str, Advice] = {
     ),
     "QC-075": Advice(
         "resolve",
-        "A colour file (AMF) cannot be used.",
+        "A color file (AMF) cannot be used.",
         "Each line below names the AMF and why. Where two AMFs claim one clip the tool cannot tell which "
         "grade is right, so it holds that clip back. Please export the AMFs again from the timeline, one "
         "per clip.",
@@ -174,15 +180,15 @@ ADVICE: dict[str, Advice] = {
     ),
     "QC-079": Advice(
         "look",
-        "A clip's colour file (AMF) names a viewing setup the tool does not know.",
+        "A clip's color file (AMF) names a viewing setup the tool does not know.",
         "Its reference movies were made for a standard Rec.709 screen instead. Please check the "
-        "project's output colour space.",
+        "project's output color space.",
         "message",
     ),
     "QC-082": Advice(
         "resolve",
         "A clip is missing a CLF file.",
-        "Defaulting to the CDL in its AMF for colour.",
+        "Defaulting to the CDL in its AMF for color.",
     ),
     "QC-012": Advice(
         "folder",
@@ -213,15 +219,10 @@ ADVICE: dict[str, Advice] = {
         "folder",
         "An HDRI's or LDRI's render is missing.",
         "The timeline's HDRI or LDRI render is not in the turnover folder, so the stringout cannot show "
-        "it. It was probably rendered into another folder, or the timeline event points at a file in "
-        "another folder. Please render it into the turnover folder and relink the timeline event to it.",
+        "it and no mp4 of it is delivered. It was probably rendered into another folder, or the "
+        "timeline event points at a file in another folder. Please render it into the turnover "
+        "folder and relink the timeline event to it.",
         "message",
-    ),
-    "QC-086": Advice(
-        "folder",
-        "HDRI EXR or LDRI File Missing from turnover folder, omitted from delivery.",
-        "The timeline's HDRI or LDRI render is named after an EXR, JPG or PNG that is not in the folder, "
-        "so nothing was delivered for it. Please copy the file in.",
     ),
     "QC-022": Advice(
         "folder",
@@ -309,7 +310,7 @@ KIND_WORDS = {
     "meas": "measurement",
     "recon": "recon",
     "avidRef": "Avid reference",
-    "colorChart": "colour chart",
+    "colorChart": "color chart",
     "greyBall": "grey ball",
     "mirrorBall": "mirror ball",
     "sizeRef": "size reference",
@@ -351,6 +352,16 @@ class TurnoverReport:
     clips: int
     blocked: int
     items: list[Item]
+    whole: bool = False
+    """Nothing in this turnover is delivered: it read no rows (QC-001, QC-002, QC-004) or its
+    folder has moved (QC-069). `blocked` alone said "Nothing held back" then (review,
+    2026-11-08)."""
+
+
+TURNOVER_STOPPING_RULES = frozenset({"QC-001", "QC-002", "QC-004"})
+"""The turnover errors that leave it nothing to deliver: no EDL or CSV, one that will not
+parse, or one that is empty (`scan.scan_turnover` returns no rows, or rows with no cut).
+Every other turnover error, such as QC-071, holds no clip on its own."""
 
 
 def report_name(batch: Batch, when: date | None = None) -> str:
@@ -358,9 +369,14 @@ def report_name(batch: Batch, when: date | None = None) -> str:
     return f"fixit_report_{batch.name}_{(when or date.today()):%Y%m%d}.html"
 
 
-def report_path(batch: Batch, delivery_root: Path, when: date | None = None) -> Path:
+def report_path(
+    batch: Batch,
+    delivery_root: Path,
+    when: date | None = None,
+    show_pattern: str = naming.DEFAULT_SHOW_PATTERN,
+) -> Path:
     """Beside the two spreadsheets, under `<delivery_root>/<show>/_reports/`."""
-    qc_log, _ = exports.report_paths(batch, delivery_root, when)
+    qc_log, _ = exports.report_paths(batch, delivery_root, when, show_pattern)
     return qc_log.parent / report_name(batch, when)
 
 
@@ -384,10 +400,13 @@ def _turnover_report(batch: Batch, turnover: Turnover) -> TurnoverReport:
     # clip of a shot nor its plate.
     delivered = [row for row in rows if not qc.is_hdri(row) and not qc.is_stringout_only(row)]
     items: dict[str, Item] = {}
+    whole = turnover.turnover_id in planner.held_turnovers(batch)
     for result in turnover.qc:
+        stops = result.holds and result.rule_id in TURNOVER_STOPPING_RULES
+        whole |= stops
         if result.rule_id not in ADVICE or result.severity == "info":
             continue  # not Ben's, or a note for the QC log rather than something to fix
-        _add(items, result.rule_id, ADVICE[result.rule_id], result, _turnover_clips(result, delivered))
+        _add(items, result.rule_id, ADVICE[result.rule_id], result, _turnover_clips(result, delivered), stops)
     blocked = 0
     rate = batch.project_rate.nominal()
     for row in rows:
@@ -395,21 +414,31 @@ def _turnover_report(batch: Batch, turnover: Turnover) -> TurnoverReport:
         for result in row.qc:
             if result.rule_id in ADVICE and result.severity != "info":
                 clip = _clip(row, result, turnover, rate)
-                _add(items, result.rule_id, ADVICE[result.rule_id], result, [clip])
-                row_blocks |= result.severity == "error"
+                _add(items, result.rule_id, ADVICE[result.rule_id], result, [clip], result.holds)
+                row_blocks |= result.holds
         blocked += row_blocks
+    if whole:
+        blocked = len(delivered)
     if orphans := _without_a_plate(delivered):
         _add(items, "NO_PLATE", NO_PLATE, None, orphans)
     order = list(SECTIONS)
     ranked = sorted(items.items(), key=lambda kv: (order.index(kv[1].advice.where), not kv[1].blocks, kv[0]))
-    return TurnoverReport(turnover, len(delivered), blocked, [item for _, item in ranked])
+    return TurnoverReport(turnover, len(delivered), blocked, [item for _, item in ranked], whole)
 
 
 def _add(
-    items: dict[str, Item], key: str, advice: Advice, result: QCResult | None, clips: list[Clip]
+    items: dict[str, Item],
+    key: str,
+    advice: Advice,
+    result: QCResult | None,
+    clips: list[Clip],
+    blocks: bool = False,
 ) -> None:
+    """`blocks` is whether this finding keeps something from being delivered: a row's error
+    that holds it, or a turnover error that leaves the turnover nothing (review, 2026-11-08:
+    a turnover's QC-071 holds no row and was labelled as stopping clips)."""
     item = items.setdefault(key, Item(advice))
-    if result is not None and result.severity == "error":
+    if result is not None and blocks:
         item.blocks = True
     item.clips.extend(clip for clip in clips if clip not in item.clips)
 
@@ -461,8 +490,6 @@ def _looked_for(row: ShotRow, result: QCResult, turnover: Turnover) -> str:
         return str(row.media.path)
     if rule in ("QC-012", "QC-013", "QC-014", "QC-022", "QC-083"):
         return str(folder / row.clip_name)
-    if rule == "QC-086":
-        return str(folder / (scan.hdri_source_name(row.clip_name) or row.clip_name))
     if rule == "QC-076" and (named := _CLF_NAMED.match(_plain(result.message))):
         return str(folder / named["clf"])
     return ""
@@ -480,9 +507,6 @@ def _named_by(row: ShotRow, result: QCResult, turnover: Turnover, rate: int) -> 
         return f"{csv}, File Name column" + (f", and {edl}{at}" if cut else "")
     if rule == "QC-083":
         return f"{edl}{at}, and {csv}, File Name column"
-    if rule == "QC-086":
-        hdri = "LDRI" if qc.is_ldri(row) else "HDRI"
-        return f"the name of the {hdri} render {row.clip_name}, in {edl}{at}, and in {csv}"
     if rule == "QC-076" and (named := _CLF_NAMED.match(_plain(result.message))):
         return f"the AMF ({named['amf']})"
     if rule in ("QC-010", "QC-065"):
@@ -493,6 +517,8 @@ def _named_by(row: ShotRow, result: QCResult, turnover: Turnover, rate: int) -> 
         return f"{csv} lists it; {edl} has no event that cuts it"
     if rule == "QC-067":
         return f"{edl} and {csv}"
+    if rule == "QC-046" and row.grade is not None:
+        return amf  # it matched and names no input transform (review, 2026-11-08)
     if rule == "QC-046":
         return f"no AMF, and no Input Color Space in {csv}"
     if rule == "QC-047" and row.grade is None and row.source_encoding_origin == "CSV":
@@ -520,7 +546,7 @@ def _who(row: ShotRow) -> str:
 
 def _detail(row: ShotRow, result: QCResult) -> str:
     if result.rule_id == "QC-047":
-        return _colour_space_detail(row, result)
+        return _color_space_detail(row, result)
     kind = ADVICE[result.rule_id].detail
     if kind == "message":
         return _plain(result.message)
@@ -529,8 +555,8 @@ def _detail(row: ShotRow, result: QCResult) -> str:
     return ""
 
 
-def _colour_space_detail(row: ShotRow, result: QCResult) -> str:
-    """Where the unknown input colour space came from, as far as the tool can show it (user,
+def _color_space_detail(row: ShotRow, result: QCResult) -> str:
+    """Where the unknown input color space came from, as far as the tool can show it (user,
     2026-10-12: "If an issue is not coming from somewhere the tool can verify, I'd rather it
     say, This clip is appearing as a rec709, please investigate why")."""
     space = row.source_encoding
@@ -594,6 +620,8 @@ def _turnover_name(turnover: Turnover) -> str:
 
 
 def _status(report: TurnoverReport) -> str:
+    if report.whole and report.clips == 0:
+        return "Nothing can be delivered"
     if report.blocked == 0:
         return "Nothing held back"
     if report.blocked >= report.clips:
@@ -601,14 +629,18 @@ def _status(report: TurnoverReport) -> str:
     return f"{report.blocked} of {report.clips} clips held back"
 
 
+def _holds(report: TurnoverReport) -> bool:
+    return report.whole or report.blocked > 0
+
+
 def _summary(found: list[TurnoverReport]) -> str:
     if len(found) < 2:
         return ""
     lines = ""
     for r in found:
-        name, marker = _e(_turnover_name(r.turnover)), "blocks" if r.blocked else "ok"
+        name, marker = _e(_turnover_name(r.turnover)), "blocks" if _holds(r) else "ok"
         lines += (
-            f'<li class="{"resolve" if r.blocked else "note"}"><span class="name">{name}</span>'
+            f'<li class="{"resolve" if _holds(r) else "note"}"><span class="name">{name}</span>'
             f'<span class="{marker}">{_status(r)}</span></li>'
         )
     return f'<ol class="summary">{lines}</ol>'
@@ -619,10 +651,11 @@ def _turnover_html(report: TurnoverReport) -> str:
     head = (
         f'<section class="turnover"><h2>{_e(_turnover_name(turnover))}</h2>'
         f'<p class="folder-name"><code>{_e(turnover.folder.name)}</code> &middot; '
-        f'<span class="{"blocks" if report.blocked else "ok"}">{_status(report)}</span></p>'
+        f'<span class="{"blocks" if _holds(report) else "ok"}">{_status(report)}</span></p>'
     )
     if not report.items:
-        return head + f'<p class="clean">{NOTHING_TO_FIX}</p></section>'
+        clean = FOLDER_MOVED if report.whole else NOTHING_TO_FIX
+        return head + f'<p class="clean">{clean}</p></section>'
     groups = ""
     for where, heading in SECTIONS.items():
         items = [item for item in report.items if item.advice.where == where]
@@ -632,6 +665,12 @@ def _turnover_html(report: TurnoverReport) -> str:
 
 
 NOTHING_TO_FIX = "Nothing to fix. Every clip in this turnover is ready to deliver."
+
+FOLDER_MOVED = (
+    "Nothing to fix in Resolve. The turnover folder is not where the editor's batch last found it, "
+    "so nothing in it is delivered until the editor points the batch at it again."
+)
+"""A turnover held whole with nothing of Ben's to fix, which is QC-069, the editor's to fix."""
 
 _CLASSES: dict[Where, str] = {"resolve": "resolve", "folder": "folder", "look": "note"}
 _TAGS: dict[Where, str] = {
@@ -644,11 +683,13 @@ _TAGS: dict[Where, str] = {
 def _item_html(item: Item) -> str:
     advice = item.advice
     listed = "".join(_group_html(detail, clips) for detail, clips in clip_groups(item.clips))
-    effect = (
-        '<p class="blocks">Stops these clips from being delivered.</p>'
-        if item.blocks
-        else '<p class="ok">Does not stop the delivery.</p>'
-    )
+    if not item.blocks:
+        effect = '<p class="ok">Does not stop the delivery.</p>'
+    elif any(clip.who or clip.name for clip in item.clips):
+        effect = '<p class="blocks">Stops these clips from being delivered.</p>'
+    else:
+        # A turnover's own error names no clip: the turnover delivers nothing (review, 2026-11-08).
+        effect = '<p class="blocks">Stops this turnover from being delivered.</p>'
     return (
         f'<li class="{_CLASSES[advice.where]}"><p><span class="tag">{_TAGS[advice.where]}</span> '
         f'<span class="what">{_e(advice.title)}</span></p><p>{_e(advice.explain)}</p>{listed}{effect}</li>'
@@ -692,14 +733,14 @@ def _e(text: str) -> str:
 
 
 _STYLE = """
-:root{--bg:#f6f7f9;--card:#fff;--fg:#1d2128;--muted:#5d6573;--line:#dfe3e8;--resolve:#b4231b;
+:root{--bg:#f6f7f9;--card:#fff;--fg:#1d2128;--muted:#5d6573;--line:#dfe3e8;--resolve:#c2410c;
 --folder:#8a5a00;--note:#2f5e9e;--sans:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;
 --mono:ui-monospace,Menlo,Consolas,monospace}
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--bg:#15181d;--card:#1d2127;
---fg:#e4e7ec;--muted:#9aa3b0;--line:#2c323a;--resolve:#ff8a80;--folder:#f0c060;--note:#8db8f0;
+--fg:#e4e7ec;--muted:#9aa3b0;--line:#2c323a;--resolve:#fb923c;--folder:#f0c060;--note:#8db8f0;
 color-scheme:dark}}
 :root[data-theme="dark"]{--bg:#15181d;--card:#1d2127;--fg:#e4e7ec;--muted:#9aa3b0;--line:#2c323a;
---resolve:#ff8a80;--folder:#f0c060;--note:#8db8f0;color-scheme:dark}
+--resolve:#fb923c;--folder:#f0c060;--note:#8db8f0;color-scheme:dark}
 body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--sans);font-size:16px;line-height:1.55;
 padding:32px 16px 48px}
 main{max-width:720px;margin:0 auto;display:grid;gap:28px}

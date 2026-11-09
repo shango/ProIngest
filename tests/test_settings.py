@@ -149,6 +149,33 @@ class TestAFileThatCannotBeUsed:
         path.write_text(content)
         assert settings.load(path) == settings.AppSettings()
 
+    @pytest.mark.parametrize(
+        ("key", "bad"),
+        [("workers", "four"), ("workers", None), ("reference_crf", [18]), ("metadata_collapsed", 5)],
+    )
+    def test_one_bad_field_is_its_default_and_the_rest_still_load(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture, key: str, bad: object
+    ) -> None:
+        """Review, 2026-11-08: one wrong-typed field made the whole file read as defaults, and
+        the next save then wrote away the path map, the rules, the show pattern, the ffmpeg
+        override and every key a newer build wrote."""
+        path = tmp_path / "settings.json"
+        kept = {
+            "path_map": {"G:\\": "/Volumes/GoogleDrive/"},
+            "rules": {"qc": {"max_frames": 300}},
+            "show_pattern": "[A-Z]{4}",
+            "ffmpeg_path": "/opt/ffmpeg",
+            "spare": {"from": "a newer build"},
+        }
+        path.write_text(json.dumps({**kept, key: bad}))
+        with caplog.at_level(logging.WARNING):
+            loaded = settings.load(path)
+        assert getattr(loaded, key) == getattr(settings.AppSettings(), key)
+        assert key in caplog.text
+        settings.save(loaded, path)
+        written = json.loads(path.read_text())
+        assert {name: written[name] for name in kept} == kept
+
     def test_a_missing_key_takes_its_default(self, tmp_path: Path) -> None:
         path = tmp_path / "settings.json"
         path.write_text(json.dumps({"schema_version": 1}))

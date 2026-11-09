@@ -10,9 +10,12 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from PySide6.QtWidgets import QApplication
+from PySide6.QtCore import Qt
+from PySide6.QtTest import QTest
+from PySide6.QtWidgets import QApplication, QTreeWidget
 
 from proingest.core.models import Batch, Deliverable, QCResult, Turnover
+from proingest.ui.deliverables import DeliverablesDock
 from proingest.ui.issues import BATCH_SCOPE, COLUMNS, FIX_HINTS, IssuesDock, issues_for
 from tests.fixtures.batches import batch, fail, row, turnover, warn
 
@@ -97,7 +100,7 @@ class TestWhatIsCollected:
 
     def test_the_order_follows_the_list_rather_than_the_severity(self) -> None:
         """The dock is read beside the list, and the two agreeing about where a shot is
-        is worth more than the errors being at the top of a table already coloured."""
+        is worth more than the errors being at the top of a table already colored."""
         found = issues_for(
             batch(
                 warn(row("MELT0001_pl01"), "QC-030"),
@@ -145,7 +148,7 @@ class TestClickingThrough:
         dock.show_batch(batch(wanted))
         asked: list[object] = []
         dock.row_activated.connect(asked.append)
-        dock.itemDoubleClicked.emit(dock.topLevelItem(0), 0)
+        dock.itemActivated.emit(dock.topLevelItem(0), 0)
 
         assert asked == [wanted]
 
@@ -154,7 +157,7 @@ class TestClickingThrough:
         dock.show_batch(held)
         asked: list[object] = []
         dock.row_activated.connect(asked.append)
-        dock.itemDoubleClicked.emit(dock.topLevelItem(0), 0)
+        dock.itemActivated.emit(dock.topLevelItem(0), 0)
 
         assert asked == []
 
@@ -167,7 +170,7 @@ class TestClickingThrough:
         dock.show_batch(held)
         asked: list[object] = []
         dock.row_activated.connect(asked.append)
-        dock.itemDoubleClicked.emit(dock.topLevelItem(1), 0)
+        dock.itemActivated.emit(dock.topLevelItem(1), 0)
 
         assert asked[0] is second
 
@@ -185,3 +188,53 @@ def test_a_row_whose_turnover_is_not_in_the_batch_is_not_shown() -> None:
     catching it: a row nobody can see in the list is not a row to report about."""
     held = Batch(turnovers=[Turnover("t1", Path("/s/t1"))], rows=[warn(row(turnover_id="t9"))])
     assert issues_for(held) == []
+
+
+class TestSelectingAShotsLines:
+    """`select_row`, which a click on the list's status dot lands on (UI_SPEC section 3)."""
+
+    def test_it_selects_that_shots_first_line(self, dock: IssuesDock) -> None:
+        first, second = warn(row()), warn(row("MELT0002_pl01"))
+        dock.show_batch(batch(first, second))
+        assert dock.select_row(second)
+        current = dock.currentItem()
+        assert current is not None
+        assert dock._rows[current.data(0, Qt.ItemDataRole.UserRole)] is second
+
+    def test_a_shot_with_no_line_selects_nothing(self, dock: IssuesDock) -> None:
+        dock.show_batch(batch(warn(row())))
+        assert not dock.select_row(row("MELT0002_pl01"))
+        assert dock.currentItem() is None
+
+
+class TestARealDoubleClickActsOnce:
+    """Review, 2026-11-08: both `itemActivated` and `itemDoubleClicked` were connected,
+    and on the default styles one double-click emits both, so the Deliverables dock
+    opened the folder twice (two Explorer windows on Windows)."""
+
+    def _double_click(self, view: QTreeWidget) -> None:
+        view.resize(800, 300)
+        view.show()
+        item = view.topLevelItem(0)
+        assert item is not None
+        center = view.visualItemRect(item).center()
+        QTest.mouseClick(view.viewport(), Qt.MouseButton.LeftButton, pos=center)
+        QTest.mouseDClick(view.viewport(), Qt.MouseButton.LeftButton, pos=center)
+
+    def test_the_issues_dock(self, dock: IssuesDock) -> None:
+        wanted = warn(row())
+        dock.show_batch(batch(wanted))
+        asked: list[object] = []
+        dock.row_activated.connect(asked.append)
+        self._double_click(dock)
+        assert asked == [wanted]
+
+    def test_the_deliverables_dock(self, qt_app: QApplication) -> None:
+        held = row()
+        held.deliverables = [Deliverable("plate", "a.exr", Path("/delivery/a.exr"), 1)]
+        view = DeliverablesDock()
+        view.show_rows([held])
+        opened: list[object] = []
+        view.path_activated.connect(opened.append)
+        self._double_click(view)
+        assert opened == [Path("/delivery")]

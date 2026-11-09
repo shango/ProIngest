@@ -13,6 +13,7 @@ change it until the answer is back.
 
 from __future__ import annotations
 
+import contextlib
 import logging
 from collections.abc import Callable
 
@@ -20,9 +21,46 @@ from PySide6.QtCore import QObject, QThread, Signal
 
 log = logging.getLogger(__name__)
 
-SHUTDOWN_WAIT_MS = 30_000
-"""How long closing the window waits for a call in flight. The scan's wait, for the same
-reason: a slow mount must not be a window that cannot be closed."""
+SHUTDOWN_WAIT_MS = 5_000
+"""How long closing the window blocks on a call in flight before leaving it to run out.
+
+Short, because a close during a run has already waited for the run to stop with the
+window live (`RunController.close_when_finished`); this is the frozen part. It was 30 s,
+after which the thread was destroyed while it ran and Qt aborted the process (review,
+2026-11-08)."""
+
+_ABANDONED: list[tuple[QThread, QObject]] = []
+"""Threads that would not stop at close, kept referenced so nothing destroys them while
+they run: Qt aborts the process on a `QThread` destroyed while running ("QThread:
+Destroyed while thread is still running")."""
+
+
+def abandon(thread: QThread, worker: QObject) -> None:
+    """Keep a thread that will not stop alive past its owner, so it can run out.
+
+    Detached from its parent, so the window going does not take it, and from its worker's
+    signals, so an answer that arrives later reaches nothing. `app.run` ends the process
+    without the interpreter's teardown while one is still running (`still_running`),
+    since that teardown would destroy it all the same.
+    """
+    _disconnect(thread.finished)
+    for name in ("done", "progressed", "scanned", "started_folder"):
+        signal = getattr(worker, name, None)
+        if signal is not None:
+            _disconnect(signal)
+    thread.setParent(None)
+    _ABANDONED.append((thread, worker))
+    log.warning("a worker thread did not stop; it is left to run out rather than destroyed")
+
+
+def still_running() -> bool:
+    """Whether a thread left by `abandon` is still running."""
+    return any(thread.isRunning() for thread, _ in _ABANDONED)
+
+
+def _disconnect(signal: object) -> None:
+    with contextlib.suppress(RuntimeError, TypeError):  # nothing was connected
+        signal.disconnect()  # type: ignore[attr-defined]
 
 
 class Failure:
@@ -78,15 +116,20 @@ class Background(QObject):
         thread.start()
 
     def shutdown(self) -> None:
-        """Wait for a call in flight. What closing the window calls."""
+        """Wait for a call in flight, briefly, then leave it to run out. What closing the
+        window calls. Never returns with a running thread this object still owns."""
         thread = self._thread
         if thread is None:
             return
         # Nobody is left to hand the answer to: the window is closing.
         self._then = None
         thread.quit()
-        if not thread.wait(SHUTDOWN_WAIT_MS):
-            log.warning("background work did not finish within %d ms", SHUTDOWN_WAIT_MS)
+        if thread.wait(SHUTDOWN_WAIT_MS):
+            return
+        log.warning("background work did not finish within %d ms", SHUTDOWN_WAIT_MS)
+        assert self._call is not None
+        abandon(thread, self._call)
+        self._thread, self._call, self._result = None, None, None
 
     def _collect(self, result: object) -> None:
         self._result = result

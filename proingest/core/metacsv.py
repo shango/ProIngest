@@ -3,8 +3,8 @@
 Resolve writes it from the Media Pool and it sits in the turnover folder beside the
 media and the EDL (docs/WORKFLOW.md). One thing reaches the tool through this file and
 through nothing else: **which shot and which clip type each file is** (`Shot` and
-`Shot Type`). The EDL carries the cut and each clip's AMF carries its colour; since
-2026-09-28 (user) the CSV's colour columns are not read.
+`Shot Type`). The EDL carries the cut and each clip's AMF carries its color; since
+2026-09-28 (user) the CSV's color columns are not read.
 
 Three properties of the real file drive the whole module, all measured in
 docs/SAMPLE_TURNOVER_199.md sections 7 and 8:
@@ -34,7 +34,8 @@ from __future__ import annotations
 import csv
 import io
 import re
-from dataclasses import dataclass, field
+from collections.abc import Callable
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from proingest.core import media, naming
@@ -47,7 +48,7 @@ SCENE_COLUMN = "Scene"
 TAKE_COLUMN = "Take"
 """The clip's take, burned into the stringout after its label when above 1 (user, 2026-10-07)."""
 INPUT_COLOR_SPACE_COLUMN = "Input Color Space"
-"""Resolve's input colour space for the clip, `Apple Log` in turnovers 134 and 135. Read only
+"""Resolve's input color space for the clip, `Apple Log` in turnovers 134 and 135. Read only
 for a clip no AMF grades, which renders ungraded from it (QC-009, user 2026-10-07)."""
 START_TC_COLUMN = "Start TC"
 """Where the clip starts as Resolve has it, which the EDL's source timecodes count from.
@@ -83,8 +84,9 @@ class MetaRow:
     plate: str = ""
     """The plate a witness cam covers, `pl02` for `pl02_wit01` (user, 2026-10-23)."""
     hdri: bool = False
-    """An HDRI or LDRI (QC-080): the tool copies its file as it is and runs no row rule on it, and
-    the stringout shows Ben's pre-render of its timeline event (user, 2026-10-07)."""
+    """An HDRI or LDRI (QC-080): no row rule runs on it, the stringout shows Ben's pre-render of
+    its timeline event, and the pre-render is delivered as an mp4. Its EXR, JPG or PNG is Ben's to
+    deliver by hand (user, 2026-10-30)."""
 
 
 @dataclass
@@ -106,9 +108,10 @@ class MetaCsv:
 
 def _decode(raw: bytes) -> str:
     """Resolve writes UTF-16 with a BOM. Accept UTF-8 too rather than insist."""
-    if raw.startswith((b"\xff\xfe", b"\xfe\xff")):
-        return raw.decode("utf-16")
     try:
+        if raw.startswith((b"\xff\xfe", b"\xfe\xff")):
+            # A copy cut short on the mount leaves half a character (review, 2026-11-08).
+            return raw.decode("utf-16")
         return raw.decode("utf-8-sig")
     except UnicodeDecodeError as exc:
         raise MetaCsvError(f"not UTF-16 or UTF-8: {exc}") from exc
@@ -141,16 +144,19 @@ def _resolve_shot_type(
     **later** one, because Resolve writes its own fields before the custom set and the
     built-in is the framing field. Warn only when both resolve and disagree: one
     resolving and one not is the normal shape of a shooter using both fields as intended.
+
+    Known means the whole vocabulary (`_known_type`), not only what `parse_shot_type`
+    names: `pl01` in the built-in and `meas01` or `HDRI` in the custom field was read as a
+    plate with nothing said (review, 2026-11-08).
     """
     written = [(i, row[i].strip()) for i in positions if i < len(row) and row[i].strip()]
-    resolved = [
-        (i, value, parsed) for i, value in written for parsed in [naming.parse_shot_type(value)] if parsed
-    ]
+    resolved = [(i, value, known) for i, value in written for known in [_known_type(value)] if known]
 
     if not resolved:
         return (written[-1][1] if written else ""), None, None, []
 
-    _, value, (kind, index) = resolved[-1]
+    _, value, _ = resolved[-1]
+    kind, index = naming.parse_shot_type(value) or (None, None)
     qc: list[QCResult] = []
     distinct = {parsed for _, _, parsed in resolved}
     if len(distinct) > 1:
@@ -165,6 +171,26 @@ def _resolve_shot_type(
             )
         )
     return value, kind, index, qc
+
+
+def _known_type(value: str) -> tuple[str, ...] | None:
+    """What a `Shot Type` value names, as a key two spellings of one type share, or None.
+
+    Every type the reader goes on to deliver or show: the clip types, the HDRI and LDRI, the
+    style frame and the as-is kinds."""
+    parsed = naming.parse_shot_type(value)
+    if parsed is not None:
+        return ("clip", *parsed, naming.witness_plate(value))
+    hdri = naming.hdri_kind(value)
+    if hdri is not None:
+        return ("hdri", hdri, naming.hdri_index(value))
+    style = _STYLE_FRAME.fullmatch(value.strip())
+    if style is not None:
+        return ("style", (style["index"] or "1").zfill(2))
+    as_is = _AS_IS.fullmatch(value.strip())
+    if as_is is not None:
+        return ("as-is", _AS_IS_INDEX[as_is["kind"].casefold()], (as_is["index"] or "1").zfill(2))
+    return None
 
 
 def _shot(typed: str, show_pattern: str) -> str:
@@ -279,19 +305,14 @@ def read(path: Path, show_pattern: str = naming.DEFAULT_SHOW_PATTERN) -> MetaCsv
             continue
         shot = _shot(_value(record, shot_positions), show_pattern)
         scene = _value(record, scene_positions)
-        if naming.hdri_kind(shot_type) is not None:
+        # Every kind carries Resolve's `Start TC` and the take, so its cut can be read by
+        # Resolve's clock (`scan.cut_in_file`) as a plate's is (review, 2026-11-08).
+        start_tc, take = _value(record, start_positions), _value(record, take_positions)
+        special = _special(shot_type)
+        if special is not None:
             named = naming.parse_shot_code(shot, show_pattern) is not None
-            result.rows.append(
-                _hdri(file_name, shot, shot_type, scene, named, _value(record, take_positions))
-            )
-            continue
-        if _STYLE_FRAME.fullmatch(shot_type.strip()):
-            named = naming.parse_shot_code(shot, show_pattern) is not None
-            result.rows.append(_style_frame(file_name, shot, shot_type, scene, named))
-            continue
-        if _AS_IS.fullmatch(shot_type.strip()):
-            named = naming.parse_shot_code(shot, show_pattern) is not None
-            result.rows.append(_as_is(file_name, shot, shot_type, scene, named))
+            built = special(file_name, shot, shot_type, scene, named)
+            result.rows.append(replace(built, qc=tuple(type_qc) + built.qc, start_tc=start_tc, take=take))
             continue
         result.rows.append(
             MetaRow(
@@ -301,8 +322,8 @@ def read(path: Path, show_pattern: str = naming.DEFAULT_SHOW_PATTERN) -> MetaCsv
                 kind=kind,
                 index=index,
                 scene=scene,
-                start_tc=_value(record, start_positions),
-                take=_value(record, take_positions),
+                start_tc=start_tc,
+                take=take,
                 input_color_space=_value(record, space_positions),
                 plate=naming.witness_plate(shot_type),
                 qc=tuple(type_qc + _row_qc(file_name, shot, shot_type, kind, show_pattern)),
@@ -311,28 +332,39 @@ def read(path: Path, show_pattern: str = naming.DEFAULT_SHOW_PATTERN) -> MetaCsv
     return result
 
 
-def _hdri(file_name: str, shot: str, shot_type: str, scene: str, named: bool, take: str) -> MetaRow:
-    """An HDRI or LDRI row (user, 2026-10-07 and 2026-10-08): its file is delivered as it is,
-    with no checks, and the stringout shows the pre-render of its timeline event. One whose
-    `Shot` is no shot code has nowhere to be delivered, and only the stringout shows it.
+def _special(shot_type: str) -> Callable[[str, str, str, str, bool], MetaRow] | None:
+    """The builder for a kind that is not a clip type: an HDRI or LDRI, a style frame, or an
+    as-is kind. None for a clip type, or for nothing known."""
+    if naming.hdri_kind(shot_type) is not None:
+        return _hdri
+    if _STYLE_FRAME.fullmatch(shot_type.strip()):
+        return _style_frame
+    if _AS_IS.fullmatch(shot_type.strip()):
+        return _as_is
+    return None
+
+
+def _hdri(file_name: str, shot: str, shot_type: str, scene: str, named: bool) -> MetaRow:
+    """An HDRI or LDRI row (user, 2026-10-07 and 2026-10-08): the stringout shows the pre-render
+    of its timeline event, and the pre-render is delivered as an mp4, with no checks. The EXR,
+    JPG or PNG is Ben's to deliver by hand (user, 2026-10-30). One whose `Shot` is no shot code
+    has nowhere to be delivered, and only the stringout shows it.
 
     Its number (`SECA0009_pl01_LDRI02_v01.jpg`) is its `Shot Type`'s, `LDRI02`, and a bare `LDRI`
     is `01` (user, 2026-10-27). It was the CSV's `Take` from 2026-10-12."""
     hdri = naming.hdri_kind(shot_type) or naming.HDRI_KIND
-    image = "HDRI EXR" if hdri == naming.HDRI_KIND else "LDRI image"
+    image = "EXR" if hdri == naming.HDRI_KIND else "image"
     what = (
-        f"{file_name} is an {hdri}'s pre-render: the stringout shows it, and the tool delivers the "
-        f"{image} it is named after as it is, with no checks"
+        f"{file_name} is an {hdri}'s pre-render: the stringout shows it and the tool delivers it as "
+        f"an mp4, with no checks; the {hdri} {image} is delivered by hand"
         if Path(file_name).suffix.lower() in media.VIDEO_EXTENSIONS
-        else f"{file_name} is an {hdri}: the tool delivers it as it is, with no checks, and the "
-        "stringout shows its pre-render"
+        else f"{file_name} is an {hdri}: the stringout shows its pre-render and the tool delivers "
+        f"that as an mp4, with no checks; the {hdri} {image} is delivered by hand"
     )
     notes = [QCResult("QC-080", "info", "row", what)]
     index = naming.hdri_index(shot_type)
     kind = hdri if named else None
-    return MetaRow(
-        file_name, shot, shot_type, kind, index if named else None, scene, tuple(notes), take=take, hdri=True
-    )
+    return MetaRow(file_name, shot, shot_type, kind, index if named else None, scene, tuple(notes), hdri=True)
 
 
 _STYLE_FRAME = re.compile(r"styleframe(?P<index>\d{1,2})?", re.IGNORECASE)
@@ -364,7 +396,7 @@ _AS_IS_WORDS = {
 
 def _as_is(file_name: str, shot: str, shot_type: str, scene: str, named: bool) -> MetaRow:
     """An Avid reference, `avidRef01` (QC-088, user 2026-10-15), a measurement, `meas01`, or a
-    recon, `recon01` (user, 2026-10-27). No colour correction, and delivered as it is, never as
+    recon, `recon01` (user, 2026-10-27). No color correction, and delivered as it is, never as
     an EXR (user, 2026-10-22); the stringout plays its cut as it is."""
     match = _AS_IS.fullmatch(shot_type.strip())
     assert match is not None
@@ -386,6 +418,7 @@ def find(folder: Path) -> list[Path]:
 
     Not recursive, and the caller decides what more than one means: the handover is one
     folder holding the media, one EDL and one CSV (OQ-74), so a second CSV is a question
-    rather than something to pick between.
+    rather than something to pick between. Raises `OSError` for a folder that cannot be
+    listed, which the scan reports (QC-001).
     """
     return sorted(p for p in folder.iterdir() if p.is_file() and p.suffix.lower() == CSV_SUFFIX)

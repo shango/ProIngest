@@ -17,7 +17,7 @@ from pathlib import Path
 
 import pytest
 
-from proingest.core import naming, qc, render
+from proingest.core import color, naming, qc, render
 from proingest.core.models import (
     AudioInfo,
     Batch,
@@ -450,6 +450,35 @@ class TestDuration:
         assert results[0].severity == "warning", "rendered as it is since 2026-10-07 (user)"
         assert results[0].message.startswith("Plate was 264 frames on the timeline")
 
+
+class TestExrLength:
+    def test_the_limit_itself_is_clean(self) -> None:
+        assert qc.check_exr_length(row(current=InOut(1001, 1250)), qc.DEFAULT_SETTINGS) == []
+
+    def test_one_frame_over_is_red(self) -> None:
+        results = qc.check_exr_length(row(current=InOut(1001, 1251)), qc.DEFAULT_SETTINGS)
+        assert ids(results) == ["QC-089"]
+        assert results[0].severity == "error"
+        assert not results[0].holds, "red on the row, and the shot still renders"
+        assert results[0].message == "EXR shot was 251 frames on the timeline, above the 250 frame limit"
+
+    def test_the_limit_is_a_setting(self) -> None:
+        settings = qc.RuleSettings(max_exr_frames=300)
+        assert qc.check_exr_length(row(current=InOut(1001, 1251)), settings) == []
+        assert qc.RuleSettings.from_dict(settings.to_dict()) == settings
+
+    def test_every_sequence_type_is_asked_not_only_a_plate(self) -> None:
+        element = replace(row(current=InOut(1001, 1300)), identity=identity_of("MELT0001_el01"))
+        assert ids(qc.check_exr_length(element, qc.DEFAULT_SETTINGS)) == ["QC-089"]
+
+    def test_a_still_has_no_sequence(self) -> None:
+        still = replace(row(current=InOut(1001, 1300)), identity=identity_of("MELT0001_pl01_colorChart_01"))
+        assert qc.check_exr_length(still, qc.DEFAULT_SETTINGS) == []
+
+    def test_a_freeze_has_no_sequence(self) -> None:
+        frozen = replace(row(current=InOut(1001, 1300)), freeze=True)
+        assert "QC-089" not in ids(qc.run_row_rules(frozen, RATE_24))
+
     @pytest.mark.parametrize("kind", ["cp01", "el01", "wit01"])
     def test_only_a_plate_has_limits(self, kind: str) -> None:
         """User, 2026-09-29: no min or max for anything but the pl shot type."""
@@ -634,7 +663,8 @@ class TestColorChain:
         assert results[0].severity == "info"
         assert results[0].message == (
             "rendered through CanonLog3 CinemaGamut D55 to ACES2065-1, then ACES 1.3 Reference Gamut "
-            "Compression, C4261_1_ClipGraph_CorrectorNode_1.clf, then ACEScg"
+            "Compression, C4261_1_ClipGraph_CorrectorNode_1.clf, then ACEScg, then "
+            f"{color.DEFAULT_VIEW[0]}"
         )
 
     def test_a_row_with_no_look_names_the_input_transform(self) -> None:
@@ -689,6 +719,65 @@ class TestDuplicateNames:
         skipped = row()
         skipped.skipped = True
         assert qc.clip_name_counts(Batch(rows=[row(), skipped])) == {"MELT0001 pl01": 1}
+
+    def test_witness_cams_of_two_plates_are_two_names(self) -> None:
+        """Review, 2026-11-08: `pl01_wit01` and `pl02_wit01` deliver two names (NAMING_SPEC),
+        and both keyed to `MELT0001 wit01` and were held as duplicates."""
+        first, second = row(), row()
+        first.identity = naming.ShotIdentity("MELT0001", naming.WITNESS_KIND, "01", plate="pl01")
+        second.identity = naming.ShotIdentity("MELT0001", naming.WITNESS_KIND, "01", plate="pl02")
+        batch = Batch(rows=[first, second])
+        qc.apply_batch_rules(batch)
+        assert qc.clip_name_counts(batch) == {"MELT0001 pl01_wit01": 1, "MELT0001 pl02_wit01": 1}
+        assert all("QC-011" not in ids(target.qc) for target in batch.rows)
+
+
+def as_is_row(kind: str, marker: str, clip_name: str) -> ShotRow:
+    """A row no other row rule runs on: a style frame (QC-085) or an Avid reference (QC-088)."""
+    target = row(clip_name=clip_name)
+    target.identity = naming.ShotIdentity("INCA5002", kind, "01")
+    target.qc = [QCResult(marker, "info", "row", kind)]
+    return target
+
+
+def hdri_row(clip_name: str, rendered: bool = True) -> ShotRow:
+    target = row(clip_name=clip_name)
+    target.identity = naming.ShotIdentity("INCA5002", naming.HDRI_KIND, "01")
+    target.qc = [QCResult("QC-080", "info", "row", "an HDRI")]
+    target.hdri_render = media(RATE_24) if rendered else None
+    return target
+
+
+class TestDuplicatesOnEveryKind:
+    """Review, 2026-11-08: the scan and an edit judged QC-011 differently. `run_row_rules`
+    returned before it for an HDRI, a style frame or an Avid reference, while
+    `apply_duplicate_rule` ran it on every row."""
+
+    def both_ways(self, rows: list[ShotRow]) -> tuple[list[list[str]], list[list[str]]]:
+        batch = Batch(rows=rows)
+        qc.apply_batch_rules(batch)
+        scanned = [[r for r in ids(target.qc) if r == "QC-011"] for target in batch.rows]
+        qc.apply_duplicate_rule(batch, qc.clip_name_counts(batch))
+        edited = [[r for r in ids(target.qc) if r == "QC-011"] for target in batch.rows]
+        return scanned, edited
+
+    def test_two_style_frames_of_one_shot_are_never_duplicates(self) -> None:
+        """Never delivered, so nothing to overwrite: clean at scan and after an edit."""
+        rows = [as_is_row(naming.STYLE_FRAME_KIND, "QC-085", f"sf{i}.png") for i in (1, 2)]
+        assert self.both_ways(rows) == ([[], []], [[], []])
+
+    def test_two_avid_references_of_one_name_are_qc_011(self) -> None:
+        """A bare `avidRef` and `avidRef01` both plan `INCA5002_avidRef01_v01.mp4`."""
+        rows = [as_is_row(naming.AVIDREF_KIND, "QC-088", f"ref{i}.mov") for i in (1, 2)]
+        assert self.both_ways(rows) == ([["QC-011"], ["QC-011"]], [["QC-011"], ["QC-011"]])
+
+    def test_two_hdris_of_one_name_are_qc_011(self) -> None:
+        rows = [hdri_row("a Render 1.mov"), hdri_row("b Render 1.mov")]
+        assert self.both_ways(rows) == ([["QC-011"], ["QC-011"]], [["QC-011"], ["QC-011"]])
+
+    def test_an_hdri_with_no_pre_render_delivers_nothing_to_collide(self) -> None:
+        rows = [hdri_row("a Render 1.mov"), hdri_row("a.exr", rendered=False)]
+        assert self.both_ways(rows) == ([[], []], [[], []])
 
 
 class TestRuleSettings:
@@ -821,8 +910,53 @@ class TestFreeSpace:
     def test_the_estimate_charges_every_picture_deliverable(self) -> None:
         batch = Batch(rows=[row()])
         assert batch.rows[0].media is not None
-        batch.rows[0].media.size = 264_000  # 1000 bytes a frame over 264 frames
+        batch.rows[0].media.is_sequence = False
+        batch.rows[0].media.size = 264_000  # a movie: 1000 bytes a frame over 264 frames
         assert qc.estimate_output_bytes(batch) == 1000 * 240 * qc.PICTURE_DELIVERABLES_PER_ROW
+
+    def test_a_sequence_size_is_one_frame(self) -> None:
+        """Review, 2026-11-08: a sequence's size is its first frame's (`media.index_directory`),
+        and dividing it by the frame count under-counted by about the length."""
+        batch = Batch(rows=[row()])
+        assert batch.rows[0].media is not None and batch.rows[0].media.is_sequence
+        batch.rows[0].media.size = 1000
+        assert qc.estimate_output_bytes(batch) == 1000 * 240 * qc.PICTURE_DELIVERABLES_PER_ROW
+
+    def test_only_rows_that_will_render_are_charged(self) -> None:
+        """Review, 2026-11-08: skipped, held, complete (QC-061) and failed rows, a style frame
+        and a turnover whose folder moved (QC-069) write nothing."""
+        renders = row()
+        skipped = row()
+        skipped.skipped = True
+        held = row()
+        held.qc.append(QCResult("QC-012", "error", "row", "no such file"))
+        red = row()
+        red.qc.append(QCResult("QC-089", "error", "row", "260 frames"))  # renders all the same
+        complete = row()
+        complete.deliverables = [delivered("MELT0001_pl01_audio_v01.wav", "audio")]
+        failed = row()
+        failed.deliverables = [replace(delivered("MELT0001_pl01_audio_v01.wav", "audio"), status="failed")]
+        style = row()
+        style.identity = naming.ShotIdentity("MELT0001", naming.STYLE_FRAME_KIND, "01")
+        moved = row()
+        moved.turnover_id = "t2"
+        gone = Turnover("t2", Path("/gone"), qc=[QCResult("QC-069", "error", "turnover", "moved")])
+        rows = [renders, skipped, held, red, complete, failed, style, moved]
+        for target in rows:
+            assert target.media is not None
+            target.media.size = 1000
+        batch = Batch(turnovers=[Turnover("t1", Path("/t")), gone], rows=rows)
+        assert qc.estimate_output_bytes(batch) == 2 * 1000 * 240 * qc.PICTURE_DELIVERABLES_PER_ROW
+
+    def test_preflight_estimates_after_it_holds_a_moved_turnover(self, tmp_path: Path) -> None:
+        """QC-069 is refreshed in the same pre-flight, so the estimate runs after it."""
+        plate = row()
+        assert plate.media is not None
+        plate.media.size = 1 << 60
+        batch = Batch(delivery_root=tmp_path, turnovers=[Turnover("t1", tmp_path / "gone")], rows=[plate])
+        qc.preflight(batch, decoders=frozenset({"exr"}))
+        assert "QC-069" in ids(batch.turnovers[0].qc)
+        assert "QC-063" not in ids(batch.qc)
 
 
 class TestPreflight:
@@ -897,6 +1031,39 @@ class TestBlockingResults:
         failed.qc.append(QCResult("QC-150", "error", "row", "1 deliverable is not done"))
         assert qc.must_fix(Batch(delivery_root=tmp_path, rows=[failed])) == []
 
+    def test_a_batch_scope_qc_151_does_not_stop_the_run(self, tmp_path: Path) -> None:
+        """QC-151 is batch scope, but it reports on names already delivered: refusing the
+        next run on it left a batch that could never run again (review, 2026-11-08)."""
+        batch = Batch(delivery_root=tmp_path, rows=[row()])
+        batch.qc = [QCResult("QC-151", "error", "batch", "x.mp4: does not parse as a delivery name")]
+        assert qc.must_fix(batch) == []
+
+    def test_a_qc_151_left_by_the_last_run_survives_preflight_and_still_does_not_stop(
+        self, tmp_path: Path
+    ) -> None:
+        """The shape of the bug: preflight clears only its own rules, so a QC-151 stays."""
+        target = row()
+        target.deliverables = [delivered("nonsense", "raw_dir")]
+        batch = Batch(delivery_root=tmp_path, rows=[target])
+        qc.apply_phase_b(batch)
+        qc.preflight(batch)
+        assert "QC-151" in ids(batch.qc)
+        assert qc.must_fix(batch) == []
+
+    def test_only_the_delivery_root_rules_stop_a_run(self) -> None:
+        assert frozenset({"QC-062", "QC-063"}) == qc.RUN_STOPPING_RULES
+
+    def test_a_qc_151_is_logged_without_saying_it_blocks(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        batch = Batch(delivery_root=tmp_path, rows=[row()])
+        batch.qc = [QCResult("QC-151", "error", "batch", "x.mp4: does not parse")]
+        with caplog.at_level(logging.DEBUG, logger="proingest.core.qc"):
+            qc.log_results(batch, "after the run")
+        messages = [record.getMessage() for record in caplog.records]
+        assert messages[0] == "after the run: batch: QC-151 x.mp4: does not parse"
+        assert messages[-1].endswith("nothing blocks the run")
+
 
 class TestLogResults:
     """Every result the Issues dock shows goes to the log at its own level (user, 2026-09-28)."""
@@ -925,6 +1092,19 @@ class TestLogResults:
             ("INFO", f"{where}: QC-018 decoded as BT.709"),
             ("INFO", "after the scan: QC summary: 1 errors, 1 warnings, 1 info; nothing blocks the run"),
         ]
+
+    def test_a_red_warning_does_not_say_it_holds_the_shot(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Review, 2026-11-08: QC-089 renders (`models.RED_WARNING_RULES`), as the Issues sheet
+        and the Fix-it report say; the log said it held the shot."""
+        plate = row()
+        plate.qc = [QCResult("QC-089", "error", "row", "260 frames")]
+        batch = Batch(
+            delivery_root=tmp_path, turnovers=[Turnover("t1", tmp_path / "Turnover121")], rows=[plate]
+        )
+        where = "after the scan: Turnover121 / MELT0001 (MELT0001_pl01)"
+        assert self.logged(caplog, batch)[0] == ("ERROR", f"{where}: QC-089 260 frames")
 
     def test_a_batch_scope_error_says_it_stops_the_run(
         self, tmp_path: Path, caplog: pytest.LogCaptureFixture
@@ -985,13 +1165,13 @@ class TestClfRule:
         assert results[0].message.startswith(qc.UNGRADED)
         assert "C4261.amf carries no CLF and no CDL" in results[0].message
 
-    def test_a_row_with_no_amf_is_ungraded_from_the_csv_colour_space(self) -> None:
+    def test_a_row_with_no_amf_is_ungraded_from_the_csv_color_space(self) -> None:
         plain = row(source_encoding="Apple Log", grade=None)
         results = qc.check_clf(plain)
         assert ids(results) == ["QC-009"]
         assert "read as Apple Log, the CSV's Input Color Space" in results[0].message
 
-    def test_a_row_with_no_colour_at_all_leaves_it_to_qc_046(self) -> None:
+    def test_a_row_with_no_color_at_all_leaves_it_to_qc_046(self) -> None:
         assert qc.check_clf(row(source_encoding=None, grade=None)) == []
 
     def test_a_cdl_in_place_of_a_clf_is_a_grade(self) -> None:
@@ -1015,7 +1195,7 @@ class TestClfRule:
 
 
 class TestApprovedRule:
-    """QC-045: the row will be delivered at an In/Out the colour session did not approve."""
+    """QC-045: the row will be delivered at an In/Out the color session did not approve."""
 
     def test_a_trim_away_from_the_approved_cut_is_a_warning(self) -> None:
         trimmed = row(current=InOut(20, 200))
@@ -1342,6 +1522,28 @@ class TestPhaseBAudio:
         assert ids(results) == ["QC-121"]
         assert results[0].severity == "warning"
 
+    def test_a_cut_wav_that_is_not_pcm16_is_an_error(self, tmp_path: Path) -> None:
+        """Review, 2026-11-08: a row with a range is extracted at 16 bit whatever the source
+        (QC_RULES), so 24 bit out of a wav source there is a failure, not a byte copy."""
+        source = fixtures.make_wav(tmp_path / "src" / "deep.wav", seconds=0.25, bit_depth=24)
+        destination = tmp_path / "out" / "MELT0001_pl01_audio_v01.wav"
+        destination.parent.mkdir()
+        shutil.copyfile(source, destination)
+        job = DeliverableJob(
+            kind="audio",
+            source=source,
+            destination=destination,
+            version=1,
+            shot_code="MELT0001",
+            elem="pl01",
+            in_frame=0,
+            out_frame=5,
+            rate=RATE_24,
+        )
+        deliverable = Deliverable(kind="audio", name=destination.name, path=destination, version=1)
+        found = [result for result in qc.run_phase_b(job, deliverable) if result.rule_id == "QC-121"]
+        assert [result.severity for result in found] == ["error"]
+
 
 def delivered(name: str, kind: str, version: int = 1, res: str | None = None) -> Deliverable:
     return Deliverable(kind=kind, name=name, path=Path("/d") / name, version=version, res=res, status="done")
@@ -1429,6 +1631,47 @@ class TestNamesReparse:
         item = delivered("nonsense", "raw_dir")
         item.status = "planned"
         assert qc.check_names_reparse(self.batch_with(item)) == []
+
+    def as_is_batch(self, kind: str, index: str, *items: Deliverable) -> Batch:
+        target = row()
+        target.identity = naming.ShotIdentity("INCA5002", kind, index)
+        target.deliverables = list(items)
+        return Batch(rows=[target])
+
+    @pytest.mark.parametrize(
+        ("kind", "name"),
+        [
+            ("avidRef", "INCA5002_avidRef01_v01.mp4"),
+            ("meas", "INCA5002_meas01_v01.mp4"),
+            ("recon", "INCA5002_recon01_v01.mp4"),
+            ("avidRef", "INCA5002_avidRef01_v01.png"),
+            ("meas", "INCA5002_meas01_v01.jpg"),
+        ],
+    )
+    def test_a_delivered_as_is_file_reads_back_clean(self, kind: str, name: str) -> None:
+        """These names have no element segment; the kind and index are read from `aux`
+        (review, 2026-11-08: every one used to fail as "reads as None")."""
+        batch = self.as_is_batch(kind, "01", delivered(name, "avidref"))
+        assert qc.check_names_reparse(batch) == []
+
+    def test_an_as_is_file_for_another_index_is_qc_151(self) -> None:
+        batch = self.as_is_batch("avidRef", "01", delivered("INCA5002_avidRef02_v01.mp4", "avidref"))
+        results = qc.check_names_reparse(batch)
+        assert ids(results) == ["QC-151"]
+        assert "avidRef 02" in results[0].message
+
+    def test_an_as_is_file_of_another_kind_is_qc_151(self) -> None:
+        batch = self.as_is_batch("meas", "01", delivered("INCA5002_recon01_v01.mp4", "avidref"))
+        assert ids(qc.check_names_reparse(batch)) == ["QC-151"]
+
+    def test_an_as_is_file_for_another_shot_is_qc_151(self) -> None:
+        batch = self.as_is_batch("avidRef", "01", delivered("INCA5003_avidRef01_v01.mp4", "avidref"))
+        assert "INCA5003" in qc.check_names_reparse(batch)[0].message
+
+    def test_a_delivered_as_is_row_can_cancel_its_rerun(self) -> None:
+        """`cancel_rerun_refusal` asks the same question, and refused every one of these."""
+        batch = self.as_is_batch("avidRef", "01", delivered("INCA5002_avidRef01_v01.mp4", "avidref"))
+        assert qc.cancel_rerun_refusal(batch.rows[0]) is None
 
 
 class TestApplyPhaseB:

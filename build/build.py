@@ -27,7 +27,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from build import bundle
+from build import bundle, fetch_ffmpeg
 
 REPO_ROOT = bundle.REPO_ROOT
 SPEC_PATH = REPO_ROOT / "build" / "proingest.spec"
@@ -69,12 +69,12 @@ def executable_path(platform: str = sys.platform) -> Path:
 
 
 def setup_path(version: str) -> Path:
-    """`ProIngest-Setup-0.5.50.exe`, which is the name `build/proingest.iss` gives it."""
+    """`ProIngest-Setup-0.5.56.exe`, which is the name `build/proingest.iss` gives it."""
     return DIST_DIR / f"{bundle.APP_NAME}-Setup-{version}.exe"
 
 
 def dmg_path(version: str) -> Path:
-    """`ProIngest-0.5.50.dmg`. The version is in the filename so two builds cannot be
+    """`ProIngest-0.5.56.dmg`. The version is in the filename so two builds cannot be
     confused for each other on a machine that has downloaded both."""
     return DIST_DIR / f"{bundle.APP_NAME}-{version}.dmg"
 
@@ -108,15 +108,26 @@ def check_ffmpeg(platform: str = sys.platform) -> None:
     it prints among hundreds - and the app would install, start, and fail on the first
     probe with `FFmpegNotFound`. On Linux there is nothing to check: `core/ffmpeg.py`
     does not use a bundled pair there.
+
+    Present is not enough: a binary left from an older lock would ship as the wrong
+    build, so every file the lock pins is checked against its size and sha256 the way
+    `fetch_ffmpeg.py --verify` checks it (review, 2026-11-08).
     """
     if platform not in bundle.SHIPPED_PLATFORMS:
         return
     folder = REPO_ROOT / bundle.FFMPEG_DIR
-    missing = [name for name in bundle.ffmpeg_files(platform) if not (folder / name).is_file()]
+    pinned = [(str(e["dest_name"]), e) for e in fetch_ffmpeg.load_spec(platform)["downloads"]]
+    missing = [name for name, _ in pinned if not (folder / name).is_file()]
     if missing:
         raise BuildError(
             f"{', '.join(missing)} missing from {bundle.FFMPEG_DIR}. "
             "Run `python build/fetch_ffmpeg.py` first."
+        )
+    stale = [name for name, entry in pinned if not fetch_ffmpeg.is_satisfied(folder / name, entry)]
+    if stale:
+        raise BuildError(
+            f"{', '.join(stale)} in {bundle.FFMPEG_DIR} not the pinned build (size, mode or sha256). "
+            "Run `python build/fetch_ffmpeg.py` to replace them."
         )
 
 

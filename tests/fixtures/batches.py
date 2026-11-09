@@ -111,7 +111,6 @@ def turnover(turnover_id: str = "turnover001", **kwargs: object) -> Turnover:
         folder=Path(f"/source/{turnover_id}_02_23_2026_danielluckett"),
         edl_path=Path(f"/source/{turnover_id}/FINAL_v01.edl"),
         csv_path=Path(f"/source/{turnover_id}/metadata.csv"),
-        timeline_start=ONE_HOUR,
     )
     for key, value in kwargs.items():
         setattr(built, key, value)
@@ -138,7 +137,7 @@ def batch(
 
 
 def ingested(built: Batch, tmp_path: Path) -> Batch:
-    """Give a batch the colour session a run needs, in place. QC-008 refuses one without.
+    """Give a batch the color session a run needs, in place. QC-008 refuses one without.
 
     A grade per row off a written CLF, because the scan puts one there from each event's
     AMF and the render reads the file; the AMF itself is a path nothing reads again after

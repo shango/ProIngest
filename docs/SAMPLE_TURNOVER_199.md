@@ -47,9 +47,9 @@ data:    tmcd (TimeCodeHandler), timescale 24000, frame duration 1001, 24 frames
   MP4 has exactly three tracks, video, audio and timecode. The Sony acquisition metadata that
   carries the gamma and gamut (`CaptureGammaEquation`, `CaptureColorPrimaries`, per-frame in the
   camera's `rtmd` track and in its `M01.XML` sidecar) **is not in these files**. Confirmed three
-  ways: the box walk, `strings` on the whole file, and ffprobe's colour fields all reading
+  ways: the box walk, `strings` on the whole file, and ffprobe's color fields all reading
   `unknown`.
-- **The range flag survives and says full, and the colour description is written as unspecified
+- **The range flag survives and says full, and the color description is written as unspecified
   on purpose.** The H.264 sequence header (read with ffmpeg's `trace_headers` filter) has
   `video_full_range_flag` = 1 and `colour_description_present_flag` = 1 with `colour_primaries`,
   `transfer_characteristics` and `matrix_coefficients` all equal to 2, the code for "unspecified".
@@ -74,7 +74,7 @@ data:    tmcd (TimeCodeHandler), timescale 24000, frame duration 1001, 24 frames
 `media.probe` reads them fine: codec `h264`, `yuv422p10le`, 3840x2160, rate 24000/1001, the
 start timecode, stereo 16 bit audio. `naming.parse_clip_name` returns `None` for every name,
 with or without the extension, because `C0145` is a camera name and not `SHOW0001_pl01`
-(QC-010 on all five). Nothing reads a colour space off them because there is none to read
+(QC-010 on all five). Nothing reads a color space off them because there is none to read
 (QC-046 on all five).
 
 **The decode is wrong by a matrix.** `ffmpeg.decode_command` passes no matrix and these files
@@ -131,7 +131,7 @@ Every clip: `MediaFrameRate` 24.0, `MediaReelNumber` empty, `IsForceConformed` t
 `MediaMetadata` empty. The clip `Name` is the filename with its extension.
 
 **What the three stills actually are, looked at 2026-09-21.** Frame 24 of each single-frame clip,
-decoded and put through the view transform: `C0148` is a **colour chart** (a ColorChecker held up at
+decoded and put through the view transform: `C0148` is a **color chart** (a ColorChecker held up at
 chest height, golden hour, grass field), `C0149` is a **mirror ball** on a rod, `C0150` is an **18%
 grey ball** on the same rod. So the sample carries three of the four reference stills the shooters'
 spec lists, they are timeline clips rather than side files (the OQ-4 default, now confirmed by
@@ -147,7 +147,7 @@ scan cannot build a row without it. That claim is load bearing for the whole res
 it has two independent checks behind it.
 
 **What is not in it.** No grade: the version table says `HasCorrection false`, and no CDL,
-lift, gain, offset or saturation field exists in any blob, compressed or not. **No colour
+lift, gain, offset or saturation field exists in any blob, compressed or not. **No color
 space**: a search of every decoded blob for S-Log, gamut, gamma, ACES, Rec.709, `Input Color
 Space` and `Radiometry` content finds nothing per clip. The per-clip `Radiometry` blob is 21
 bytes and identical across all five clips. The project config blob carries RED, Canon, ARRI and
@@ -409,7 +409,7 @@ predicted from the 20.3 release note.
 1. **`Shot Type` appears once.** The CSV has it twice, at positions 12 and 44, built-in and custom.
    The ALE has no duplicate column name at all, so the collision the CSV reader has to arbitrate
    does not exist here.
-2. **It carries the grade.** `ASC_SOP` and `ASC_SAT` per row. The CSV carries no colour decision.
+2. **It carries the grade.** `ASC_SOP` and `ASC_SAT` per row. The CSV carries no color decision.
 3. **`Source File Path` points at the delivered media**
    (`/Volumes/.../META/Turnover199_ForBEN/C0145.MP4`), where the CSV's `Clip Directory` still points
    at the pre-consolidation originals.

@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import http.client
 import json
 import os
 import stat
@@ -38,6 +39,10 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 LOCK_PATH = REPO_ROOT / "build" / "ffmpeg.lock.json"
 
 EXEC_BITS = stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH
+
+DOWNLOAD_TIMEOUT_S = 60
+"""Seconds any one connect or read may stall before the download gives up. It bounds a
+stall, not the download: a 111 MB zip on a slow line still finishes."""
 
 USER_AGENT = "ProIngest-fetch-ffmpeg/1.0"
 """ffmpeg.martin-riedl.de answers the default `Python-urllib/3.x` agent with 403."""
@@ -94,10 +99,12 @@ def download(url: str, dest: Path) -> None:
     print(f"  downloading {url}")
     request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     try:
-        with urllib.request.urlopen(request) as response, dest.open("wb") as out:
+        with urllib.request.urlopen(request, timeout=DOWNLOAD_TIMEOUT_S) as response, dest.open("wb") as out:
             while block := response.read(1 << 20):
                 out.write(block)
-    except urllib.error.URLError as exc:
+    except (OSError, http.client.HTTPException) as exc:
+        # OSError covers URLError, a timeout and a connection reset mid-read;
+        # HTTPException covers IncompleteRead. Each one gets the --from advice.
         raise SystemExit(
             f"could not download {url}\n  {exc}\n"
             f"Download it on another machine and run `python build/fetch_ffmpeg.py --from <folder>`.\n"

@@ -42,3 +42,12 @@ class TestReadNames:
         write(tmp_path / "T121.ALE", ["A.mov"])
         (tmp_path / "notes.txt").write_text("")
         assert [p.name for p in ale.find(tmp_path)] == ["T121.ALE"]
+
+
+def test_a_truncated_utf_16_ale_is_an_ale_error(tmp_path: Path) -> None:
+    """Review, 2026-11-08: half a character at the end raised `UnicodeDecodeError` and took
+    the scan with it; it is QC-071 like any ALE that cannot be read."""
+    path = write(tmp_path / "t.ale", ["A.mov"], "utf-16")
+    path.write_bytes(path.read_bytes()[:-1])
+    with pytest.raises(ale.AleError, match="UTF-16"):
+        ale.read_names(path)

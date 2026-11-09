@@ -42,7 +42,7 @@ The list is still the hero. The metadata pane is a fixed-width reading surface b
 second workspace: it is read only, it never takes focus, and it collapses to nothing. See
 section 12.
 
-**The list is the only thing that writes to the model.** No viewers, no colour controls, no
+**The list is the only thing that writes to the model.** No viewers, no color controls, no
 editable metadata pane: In, Out, Shot Code, Notes and Skip are edited in their cells and
 nowhere else. That was true in the original spec, briefly untrue on 2026-09-11 when the
 viewers were given trim buttons, and is true again.
@@ -91,7 +91,7 @@ Scrolling: Source file, Res, FPS, In (editable), Out (editable), Duration, Max A
 - The editor reads frames and timecode at different moments, which is why frames is a first-class state of this control rather than only the secondary line: a frame number is what gets typed into the In/Out cells and what a VFX vendor quotes back, and a timecode is what the AD and the edit talk in. Section 5 accepts both as input whatever this is set to.
 - Turnover group headers are rows in the same view (QTreeView with a flat two-level model), collapsible, showing counts and aggregate status.
 - **The last line under each turnover is its stringout** (user, 2026-10-07): `Stringout` in the Shot column, the file's name under Source, its version, and the bar and percentage in Progress while it builds (frames encoded of the total, from `stringout.build`'s `progress`). Its ball: **green** once written, **red** when the build failed (QC-142) or an event had nothing to show and is black (QC-144), blue while building, none before it is built. An event cut from a stand-in (QC-143) stays green; hovering the ball names those events. Its right-click menu is Build Stringout alone. The search box hides it like any line that does not match.
-- Sorting is fixed to the metadata CSV's row order within a turnover. A search box filters rows by shot code substring.
+- Sorting is fixed to the metadata CSV's row order within a turnover. A search box filters rows by shot code substring, taken as typed: `.`, `-` and spaces are characters to match, not pattern syntax.
 
 ## 3. Row colors and status dot
 
@@ -99,17 +99,17 @@ Scrolling: Source file, Res, FPS, In (editable), Out (editable), Duration, Max A
 |---|---|---|
 | ok, not rendered | grey | none |
 | warning | amber | faint amber |
-| error (blocked) | red | faint red |
+| error (blocked), or a red warning (QC-089, renders) | red | faint red |
 | skipped by user | hollow | dimmed text |
 | rendering | accent, animated | none |
 | done | green | none |
 | failed render | red | faint red |
 
-Hovering the dot or the row shows a tooltip listing rule IDs and messages. Clicking the dot focuses the Issues dock on that row.
+Hovering the dot or the row shows a tooltip listing rule IDs and messages. Clicking the dot focuses the Issues dock on that row: the dock comes forward on the shot's first line, or on none when the shot has no results. The click selects the row as any click does.
 
 ## 4. Keyboard model
 
-- Arrow Up/Down: move between shot rows (skips group headers).
+- Arrow Up/Down: move between shot rows (skips group headers and stringout lines, keeps the column; stops at the first and last shot). A heading or a stringout line is reached with the mouse.
 - Tab / Shift+Tab: move between editable cells in the current row (Shot Code, In, Out, Notes), wrapping to next row's first editable cell.
 - Enter: commit edit and stay. Escape: revert cell.
 - Ctrl+K: toggle skip on current row (prompts for reason on first skip; Escape cancels).
@@ -137,11 +137,13 @@ Auto-detected in this order:
 3. `^\d+$` absolute source frame
 4. Anything else: cell shows inline red text "unrecognized" and reverts on Escape
 
+Timecode is shown wrapped at 24 hours, so a clip that runs past midnight shows `00:00:04:15` for a frame after its `23:59:55:00` start. **A typed timecode is read as the time nearest the value it replaces**, across midnight either way, so a cell's own timecode always reads back as the frame it shows and a Tab through it changes nothing (review, 2026-11-08: it used to commit a frame a day before the clip).
+
 After commit, Duration and Max Avail recompute, validation reruns for the row only, autosave fires.
 
 ## 6. Issues dock
 
-Table: row, rule ID, severity, message, "Fix" hint where applicable (e.g. "Rename shot code", "Locate media" opens a file picker and writes a path override into the batch). Double-click selects the row in the list.
+Table: row, rule ID, severity, message, "Fix" hint where applicable (e.g. "Rename shot code", "Locate media" opens a file picker and writes a path override into the batch). Double-click (or Enter) selects the row in the list, once: the dock listens to activation alone, since a double-click on the default styles is also an activation and listening to both acted twice (review, 2026-11-08).
 
 ## 6.1 Log tab
 
@@ -181,7 +183,7 @@ beside the two spreadsheets (asking for a delivery root first when there is none
 the default browser, not in a panel, so it is a file the editor can send on. Enabled with a batch
 that has rows, except during a scan; refused with the expiry modal once the build has expired.
 
-It is for Ben, the colourist, who knows basic editing and colour and is not a Resolve expert: what
+It is for Ben, the colorist, who knows basic editing and color and is not a Resolve expert: what
 he needs to change, in plain words, with no rule IDs (`core/fixit.py`). Per turnover, a status
 ("2 of 18 clips blocked", "Every clip blocked", "Nothing blocking"), then items grouped under
 **Fix in Resolve**, **Fix in the turnover folder** and **Worth a look**, those that stop delivery
@@ -202,6 +204,9 @@ system, and loads nothing from the network.
 - Each row shows a slim progress bar in the Progress column with job count (e.g. 3/5). The stringout line under each turnover shows its own, in percent, while the stringout builds (section 2), and its Notes cell says the time left ("About 2m 10s left"; "Estimating time left" before the first event is encoded). The estimate is made at each event from the build's average rate so far, and counts down each second between events (user, 2026-10-07).
 - Status bar shows overall percent, jobs running, throughput (frames/s), and ETA.
 - Stop finishes in-flight frames, discards `.part` outputs, and leaves rows in their previous state.
+- **Stop also reaches the stringouts** (review, 2026-11-08, OQ-97): live while a run builds its turnovers' stringouts and during a heading's Build Stringout. The build in hand stops at its next frame or segment and writes nothing, the ones after it are skipped, and the QC log and the tracker are still written; the status bar says "Stopping the stringout; the QC log and the tracker are still written...". Writing the two spreadsheets is not a step Stop reaches. Closing the window during the stringouts stops them and closes once the reports are written.
+- **A crash during a run is recovered from the disk** (review, 2026-11-08, OQ-96): the batch file is written before the first job starts with what is about to render marked rendering, and reopening it, or the next Run, takes every file that landed under its final name as done. The next Run finishes the rest at the same version.
+- **Opening a batch reads the disk off the UI thread** (review, 2026-11-08): the run strip and the status bar say "Opening <file>: checking what is on disk" while every deliverable, turnover folder and root is checked, and the window is locked as during a scan. A drop of folders is checked the same way.
 - On completion a non-modal banner above the list reads "Batch complete: 27 done, 1 failed, 2 skipped. Exports written to ...". Click opens the folder.
 - **Nothing stops a run but the delivery root** (user, 2026-10-07). A shot with an error is held back and every other shot renders. A delivery root that is not writable or has too little space (QC-062, QC-063) opens a popup, "The run cannot start", and nothing is rendered. From 2026-09-23 (D8) to 2026-10-07 any must-fix anywhere stopped the run.
 
@@ -284,7 +289,7 @@ lower inside it than the measured y.
 
 **Picture in picture on a plate** (`stringout.INSET_CORNERS`) (user, 2026-09-29): over each `pl` event, the shot's **cp top left** and **wit top right**, each 480x270 flush in its corner (Resolve's zoom 0.25 at X -720/+720, Y 405). The first cp and the first wit of the shot in EDL order, from their **delivered HD references**, each playing from its own cut In at the plate's first frame, and **gone** when it runs out or at the plate's Out, whichever is first. No cp or wit, or none delivered: no inset in that corner. The top centre name sits between them (x 499 to 1411 on turnover097). Each inset carries its own element (`cp01`, `wit01`) burned in bottom left inside it, Open Sans 32 px against the frame's 42 (user, 2026-09-29), and it goes when the inset does.
 
-**A reference clip plays** (user, 2026-10-07): a chart, ball or size ref is a video on the timeline, so its event plays its cut at full speed, graded, from the source; it is still delivered as one EXR frame. **Any held frame plays for one second** (user, 2026-09-29): a frame hold (`M2` at 0) or any one frame cut, held for 24 frames whatever the EDL gives it (**except an HDRI, which keeps the EDL's length** and plays its pre-render, user 2026-10-07), so the stringout runs longer than the EDL by that much. Taken from the source, such a frame is **coloured through its AMF** (input transform, CLF nodes, output transform) as Resolve shows it; a still's delivered EXR stays ungraded. An event with no known source is black for the same second.
+**A reference clip plays** (user, 2026-10-07): a chart, ball or size ref is a video on the timeline, so its event plays its cut at full speed, graded, from the source; it is still delivered as one EXR frame. **Any held frame plays for one second** (user, 2026-09-29): a frame hold (`M2` at 0) or any one frame cut, held for 24 frames whatever the EDL gives it (**except an HDRI, which keeps the EDL's length** and plays its pre-render, user 2026-10-07), so the stringout runs longer than the EDL by that much. Taken from the source, such a frame is **colored through its AMF** (input transform, CLF nodes, output transform) as Resolve shows it; a still's delivered EXR stays ungraded. An event with no known source is black for the same second.
 
 **A style frame** (user, 2026-10-07; QC-085): a pre-graded PNG or JPG, `Shot Type` `styleFrame`, cut before its shot's plate. It is held **as it is**, ungraded, **for the EDL's length**, never delivered. Bottom right reads `SECA0009_styleFrame` (underscores, never a space, user 2026-10-13), and there is **no `Frame:` counter**, since it has no delivered frame to count. Its file missing is black for the event's length (QC-144).
 
@@ -304,10 +309,11 @@ Built in M5.7.2. What that settled, beyond the layout:
 - **Settings opens with no batch**, because it is where the thresholds a *new* batch starts from are set. It is the one toolbar action that does not wait for one.
 - **The thresholds live in two places on purpose.** The app settings hold the defaults and a batch takes its own copy the moment it is created, for the reason section 13 gives for the two roots: what a delivery was checked against is a record of that work, so changing the defaults next month must not silently re-judge a batch that shipped last week. Apply writes both when a batch is open.
 - **A value that will not parse changes nothing**, rather than being corrected to something plausible. Same rule as section 5's In and Out: a resolution typed as `3840` is somebody part way through typing.
+- **The show prefix pattern is checked as it is typed** (review, 2026-11-08). It must compile on its own and inside every name pattern `core/naming.py` builds around it, so `[A-Z`, `SEC(A` or one that names a `(?P<show>...)` group of its own are refused: the reason shows in red under the field, and Apply keeps the pattern in use. One already in the settings file that fails the same check (a hand edit) is read as the default, so a bad pattern can never reach the scan, the planner or the exports.
 - **A section with nothing behind it yet is listed and disabled**, and its page says what it is waiting on. Same rule as the toolbar in section 1. **Every section is live as of M5.12**; the rule stays because it is how the page was built and how the next section will arrive.
 - **Advanced went live in M5.8.3**: the log level, the ffmpeg override, and a read-only line naming the log file. Both editable values are process wide rather than per batch, both take effect the moment they are applied, and both reach a render's worker processes when the next run starts them - a worker is told at its initialiser (`core/render.execute`), so a change made mid-run applies from the run after. The ffmpeg override takes the folder or the binary, and **a path that is not there is an error rather than a fallback**: an override quietly ignored is a render done with the wrong build of ffmpeg.
 - **Output went live in M5.12**, last, because both its values are applied inside a render's worker processes and had to be able to get there first. They travel on the channel Advanced built, at the worker's initialiser, so a change reaches the next run rather than one already going. Reference quality is the x264 rate factor, bounded 0 to 51 by what the encoder accepts; the preset stays at `slow` and is not editable. EXR compression level is the DWAA level. **Both are pinned by the spec** (`COLOR_AND_FORMAT.md` section 3: CRF 18, DWAA 45) and the page opens on those values, read from `core/ffmpeg.py` and `core/exr.py` rather than typed in a second time: moving either is a decision about a delivery rather than a preference, and each field's help says what the spec is so the person moving it knows what they are leaving.
-- **The Colour section carries no source encoding value and no mode** (2026-09-12): the encoding is a per clip fact. **Since 2026-09-28 it is three read-only lines**: the ACES config (`core/color.BUILTIN_CONFIG`), **Colour**, reading `each clip's AMF and its CLFs, applied in ACES2065-1`, and **Output transform**, reading `each clip's AMF`. The working space and the input transform table it used to show are gone with the CDL, because the AMF names what each clip is and what was done to it, and the config resolves every ID in it. Read only because the config is pinned by spec (OQ-29) and there is no colour setting to make. The EDL is not chosen here either: it is the one in the turnover folder, read at every scan (OQ-74), and the turnover records which file it read (`Turnover.color_session_edl`).
+- **The Color section carries no source encoding value and no mode** (2026-09-12): the encoding is a per clip fact. **Since 2026-09-28 it is three read-only lines**: the ACES config (`core/color.BUILTIN_CONFIG`), **Color**, reading `each clip's AMF and its CLFs, applied in ACES2065-1`, and **Output transform**, reading `each clip's AMF`. The working space and the input transform table it used to show are gone with the CDL, because the AMF names what each clip is and what was done to it, and the config resolves every ID in it. Read only because the config is pinned by spec (OQ-29) and there is no color setting to make. The EDL is not chosen here either: it is the one in the turnover folder, read at every scan (OQ-74), and the turnover records which file it read (`Turnover.color_session_edl`).
 
 ## 10. Empty and first-run states
 
@@ -404,13 +410,13 @@ it is hidden rather than shown empty.
 | Frame rate | the project rate, 24, asserted rather than read and labelled "Timeline rate"; the rate the file is conformed to when it differs; the rate stated by the media; and an explicit disagreement note when they differ. QC-026 is the rule |
 | Range | record In/Out, source In/Out in frames and timecode, turnover snapshot In/Out, current In/Out, duration, max available out, and whether the editor has moved it off the snapshot (QC-035) |
 | Audio | path, sample rate, channels, bit depth, duration in samples and in frames, and the sync difference against the video range (QC-043) |
-| Colour | the source encoding and which carrier named it. **Since 2026-09-28** the encoding is the config colour space the clip's AMF input transform resolved to, the carrier is `AMF`, and three more lines follow: **AMF** (its file name), **Looks** (in the order applied, config looks by name and CLFs by file name, or `none`) and **Viewed on** (the AMF's view and display, which the references are rendered for) |
+| Color | the source encoding and which carrier named it. **Since 2026-09-28** the encoding is the config color space the clip's AMF input transform resolved to, the carrier is `AMF`, and three more lines follow: **AMF** (its file name), **Looks** (in the order applied, config looks by name and CLFs by file name, or `none`) and **Viewed on** (the AMF's view and display, which the references are rendered for) |
 | Turnover | number, date, shooter, folder, EDL, metadata CSV, timeline start. Shown alone when a turnover group header is the selection |
 | QC | count by severity with the rule IDs, each clicking through to that row in the Issues dock. **Built across the whole selection rather than merged field by field**, unlike every other section: two rows with different problems agree on nothing, so a merge would reduce this to "mixed", which is the one answer that helps nobody |
 
 There is **no Side files section** since 2026-09-22: HDRI and camData carry no `Shot Type`, so
 the tool reads neither and the pane has nothing to show for them. An HDRI row with `Shot Type`
-`HDRI` delivers its EXR byte for byte and carries QC-080 (user, 2026-10-07).
+`HDRI` delivers its pre-render as an mp4, never its EXR, which Ben delivers by hand (user, 2026-10-30), and carries QC-080.
 
 ### 12.3 Empty and edge states
 
@@ -464,21 +470,21 @@ OQ-25.
 ## 14. Viewers: dropped
 
 **There are no image viewers in the tool** (PRD FR-16, decided 2026-09-11). This section
-specified three, In / Center / Out, steppable, with stepping trimming the row, and four colour
+specified three, In / Center / Out, steppable, with stepping trimming the row, and four color
 controls beside them. All of it is removed and a frame viewer is a v02 item again.
 
 The section number is kept rather than renumbered, because the other sections are referenced by
 number from the PRD, from `QC_RULES.md` and from `PROGRESS.md`.
 
 **Why it went:** the viewers existed so an editor could judge a cut point and act on it. That
-judgement now happens in the colour session, with the AD present, a real viewer and a calibrated
+judgement now happens in the color session, with the AD present, a real viewer and a calibrated
 monitor. What is left in this tool is the occasional one-off trim of an already approved edit
 (PRD FR-5), and that is done by typing a number, which the In/Out cells have always supported in
 four formats (section 5).
 
 ## 15. Scan, re-scan and a moved turnover (2026-09-23)
 
-**Ingest Colour Session is gone** (review 2026-09-23, chunk E). The cut is read at scan from the
+**Ingest Color Session is gone** (review 2026-09-23, chunk E). The cut is read at scan from the
 EDL in the turnover folder and, since 2026-09-28, the grade from each event's AMF and its CLFs
 beside it. A correction reaches the batch the way D8 says: the editor drops the fixed EDL, CSV,
 AMF, CLF or clip into the folder and re-scans.

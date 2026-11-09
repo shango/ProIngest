@@ -29,6 +29,7 @@ from PySide6.QtCore import QObject, QThread, Signal
 
 from proingest.core import scan
 from proingest.core.models import MediaInfo
+from proingest.ui.background import abandon
 
 log = logging.getLogger(__name__)
 
@@ -166,8 +167,14 @@ class Scanner(QObject):
         if thread is None:
             return
         thread.quit()
-        if not thread.wait(SHUTDOWN_WAIT_MS):
-            log.warning("the scan thread did not stop within %d ms", SHUTDOWN_WAIT_MS)
+        if thread.wait(SHUTDOWN_WAIT_MS):
+            return
+        # A folder on a hung mount: left to run out, never destroyed running, which Qt
+        # answers by aborting the process (review, 2026-11-08).
+        log.warning("the scan thread did not stop within %d ms", SHUTDOWN_WAIT_MS)
+        assert self._job is not None
+        abandon(thread, self._job)
+        self._thread, self._job = None, None
 
     def _cleanup(self) -> None:
         """Drop the thread and its job once the thread has actually finished.

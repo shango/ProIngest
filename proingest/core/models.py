@@ -45,7 +45,7 @@ DeliverableStatus = Literal["planned", "rendering", "done", "failed", "exists", 
 SourceEncodingOrigin = Literal["AMF", "CSV"]
 """Which carrier named a row's source encoding. COLOR_AND_FORMAT, EXR metadata.
 
-Since 2026-09-28 (user) there is one: the clip's AMF, exported from the colour session,
+Since 2026-09-28 (user) there is one: the clip's AMF, exported from the color session,
 whose input transform ID the pinned config resolves. It is still written into the EXR
 header, because the origin is how a wrong encoding is traced back to where it was set.
 """
@@ -102,6 +102,9 @@ class FrameRate:
 
 FIX_IN_RESOLVE = "Fix in Resolve - "
 
+RED_WARNING_RULES = frozenset({"QC-089"})
+"""Errors that color a row red and hold nothing back: the shot still renders."""
+
 RESOLVE_FIX_RULES = frozenset(
     {
         "QC-001",  # the EDL or the metadata CSV is missing
@@ -139,6 +142,11 @@ class QCResult:
     severity: Severity
     scope: Scope
     message: str
+
+    @property
+    def holds(self) -> bool:
+        """Whether this result keeps its row from rendering: every error but a red warning."""
+        return self.severity == "error" and self.rule_id not in RED_WARNING_RULES
 
     def __post_init__(self) -> None:
         if (
@@ -193,8 +201,8 @@ class MediaInfo:
 
     Kept because the source encoding may be written into the file itself rather than
     into the timeline (OQ-44), and the scan is where both are in front of the tool at
-    once. Nothing else reads it, and it is not a colour tag: COLOR_AND_FORMAT section 2
-    is explicit that a container's colour tags are overridden rather than trusted, and
+    once. Nothing else reads it, and it is not a color tag: COLOR_AND_FORMAT section 2
+    is explicit that a container's color tags are overridden rather than trusted, and
     that what is trusted is a named field a person filled in. Additive, so the schema
     version does not move.
     """
@@ -217,10 +225,10 @@ class MediaInfo:
     color_range: str = ""
     color_transfer: str = ""
     color_primaries: str = ""
-    """The stream's own colour tags as ffprobe names them, empty when it states none.
+    """The stream's own color tags as ffprobe names them, empty when it states none.
 
     The decode reads only the matrix and the range: they say how YCbCr becomes RGB, which
-    comes before any colour transform and which no metadata field names. The transfer
+    comes before any color transform and which no metadata field names. The transfer
     and primaries are kept for QC-018 and for the record. Additive, so the schema
     version does not move.
     """
@@ -366,9 +374,9 @@ class GradeLook:
     """One look of a clip's grade, in the order the AMF applies it.
 
     `look` is a look the pinned config defines (the Reference Gamut Compress); `clf` is a
-    CLF file beside the AMF, by full path, one corrector node of the colourist's grade;
+    CLF file beside the AMF, by full path, one corrector node of the colorist's grade;
     `cdl` is the CDL written inside the AMF, used only when it names no CLF (QC-082), its
-    numbers in `cdl` and the colour space it is applied in as `name`.
+    numbers in `cdl` and the color space it is applied in as `name`.
     """
 
     kind: LookKind
@@ -402,7 +410,7 @@ class GradeLook:
 
 @dataclass(frozen=True)
 class Grade:
-    """What a clip's AMF says about its colour, resolved at scan (user, 2026-09-28).
+    """What a clip's AMF says about its color, resolved at scan (user, 2026-09-28).
 
     On the row rather than read again at render so that a reopened batch renders and
     records what was scanned. The input transform resolves onto `ShotRow.source_encoding`;
@@ -424,7 +432,7 @@ class Grade:
 
     @property
     def graded(self) -> bool:
-        """Whether the colourist left this clip a grade: a CLF, or the AMF's CDL in its place."""
+        """Whether the colorist left this clip a grade: a CLF, or the AMF's CDL in its place."""
         return any(look.kind in ("clf", "cdl") for look in self.looks)
 
     def to_dict(self) -> dict[str, Any]:
@@ -542,6 +550,10 @@ class ShotRow:
     shows; QC-083 when it is missing. Additive, so the schema version does not move."""
 
     record_in: int = 0
+    """The EDL event's record In and Out, as the EDL writes them: absolute frames, so
+    `01:00:00:00` at 24 is 86400, not a count from the timeline's start. A batch saved
+    before 2026-11-08 may carry a turnover `timeline_start`, which nothing ever set and
+    which is ignored on load."""
     record_out: int = 0
     snapshot: InOut | None = None
     current: InOut | None = None
@@ -559,7 +571,7 @@ class ShotRow:
 
     **A per clip fact, which is why it lives on the row** (COLOR_AND_FORMAT section 1): a
     turnover may mix encodings freely and nothing batch wide can stand in for this. What
-    is stored is the string a shooter wrote, not a colour space: `core/color.py` maps it
+    is stored is the string a shooter wrote, not a color space: `core/color.py` maps it
     onto one, and QC-047 is what a string that maps onto nothing reports. Additive, so
     the schema version does not move and an older batch simply names no encoding.
     """
@@ -573,18 +585,18 @@ class ShotRow:
     """
 
     approved: InOut | None = None
-    """The In/Out the colour session's final EDL approved, or None until one is ingested.
+    """The In/Out the color session's final EDL approved, or None until one is ingested.
 
     A third range beside `snapshot` and `current`, and the three answer three different
     questions: what the turnover delivered, what will be rendered, and what Ben and the
     AD signed off (COLOR_AND_FORMAT section 1). Ingest writes `current` from it, so the
     two agree until the editor makes a one-off trim, and QC-045 is the gap between them.
     Additive, so the schema version does not move and a batch saved before this has
-    nothing approved, which is the state a batch with no colour session is in anyway.
+    nothing approved, which is the state a batch with no color session is in anyway.
     """
 
     grade: Grade | None = None
-    """This clip's colour from its AMF, or None when no AMF matched it (QC-075).
+    """This clip's color from its AMF, or None when no AMF matched it (QC-075).
 
     Additive; a batch saved before 2026-09-28 carried a CDL here instead, which is not
     read: its turnovers are re-scanned to pick up their AMFs.
@@ -639,7 +651,6 @@ class ShotRow:
     def edit_context(
         self,
         project_rate: FrameRate,
-        timeline_start: int = 0,
         mode: frames.TimecodeMode = "source",
     ) -> frames.EditContext:
         """What this row's In and Out need to become timecode, and back again.
@@ -649,8 +660,10 @@ class ShotRow:
         (section 5). Building it in two places is how a display and its editor come to
         disagree about which frame an hour is.
 
-        `timeline_start` belongs to the turnover rather than the row, because it is a
-        fact about one timeline, so it is passed in. The record anchor is the clip's
+        `record_in` is the EDL's own record frame, `01:00:00:00` at 24 being 86400, so it
+        is the record timecode as it stands and nothing is added to it (review, 2026-11-08:
+        a `Turnover.timeline_start` that nothing set was added here, and would have put a
+        shot an hour late). The record anchor is the clip's
         record start paired with **the snapshot's** In: that pairing is where the
         turnover put this clip, and it does not move when the editor trims, which is
         what keeps the mapping linear rather than sliding with every edit.
@@ -662,7 +675,7 @@ class ShotRow:
             fps=rate.as_float(),
             source_start=source_start,
             source_start_timecode=media.start_timecode if media and media.start_timecode else 0,
-            record_start_timecode=timeline_start + self.record_in,
+            record_start_timecode=self.record_in,
             record_start_source_frame=snapshot.in_frame if snapshot else source_start,
             mode=mode,
         )
@@ -744,7 +757,8 @@ class ShotRow:
             delivered_range=InOut.from_dict(data["delivered_range"]) if data.get("delivered_range") else None,
             freeze=bool(data.get("freeze", False)),
             deliverables=[Deliverable.from_dict(item) for item in data.get("deliverables", [])],
-            qc=[QCResult.from_dict(item) for item in data.get("qc", [])],
+            # QC-086, an HDRI's EXR not in the folder, went on 2026-10-30: Ben delivers it by hand.
+            qc=[QCResult.from_dict(item) for item in data.get("qc", []) if item.get("rule_id") != "QC-086"],
         )
 
 
@@ -780,7 +794,7 @@ class Turnover:
     turnover_id: str
     folder: Path
     edl_path: Path | None = None
-    """Ben's EDL, the carrier of the approved cut (OQ-74). Colour is in the AMFs beside it."""
+    """Ben's EDL, the carrier of the approved cut (OQ-74). Color is in the AMFs beside it."""
 
     csv_path: Path | None = None
     """Ben's metadata CSV, the carrier of identity and encoding.
@@ -789,23 +803,12 @@ class Turnover:
     has been archived still says what it was scanned from.
     """
 
-    timeline_start: int = 0
-    """The timeline's own start, in frames. `01:00:00:00` at 24 is 86400.
-
-    Record timecode is only meaningful against it: `ShotRow.record_in` is measured from
-    the timeline's zero, and an edit that starts at an hour is the normal case, so a row
-    shown without this reads an hour early. Kept on the turnover because it is a fact
-    about one timeline and a batch holds several. Additive, so the schema version does
-    not move and a batch saved before this reads back as zero, which is what a timeline
-    starting at zero would say anyway.
-    """
-
     color_session_edl: Path | None = None
-    """The final EDL of the colour session ingested for this turnover, or None.
+    """The final EDL of the color session ingested for this turnover, or None.
 
     **Per turnover rather than per batch** (QC-008), because turnovers arrive on
     different days and the grade for one is finished while the next is still being shot:
-    one turnover can be waiting on colour while another renders. **On the batch rather
+    one turnover can be waiting on color while another renders. **On the batch rather
     than in the app settings**, for the reason UI_SPEC section 13 gives for the two
     roots: it is a record of what this work was rendered from, not a preference, so
     reopening a `.pibatch` restores it and a second batch does not disturb it.
@@ -846,7 +849,6 @@ class Turnover:
             "folder": str(self.folder),
             "edl_path": str(self.edl_path) if self.edl_path else None,
             "csv_path": str(self.csv_path) if self.csv_path else None,
-            "timeline_start": self.timeline_start,
             "color_session_edl": str(self.color_session_edl) if self.color_session_edl else None,
             "ale_path": str(self.ale_path) if self.ale_path else None,
             "number": self.number,
@@ -867,7 +869,6 @@ class Turnover:
             folder=Path(data["folder"]),
             edl_path=_as_path(data.get("edl_path")),
             csv_path=_as_path(data.get("csv_path")),
-            timeline_start=int(data.get("timeline_start", 0)),
             color_session_edl=_as_path(data.get("color_session_edl")),
             ale_path=_as_path(data.get("ale_path")),
             number=data.get("number"),

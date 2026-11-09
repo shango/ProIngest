@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
     QDialog,
+    QLabel,
     QLineEdit,
     QPlainTextEdit,
     QSpinBox,
@@ -43,7 +44,7 @@ class TestTheForm:
 
     def test_it_offers_every_section_the_spec_lists(self) -> None:
         titles = [section.title for section in settings_form.sections()]
-        assert titles == ["General", "Rules", "Colour", "Naming", "Output", "Advanced"]
+        assert titles == ["General", "Rules", "Color", "Naming", "Output", "Advanced"]
 
     def test_the_sections_with_nothing_behind_them_say_so_and_are_disabled(self) -> None:
         """Disabled rather than absent, like the toolbar in M5.1: the shape is the spec."""
@@ -72,10 +73,10 @@ class TestTheForm:
         keys = [f.key for s in settings_form.sections() for f in s.fields]
         assert not [key for key in keys if "encoding" in key]
 
-    def test_the_pinned_colour_values_are_read_rather_than_copied(self) -> None:
+    def test_the_pinned_color_values_are_read_rather_than_copied(self) -> None:
         values = settings_form.readonly_values()
         assert values["readonly.config"] == color.BUILTIN_CONFIG
-        assert color.ACES in values["readonly.colour_source"] and "AMF" in values["readonly.colour_source"]
+        assert color.ACES in values["readonly.color_source"] and "AMF" in values["readonly.color_source"]
         assert "AMF" in values["readonly.output_transform"]
 
     def test_values_round_trip_through_the_form(self) -> None:
@@ -196,6 +197,60 @@ class TestTheDialog:
 
     def test_a_read_only_value_is_never_written_back(self, dialog: SettingsDialog) -> None:
         assert not [key for key in dialog.values() if key.startswith("readonly.")]
+
+
+class TestTheShowPattern:
+    """Review, 2026-11-08: the pattern was stored with no check that it compiled, and
+    every consumer raised `re.error` on one that did not: the scanner logged and dropped
+    the turnover, and Cancel Re-run raised out of a slot on the UI thread."""
+
+    BAD = ("[A-Z", "SEC(A", "A)(B", "(?P<show>SEC)", "(?P<shot>X)")
+
+    @pytest.mark.parametrize("pattern", BAD)
+    def test_a_pattern_that_cannot_be_used_says_why(self, pattern: str) -> None:
+        assert settings_form.show_pattern_problem(pattern)
+
+    @pytest.mark.parametrize("pattern", ["", "SEC[A-Z]", naming.DEFAULT_SHOW_PATTERN, "MELT|BRIK"])
+    def test_a_usable_pattern_has_no_problem(self, pattern: str) -> None:
+        assert settings_form.show_pattern_problem(pattern) is None
+
+    @pytest.mark.parametrize("pattern", BAD)
+    def test_one_stored_anyway_is_read_as_the_default(self, pattern: str) -> None:
+        """A hand edit, or a file saved before the page checked."""
+        assert settings_form.show_pattern_of(AppSettings(show_pattern=pattern)) == naming.DEFAULT_SHOW_PATTERN
+
+    def edit(self, dialog: SettingsDialog) -> QLineEdit:
+        box = editor(dialog, "app.show_pattern")
+        assert isinstance(box, QWidget)
+        found = box if isinstance(box, QLineEdit) else box.findChild(QLineEdit)
+        assert found is not None
+        return found
+
+    def problem(self, dialog: SettingsDialog) -> QLabel:
+        box = editor(dialog, "app.show_pattern")
+        assert isinstance(box, QWidget)
+        label = box.findChild(QLabel, "settings_problem")
+        assert label is not None
+        return label
+
+    def test_applying_one_keeps_the_pattern_in_use(self, qt_app: QApplication) -> None:
+        dialog = SettingsDialog(AppSettings(show_pattern="ABC"), qc.RuleSettings())
+        self.edit(dialog).setText("SEC(A")
+        app, _ = dialog.result_settings()
+        assert app.show_pattern == "ABC"
+
+    def test_the_problem_is_shown_under_the_field_while_typing(self, dialog: SettingsDialog) -> None:
+        assert self.problem(dialog).isHidden()
+        self.edit(dialog).setText("[A-Z")
+        assert not self.problem(dialog).isHidden()
+        assert "not a usable pattern" in self.problem(dialog).text()
+        self.edit(dialog).setText("SEC[A-Z]")
+        assert self.problem(dialog).isHidden()
+
+    def test_a_good_one_comes_back_out(self, dialog: SettingsDialog) -> None:
+        self.edit(dialog).setText(" SEC[A-Z] ")
+        app, _ = dialog.result_settings()
+        assert app.show_pattern == "SEC[A-Z]"
 
 
 class TestApplyingFromTheWindow:

@@ -46,11 +46,9 @@ its timeline event (user, 2026-10-07)."""
 LDRI_KIND = "LDRI"
 """An LDRI's `Shot Type` (user, 2026-10-08): an HDRI whose file is a JPG or PNG. Treated as
 an HDRI throughout (`ShotIdentity.is_hdri` is true of both, and so is `qc.is_hdri`), except
-that its file is delivered byte for byte under its own extension and the stringout shows it,
-or its pre-render, as it is, with no grade."""
-
-LDRI_EXTENSIONS = (".jpg", ".jpeg", ".png")
-"""What an LDRI's file is, and so what its delivered copy ends with."""
+that the stringout shows it, or its pre-render, as it is, with no grade. Neither file is the
+tool's to deliver since 2026-10-30; a copy delivered before then still reads back
+(`parse_output_name`) and counts as a version."""
 
 HDRI_SHOT_TYPE = re.compile(r"(?P<kind>hdri|ldri)(?P<index>\d{1,2})?", re.IGNORECASE)
 """`HDRI01`, `HDRI02`, `LDRI01`, as the CSV writes it, in any case; a bare `HDRI` is `HDRI01`
@@ -79,7 +77,7 @@ shows it as it is, for the event's length."""
 
 AVIDREF_KIND = "avidRef"
 """An Avid reference's `Shot Type`, `avidRef01`, `avidRef02` (QC-088, user 2026-10-15). Not in
-`CLIP_TYPES` and never graded: its colour is baked in. Delivered as it is, never as an EXR (user,
+`CLIP_TYPES` and never graded: its color is baked in. Delivered as it is, never as an EXR (user,
 2026-10-22): a movie as an mp4, a still as itself (`as_is_file`); the stringout plays its cut as
 it is. The one place the spelling lives, since it may change again: it was `preVis01` in 0.5.44
 and `pl01_avidref` in 0.5.45."""
@@ -87,7 +85,7 @@ and `pl01_avidref` in 0.5.45."""
 MEAS_KIND = "meas"
 RECON_KIND = "recon"
 """A measurement's and a recon's `Shot Type`, `meas01`, `recon02` (QC-088, user 2026-10-27): never
-colour corrected and delivered as an Avid reference is, never as an EXR. `recon` replaces `re`."""
+color corrected and delivered as an Avid reference is, never as an EXR. `recon` replaces `re`."""
 
 AS_IS_KINDS = (AVIDREF_KIND, MEAS_KIND, RECON_KIND)
 """The kinds delivered as they are (`as_is_file`): a movie as an mp4, a still as itself."""
@@ -242,6 +240,26 @@ def witness_plate(written: str) -> str:
     return "pl" + (witness["plate"][2:] or "1").zfill(2)
 
 
+def show_pattern_problem(pattern: str) -> str | None:
+    """Why a show prefix pattern cannot be used, or None when it can. Empty is fine.
+
+    It has to compile on its own, so a stray `)` cannot close the `show` group early,
+    and inside every pattern this module builds around it, so it cannot reuse a group
+    name those take, such as `(?P<show>...)`. The parsers themselves are asked, so the
+    check cannot drift from them. Settings and the command line both ask here (review,
+    2026-11-08): an unusable pattern raised `re.error` out of every scan and plan.
+    """
+    if not pattern:
+        return None
+    try:
+        re.compile(pattern)
+        parse_shot_code("", pattern)
+        parse_output_name("", pattern)
+    except re.error as exc:
+        return f"not a usable pattern: {exc}"
+    return None
+
+
 def parse_shot_code(code: str, show_pattern: str = DEFAULT_SHOW_PATTERN) -> tuple[str, str] | None:
     """Split `MELT0001` into show and shot number.
 
@@ -255,6 +273,8 @@ def parse_shot_code(code: str, show_pattern: str = DEFAULT_SHOW_PATTERN) -> tupl
 
 
 def _ver(version: int) -> str:
+    """`v07`: two digits at least, and as many as a version past 99 needs, which the parse
+    patterns read back (`\\d{2,}`) so `v100` still counts toward the next version."""
     return f"v{version:02d}"
 
 
@@ -297,23 +317,6 @@ def aux_still_exr(identity: ShotIdentity, version: int) -> str:
     return f"{identity.shot_code}_{identity.kind}_{identity.index}_4k_{_ver(version)}.exr"
 
 
-def hdri_exr(identity: ShotIdentity, version: int) -> str:
-    """`SECA0009_pl01_HDRI01_v01.exr`: the HDRI, copied byte for byte (user, 2026-10-07)."""
-    if identity.kind != HDRI_KIND:
-        raise ValueError(f"an HDRI must have kind {HDRI_KIND!r}, got {identity.kind!r}")
-    return f"{hdri_label(identity)}_{_ver(version)}.exr"
-
-
-def ldri_image(identity: ShotIdentity, version: int, suffix: str) -> str:
-    """`SECA0009_pl01_LDRI01_v01.jpg`: the LDRI, copied byte for byte under the extension it
-    came with (user, 2026-10-08)."""
-    if not identity.is_ldri:
-        raise ValueError(f"an LDRI must have kind {LDRI_KIND!r}, got {identity.kind!r}")
-    if suffix.lower() not in LDRI_EXTENSIONS:
-        raise ValueError(f"an LDRI must be one of {LDRI_EXTENSIONS}, got {suffix!r}")
-    return f"{hdri_label(identity)}_{_ver(version)}{suffix.lower()}"
-
-
 def as_is_file(identity: ShotIdentity, version: int, suffix: str) -> str:
     """`INCA5002_avidRef01_v01.mp4`, `INCA5002_meas01_v01.mp4`, or `.png` or `.jpg` for a held
     still: no size tag (user, 2026-10-22 and 2026-10-27)."""
@@ -345,7 +348,7 @@ STRINGOUT_SUFFIX = ".mp4"
 
 _STRINGOUT = re.compile(
     r"^turnover(?P<number>\d{3,})_(?P<month>\d{2})_(?P<day>\d{2})_(?P<year>\d{2}|\d{4})_"
-    r"(?P<shooter>.+)_SO_v(?P<ver>\d{2})\.mp4$"
+    r"(?P<shooter>.+)_SO_v(?P<ver>\d{2,})\.mp4$"
 )
 
 
@@ -453,15 +456,17 @@ def _output_patterns(show_pattern: str) -> list[tuple[OutputKind, re.Pattern[str
     """One anchored pattern per kind. Mutually exclusive on the literal kind segment."""
     shot = rf"(?P<show>{show_pattern})(?P<shot>\d{{4}})"
     sc = rf"{shot}_(?:(?P<plate>pl\d{{2}})_(?={WITNESS_KIND}))?(?P<type>{_TYPES})(?P<idx>\d{{2}})"
-    v = r"v(?P<ver>\d{2})"
+    # At least two digits and four: `_ver` and `frame_in_sequence` write more past 99 and 9999.
+    v = r"v(?P<ver>\d{2,})"
     res = r"(?P<res>4k|HD)"
     return [
-        ("raw_frame", re.compile(rf"^{sc}_raw_{res}_{v}\.(?P<frame>\d{{4}})\.exr$")),
+        ("raw_frame", re.compile(rf"^{sc}_raw_{res}_{v}\.(?P<frame>\d{{4,}})\.exr$")),
         ("raw_dir", re.compile(rf"^{sc}_raw_{res}_{v}$")),
         ("ref_mp4", re.compile(rf"^{sc}_ref_{res}_{v}\.mp4$")),
         ("audio", re.compile(rf"^{sc}_audio_{v}\.wav$")),
         ("aux_still", re.compile(rf"^{shot}_(?P<aux>{_AUX})_(?P<auxidx>\d{{2}})_4k_{v}\.exr$")),
-        # `_?`: an HDRI delivered before 2026-10-27 has `HDRI_01`; it still counts as a version.
+        # An HDRI or LDRI copied before 2026-10-30 still counts as a version, and one delivered
+        # before 2026-10-27 has `HDRI_01` (`_?`). Nothing writes these names any more.
         ("hdri", re.compile(rf"^{shot}_{HDRI_ELEMENT}_(?P<aux>{HDRI_KIND})_?(?P<auxidx>\d{{2}})_{v}\.exr$")),
         (
             "hdri",

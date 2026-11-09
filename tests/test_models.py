@@ -146,11 +146,11 @@ class TestMediaInfo:
         del data["tags"]
         assert MediaInfo.from_dict(data).tags == {}
 
-    def test_round_trip_with_colour_tags(self) -> None:
+    def test_round_trip_with_color_tags(self) -> None:
         media = make_media(color_space="bt709", color_range="pc", color_transfer="bt709")
         assert MediaInfo.from_dict(media.to_dict()) == media
 
-    def test_media_saved_before_colour_tags_existed_reads_back_empty(self) -> None:
+    def test_media_saved_before_color_tags_existed_reads_back_empty(self) -> None:
         data = make_media().to_dict()
         del data["color_space"], data["color_range"]
         assert MediaInfo.from_dict(data).color_space == ""
@@ -244,7 +244,7 @@ class TestShotRow:
         assert read.source_encoding == "C-Log3"
         assert read.source_encoding_origin is None
 
-    def test_round_trip_of_what_the_colour_session_wrote(self) -> None:
+    def test_round_trip_of_what_the_color_session_wrote(self) -> None:
         """A batch reopened after the package is archived renders the same grade."""
         row = make_row(
             approved=InOut(1008, 1223),
@@ -306,6 +306,14 @@ class TestTurnover:
         data["qc"] = [QCResult("QC-074", "warning", "turnover", "bypassed").to_dict()]
         loaded = Turnover.from_dict(data)
         assert loaded.qc == [] and loaded == Turnover("t1", Path("/t"))
+
+    def test_a_batch_that_saved_a_timeline_start_still_loads(self) -> None:
+        """Review, 2026-11-08: `timeline_start` went, since nothing set it and a row's record
+        In is already the EDL's own record frame. A batch saved with the key reads as before."""
+        data = Turnover("t1", Path("/t")).to_dict()
+        data["timeline_start"] = 86400
+        assert Turnover.from_dict(data) == Turnover("t1", Path("/t"))
+        assert "timeline_start" not in Turnover("t1", Path("/t")).to_dict()
 
     def test_a_turnover_saved_before_the_session_existed_has_ingested_nothing(self) -> None:
         """Additive, so the schema version does not move (M5.7.1)."""

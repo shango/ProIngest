@@ -4,14 +4,18 @@ the delivered HD references, the ungraded source or black where there is none.""
 from __future__ import annotations
 
 import copy
+import shutil
 import subprocess
 from dataclasses import replace
 from pathlib import Path
 
+import numpy as np
+import PyOpenColorIO as ocio
 import pytest
 
-from proingest.core import clf, color, ffmpeg, naming, planner, qc, render, scan, stringout
-from proingest.core.models import Batch, Deliverable, FrameRate, InOut, MediaInfo
+from proingest.core import clf, color, exr, ffmpeg, naming, planner, qc, render, scan, stringout
+from proingest.core.models import Batch, Deliverable, FrameRate, InOut, MediaInfo, QCResult, Turnover
+from tests.fixtures import batches
 from tests.fixtures import color as color_fixtures
 from tests.fixtures import media as fixtures
 
@@ -72,6 +76,7 @@ def _position(path: Path) -> int:
     return int(path.stem.rsplit("_", 1)[1])
 
 
+@pytest.mark.slow
 class TestPlan:
     def test_every_event_is_cut_from_its_delivered_exrs(self, batch: Batch) -> None:
         """User, 2026-10-07: the stringout is from the EXRs, the HD sequence of each plate."""
@@ -97,6 +102,45 @@ class TestPlan:
         plate = planned(batch).segments[1]
         assert plate.exr is None and plate.path is not None and plate.path.name.endswith("_ref_HD_v01.mp4")
         assert plate.audio and plate.wav is None, "its sound comes with the reference"
+
+    def test_a_delivered_sequence_whose_first_frame_will_not_open_stands_in(self, batch: Batch) -> None:
+        """Review, 2026-11-08: the header read on the first HD frame raised out of the plan, so
+        one truncated frame cost the whole stringout. The reference stands in for it instead."""
+        hd = next(i for i in batch.rows[1].deliverables if i.kind == "raw_dir" and i.res == "HD")
+        first = min(hd.path.glob("*.exr"))
+        whole = first.read_bytes()
+        first.write_bytes(whole[:64])
+        try:
+            plate = planned(batch).segments[1]
+        finally:
+            first.write_bytes(whole)  # the delivery is the module's, shared with every test
+        assert plate.exr is None and plate.path is not None and plate.path.name.endswith("_ref_HD_v01.mp4")
+
+    def test_each_delivered_folder_s_header_is_read_once(
+        self, batch: Batch, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Review, 2026-11-08: each claimed row's EXR was asked for twice per event, every
+        asking a listing and a header read on the delivery mount (CLAUDE.md, "scan once")."""
+        read: list[Path] = []
+        real = exr.is_display_referred
+
+        def counted(path: Path) -> bool:
+            read.append(path.parent)
+            return real(path)
+
+        monkeypatch.setattr(exr, "is_display_referred", counted)
+        made = planned(batch)
+        shown = {s.exr.source for s in made.segments if s.exr is not None}
+        assert len(shown) == 2 and sorted(read) == sorted(shown)
+
+    def test_a_corrected_shot_code_files_it_under_the_corrected_show(self, batch: Batch) -> None:
+        """Review, 2026-11-08: the plates go under the corrected code's show, and so does the
+        stringout beside the reports, rather than under the show the CSV gave."""
+        for index, row in enumerate(batch.rows, start=1):
+            row.shot_code_override = f"ABCD{index:04d}"
+        assert batch.delivery_root is not None
+        made = planned(batch)
+        assert made.destination.parent == naming.reports_dir(batch.delivery_root, "ABCD")
 
     def test_a_held_reference_clip_is_cut_from_its_delivered_exr(self, batch: Batch) -> None:
         """Held (an `M2` freeze), a chart is its one delivered EXR frame, graded, for a second."""
@@ -137,6 +181,28 @@ class TestPlan:
         cpu = color.processor(*segment.exr.color.view_transforms())
         shown = stringout._shown(first, cpu)
         assert shown.shape == (1080, 1920, 3) and float(shown.min()) >= 0.0 and float(shown.max()) <= 1.0
+
+    def test_a_display_referred_plate_is_shown_as_it_is(self, batch: Batch, tmp_path: Path) -> None:
+        """User, 2026-11-06. The output transform is in the pixels, so a second one would
+        tone map the picture twice."""
+        segment = planned(batch).segments[0]
+        assert segment.exr is not None and segment.exr.as_is
+        frame = tmp_path / "frame.exr"
+        exr.write_frame(frame, np.full((1080, 1920, 3), 0.25, dtype=np.float32))
+        assert float(stringout._shown(frame, None)[540, 960, 0]) == pytest.approx(0.25, abs=0.002)
+
+    def test_a_plate_from_before_the_change_still_gets_its_output_transform(
+        self, batch: Batch, tmp_path: Path
+    ) -> None:
+        """An old delivery a new stringout re-uses says ACEScg in its header."""
+        hd = next(item for item in batch.rows[0].deliverables if item.kind == "raw_dir" and item.res == "HD")
+        old = tmp_path / "old"
+        shutil.copytree(hd.path, old)
+        for frame in old.glob("*.exr"):
+            exr.write_frame(frame, exr.read_pixels(frame))
+        hd.path = old
+        segment = planned(batch).segments[0]
+        assert segment.exr is not None and not segment.exr.as_is
 
     def test_a_skipped_shot_is_the_ungraded_source(self, batch: Batch) -> None:
         batch.rows[1].skipped = True
@@ -224,6 +290,7 @@ class TestPlan:
             planned(batch)
 
 
+@pytest.mark.slow
 class TestBuild:
     def test_it_is_written_checked_and_recorded(self, batch: Batch) -> None:
         batch.rows[1].skipped = True
@@ -254,12 +321,44 @@ class TestBuild:
         assert not list(made.path.parent.glob(".*.parts"))
         made.path.unlink()
 
+    @pytest.mark.parametrize("workers", [2, 1])
+    def test_a_stop_part_way_writes_nothing_and_changes_nothing(self, batch: Batch, workers: int) -> None:
+        """Review, 2026-11-08 (E2): Stop, or closing the window, reaches a build in flight.
+        Two workers stop in the pool's processes, one stops in this one; a stopped build is
+        not a failure, so no QC-142 and the turnover's last results stay."""
+        assert batch.delivery_root is not None
+        turnover = batch.turnovers[0]
+        earlier = QCResult("QC-143", "info", "turnover", "from the last build")
+        turnover.qc = [earlier]
+        seen: list[int] = []
+        made = stringout.build(
+            batch,
+            turnover,
+            batch.delivery_root,
+            progress=lambda done, total: seen.append(done),
+            workers=workers,
+            cancel=lambda: bool(seen),
+        )
+        assert made is None and seen
+        assert turnover.qc == [earlier] and turnover.stringout is None
+        assert list(batch.delivery_root.rglob("*_SO_v*")) == [], "not the file, not its .part"
+
     def test_one_that_cannot_be_made_is_qc_142_and_raises_nothing(self, batch: Batch) -> None:
         batch.turnovers[0] = replace(batch.turnovers[0], shooter="")
         assert batch.delivery_root is not None
         assert stringout.build(batch, batch.turnovers[0], batch.delivery_root) is None
         assert [r.rule_id for r in batch.turnovers[0].qc] == ["QC-142"]
         assert not qc.must_fix(batch), "phase B: it reports, it does not block the next run"
+
+
+class TestStopping:
+    def test_a_build_stopped_before_it_starts_touches_nothing(self, tmp_path: Path) -> None:
+        """Review, 2026-11-08 (E2): asked first, before the plan reads anything."""
+        turnover = batches.turnover(folder=tmp_path)
+        earlier = QCResult("QC-142", "error", "turnover", "from the last build")
+        turnover.qc = [earlier]
+        assert stringout.build(Batch(), turnover, tmp_path, cancel=lambda: True) is None
+        assert turnover.qc == [earlier]
 
 
 class TestBurnIns:
@@ -282,6 +381,49 @@ class TestBurnIns:
         )
 
 
+class TestFailures:
+    """Review, 2026-11-08: anything a stringout's plan or render raises is QC-142 on its
+    turnover. One that escaped stopped the later turnovers' stringouts and the run's QC log,
+    tracker and Fix-it report (`ui/run_controller.py`)."""
+
+    @pytest.mark.parametrize(
+        "failure",
+        [
+            exr.ExrError("frame 1003 is truncated"),
+            clf.ClfError("the CLF has moved"),
+            color.ColorError("no such color space"),
+            ocio.Exception("the config refused it"),
+            subprocess.TimeoutExpired(["ffmpeg"], 600),
+        ],
+        ids=lambda failure: type(failure).__name__,
+    )
+    def test_it_is_qc_142_and_raises_nothing(
+        self, failure: BaseException, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        def fails(*_args: object) -> stringout.Plan:
+            raise failure
+
+        monkeypatch.setattr(stringout, "plan", fails)
+        turnover = Turnover(turnover_id="t1", folder=tmp_path / FOLDER)
+        assert stringout.build(Batch(turnovers=[turnover]), turnover, tmp_path) is None
+        assert [r.rule_id for r in turnover.qc] == ["QC-142"]
+
+    def test_a_first_frame_that_will_not_open_is_no_answer(self, tmp_path: Path) -> None:
+        (tmp_path / "MELT0001_pl01_raw_HD_v01.1001.exr").write_bytes(b"not an exr")
+        assert stringout._display_referred(tmp_path) is None
+
+    def test_an_empty_folder_is_not_display_referred(self, tmp_path: Path) -> None:
+        assert stringout._display_referred(tmp_path) is False
+
+    def test_a_windows_path_on_the_card_breaks_at_a_backslash(self) -> None:
+        """Review, 2026-11-08: only `/` was a break, so a Windows path was cut mid-name."""
+        path = "G:\\Shared drives\\VFX_Ingest\\turnover144\\" + "INCA5002_pl01_folder\\" * 8 + "pl01.mp4"
+        lines = stringout._wrapped(path)
+        assert "".join(lines) == path and len(lines) > 1
+        assert all(line.endswith("\\") for line in lines[:-1]), "each line ends at a separator"
+        assert all(len(line) <= stringout.CARD_LINE for line in lines)
+
+
 class TestFfmpeg:
     def test_text_from_a_csv_is_printed_as_written(self) -> None:
         assert ffmpeg.drawtext_literal("50% rain \\ wind") == "50\\% rain \\\\ wind"
@@ -292,6 +434,7 @@ class TestFfmpeg:
         assert command[command.index("-timecode") + 1] == "01:00:00:00"
 
 
+@pytest.mark.slow
 class TestInsets:
     """A plate carries its shot's cp top left and wit top right (user, 2026-09-29)."""
 
@@ -357,8 +500,8 @@ class TestInsets:
     def test_an_inset_is_drawn_and_then_gone(self, tmp_path: Path) -> None:
         """Rendered: red in the top left for the inset's frames, then the plate again."""
 
-        def clip(path: Path, colour: str, count: int) -> Path:
-            source = f"color=c={colour}:s=192x108:r=24"
+        def clip(path: Path, color: str, count: int) -> Path:
+            source = f"color=c={color}:s=192x108:r=24"
             subprocess.run(
                 ["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", source, "-frames:v", str(count),
                  "-pix_fmt", "yuv420p", str(path)],
@@ -389,6 +532,7 @@ class TestInsets:
         assert not any(red_at(frame, 100, 60) for frame in frames), "only inside the inset"
 
 
+@pytest.mark.slow
 class TestReferenceClips:
     """A chart, ball or size ref is a video on the timeline: its event plays its cut at full
     speed, graded through its AMF (user, 2026-10-07). It is delivered as one EXR frame."""
@@ -406,7 +550,7 @@ class TestReferenceClips:
         assert clip.color is not None and clip.color.looks, "graded"
         assert planned(batch).total == 2 * FRAMES
 
-    def test_its_colour_is_baked_as_a_reference_is(self, batch: Batch, tmp_path: Path) -> None:
+    def test_its_color_is_baked_as_a_reference_is(self, batch: Batch, tmp_path: Path) -> None:
         self.as_chart(batch)
         still = planned(batch).segments[1]
         lut = stringout._still_lut(still, tmp_path / "still.cube")
@@ -431,10 +575,12 @@ class TestReferenceClips:
         assert plate.color is not None and plate.color.looks, "graded through its AMF (user, 2026-10-07)"
 
 
+@pytest.mark.slow
 class TestAnHdri:
     """The HDRI on the timeline is a frame hold on the HDRI EXR with a pan (user, 2026-10-07).
-    Its EXR is delivered byte for byte; its event is cut from Ben's pre-render, a video under
-    the EXR's name, graded through the HDRI's AMF. No pre-render: QC-083, the EXR as it is."""
+    Its event is cut from Ben's pre-render, a video under the EXR's name, graded through the
+    HDRI's AMF, and the pre-render is delivered as an mp4; the EXR is Ben's to deliver by hand
+    (user, 2026-10-30). No pre-render: QC-083, the EXR held on the stringout, nothing delivered."""
 
     @staticmethod
     def scanned(folder: Path, batch: Batch) -> Batch:
@@ -458,12 +604,11 @@ class TestAnHdri:
         fixtures.make_mp4(folder / "media" / "MELT0002_pl01.mp4", count=FRAMES)
         return self.scanned(folder, Batch(delivery_root=tmp_path / "delivery"))
 
-    def test_its_exr_is_delivered_byte_for_byte(self, with_hdri: Batch) -> None:
+    def test_its_exr_is_not_delivered(self, with_hdri: Batch) -> None:
+        """User, 2026-10-30: "Those exr files are delivered manually by Ben"."""
         hdri = with_hdri.rows[1]
         assert qc.is_hdri(hdri) and not hdri.skipped and hdri.media is not None
-        (item,) = hdri.deliverables
-        assert (item.kind, item.name, item.status) == ("hdri", "MELT0002_pl01_HDRI01_v01.exr", "done")
-        assert item.path.read_bytes() == hdri.media.path.read_bytes()
+        assert hdri.deliverables == [] and not hdri.errors()
 
     def test_with_no_pre_render_it_asks_for_one_and_holds_the_exr_graded(self, with_hdri: Batch) -> None:
         hdri = with_hdri.rows[1]
@@ -490,14 +635,14 @@ class TestAnHdri:
         assert segment.color is not None and segment.color.source_encoding == "Linear Rec.709 (sRGB)"
         assert stringout._still_lut(segment, tmp_path / "hdri.cube") is not None, "graded, not as it is"
 
-    def test_its_pre_render_is_delivered_too_as_a_graded_mp4(self, with_render: Batch) -> None:
-        """User, 2026-10-27: the pre-render on the stringout "get[s] an mp4"; the EXR is the file."""
+    def test_its_pre_render_is_delivered_as_a_graded_mp4(self, with_render: Batch) -> None:
+        """User, 2026-10-27: the pre-render on the stringout "get[s] an mp4"; since 2026-10-30
+        it is the only thing delivered."""
         hdri = with_render.rows[1]
         assert [(item.kind, item.name, item.status) for item in hdri.deliverables] == [
-            ("hdri", "MELT0002_pl01_HDRI01_v01.exr", "done"),
             ("hdri_ref", "MELT0002_pl01_HDRI01_v01.mp4", "done"),
         ]
-        assert hdri.deliverables[1].frame_count == FRAMES and not hdri.errors()
+        assert hdri.deliverables[0].frame_count == FRAMES and not hdri.errors()
 
     def test_its_pre_render_is_held_on_a_frame_hold_too(self, with_render: Batch) -> None:
         """The EDL's event is an `M2` hold on the EXR; the pre-render plays, for the event's length."""
@@ -525,11 +670,12 @@ class TestAnHdri:
         assert made is not None and made.frame_count == 2 * FRAMES
 
 
+@pytest.mark.slow
 class TestAPreRenderOnTheTimeline:
     """Turnover134 (2026-10-07): the timeline cuts Ben's pre-render, typed HDRI, and the
     HDRI EXR is not in the folder. Its AMF carries no grade, so the stringout shows it as
-    it is (user: "If there's not color files, you can skip any color correction"), and
-    nothing is delivered for it (QC-086)."""
+    it is (user: "If there's not color files, you can skip any color correction"). The EXR
+    is not looked for (user, 2026-10-30: Ben delivers it by hand)."""
 
     RENDER = "MELT0002_pl01_HDRI_01_v01.exr Render 1.mp4"
 
@@ -542,10 +688,10 @@ class TestAPreRenderOnTheTimeline:
         fixtures.make_final_edl(folder / "FINAL_v01.edl", ["MELT0001_pl01", self.RENDER], duration=FRAMES)
         return TestAnHdri.scanned(folder, Batch(delivery_root=tmp_path / "delivery"))
 
-    def test_it_is_shown_as_it_is_and_nothing_is_delivered(self, batch: Batch, tmp_path: Path) -> None:
+    def test_it_is_shown_as_it_is(self, batch: Batch, tmp_path: Path) -> None:
         hdri = batch.rows[1]
-        assert hdri.media is None and hdri.deliverables == [] and not hdri.errors()
-        assert {"QC-009", "QC-086"} <= {q.rule_id for q in hdri.qc}
+        assert hdri.media is None and not hdri.errors()
+        assert "QC-009" in {q.rule_id for q in hdri.qc} and "QC-086" not in {q.rule_id for q in hdri.qc}
         segment = planned(batch).segments[1]
         assert segment.prerender and hdri.hdri_render is not None and segment.path == hdri.hdri_render.path
         assert segment.color is None and stringout._still_lut(segment, tmp_path / "x.cube") is None
@@ -556,10 +702,11 @@ class TestAPreRenderOnTheTimeline:
         assert made is not None and made.frame_count == 2 * FRAMES
 
 
+@pytest.mark.slow
 class TestAnLdri:
-    """User, 2026-10-08: an LDRI is treated as an HDRI on the stringout, its file a JPG or PNG
-    delivered byte for byte. A JPG or PNG is display referred, so its pre-render, and the
-    image held when there is none, are shown as they are, graded or not."""
+    """User, 2026-10-08: an LDRI is treated as an HDRI on the stringout, its file a JPG or PNG,
+    which Ben delivers by hand (user, 2026-10-30). A JPG or PNG is display referred, so its
+    pre-render, and the image held when there is none, are shown as they are, graded or not."""
 
     RENDER = "MELT0002_pl01_LDRI_01_v01.jpg Render 1.mp4"
     IMAGE = "MELT0002_pl01_LDRI_01_v01.jpg"
@@ -577,13 +724,15 @@ class TestAnLdri:
         fixtures.make_final_edl(folder / "FINAL_v01.edl", ["MELT0001_pl01", name], duration=FRAMES)
         return TestAnHdri.scanned(folder, Batch(delivery_root=tmp_path / "delivery"))
 
-    def test_its_image_is_delivered_byte_for_byte(self, tmp_path: Path) -> None:
+    def test_only_its_pre_render_is_delivered(self, tmp_path: Path) -> None:
         ldri = self.batch(tmp_path, render=True).rows[1]
-        assert qc.is_ldri(ldri) and ldri.media is not None
-        item, prerender = ldri.deliverables
-        assert (item.kind, item.name, item.status) == ("hdri", "MELT0002_pl01_LDRI01_v01.jpg", "done")
-        assert item.path.read_bytes() == ldri.media.path.read_bytes()
-        assert (prerender.name, prerender.status) == ("MELT0002_pl01_LDRI01_v01.mp4", "done")
+        assert qc.is_ldri(ldri)
+        (prerender,) = ldri.deliverables
+        assert (prerender.kind, prerender.name, prerender.status) == (
+            "hdri_ref",
+            "MELT0002_pl01_LDRI01_v01.mp4",
+            "done",
+        )
 
     def test_its_pre_render_is_shown_as_it_is_though_graded(self, tmp_path: Path) -> None:
         batch = self.batch(tmp_path, render=True)
@@ -609,6 +758,7 @@ class TestAnLdri:
         assert made is not None and made.frame_count == 2 * FRAMES
 
 
+@pytest.mark.slow
 class TestAnAvidRef:
     """User, 2026-10-14: an Avid reference, `avidRef01`, is "treated just like styleframe type. No
     cc needed". A video, so it plays its cut as it is. Delivered since 2026-10-22, never an EXR."""
@@ -633,6 +783,7 @@ class TestAnAvidRef:
         assert segment.color is None and segment.label == "MELT0001_avidRef01"
 
 
+@pytest.mark.slow
 class TestAStyleFrame:
     """User, 2026-10-07: a pre-graded PNG or JPG before its shot's plate, held as it is for the
     EDL's length, burned in `SECA0009_styleFrame` with no counter, and never delivered."""
@@ -698,6 +849,7 @@ class TestAStyleFrame:
         assert [s for s in said if s[0] in stringout.STRINGOUT_RULES] == [("QC-144", "warning")]
 
 
+@pytest.mark.slow
 class TestAFileThatIsThereAlwaysPlays:
     """User, 2026-09-29: an event whose file is present is never black."""
 

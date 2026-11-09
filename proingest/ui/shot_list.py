@@ -1,6 +1,6 @@
 """The shot list itself: the view, its two line cells, and the search filter.
 
-UI_SPEC section 2. The view is thin on purpose - what a cell says and what colour it is
+UI_SPEC section 2. The view is thin on purpose - what a cell says and what color it is
 are the model's answers (`ui/shot_model.py`), and what is left here is how a row is
 drawn, which rows are shown, and what typing into one does.
 
@@ -60,6 +60,7 @@ from proingest.ui.shot_model import (
     PROGRESS_ROLE,
     SECONDARY_ROLE,
     SHOT,
+    STATUS,
     RowState,
     ShotListModel,
 )
@@ -110,7 +111,7 @@ def scrolled_by(widget: QWidget | None) -> int:
 def show_parse(editor: QLineEdit, parsed: ParsedInput) -> None:
     """Section 5's inline red text, while the editor is still open.
 
-    It colours what was typed rather than replacing it: the editor has to be able to see
+    It colors what was typed rather than replacing it: the editor has to be able to see
     the mistake to fix it, and Escape is what reverts. No result is recorded anywhere,
     because a value that was never committed is not a fact about the row.
     """
@@ -273,10 +274,30 @@ class ShotFilterProxy(QSortFilterProxyModel):
     without losing which turnover a shot came from. Nothing here sorts: section 2 fixes
     the order to the timeline's, and a sortable list is one an editor can put into an
     order the delivery does not use.
+
+    The text is kept as typed rather than handed to `setFilterFixedString`, which
+    stores it regex-escaped: compared as plain text, "A001.C" became "A001\\.C" and
+    matched nothing (review, 2026-11-08).
     """
 
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._text = ""
+
+    def set_text(self, text: str) -> None:
+        """Filter by this substring, as typed."""
+        # `beginFilterChange` is Qt 6.10's replacement for `invalidateFilter`, which it
+        # deprecates; pyproject still admits PySide6 6.7, which has only the old one.
+        if hasattr(self, "beginFilterChange"):
+            self.beginFilterChange()
+            self._text = text
+            self.endFilterChange(QSortFilterProxyModel.Direction.Rows)
+        else:
+            self._text = text
+            self.invalidateFilter()
+
     def filterAcceptsRow(self, source_row: int, source_parent: ModelIndex) -> bool:
-        text = self.filterRegularExpression().pattern()
+        text = self._text
         if not text:
             return True
         model = self.sourceModel()
@@ -379,6 +400,9 @@ class ShotListView(QTreeView):
     relocate_requested = Signal(object)
     """A `Turnover` whose heading was right-clicked for New Folder Location (D16)."""
 
+    status_clicked = Signal(object)
+    """A `ShotRow` whose status dot was clicked: section 3 focuses the Issues dock on it."""
+
     """`select_row` emptied the filter to reach a hidden row; the search box should follow."""
 
     """The list. Two levels, always expanded, fixed order, one row per shot."""
@@ -424,6 +448,10 @@ class ShotListView(QTreeView):
         for view in (self, self.frozen):
             view.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
             view.customContextMenuRequested.connect(lambda pos, view=view: self._show_menu(view, pos))
+
+        # The Status column is always under the overlay, so its clicks reach the frozen
+        # view only. A click still selects the row as any click does; this adds to that.
+        self.frozen.clicked.connect(self._clicked_status)
 
         for signal in (model.modelReset, model.layoutChanged):
             signal.connect(self._fit_group_headers)
@@ -507,7 +535,7 @@ class ShotListView(QTreeView):
 
     def filter_by(self, text: str) -> None:
         """What the search box types. Substring, not a pattern the editor has to escape."""
-        self.proxy.setFilterFixedString(text)
+        self.proxy.set_text(text)
         self._fit_group_headers()
 
     def selected_rows(self) -> list[ShotRow]:
@@ -629,6 +657,13 @@ class ShotListView(QTreeView):
         self.scrollTo(index)
         self.setFocus(Qt.FocusReason.OtherFocusReason)
 
+    def _clicked_status(self, index: QModelIndex) -> None:
+        if index.column() != STATUS:
+            return
+        row = self.shot_model.row_at(self.proxy.mapToSource(index))
+        if row is not None:
+            self.status_clicked.emit(row)
+
     def _fit_group_headers(self) -> None:
         """Expand every turnover and let its header span the full width.
 
@@ -695,18 +730,35 @@ class ShotListView(QTreeView):
     def moveCursor(
         self, action: QAbstractItemView.CursorAction, modifiers: Qt.KeyboardModifier
     ) -> QModelIndex:
-        """Tab and Shift+Tab step through editable cells only (section 4).
+        """Tab and Shift+Tab step through editable cells only, and Up and Down through
+        shot rows only (section 4).
 
         Qt's own next cell is the next column, editable or not, which on this list means
-        tabbing out of In and into Duration. The other cursor actions are Qt's: arrows
-        move by row and by column, and nothing here has an opinion about that.
+        tabbing out of In and into Duration. Its own next row is the next visible one,
+        which lands on turnover headings and stringout lines. The other cursor actions
+        are Qt's.
         """
         forward = action is QAbstractItemView.CursorAction.MoveNext
         if forward or action is QAbstractItemView.CursorAction.MovePrevious:
             stepped = self._step_editable(forward)
             if stepped is not None:
                 return stepped
+        down = action is QAbstractItemView.CursorAction.MoveDown
+        if (down or action is QAbstractItemView.CursorAction.MoveUp) and self.currentIndex().isValid():
+            return self._step_shot(down)
         return super().moveCursor(action, modifiers)
+
+    def _step_shot(self, down: bool) -> QModelIndex:
+        """The next shot row up or down, in the current column; the current cell when
+        there is none, so the last shot is as far as Down goes rather than a heading."""
+        current = self.currentIndex()
+        index = current
+        while True:
+            index = self.indexBelow(index) if down else self.indexAbove(index)
+            if not index.isValid():
+                return current
+            if self.shot_model.row_at(self.proxy.mapToSource(index)) is not None:
+                return index.siblingAtColumn(current.column())
 
     def _step_editable(self, forward: bool) -> QModelIndex | None:
         """The editable cell after (or before) the current one, wrapping round the list.

@@ -287,6 +287,127 @@ class TestProbeCache:
         media.probe_cached(touched, cache)
         assert len(cache) == 2
 
+    def test_a_frame_copied_in_later_misses_the_cache(self, tmp_path: Path) -> None:
+        """Review, 2026-11-08: the key was the first frame's alone, so a frame copied in
+        after a scan kept the old frame count across Re-scan."""
+        fixture = fixtures.make_exr_sequence(tmp_path, count=3)
+        cache: dict[str, MediaInfo] = {}
+        before = media.probe_cached(media.index_directory(tmp_path).sequences[0], cache)
+        fixture.path_for(1003).with_name(fixture.path_for(1004).name).write_bytes(
+            fixture.path_for(1003).read_bytes()
+        )
+        after = media.probe_cached(media.index_directory(tmp_path).sequences[0], cache)
+        assert (before.max_available_out, after.max_available_out) == (1003, 1004)
+
+
+class TestASequenceWithAGap:
+    """Review, 2026-11-08: frames 1001 to 1010 with 1005 missing ran to 1009, so the cut's
+    last frame was clamped off (QC-029) and an unnamed event ending at 1010 matched no file.
+    The missing frame is QC-015's to report; the range is the sequence's own."""
+
+    def test_its_range_runs_to_its_real_last_frame(self, tmp_path: Path) -> None:
+        fixture = fixtures.make_exr_sequence(tmp_path, count=10)
+        fixture.path_for(1005).unlink()
+        info = media.probe(media.index_directory(tmp_path).sequences[0])
+        assert (info.start_frame, info.max_available_out, info.frame_count) == (1001, 1010, 10)
+
+    def test_an_event_to_its_last_frame_matches_it_by_timecode(self, tmp_path: Path) -> None:
+        from proingest.core import clf
+        from proingest.core.models import ShotRow
+
+        fixture = fixtures.make_exr_sequence(tmp_path, count=10)
+        fixture.path_for(1005).unlink()
+        info = media.probe(media.index_directory(tmp_path).sequences[0], fallback_rate=RATE_24)
+        event = clf.ConformEvent("001", "AX", "", 86400 + 5, 86400 + 9, 0, 4)
+        session = clf.ColorSession(tmp_path / "x.edl", [event])
+        assert session.candidates(ShotRow(turnover_id="t1", clip_name="MELT0001_pl01", media=info)) == [event]
+
+
+class TestIndexingASlowMount:
+    """Review, 2026-11-08: the walk stat-ed each file twice, and a file gone between the two
+    took the whole scan with it."""
+
+    def test_each_file_is_stat_ed_once_through_scandir(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        (tmp_path / "a.mov").write_bytes(b"x")
+        (tmp_path / "sub").mkdir()
+        (tmp_path / "sub" / "b.mov").write_bytes(b"yy")
+        stats: list[Path] = []
+        real = Path.stat
+
+        def counted(path: Path, **kwargs: bool) -> object:
+            if tmp_path in path.parents:
+                stats.append(path)
+            return real(path, **kwargs)
+
+        monkeypatch.setattr(Path, "stat", counted)
+        index = media.index_directory(tmp_path)
+        monkeypatch.undo()
+        assert stats == [], "every stat comes from the scandir entry"
+        assert [(entry.path, entry.size) for entry in index.singles] == [
+            (tmp_path / "a.mov", 1),
+            (tmp_path / "sub" / "b.mov", 2),
+        ]
+
+    def test_a_file_that_vanishes_mid_walk_is_skipped(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import os
+
+        (tmp_path / "a.mov").write_bytes(b"x")
+        (tmp_path / "gone.mov").write_bytes(b"x")
+        real = os.scandir
+
+        class Vanishing:
+            def __init__(self, entry: os.DirEntry[str]) -> None:
+                self._entry = entry
+                self.name, self.path = entry.name, entry.path
+
+            def is_dir(self) -> bool:
+                return self._entry.is_dir()
+
+            def is_file(self) -> bool:
+                return self._entry.is_file()
+
+            def stat(self) -> os.stat_result:
+                if self.name == "gone.mov":
+                    raise FileNotFoundError(self.path)
+                return self._entry.stat()
+
+        class Listing:
+            def __init__(self, path: str) -> None:
+                self._inner = real(path)
+
+            def __enter__(self) -> list[Vanishing]:
+                return [Vanishing(entry) for entry in self._inner]
+
+            def __exit__(self, *_: object) -> None:
+                self._inner.close()
+
+        monkeypatch.setattr(os, "scandir", Listing)
+        index = media.index_directory(tmp_path)
+        assert [entry.name for entry in index.singles] == ["a.mov"]
+
+    def test_a_folder_that_cannot_be_listed_is_reported_not_raised(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import os
+
+        (tmp_path / "a.mov").write_bytes(b"x")
+        (tmp_path / "sub").mkdir()
+        real = os.scandir
+
+        def listing(path: str) -> object:
+            if Path(path).name == "sub":
+                raise OSError(5, "Input/output error")
+            return real(path)
+
+        monkeypatch.setattr(os, "scandir", listing)
+        index = media.index_directory(tmp_path)
+        assert [entry.name for entry in index.singles] == ["a.mov"]
+        assert [path for path, _ in index.unreadable] == [tmp_path / "sub"]
+
 
 class TestToolResolution:
     def test_finds_ffprobe(self) -> None:

@@ -11,8 +11,8 @@ list than against a layout. It also makes the page's contents assertable without
 window, which is how a section that quietly lost a field gets caught.
 
 **A field is here only if something already reads it**, with one stated exception: the
-Colour section's ingest folder is read by the chooser in M5.7.3 and is remembered from
-now, because the alternative is a Colour section that is entirely read only and a page
+Color section's ingest folder is read by the chooser in M5.7.3 and is remembered from
+now, because the alternative is a Color section that is entirely read only and a page
 reopened one chunk later for one line. **Every section is live as of M5.12**, Output
 last: the two settings it carries are applied inside a worker process, so they had to
 travel there before the section could mean anything. `Section.enabled` stays, because
@@ -73,7 +73,7 @@ class Section:
 
 GENERAL = "General"
 RULES = "Rules"
-COLOUR = "Colour"
+COLOR = "Color"
 NAMING = "Naming"
 OUTPUT = "Output"
 ADVANCED = "Advanced"
@@ -82,7 +82,7 @@ ADVANCED = "Advanced"
 def sections() -> tuple[Section, ...]:
     """Every section of the page, in the order PRD FR-12 lists them.
 
-    A function rather than a constant because the Colour section reads the pinned
+    A function rather than a constant because the Color section reads the pinned
     config's own names, and a constant would fix them at import time and then disagree
     with the library after a version bump - which is precisely the thing OQ-29 pinned
     the config to prevent.
@@ -131,6 +131,14 @@ def sections() -> tuple[Section, ...]:
                     maximum=100_000,
                 ),
                 Field(
+                    "rules.max_exr_frames",
+                    "Longest EXR shot",
+                    "int",
+                    "Frames. A shot delivered as an EXR sequence longer than this is QC-089, red.",
+                    minimum=1,
+                    maximum=100_000,
+                ),
+                Field(
                     "rules.expected_handle_frames",
                     "Expected handles",
                     "int",
@@ -160,7 +168,7 @@ def sections() -> tuple[Section, ...]:
             ),
         ),
         Section(
-            COLOUR,
+            COLOR,
             (
                 Field(
                     "readonly.config",
@@ -170,24 +178,23 @@ def sections() -> tuple[Section, ...]:
                     "change what a reference looks like (OQ-29).",
                 ),
                 Field(
-                    "readonly.colour_source",
-                    "Colour",
+                    "readonly.color_source",
+                    "Color",
                     "readonly",
-                    "Where each clip's colour comes from. Its AMF names the input "
+                    "Where each clip's color comes from. Its AMF names the input "
                     "transform, the looks and the output transform, and the CLFs beside it "
                     "carry the grade; the tool applies them in that order, in ACES2065-1, "
-                    "and carries the result to ACEScg.",
+                    "and carries the result to the AMF's display, plates included.",
                 ),
                 Field(
                     "readonly.output_transform",
                     "Output transform",
                     "readonly",
-                    "What a reference mp4 is viewed through: the one each clip's AMF names. "
-                    "The plates never see it.",
+                    "What a plate and a reference mp4 are rendered through: the one each clip's AMF names.",
                 ),
             ),
             note=(
-                "There is no colour setting: each clip's AMF says what it is and what was "
+                "There is no color setting: each clip's AMF says what it is and what was "
                 "done to it, and every ID in it is resolved by the ACES config itself."
             ),
         ),
@@ -274,10 +281,10 @@ def sections() -> tuple[Section, ...]:
 
 
 def readonly_values() -> dict[str, str]:
-    """The Colour section's read-only lines, read from core rather than copied."""
+    """The Color section's read-only lines, read from core rather than copied."""
     return {
         "readonly.config": color.BUILTIN_CONFIG,
-        "readonly.colour_source": f"each clip's AMF and its CLFs, applied in {color.ACES}",
+        "readonly.color_source": f"each clip's AMF and its CLFs, applied in {color.ACES}",
         "readonly.output_transform": "each clip's AMF",
         "readonly.log_file": str(paths.log_dir() / logsetup.LOG_FILENAME),
     }
@@ -298,6 +305,7 @@ def to_values(app: AppSettings, rules: qc.RuleSettings) -> dict[str, Any]:
     for name in (
         "min_duration_frames",
         "max_duration_frames",
+        "max_exr_frames",
         "expected_handle_frames",
         "sync_tolerance_frames",
     ):
@@ -333,6 +341,7 @@ def apply_values(
     applied = qc.RuleSettings(
         min_duration_frames=int(values.get("rules.min_duration_frames", current.min_duration_frames)),
         max_duration_frames=int(values.get("rules.max_duration_frames", current.max_duration_frames)),
+        max_exr_frames=int(values.get("rules.max_exr_frames", current.max_exr_frames)),
         expected_handle_frames=int(
             values.get("rules.expected_handle_frames", current.expected_handle_frames)
         ),
@@ -354,8 +363,27 @@ def show_pattern_of(app: AppSettings) -> str:
     One definition because four callers want it: the scan, the planner, the phase B name
     check and the CLF index all take a pattern, and a settings file that stored a copy of
     today's default would keep it after the default moved.
+
+    A stored pattern that does not compile (a hand edit, or one saved before the page
+    checked it) is the default too: every consumer would otherwise raise `re.error`,
+    and the scan would drop the turnover with nothing but a log line (review, 2026-11-08).
     """
-    return app.show_pattern or naming.DEFAULT_SHOW_PATTERN
+    if not app.show_pattern or show_pattern_problem(app.show_pattern) is not None:
+        return naming.DEFAULT_SHOW_PATTERN
+    return app.show_pattern
+
+
+def show_pattern_problem(pattern: str) -> str | None:
+    """Why this show prefix pattern cannot be used, or None when it can
+    (`naming.show_pattern_problem`, which the command line asks too)."""
+    return naming.show_pattern_problem(pattern)
+
+
+def text_problem(key: str, text: str) -> str | None:
+    """What is wrong with a typed text field, for the page to show under it."""
+    if key == "app.show_pattern":
+        return show_pattern_problem(text)
+    return None
 
 
 def apply_to_process(app: AppSettings) -> None:

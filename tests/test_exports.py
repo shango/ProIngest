@@ -78,7 +78,7 @@ def row(clip_name: str = "MELT0001_pl01", rate: FrameRate = RATE_24, **kwargs: o
         deliverable("ref_mp4", "MELT0001_pl01_ref_4k_v01.mp4", "4k", checksum="aa"),
         deliverable("ref_mp4", "MELT0001_pl01_ref_HD_v01.mp4", "HD", checksum="bb"),
         deliverable("audio", "MELT0001_pl01_audio_v01.wav", checksum="cc"),
-        deliverable("hdri", "MELT0001_pl01_HDRI_v01.exr", checksum="dd"),
+        deliverable("hdri_ref", "MELT0001_pl01_HDRI01_v01.mp4", checksum="dd"),
         deliverable("camdata", "MELT0001_pl01_camData_v01.txt", checksum="ee"),
     ]
     for key, value in kwargs.items():
@@ -114,6 +114,30 @@ class TestReportPaths:
         """There is no show to file under, and guessing one writes to the wrong place."""
         with pytest.raises(ValueError, match="no show"):
             exports.report_paths(batch_of(ShotRow(turnover_id="t", clip_name="junk")), Path("/d"))
+
+    def test_a_corrected_shot_code_files_them_under_its_show(self) -> None:
+        """Review, 2026-11-08: the deliverables go under the corrected code's show
+        (`planner.effective_identity`), so the reports, the Fix-it report beside them and the
+        stringout follow it, rather than the show of the code the CSV gave."""
+        corrected = row(shot_code_override="MELT0001")
+        corrected.identity = identity_of("MLET0001_pl01")
+        log, _ = exports.report_paths(batch_of(corrected), Path("/d"), date(2026, 9, 11))
+        assert log.parent == Path("/d/MELT/_reports")
+
+    def test_a_correction_that_does_not_parse_names_no_show(self) -> None:
+        """No name can be built from it, so nothing of that row is delivered under it."""
+        broken = row(shot_code_override="not a code")
+        with pytest.raises(ValueError, match="no show"):
+            exports.report_paths(batch_of(broken), Path("/d"))
+        log, _ = exports.report_paths(batch_of(broken, row("MELT0002_pl01")), Path("/d"))
+        assert log.parent == Path("/d/MELT/_reports")
+
+    def test_a_correction_is_read_under_the_show_pattern_given(self) -> None:
+        corrected = row(shot_code_override="AB12C0001")
+        with pytest.raises(ValueError, match="no show"):
+            exports.report_paths(batch_of(corrected), Path("/d"))
+        log, _ = exports.report_paths(batch_of(corrected), Path("/d"), show_pattern=r"[A-Z]{2}\d{2}[A-Z]")
+        assert log.parent == Path("/d/AB12C/_reports")
 
 
 class TestTheWrite:
@@ -163,6 +187,15 @@ class TestQcLogSheets:
         tracked = exports.tracker_rows(batch)
         assert len(tracked) == 1 and "MELT0001" in tracked[0]
 
+    def test_a_red_warning_renders_and_is_delivered_and_tracked(self, tmp_path: Path) -> None:
+        long = row(qc=[QCResult("QC-089", "error", "row", "EXR shot was 260 frames on the timeline")])
+        batch = batch_of(long)
+        log = exports.write_qc_log(batch, tmp_path / "log.xlsx", date(2026, 11, 5))
+        summary: dict[object, object] = {key: value for key, value in sheet_rows(log, "Summary")[1:]}
+        assert (summary["Rows delivered"], summary["Rows held back"]) == (1, 0)
+        assert exports.issue_lines(batch)[0][5] == "rendered"
+        assert len(exports.tracker_rows(batch)) == 1
+
     def test_a_row_with_an_error_is_held_back_and_untracked(self, tmp_path: Path) -> None:
         batch = batch_of(row(qc=[QCResult("QC-012", "error", "row", "no such file")]))
         log = exports.write_qc_log(batch, tmp_path / "log.xlsx", date(2026, 10, 7))
@@ -187,6 +220,16 @@ class TestQcLogSheets:
         assert found["QC-012"]["Effect"] == "held this shot back"
         assert found["QC-012"]["Shot code"] == "MELT0002"
 
+    def test_only_a_delivery_root_error_says_it_stopped_the_run(self) -> None:
+        """Review, 2026-11-08: QC-151 is batch scope too, and it stops no run."""
+        batch = batch_of(row())
+        batch.qc = [
+            QCResult("QC-062", "error", "batch", "not writable"),
+            QCResult("QC-151", "error", "batch", "x.mp4: does not parse as a delivery name"),
+        ]
+        effects = {line[3]: line[5] for line in exports.issue_lines(batch)}
+        assert effects == {"QC-062": "stopped the run", "QC-151": ""}
+
     def test_one_shots_row_per_shot(self, log: Path) -> None:
         rows = sheet_rows(log, "Shots")
         assert rows[0][:4] == ["Turnover", "Clip name", "Shot code", "Elem"]
@@ -197,8 +240,42 @@ class TestQcLogSheets:
         """Frames are what the tool computes in; timecode is what a human reads."""
         header, values = sheet_rows(log, "Shots")
         row_of = dict(zip(header, values, strict=True))
-        assert row_of["Delivered In"] == 8
-        assert row_of["Delivered In TC"] == "01:00:00:08"
+        assert row_of["Turnover In"] == 8
+        assert row_of["Turnover In TC"] == "01:00:00:08"
+
+    def test_the_turnover_range_is_the_one_it_arrived_with_after_a_trim(self, tmp_path: Path) -> None:
+        """Review, 2026-11-08: these columns were headed "Delivered" and held the snapshot,
+        so after a trim they disagreed with the files. They are the turnover's range, as
+        QC_RULES says, and Final In/Out is the trimmed one."""
+        trimmed = row(current=InOut(12, 200), delivered_range=InOut(12, 200))
+        path = exports.write_qc_log(batch_of(trimmed), tmp_path / "log.xlsx")
+        header, values = sheet_rows(path, "Shots")
+        row_of = dict(zip(header, values, strict=True))
+        assert not any(str(key).startswith("Delivered") for key in header)
+        assert (row_of["Turnover In"], row_of["Turnover Out"]) == (8, 231)
+        assert (row_of["Final In"], row_of["Final Out"]) == (12, 200)
+
+    def test_a_still_s_max_available_of_zero_is_written(self, tmp_path: Path) -> None:
+        """Review, 2026-11-08: a one frame file's last frame is 0, which `or ""` blanked."""
+        still = row("MELT0001_colorChart")
+        assert still.media is not None
+        still.media.frame_count = 1
+        assert still.max_available_out == 0
+        path = exports.write_qc_log(batch_of(still), tmp_path / "log.xlsx")
+        header, values = sheet_rows(path, "Shots")
+        assert dict(zip(header, values, strict=True))["Max available"] == 0
+
+    @pytest.mark.parametrize("status", ["planned", "rendering"])
+    def test_a_row_whose_render_did_not_finish_is_not_delivered(self, tmp_path: Path, status: str) -> None:
+        """Review, 2026-11-08: after a Stop, a row with deliverables still planned or rendering
+        was counted delivered. Only a row whose deliverables all landed is, as the tracker has it."""
+        stopped = row()
+        stopped.deliverables[1].status = status  # type: ignore[assignment]
+        never_ran = row("MELT0002_pl01")
+        never_ran.deliverables = []
+        path = exports.write_qc_log(batch_of(row(), stopped, never_ran), tmp_path / "log.xlsx")
+        summary: dict[object, object] = {key: value for key, value in sheet_rows(path, "Summary")[1:]}
+        assert (summary["Rows delivered"], summary["Rows not rendered"], summary["Rows failed"]) == (1, 2, 0)
 
     def test_the_shots_sheet_names_the_encoding_the_clip_asked_for(self, tmp_path: Path) -> None:
         """Verbatim, because what QC-047 needs corrected is the string somebody typed."""
@@ -321,8 +398,16 @@ class TestShotTracker:
         assert values[2] == "MELT0001"
         assert values[3] == "MELT0001"
         assert values[4] == "MELT0001_pl01_ref_HD_v01.mp4"
-        assert values[5] == "MELT0001_pl01_HDRI_v01.exr", "the HDRI the tool copied (user, 2026-10-07)"
+        assert values[5] == "MELT0001_pl01_HDRI01_v01.mp4", "the HDRI's mp4 (user, 2026-10-30)"
         assert values[6] is None, "CAM Data likewise"
+
+    def test_a_batch_from_before_names_the_exr_it_copied(self, tmp_path: Path) -> None:
+        """Before 2026-10-30 the tool copied the HDRI EXR; an old batch's tracker still names it."""
+        plate = row()
+        plate.deliverables = [item for item in plate.deliverables if item.kind != "hdri_ref"]
+        plate.deliverables.append(deliverable("hdri", "MELT0001_pl01_HDRI_v01.exr", checksum="dd"))
+        tracker = exports.write_shot_tracker(batch_of(plate), tmp_path / "tracker.xlsx")
+        assert sheet_rows(tracker, "Shots")[1][5] == "MELT0001_pl01_HDRI_v01.exr"
 
     def test_an_ldri_leaves_the_hdri_cell_empty(self, tmp_path: Path) -> None:
         """User, 2026-10-08: no LDRI column; an empty HDRI cell says there is no HDRI."""
@@ -331,10 +416,10 @@ class TestShotTracker:
             identity=naming.ShotIdentity("MELT0001", naming.LDRI_KIND, "01"),
             csv_shot_type="LDRI",
             qc=[QCResult("QC-080", "info", "row", "an LDRI")],
-            deliverables=[deliverable("hdri", "MELT0001_pl01_LDRI_01_v01.jpg", checksum="dd")],
+            deliverables=[deliverable("hdri_ref", "MELT0001_pl01_LDRI01_v01.mp4", checksum="dd")],
         )
         plate = row()
-        plate.deliverables = [item for item in plate.deliverables if item.kind != "hdri"]
+        plate.deliverables = [item for item in plate.deliverables if item.kind != "hdri_ref"]
         tracker = exports.write_shot_tracker(batch_of(plate, ldri), tmp_path / "tracker.xlsx")
         values = sheet_rows(tracker, "Shots")[1]
         assert values[4] == "MELT0001_pl01_ref_HD_v01.mp4" and values[5] is None

@@ -8,6 +8,7 @@ for a folder built from them, then the theme, then the window.
 from __future__ import annotations
 
 import logging
+import os
 import platform
 from pathlib import Path
 
@@ -16,7 +17,7 @@ from PySide6.QtWidgets import QApplication, QMessageBox
 
 from proingest import __version__
 from proingest.core import logsetup
-from proingest.ui import paths
+from proingest.ui import background, paths
 from proingest.ui.main_window import MainWindow
 
 THEME_FILE = Path(__file__).parent / "theme.qss"
@@ -90,4 +91,20 @@ def run(argv: list[str] | None = None) -> int:
     )
     window.show()
     window.check_expiry()
-    return app.exec()
+    return leave(app.exec())
+
+
+def leave(code: int) -> int:
+    """The exit code, or the process ended here when a worker thread would not stop.
+
+    A thread left running at close (`background.abandon`) would be destroyed by the
+    interpreter's own teardown, which Qt answers by aborting: a crash report on every
+    close over a hung mount (review, 2026-11-08). Ending the process without that
+    teardown is the clean exit left; the logs are flushed first, and what the thread was
+    doing never wrote under a final name (D11).
+    """
+    if not background.still_running():
+        return code
+    logging.getLogger("proingest").warning("a worker thread was still running at exit; leaving without it")
+    logging.shutdown()
+    os._exit(code)

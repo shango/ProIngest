@@ -56,6 +56,12 @@ leaves the setting alone."""
 
 LINES_HEIGHT = 96
 
+CHECKED_TEXT = ("app.show_pattern",)
+"""Text fields whose value `settings_form.text_problem` checks as it is typed."""
+
+PROBLEM_COLOR = "#cf5a52"
+"""The error dot's red, as the shot list's unrecognized In or Out uses."""
+
 
 class SettingsDialog(QDialog):
     """The page, opened modally over the window.
@@ -160,10 +166,39 @@ class SettingsDialog(QDialog):
             widget = self._folder_editor(str(value or ""))
         elif field.kind == "readonly":
             widget = self._readonly(str(value or ""))
+        elif field.key in CHECKED_TEXT:
+            widget = self._checked_editor(field.key, str(value or ""))
         else:
             widget = QLineEdit(str(value or ""), self)
         self._editors[field.key] = widget
         return widget
+
+    def _checked_editor(self, key: str, current: str) -> QWidget:
+        """A text field with what is wrong with it shown under it as it is typed.
+
+        The value is still simply absent from Apply while it is wrong, as a half typed
+        resolution is; the line says why, because a pattern that will not compile is not
+        visibly unfinished the way `3840` is (review, 2026-11-08).
+        """
+        box = QWidget(self)
+        edit = QLineEdit(current, box)
+        problem = QLabel(box)
+        problem.setObjectName("settings_problem")
+        problem.setWordWrap(True)
+        problem.setStyleSheet(f"color: {PROBLEM_COLOR};")
+        layout = QVBoxLayout(box)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(edit)
+        layout.addWidget(problem)
+
+        def show(text: str) -> None:
+            said = settings_form.text_problem(key, text.strip())
+            problem.setText(f"{said}. Apply keeps the pattern in use." if said else "")
+            problem.setVisible(bool(said))
+
+        edit.textChanged.connect(show)
+        show(current)
+        return box
 
     def _folder_editor(self, current: str) -> QWidget:
         """A path and a chooser beside it. The path stays typable: a person who knows
@@ -181,7 +216,7 @@ class SettingsDialog(QDialog):
 
     def _readonly(self, text: str) -> QWidget:
         """A value the tool states rather than takes. Selectable, because the reason to
-        read it is usually to paste it into a message to the colourist."""
+        read it is usually to paste it into a message to the colorist."""
         label = QLabel(text, self)
         label.setObjectName("settings_readonly")
         label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
@@ -237,7 +272,8 @@ def _read(field: settings_form.Field, widget: QWidget) -> Any:
     if field.kind == "resolution":
         matched = RESOLUTION_PATTERN.match(edit.text())
         return (int(matched.group(1)), int(matched.group(2))) if matched else None
-    return edit.text().strip()
+    text = edit.text().strip()
+    return None if settings_form.text_problem(field.key, text) else text
 
 
 def _lines_of(mapping: dict[str, str]) -> str:

@@ -10,6 +10,7 @@ media item with a frame range (FR-2).
 
 from __future__ import annotations
 
+import os
 import re
 from collections import defaultdict
 from dataclasses import dataclass, field
@@ -140,6 +141,9 @@ class DirectoryIndex:
     root: Path
     sequences: list[Sequence] = field(default_factory=list)
     singles: list[FileEntry] = field(default_factory=list)
+    unreadable: list[tuple[Path, str]] = field(default_factory=list)
+    """Folders the walk could not list, with why: a Drive mount dropping out mid-scan. What
+    was in them is missing from the index, and the scan says so (QC-001)."""
 
     def by_stem(self, stem: str) -> list[Sequence | FileEntry]:
         """Everything whose base name equals `stem` in any case, sequences and files alike.
@@ -176,22 +180,44 @@ IGNORED_FOLDERS = frozenset({"proxy"})
 clips, which made every one of them ambiguous (QC-013)."""
 
 
-def _in_ignored_folder(relative: Path) -> bool:
-    return any(part.casefold() in IGNORED_FOLDERS for part in relative.parts[:-1])
+def _walk(directory: Path, index: DirectoryIndex, entries: list[FileEntry]) -> None:
+    """Every file under `directory`, read through `os.scandir`.
+
+    The directory entry says whether it is a file, and on Windows carries its stat too, so
+    each file costs at most one stat on a slow mount rather than `is_file` and `stat` both
+    (review, 2026-11-08). A file gone between the listing and its stat is not there, and
+    is skipped; a folder that cannot be listed is kept in `index.unreadable`.
+    """
+    try:
+        with os.scandir(directory) as listing:
+            found = list(listing)
+    except OSError as exc:
+        index.unreadable.append((directory, str(exc)))
+        return
+    for entry in found:
+        path = directory / entry.name
+        try:
+            if entry.is_dir():
+                if entry.name.casefold() not in IGNORED_FOLDERS:
+                    _walk(path, index, entries)
+                continue
+            if not entry.is_file():
+                continue
+            stat = entry.stat()
+        except FileNotFoundError:
+            continue
+        entries.append(FileEntry(path=path, size=stat.st_size, mtime=stat.st_mtime))
 
 
 def index_directory(root: Path) -> DirectoryIndex:
     """Walk `root` once and group image sequences.
 
-    Every file is stat-ed exactly once here. Callers must not stat again.
+    Every file is stat-ed at most once here. Callers must not stat again.
     """
     index = DirectoryIndex(root=root)
     entries: list[FileEntry] = []
-    for path in sorted(root.rglob("*")):
-        if _in_ignored_folder(path.relative_to(root)) or not path.is_file():
-            continue
-        stat = path.stat()
-        entries.append(FileEntry(path=path, size=stat.st_size, mtime=stat.st_mtime))
+    _walk(root, index, entries)
+    entries.sort(key=lambda entry: entry.path)
 
     grouped: dict[tuple[Path, str, str, int], list[tuple[int, FileEntry]]] = defaultdict(list)
     for entry in entries:
@@ -391,7 +417,9 @@ def probe(
     if isinstance(item, Sequence):
         # ffprobe invents 25/1 for a single frame, so it is never a source here.
         stated = _exr_stated_rate(header)
-        frame_count, start_frame = item.count, item.first
+        # First to last, gaps and all: a missing frame is QC-015's to report, and counting
+        # only the frames present ended the range short of the real last one (review, 2026-11-08).
+        frame_count, start_frame = item.last - item.first + 1, item.first
     elif header is not None:
         # A lone EXR (a reference still) is one frame, and ffprobe says 0 frames at 25/1.
         stated = _exr_stated_rate(header)
@@ -440,7 +468,7 @@ def probe(
 
 
 def _color_tag(stream: dict[str, Any], key: str) -> str:
-    """A colour tag, or empty when the stream states none; ffprobe says "unknown"."""
+    """A color tag, or empty when the stream states none; ffprobe says "unknown"."""
     value = str(stream.get(key, ""))
     return "" if value in ("", "unknown", "unspecified") else value
 
@@ -516,10 +544,12 @@ def probe_cached(
 ) -> MediaInfo:
     """Probe once per path, size and mtime. FR-3.
 
-    A re-exported file changes size or mtime and so misses the cache on its own.
+    A re-exported file changes size or mtime and so misses the cache on its own. A
+    sequence's key carries its frame range and count too, since its size and mtime are its
+    first frame's: a frame copied in after the scan changes nothing else (review, 2026-11-08).
     """
     if isinstance(item, Sequence):
-        key = f"{item.first_path}|{item.size}|{item.mtime}"
+        key = f"{item.first_path}|{item.size}|{item.mtime}|{item.first}-{item.last}|{item.count}"
     elif isinstance(item, FileEntry):
         key = f"{item.path}|{item.size}|{item.mtime}"
     else:

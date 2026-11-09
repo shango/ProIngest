@@ -73,7 +73,7 @@ IDENTITY = "Identity"
 SOURCE_MEDIA = "Source media"
 FRAME_RATE = "Frame rate"
 RANGE = "Range"
-COLOUR = "Colour"
+COLOR = "Color"
 AUDIO = "Audio"
 TURNOVER = "Turnover"
 QC = "QC"
@@ -83,14 +83,14 @@ SECTION_ORDER = (
     SOURCE_MEDIA,
     FRAME_RATE,
     RANGE,
-    COLOUR,
+    COLOR,
     AUDIO,
     TURNOVER,
     QC,
 )
-"""Section 12.2's order, with Colour added where the chain would put it.
+"""Section 12.2's order, with Color added where the chain would put it.
 
-**Colour is not in section 12.2's table** and is here deliberately: that table was
+**Color is not in section 12.2's table** and is here deliberately: that table was
 written before M4.6 put the source encoding, its origin and the CLF path on the row, and
 all three are exactly what the pane is for - facts about a shot with no column in the
 list. UI_SPEC 12.2 now carries the row and says when it was added.
@@ -245,10 +245,9 @@ def _rate_fields(row: ShotRow, batch: Batch) -> list[Field]:
     return fields
 
 
-def _range_fields(row: ShotRow, batch: Batch, turnover: Turnover | None) -> list[Field]:
-    start = turnover.timeline_start if turnover else 0
-    context = row.edit_context(batch.project_rate, start, "source")
-    record = row.edit_context(batch.project_rate, start, "record")
+def _range_fields(row: ShotRow, batch: Batch) -> list[Field]:
+    context = row.edit_context(batch.project_rate, "source")
+    record = row.edit_context(batch.project_rate, "record")
 
     def source_tc(frame: int) -> str:
         return frames.source_frame_to_timecode(frame, context)
@@ -257,8 +256,8 @@ def _range_fields(row: ShotRow, batch: Batch, turnover: Turnover | None) -> list
         Field("Record in/out", f"{row.record_in} - {row.record_out}"),
         Field(
             "Record timecode",
-            f"{frames.frames_to_timecode(start + row.record_in, record.fps)} - "
-            f"{frames.frames_to_timecode(start + row.record_out, record.fps)}",
+            f"{frames.frames_to_timecode(row.record_in, record.fps)} - "
+            f"{frames.frames_to_timecode(row.record_out, record.fps)}",
         ),
     ]
     if row.snapshot is not None:
@@ -284,10 +283,10 @@ def _range_fields(row: ShotRow, batch: Batch, turnover: Turnover | None) -> list
     return fields
 
 
-def _colour_fields(row: ShotRow) -> list[Field]:
+def _color_fields(row: ShotRow) -> list[Field]:
     """The source encoding, where it came from, the AMF and its looks (2026-09-28).
 
-    Facts the list has no column for. The encoding is the colour space the AMF's input
+    Facts the list has no column for. The encoding is the color space the AMF's input
     transform resolved to; the looks are in the order they are applied, CLFs by file
     name, so they can be read against the AMF itself.
     """
@@ -364,9 +363,6 @@ def turnover_fields(turnover: Turnover, rate: FrameRate) -> list[Field]:
         fields.append(Field("EDL", str(turnover.edl_path), is_path=True))
     if turnover.csv_path is not None:
         fields.append(Field("Metadata CSV", str(turnover.csv_path), is_path=True))
-    if turnover.timeline_start:
-        started = frames.frames_to_timecode(turnover.timeline_start, rate.as_float())
-        fields.append(Field("Timeline start", f"{turnover.timeline_start} ({started})"))
     return fields
 
 
@@ -409,8 +405,8 @@ def describe_row(row: ShotRow, batch: Batch) -> list[Section]:
         Section(IDENTITY, tuple(_identity_fields(row))),
         Section(SOURCE_MEDIA, tuple(_media_fields(row))),
         Section(FRAME_RATE, tuple(_rate_fields(row, batch))),
-        Section(RANGE, tuple(_range_fields(row, batch, turnover))),
-        Section(COLOUR, tuple(_colour_fields(row))),
+        Section(RANGE, tuple(_range_fields(row, batch))),
+        Section(COLOR, tuple(_color_fields(row))),
         Section(AUDIO, tuple(_audio_fields(row, batch))),
         Section(TURNOVER, tuple(turnover_fields(turnover, batch.project_rate)) if turnover else ()),
         Section(QC, tuple(_qc_fields([row]))),

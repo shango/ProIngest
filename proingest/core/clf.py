@@ -1,8 +1,8 @@
-"""Ben's final EDL, which is the cut, and a shot's colour chain from its AMF.
+"""Ben's final EDL, which is the cut, and a shot's color chain from its AMF.
 
-COLOR_AND_FORMAT section 1. Colour is decided before the tool runs. Since 2026-09-28
+COLOR_AND_FORMAT section 1. Color is decided before the tool runs. Since 2026-09-28
 (user) Ben's session hands over the final EDL, which is **the cut** (the approved In/Out
-of every event), and one AMF per event with the CLFs it names, which is **the colour**
+of every event), and one AMF per event with the CLFs it names, which is **the color**
 (`core/amf.py`). The EDL's `*ASC_SOP` lines, if any, are no longer read. This module keeps
 its name: it is still where the session's cut is read, and `ShotColor` is where a shot's
 chain is put together.
@@ -52,7 +52,7 @@ class ClfError(RuntimeError):
 
 @dataclass(frozen=True)
 class ConformEvent:
-    """One event of the colour session's final EDL.
+    """One event of the color session's final EDL.
 
     Source and record values are frames at the EDL's rate, and both ranges are
     inclusive: an EDL's own out timecode is the first frame after the cut and it is
@@ -114,10 +114,10 @@ class ConformEvent:
 
 @dataclass(frozen=True)
 class ShotColor:
-    """One shot's colour, in the form that survives a pickle to a worker process.
+    """One shot's color, in the form that survives a pickle to a worker process.
 
     A render job is self contained (`planner.DeliverableJob`), so what a worker needs to
-    know about colour travels on it. That rules out holding an `ocio` object: it does not
+    know about color travels on it. That rules out holding an `ocio` object: it does not
     pickle, and a transform built in the parent could not cross a spawn boundary anyway.
     What crosses is names and paths, which are plain data.
 
@@ -126,7 +126,7 @@ class ShotColor:
     """
 
     source_encoding: str | None = None
-    """The colour space the AMF's input transform converts from, or None (QC-046, QC-047).
+    """The color space the AMF's input transform converts from, or None (QC-046, QC-047).
     Nothing renders without it."""
 
     source_encoding_origin: SourceEncodingOrigin | None = None
@@ -143,9 +143,10 @@ class ShotColor:
     """What the AMF's output transform resolved to: where a reference is viewed."""
 
     def plate_transforms(self) -> list[ocio.Transform]:
-        """The plate branch: into ACES2065-1, the looks in order, out to ACEScg.
+        """Into ACES2065-1, the looks in order, out to ACEScg: the scene linear chain.
 
-        One leg when there is no look, which is the same pixels in one transform.
+        One leg when there is no look, which is the same pixels in one transform. A plate
+        goes on through `view_transforms` since 2026-11-06 (user).
         """
         if self.source_encoding is None:
             raise ClfError(
@@ -166,10 +167,10 @@ class ShotColor:
         return legs
 
     def view_transforms(self) -> list[ocio.Transform]:
-        """The view branch: the plate branch, then the AMF's output transform.
+        """The scene linear chain, then the AMF's output transform: a plate and a reference.
 
-        The two branches share everything up to linear ACEScg, which is why this is the
-        plate chain plus one leg rather than a chain of its own.
+        Everything up to linear ACEScg is shared with `plate_transforms`, which is why
+        this is that chain plus one leg rather than a chain of its own.
         """
         if self.display is None or self.view is None:
             raise ClfError("no output transform: the clip's AMF names none the config has (QC-079)")
@@ -177,7 +178,7 @@ class ShotColor:
 
 
 def resolved_encoding(row: ShotRow) -> str | None:
-    """The colour space this row's AMF named, or None when it names none the config has."""
+    """The color space this row's AMF named, or None when it names none the config has."""
     if row.source_encoding is None:
         return None
     try:
@@ -187,7 +188,7 @@ def resolved_encoding(row: ShotRow) -> str | None:
 
 
 def has_grade(row: ShotRow) -> bool:
-    """Whether the colourist left this row a grade: a CLF in its AMF. QC-009 asks."""
+    """Whether the colorist left this row a grade: a CLF in its AMF. QC-009 asks."""
     return row.grade is not None and row.grade.graded
 
 
@@ -253,7 +254,7 @@ def load_session(
 def shot_color(row: ShotRow) -> ShotColor:
     """What this row's deliverables are rendered through, read off the row alone.
 
-    A planned row and a reopened batch resolve their colour the same way, from what the
+    A planned row and a reopened batch resolve their color the same way, from what the
     scan put on the row out of its AMF.
     """
     grade = row.grade
@@ -281,7 +282,7 @@ def approved_in_out(event: ConformEvent, media: MediaInfo) -> InOut:
 
 
 def read_final_edl(path: Path, rate: FrameRate) -> list[ConformEvent]:
-    """Parse the colour session's final EDL into events, in file order.
+    """Parse the color session's final EDL into events, in file order.
 
     Video events only: an audio only event conforms nothing, and an EDL that carries
     both has the picture event for the same cut anyway.
@@ -326,6 +327,9 @@ _EVENT_HEAD = re.compile(
 )
 _TIMECODE = re.compile(r"\d{1,2}:\d{2}:\d{2}[:;]\d{2}")
 _FROM_CLIP = re.compile(r"^\*\s*FROM CLIP NAME:\s*(?P<name>.+?)\s*$", re.IGNORECASE)
+_TO_CLIP = re.compile(r"^\*\s*TO CLIP NAME:\s*(?P<name>.+?)\s*$", re.IGNORECASE)
+"""The incoming clip of a transition. Under a dissolve's incoming event `FROM CLIP NAME` names
+the outgoing clip, so this one names the event (review, 2026-11-08)."""
 _MOTION = re.compile(r"^M2\s+\S+\s+(?P<speed>-?\d+(?:\.\d+)?)\s+")
 """A motion effect: `M2   AX   000.0   00:00:40:10`, reel, speed in frames a second, entry."""
 
@@ -346,14 +350,18 @@ class _Event:
     def __init__(self, head: re.Match[str]) -> None:
         self.head = head
         self.clip_name = ""
+        self.named_by_to = False
         self.speed: float | None = None
 
     def comment(self, line: str) -> None:
         from_clip = _FROM_CLIP.match(line)
+        to_clip = _TO_CLIP.match(line)
         motion = _MOTION.match(line)
         if motion is not None:
             self.speed = float(motion["speed"])
-        elif from_clip is not None:
+        elif to_clip is not None:
+            self.clip_name, self.named_by_to = to_clip["name"], True
+        elif from_clip is not None and not self.named_by_to:
             self.clip_name = from_clip["name"]
 
     def build(self, path: Path, rate: FrameRate) -> list[ConformEvent]:

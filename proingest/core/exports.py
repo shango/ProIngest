@@ -60,15 +60,25 @@ def report_names(batch: Batch, when: date | None = None) -> tuple[str, str]:
     )
 
 
-def report_paths(batch: Batch, delivery_root: Path, when: date | None = None) -> tuple[Path, Path]:
+def report_paths(
+    batch: Batch,
+    delivery_root: Path,
+    when: date | None = None,
+    show_pattern: str = naming.DEFAULT_SHOW_PATTERN,
+) -> tuple[Path, Path]:
     """Those two files under `<delivery_root>/<show>/_reports/`.
 
     The show comes from the first row that has a shot code, because NAMING_SPEC section
     5 puts `_reports/` under the show and a batch is one turnover set. A batch that
     spans two shows writes both reports under the first, which is visible in the path
     rather than silent, and is a one line change if it ever happens.
+
+    **The code is the one the deliverables are named for** (`planner.effective_identity`):
+    an editor's correction from `MLET0001` to `MELT0001` sends the plates to `MELT/`, so
+    the reports go there too, under the same show pattern the names were built with.
     """
-    show = next((row.identity.show for row in batch.rows if row.identity), None)
+    identities = (planner.effective_identity(row, show_pattern) for row in batch.rows)
+    show = next((identity.show for identity in identities if identity is not None), None)
     if show is None:
         raise ValueError("no row in the batch has a shot code, so there is no show to file under")
     folder = naming.reports_dir(delivery_root, show)
@@ -113,7 +123,7 @@ def _rule_ids(results: list[QCResult], severity: str) -> str:
 
 SHOTS_HEADERS = (
     "Turnover", "Clip name", "Shot code", "Elem", "Source", "FPS", "Res",
-    "Delivered In", "Delivered Out", "Delivered In TC", "Delivered Out TC",
+    "Turnover In", "Turnover Out", "Turnover In TC", "Turnover Out TC",
     "Final In", "Final Out", "Duration", "Max available", "Audio", "Edited",
     "Source encoding",
     "Source codec", "Source pixel format", "Source bit depth", "Source chroma",
@@ -122,7 +132,11 @@ SHOTS_HEADERS = (
 )  # fmt: skip
 """The QC log's own columns, QC_RULES "QC log structure".
 
-Source encoding is the colour space the clip's AMF input transform resolved to in the
+The four **Turnover** columns are the range the turnover arrived with (`ShotRow.snapshot`),
+and Final In/Out the range as the editor left it, which is what a run delivers. They
+were headed "Delivered" until 2026-11-08 (review), which a trim made untrue.
+
+Source encoding is the color space the clip's AMF input transform resolved to in the
 pinned config (user, 2026-09-28); empty means the AMF named none the config has, which
 is QC-046 or QC-047. The looks applied after it are in the delivered EXR header
 (`exr.LOOKS_ATTRIBUTE`).
@@ -131,7 +145,7 @@ The eight **Source** columns after it are the file as ffprobe read it, so whoeve
 checks a turnover can see whether the media is usable for VFX without opening it: an
 8 bit 4:2:0 clip labelled BT.709 beside a log encoding is visible here at a glance
 (user, 2026-09-24). They report and never block; QC-020 is the rule that warns. A
-colour tag the file does not state reads `not stated`, so an absent label is told apart
+color tag the file does not state reads `not stated`, so an absent label is told apart
 from a row with no media, whose cells are empty."""
 
 NOT_STATED = "not stated"
@@ -157,6 +171,7 @@ def _write_summary(book: Workbook, batch: Batch, when: date) -> None:
         ("Rows skipped", sum(1 for row in batch.rows if _row_state(row) == "skipped")),
         ("Rows held back", sum(1 for row in batch.rows if _row_state(row) == "held")),
         ("Rows failed", sum(1 for row in batch.rows if _row_state(row) == "failed")),
+        ("Rows not rendered", sum(1 for row in batch.rows if _row_state(row) == "not rendered")),
         ("Deliverables", sum(len(row.deliverables) for row in batch.rows)),
         ("Errors", counts["error"]),
         ("Warnings", counts["warning"]),
@@ -184,11 +199,14 @@ def _every_result(batch: Batch) -> list[list[QCResult]]:
 
 
 def _row_state(row: ShotRow) -> str:
-    """`skipped`, `held`, `failed` or `delivered`, which is what the Summary counts.
+    """`skipped`, `held`, `failed`, `delivered` or `not rendered`, which is what the Summary counts.
 
     Held is a row an error kept back until it is fixed and re-scanned (missing media, or
-    colour the tool cannot recreate). A row with nothing planned counts as delivered: the
-    planner had nothing to do for it, which is not a render that did not finish.
+    color the tool cannot recreate). **Delivered is a row whose deliverables all landed**,
+    the tracker's own test (`_landed`). Everything else is not rendered: deliverables still
+    planned or rendering when a run was stopped, a batch that has not run, or a row with
+    nothing to deliver, such as a style frame (review, 2026-11-08: these all counted as
+    delivered).
     """
     if row.skipped:
         return "skipped"
@@ -196,7 +214,7 @@ def _row_state(row: ShotRow) -> str:
         return "held"
     if any(item.status == "failed" for item in row.deliverables):
         return "failed"
-    return "delivered"
+    return "delivered" if _landed(row) else "not rendered"
 
 
 def _write_shots(book: Workbook, batch: Batch) -> None:
@@ -221,7 +239,7 @@ def _write_shots(book: Workbook, batch: Batch) -> None:
                 current.in_frame if current else "",
                 current.out_frame if current else "",
                 row.duration or "",
-                row.max_available_out or "",
+                "" if row.max_available_out is None else row.max_available_out,
                 str(row.audio_path) if row.audio_path else "",
                 "yes" if row.was_edited else "",
                 row.source_encoding or "",
@@ -287,15 +305,16 @@ def _checksum(item: Deliverable) -> str:
 ISSUES_HEADERS = ("Turnover", "Shot code", "Clip name", "Rule", "Level", "Effect", "Message")
 
 RECORD_ONLY_RULES = frozenset({"QC-048", "QC-060", "QC-061", "QC-080", "QC-085", "QC-088"})
-"""Results that record what the tool did rather than anything about the clip: the colour
+"""Results that record what the tool did rather than anything about the clip: the color
 chain, the version, an HDRI or style frame being what it is. Kept off the Issues sheet."""
 
 
 def issue_lines(batch: Batch) -> list[list[str]]:
     """Every finding with its words, one line each (user, 2026-10-07: "expand the qc list
     that gets exported afterward to pick up non-blocker issues"). The Effect says what it
-    did: an error at batch scope stopped the run, a row's error held that shot back, and
-    everything else rendered."""
+    did: an error about the delivery root stopped the run (`qc.RUN_STOPPING_RULES`), a row's
+    error held that shot back, and everything else rendered. A batch scope QC-151 stops
+    nothing, since 2026-11-08: it reports on names already delivered."""
     names = {t.turnover_id: t.folder.name for t in batch.turnovers}
     lines: list[list[str]] = []
 
@@ -307,14 +326,15 @@ def issue_lines(batch: Batch) -> list[list[str]]:
         lines.append([turnover, code, clip, result.rule_id, result.severity, effect, result.message])
 
     for result in batch.qc:
-        add("", None, result, "stopped the run" if result.severity == "error" else "")
+        stopped = result.severity == "error" and result.rule_id in qc.RUN_STOPPING_RULES
+        add("", None, result, "stopped the run" if stopped else "")
     for turnover in batch.turnovers:
         for result in turnover.qc:
             add(turnover.folder.name, None, result, "")
     for row in batch.rows:
         where = names.get(row.turnover_id, row.turnover_id)
         for result in row.qc:
-            held = result.severity == "error" and not result.rule_id.startswith("QC-1")
+            held = result.holds and not result.rule_id.startswith("QC-1")
             add(where, row, result, "held this shot back" if held else "rendered")
         for item in row.deliverables:
             for result in item.qc:
@@ -435,11 +455,19 @@ def tracker_row(shot_code: str, rows: list[ShotRow], stringout: str = "") -> lis
     cells[2] = shot_code
     cells[3] = shot_code
     cells[4] = reference.name if reference is not None else ""
+    # The HDRI's pre-render mp4 (user, 2026-10-30: "name the mp4 in the HDRI column"), since the
+    # EXR is Ben's to deliver by hand; a batch from before then names the EXR the tool copied.
+    # CAM Data stays the studio's column. An LDRI has no column: the HDRI cell is left empty,
+    # which says there is no HDRI (user, 2026-10-08).
     hdri = next(
-        (item for row in rows if not qc.is_ldri(row) and (item := _delivered(row, "hdri")) is not None), None
+        (
+            item
+            for kind in ("hdri_ref", "hdri")
+            for row in rows
+            if not qc.is_ldri(row) and (item := _delivered(row, kind)) is not None
+        ),
+        None,
     )
-    # The HDRI the tool copied (user, 2026-10-07). CAM Data stays the studio's column. An LDRI
-    # has no column: the HDRI cell is left empty, which says there is no HDRI (user, 2026-10-08).
     cells[5] = hdri.name if hdri is not None else ""
     cells[7] = _plate_marks(plate)
     cells[8] = TRACKER_FPS

@@ -9,8 +9,9 @@ import OpenEXR
 import pytest
 
 from proingest.__main__ import _ProgressPrinter, main
-from proingest.core import batchfile, color, expiry, exr, qc, render
+from proingest.core import batchfile, expiry, exr, qc, render
 from proingest.core.models import Batch, QCResult
+from tests.fixtures import color as color_fixtures
 from tests.fixtures import media as fixtures
 
 FOLDER = "turnover001_02_23_2026_danielluckett"
@@ -116,6 +117,17 @@ class TestScanCommand:
 
 
 class TestTopLevel:
+    @pytest.mark.parametrize("command", ["scan", "run", "qc"])
+    def test_an_unusable_show_pattern_is_refused_at_the_prompt(
+        self, command: str, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Review, 2026-11-08: `[A-Z` raised `re.error` out of the scan or plan. It is
+        refused before anything is read, as Settings refuses it."""
+        with pytest.raises(SystemExit) as exit_info:
+            main([command, str(tmp_path / "x"), "--show-pattern", "[A-Z"])
+        assert exit_info.value.code == 2
+        assert "not a usable pattern" in capsys.readouterr().err
+
     def test_no_command_launches_the_ui(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """M5.1: that is what `proingest` with no subcommand is for.
 
@@ -150,6 +162,7 @@ class TestTopLevel:
         assert "proingest" in capsys.readouterr().out
 
 
+@pytest.mark.slow
 class TestRunCommand:
     """`proingest run` is the whole pipeline headless: load, plan, render, save."""
 
@@ -213,7 +226,7 @@ class TestRunCommand:
 
         A clean turnover has nothing for them to say, which since the scan ingests the
         EDL itself is the ordinary case: what used to print QC-008 here was a batch
-        waiting on a colour session that no longer exists as a separate step (OQ-74).
+        waiting on a color session that no longer exists as a separate step (OQ-74).
         So what this asserts is that the pre-flight ran and let the plan through.
         """
         batch_path = self.scanned(tmp_path)
@@ -260,6 +273,7 @@ class TestRunCommand:
         assert "delivery root" in capsys.readouterr().err
 
 
+@pytest.mark.slow
 class TestTheGrade:
     """The grade comes from each event's AMF in the turnover folder, read at scan (2026-09-28)."""
 
@@ -279,13 +293,14 @@ class TestTheGrade:
             "ACES 1.3 Reference Gamut Compression; MELT0001_pl01_0_ClipGraph_CorrectorNode_1.clf"
         )
         assert str(header[exr.AMF_ATTRIBUTE]).endswith(".amf")
-        assert header[exr.COLORSPACE_ATTRIBUTE] == color.PLATE_SPACE
+        assert header[exr.COLORSPACE_ATTRIBUTE] == color_fixtures.DISPLAY
 
-    def test_there_is_no_colour_session_flag_any_more(self) -> None:
+    def test_there_is_no_color_session_flag_any_more(self) -> None:
         with pytest.raises(SystemExit):
             main(["run", "x.pibatch", "--color-session", "final.edl"])
 
 
+@pytest.mark.slow
 class TestQcCommand:
     """`proingest qc` is M4.3 headless: reopen a batch, re-run the rules, write both sheets."""
 

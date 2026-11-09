@@ -52,7 +52,7 @@ def current_compression_level() -> float:
 
 
 CHROMATICITIES = (0.713, 0.293, 0.165, 0.830, 0.128, 0.044, 0.32168, 0.33767)
-"""**AP1 primaries with the ACES white point**, COLOR_AND_FORMAT section 1.
+"""**AP1 primaries with the ACES white point**, for a reference still, COLOR_AND_FORMAT section 1.
 
 Written as the eight floats the attribute is defined as, red through white, so a
 reader knows the primaries the linear data is in without being told. This constant is
@@ -61,14 +61,19 @@ and it moved here from sRGB and Rec.709 in M4.5.4 along with everything else tha
 to assume a display referred source.
 """
 
+REC709_CHROMATICITIES = (0.64, 0.33, 0.30, 0.60, 0.15, 0.06, 0.3127, 0.3290)
+"""Rec.709 primaries, the same as sRGB's, with D65: what a display referred plate is in."""
+
 COLORSPACE_ATTRIBUTE = "proingest/colorspace"
 """What the pixels are, stated in the file. COLOR_AND_FORMAT section 1.
 
-Always `color.PLATE_SPACE` now, because the tool transforms every plate it writes into
-it rather than passing the source through. It was a parameter while the source's own
-space was what the file carried; the value is a fact about the deliverable, so it is a
-constant.
+The AMF's display on a plate since 2026-11-06 (user), `color.PLATE_SPACE` on a reference
+still. A plate delivered before then says `color.PLATE_SPACE` too, which is how the stringout
+tells it from one with the output transform already in it (`is_display_referred`).
 """
+
+VIEW_ATTRIBUTE = "proingest/view"
+"""The view a display referred plate was rendered through, beside its display."""
 
 SOURCE_ENCODING_ATTRIBUTE = "proingest/source_encoding"
 """The log encoding the source was read as, and therefore the input transform applied."""
@@ -82,7 +87,7 @@ so the header never carries a source for a name it does not state.
 """
 
 AMF_ATTRIBUTE = "proingest/amf"
-"""The AMF the colour came from, by file name (user, 2026-09-28)."""
+"""The AMF the color came from, by file name (user, 2026-09-28)."""
 
 LOOKS_ATTRIBUTE = "proingest/looks"
 """The looks applied, in order, as the AMF lists them: config looks by name, CLFs by file
@@ -116,6 +121,8 @@ class ExrHeader:
     is_drop_frame: bool = False
     frames_per_second: tuple[int, int] | None = None
     """Rate as (numerator, denominator). ffprobe cannot know this from one frame."""
+    colorspace: str | None = None
+    """`COLORSPACE_ATTRIBUTE`, on a file this tool wrote."""
 
     @property
     def windows_match(self) -> bool:
@@ -165,6 +172,7 @@ def read_header(path: Path) -> ExrHeader:
             timecode_text = _format_timecode(timecode) if timecode is not None else None
             is_drop_frame = bool(getattr(timecode, "dropFrame", False)) if timecode is not None else False
             fps = (int(rate.numerator), int(rate.denominator)) if rate is not None else None
+            colorspace = header.get(COLORSPACE_ATTRIBUTE)
     except Exception as exc:  # the bindings raise several unrelated types
         raise ExrError(f"could not read EXR header from {path}: {exc}") from exc
 
@@ -179,7 +187,14 @@ def read_header(path: Path) -> ExrHeader:
         timecode=timecode_text,
         is_drop_frame=is_drop_frame,
         frames_per_second=fps,
+        colorspace=colorspace,
     )
+
+
+def is_display_referred(path: Path) -> bool:
+    """Whether this delivered frame has its output transform in it. A plate from before
+    2026-11-06 says `color.PLATE_SPACE`, and an older one says nothing."""
+    return read_header(path).colorspace not in (None, color.PLATE_SPACE)
 
 
 def _format_timecode(value: Any) -> str:
@@ -208,28 +223,62 @@ def header_timecode_frames(header: ExrHeader, fps: float) -> int | None:
 
 
 def read_pixels(path: Path) -> npt.NDArray[np.float32]:
-    """Read one EXR's colour channels as float32 `(h, w, channels)`.
+    """Read one EXR's color channels as float32 `(h, w, channels)`.
 
     Float32 rather than the file's own type because everything downstream, the
     resample in particular, works in float and half would lose precision twice.
     Any extra channel the file carries is dropped: a plate delivers RGB, or RGBA
     when the source has a real alpha.
+
+    **The frame is the display window**, which is what ffprobe reports as the source's
+    size and so what a job is sized from. A CG render often stores only its data window, a
+    bounding box of what is not empty; that is placed where it belongs, zero outside it, and
+    anything outside the display window is cut off (review, 2026-11-08). Returned as it was
+    read when the two windows agree, which is every frame this tool writes.
     """
     try:
         with OpenEXR.File(str(path)) as handle:
+            header = handle.header()
+            data_window = _window(header["dataWindow"])
+            display_window = _window(header["displayWindow"])
             channels = handle.parts[0].channels
             for grouped in (RGBA_CHANNELS, RGB_CHANNELS):
                 if grouped in channels:
-                    return np.array(channels[grouped].pixels, dtype=np.float32)
-            names = _colour_channel_names(channels, path)
-            return np.stack([np.asarray(channels[name].pixels, dtype=np.float32) for name in names], axis=-1)
+                    pixels = np.array(channels[grouped].pixels, dtype=np.float32)
+                    break
+            else:
+                names = _color_channel_names(channels, path)
+                pixels = np.stack(
+                    [np.asarray(channels[name].pixels, dtype=np.float32) for name in names], axis=-1
+                )
     except ExrError:
         raise
     except Exception as exc:  # the bindings raise several unrelated types
         raise ExrError(f"could not read pixels from {path}: {exc}") from exc
+    return _in_display_window(pixels, data_window, display_window)
 
 
-def _colour_channel_names(channels: Any, path: Path) -> tuple[str, ...]:
+def _in_display_window(
+    pixels: npt.NDArray[np.float32],
+    data_window: tuple[int, int, int, int],
+    display_window: tuple[int, int, int, int],
+) -> npt.NDArray[np.float32]:
+    """The data window's pixels on a canvas the size of the display window, zero elsewhere."""
+    if data_window == display_window:
+        return pixels
+    left, top, right, bottom = display_window
+    canvas = np.zeros((bottom - top + 1, right - left + 1, pixels.shape[2]), dtype=np.float32)
+    # Both windows in canvas coordinates, then their overlap: the part of the data that shows.
+    x0, y0 = data_window[0] - left, data_window[1] - top
+    x1, y1 = x0 + pixels.shape[1], y0 + pixels.shape[0]
+    cx0, cy0 = max(x0, 0), max(y0, 0)
+    cx1, cy1 = min(x1, canvas.shape[1]), min(y1, canvas.shape[0])
+    if cx0 < cx1 and cy0 < cy1:
+        canvas[cy0:cy1, cx0:cx1] = pixels[cy0 - y0 : cy1 - y0, cx0 - x0 : cx1 - x0]
+    return canvas
+
+
+def _color_channel_names(channels: Any, path: Path) -> tuple[str, ...]:
     """R, G, B and A when they are separate channels rather than one grouped array."""
     if not all(name in channels for name in RGB_CHANNELS):
         raise ExrError(f"{path} has no RGB channels (found {sorted(channels)})")
@@ -259,6 +308,20 @@ def provenance(shot_color: clf.ShotColor) -> dict[str, Any]:
     return header
 
 
+def _scene_space() -> dict[str, Any]:
+    return {"chromaticities": CHROMATICITIES, COLORSPACE_ATTRIBUTE: color.PLATE_SPACE}
+
+
+def _display_space(shot_color: clf.ShotColor) -> dict[str, Any]:
+    """The header's account of a display referred plate. Primaries are stated only for a
+    display known to be Rec.709 or sRGB; any other AMF display leaves them out, not guessed."""
+    display = shot_color.display or ""
+    header: dict[str, Any] = {COLORSPACE_ATTRIBUTE: display, VIEW_ATTRIBUTE: shot_color.view or ""}
+    if "Rec.709" in display or "sRGB" in display:
+        header["chromaticities"] = REC709_CHROMATICITIES
+    return header
+
+
 def write_frame(
     path: Path,
     pixels: npt.NDArray[Any],
@@ -266,6 +329,7 @@ def write_frame(
     fps: float = 24.0,
     compression_level: float | None = None,
     shot_color: clf.ShotColor = clf.DEFAULT_SHOT_COLOR,
+    display_referred: bool = False,
 ) -> None:
     """Write one delivery frame: DWAA, half float, data window equal to display window.
 
@@ -280,6 +344,7 @@ def write_frame(
     `shot_color` is **recorded, never applied**: the pixels arrive already transformed
     and this states what was done to them. It is what `render.py` holds anyway, so the
     header cannot describe a chain other than the one the frame went through.
+    `display_referred` says the pixels went on through its output transform, as a plate's do.
 
     The file is not read back here. Every frame is opened again by QC-103 after the
     sequence lands, and doing it twice would double the IO for nothing.
@@ -291,8 +356,7 @@ def write_frame(
         "compression": OpenEXR.DWAA_COMPRESSION,
         "dwaCompressionLevel": _LEVEL if compression_level is None else float(compression_level),
         "type": OpenEXR.scanlineimage,
-        "chromaticities": CHROMATICITIES,
-        COLORSPACE_ATTRIBUTE: color.PLATE_SPACE,
+        **(_display_space(shot_color) if display_referred else _scene_space()),
         **provenance(shot_color),
     }
     if timecode_frames is not None:

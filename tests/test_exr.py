@@ -7,6 +7,7 @@ at the point it is written, not only at the point it is verified.
 
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 
 import numpy as np
@@ -104,8 +105,8 @@ class TestWriteFrame:
 
 
 class TestWrittenMetadata:
-    def test_every_delivered_frame_states_acescg(self, tmp_path: Path) -> None:
-        """The tool transforms every plate into it, so the value is not a parameter."""
+    def test_a_scene_linear_frame_states_acescg(self, tmp_path: Path) -> None:
+        """A reference still, and a plate delivered before 2026-11-06."""
         path = tmp_path / "frame.exr"
         exr.write_frame(path, image())
         with OpenEXR.File(str(path)) as handle:
@@ -141,6 +142,30 @@ class TestWrittenMetadata:
         with OpenEXR.File(str(path)) as handle:
             assert exr.SOURCE_ENCODING_ATTRIBUTE not in handle.header()
 
+    def test_a_display_referred_frame_states_its_display_and_rec709(self, tmp_path: Path) -> None:
+        path = tmp_path / "frame.exr"
+        shown = clf.ShotColor(display="Gamma 2.2 Rec.709 - Display", view="ACES 2.0 - SDR 100 nits (Rec.709)")
+        exr.write_frame(path, image(), shot_color=shown, display_referred=True)
+        with OpenEXR.File(str(path)) as handle:
+            header = dict(handle.header())
+        assert header[exr.COLORSPACE_ATTRIBUTE] == shown.display
+        assert header[exr.VIEW_ATTRIBUTE] == shown.view
+        written = np.asarray(header["chromaticities"], dtype=np.float64)
+        assert np.allclose(written, exr.REC709_CHROMATICITIES, atol=1e-6)
+
+    def test_a_display_of_other_primaries_states_none_rather_than_a_guess(self, tmp_path: Path) -> None:
+        path = tmp_path / "frame.exr"
+        shown = clf.ShotColor(display="P3-D65 - Display", view="ACES 2.0 - SDR 100 nits (P3 D65)")
+        exr.write_frame(path, image(), shot_color=shown, display_referred=True)
+        with OpenEXR.File(str(path)) as handle:
+            assert "chromaticities" not in handle.header()
+
+    def test_a_frame_with_no_colorspace_is_not_display_referred(self, tmp_path: Path) -> None:
+        path = tmp_path / "frame.exr"
+        channels = {"RGB": image(channels=3).astype(np.float16)}
+        OpenEXR.File({"compression": OpenEXR.ZIP_COMPRESSION}, channels).write(str(path))
+        assert not exr.is_display_referred(path)
+
     def test_primaries_are_written(self, tmp_path: Path) -> None:
         path = tmp_path / "frame.exr"
         exr.write_frame(path, image())
@@ -165,7 +190,7 @@ class TestProvenance:
     """What a graded plate says was done to it. COLOR_AND_FORMAT section 1.
 
     A delivered EXR leaves the tool and the studio, so the header is the only record a
-    facility with no colour session has. These assert the file, not the dict.
+    facility with no color session has. These assert the file, not the dict.
     """
 
     def shot_color(self, tmp_path: Path) -> clf.ShotColor:
@@ -257,7 +282,7 @@ class TestReadPixels:
         with pytest.raises(exr.ExrError, match="could not read pixels"):
             exr.read_pixels(tmp_path / "absent.exr")
 
-    def test_a_file_without_colour_channels_is_an_exr_error(self, tmp_path: Path) -> None:
+    def test_a_file_without_color_channels_is_an_exr_error(self, tmp_path: Path) -> None:
         path = tmp_path / "depth.exr"
         OpenEXR.File({}, {"Z": np.zeros((8, 8), dtype=np.float32)}).write(str(path))
         with pytest.raises(exr.ExrError, match="no RGB channels"):
@@ -272,11 +297,56 @@ class TestReadPixels:
         assert pixels[0, 0].tolist() == pytest.approx([0.25, 0.5, 0.75])
 
 
+def windowed(path: Path, data: tuple[tuple[int, int], tuple[int, int]], value: float = 0.5) -> Path:
+    """A CG style frame: 100x50 display window, pixels only inside `data` (min, max corners)."""
+    (x0, y0), (x1, y1) = data
+    pixels = np.full((y1 - y0 + 1, x1 - x0 + 1, 3), value, dtype=np.float32)
+    header = {
+        "compression": OpenEXR.ZIP_COMPRESSION,
+        "type": OpenEXR.scanlineimage,
+        "dataWindow": data,
+        "displayWindow": ((0, 0), (99, 49)),
+    }
+    with OpenEXR.File(header, {"RGB": pixels}) as handle:
+        handle.write(str(path))
+    return path
+
+
+class TestADataWindowInsideTheDisplayWindow:
+    """A CG render storing only a bounding box was read as the box and stretched across the
+    frame ffprobe sized the job from (review, 2026-11-08)."""
+
+    def test_the_box_lands_where_it_belongs_on_the_display_window(self, tmp_path: Path) -> None:
+        pixels = exr.read_pixels(windowed(tmp_path / "cg.exr", ((30, 10), (69, 29))))
+        assert pixels.shape == (50, 100, 3)
+        ys, xs = np.nonzero(pixels[..., 0] > 0)
+        assert [int(v) for v in (xs.min(), xs.max(), ys.min(), ys.max())] == [30, 69, 10, 29]
+        assert pixels[10:30, 30:70].min() == pytest.approx(0.5)
+        assert pixels.sum() == pytest.approx(0.5 * 40 * 20 * 3)
+
+    def test_it_lands_where_ffmpeg_puts_it(self, tmp_path: Path) -> None:
+        """A plate's EXRs and its reference's mp4 read the same file two ways (section 7)."""
+        path = windowed(tmp_path / "cg.exr", ((30, 10), (69, 29)))
+        command = ["ffmpeg", "-v", "error", "-i", str(path), "-f", "rawvideo", "-pix_fmt", "gbrpf32le", "-"]
+        raw = subprocess.run(command, capture_output=True, check=True).stdout
+        green = np.frombuffer(raw, dtype=np.float32).reshape(3, 50, 100)[0]
+        assert np.array_equal(green > 0.25, exr.read_pixels(path)[..., 1] > 0.25)
+
+    def test_what_lies_outside_the_display_window_is_cut_off(self, tmp_path: Path) -> None:
+        pixels = exr.read_pixels(windowed(tmp_path / "overscan.exr", ((-10, -5), (109, 54))))
+        assert pixels.shape == (50, 100, 3)
+        assert pixels.min() == pytest.approx(0.5)
+
+    def test_a_box_wholly_outside_is_an_empty_frame(self, tmp_path: Path) -> None:
+        pixels = exr.read_pixels(windowed(tmp_path / "off.exr", ((200, 200), (209, 209))))
+        assert pixels.shape == (50, 100, 3) and not pixels.any()
+
+
 class TestDwaaIsLossy:
     """DWAA is a lossy codec, so a raw deliverable is not bit-identical to its source.
 
     COLOR_AND_FORMAT section 3 requires DWAA at 45 anyway, and section 1's "pixels in,
-    pixels out" means no colour transform is applied, not that the file is a byte copy.
+    pixels out" means no color transform is applied, not that the file is a byte copy.
     The error is relative, around a tenth of a percent, so QC cannot compare a rendered
     frame to its source by equality. QC-106 hashes the written file instead, which is
     sound because the encoder is deterministic.

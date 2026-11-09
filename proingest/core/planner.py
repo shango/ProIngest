@@ -18,7 +18,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Literal
 
-from proingest.core import clf, color, frames, media, naming, resize
+from proingest.core import batchfile, clf, color, frames, media, naming, resize
 from proingest.core.models import (
     Batch,
     Deliverable,
@@ -36,7 +36,9 @@ TEMP_SUFFIX = ".part"
 RESOLUTIONS: dict[Resolution, tuple[int, int]] = {"4k": (3840, 2160), "HD": (1920, 1080)}
 """Exact target sizes, docs/COLOR_AND_FORMAT.md section 4. Never derived from the source."""
 
-JobKind = Literal["raw_dir", "ref_mp4", "audio", "aux_still", "hdri", "hdri_ref", "avidref"]
+JobKind = Literal["raw_dir", "ref_mp4", "audio", "aux_still", "hdri_ref", "avidref"]
+"""What a job produces. A saved batch may also record an `hdri`, which nothing plans any more
+(`OBSOLETE_KINDS`)."""
 
 PICTURE_DELIVERABLES: tuple[tuple[JobKind, Resolution], ...] = (
     ("raw_dir", "4k"),
@@ -123,7 +125,7 @@ class DeliverableJob:
 
     A copy job carries the default and ignores it; bytes are bytes. So does an **aux
     still**, deliberately: the aux names are `colorChart`, `mirrorBall`, `greyBall` and
-    `sizeRef`, and a grade applied to a colour chart destroys the one thing the chart is
+    `sizeRef`, and a grade applied to a color chart destroys the one thing the chart is
     delivered for. It still gets the input transform, so it lands in ACEScg like every
     other EXR the tool writes, but never the shot's grade.
     """
@@ -224,9 +226,6 @@ class _Shot:
     audio: Path | None
     color: clf.ShotColor
     freeze: bool = False
-    prerender: MediaInfo | None = None
-    """An HDRI's or LDRI's pre-render, delivered as an mp4 beside its file (user, 2026-10-27)."""
-    prerender_color: clf.ShotColor | None = None
 
 
 def effective_identity(row: ShotRow, show_pattern: str = naming.DEFAULT_SHOW_PATTERN) -> ShotIdentity | None:
@@ -247,15 +246,19 @@ def effective_identity(row: ShotRow, show_pattern: str = naming.DEFAULT_SHOW_PAT
 
 
 def holding_errors(row: ShotRow) -> list[QCResult]:
-    """The errors that keep this row from rendering, which is every error it has.
+    """The errors that keep this row from rendering: every error but a red warning (QC-089).
 
     **An error holds one shot and nothing else** (user, 2026-10-07: "nothing prevents
     rendering an entire batch or turnover"). What is an error is what leaves the tool
-    nothing to render or no way to recreate the colour: missing or unreadable media, no
+    nothing to render or no way to recreate the color: missing or unreadable media, no
     name to give it, no cut, or a grade it cannot rebuild (QC_RULES). Everything else is a
     warning or a note in the report and renders.
+
+    **Phase B (QC-1xx) holds nothing** (review, 2026-11-08), as the QC log already reads it:
+    it reports on what the last run left, and QC-150 on a stopped run's row held back the
+    very resume D11 plans. A row whose check failed waits through `_prior_state`.
     """
-    return row.errors()
+    return [result for result in row.errors() if result.holds and not result.rule_id.startswith("QC-1")]
 
 
 def held_turnovers(batch: Batch) -> set[str]:
@@ -273,11 +276,16 @@ def plannable_identity(row: ShotRow, show_pattern: str = naming.DEFAULT_SHOW_PAT
 
     A row is not planned when the editor skipped it, when it carries an error, which
     FR-6 says blocks the row but not the batch, or when it has no media and no chosen
-    range, because then there is nothing to read.
+    range, because then there is nothing to read. An HDRI or LDRI reads only its pre-render
+    (user, 2026-10-30), so it owes something exactly when the pre-render is there.
     """
-    if row.skipped or holding_errors(row) or row.media is None or row.current is None:
+    if row.skipped or holding_errors(row):
         return None
     identity = effective_identity(row, show_pattern)
+    if identity is not None and identity.is_hdri:
+        return identity if row.hdri_render is not None else None
+    if row.media is None or row.current is None:
+        return None
     # A style frame is only ever on the stringout (QC-085).
     if identity is not None and identity.is_style_frame:
         return None
@@ -303,27 +311,14 @@ def plan_row(
     shot_color: clf.ShotColor = clf.DEFAULT_SHOT_COLOR,
 ) -> RowPlan:
     """The deliverables one row owes at `version`. Pure: it touches no filesystem."""
-    identity = plannable_identity(row, show_pattern)
-    media, current = row.media, row.current
-    if identity is None or media is None or current is None:
+    shot = _shot(row, plannable_identity(row, show_pattern), delivery_root, version, shot_color)
+    if shot is None:
         return RowPlan()
-
-    shot = _Shot(
-        identity=identity,
-        media=media,
-        current=current,
-        directory=naming.shot_dir(delivery_root, identity),
-        version=version,
-        audio=_audio_source(row),
-        color=shot_color,
-        freeze=row.freeze,
-        prerender=row.hdri_render,
-        prerender_color=prerender_color(row, shot_color),
-    )
-    if identity.is_still:
-        plan = _aux_plan(shot)
-    elif identity.is_hdri:
+    identity = shot.identity
+    if identity.is_hdri:
         plan = _hdri_plan(shot)
+    elif identity.is_still:
+        plan = _aux_plan(shot)
     elif identity.is_as_is:
         plan = _avidref_plan(shot)
     else:
@@ -346,13 +341,14 @@ def plan_batch(
 
     One version is resolved per shot, from a single listing of that shot's delivery
     folder, and every row of that shot uses it, so the elements of one shot cannot
-    disagree about their version.
+    disagree about their version. That holds for a stopped run's rows too
+    (`_resumed_versions`).
 
     This replaces each row's deliverable list, which is why it runs immediately before a
     run rather than when a batch is opened: the state recorded against a row belongs to
     the version that produced it, not to the one about to be written.
 
-    **The colour session is not a parameter here.** The scan put it on the rows: the
+    **The color session is not a parameter here.** The scan put it on the rows: the
     approved In/Out off the EDL and the grade off each event's AMF, so planning reads them
     off the model like every other field. A row with an error is held here and nowhere
     else; only a batch scope error refuses the run (`qc.must_fix`).
@@ -361,16 +357,21 @@ def plan_batch(
     if root is None:
         raise ValueError("no delivery root: pass one, or set batch.delivery_root")
 
-    versions: dict[str, int] = {}
-    jobs: list[DeliverableJob] = []
     held = held_turnovers(batch)
+    planned: list[tuple[ShotRow, ShotIdentity, PriorState]] = []
     for row in batch.rows:
         identity = None if row.turnover_id in held else plannable_identity(row, show_pattern)
         if identity is None:
             _record(row, RowPlan())
             continue
+        _drop_obsolete(row)
+        planned.append((row, identity, _prior_state(row)))
 
-        state = _prior_state(row)
+    resumed = _resumed_versions(planned)
+    versions: dict[str, int] = {}
+    jobs: list[DeliverableJob] = []
+    for row, identity, state in planned:
+        code = identity.shot_code
         if state == "failed":
             # Waiting for the editor to fix the cause and Re-scan the row (D11). What landed
             # stays recorded and QC-150 already names the output that did not.
@@ -378,17 +379,15 @@ def plan_batch(
         if state == "complete":
             _keep(row, _complete(row))
             continue
-        if state == "pending":
+        if state == "pending" and code in resumed:
             # A stopped run: the rest of the row at the version it has (D11).
-            version = row.deliverables[0].version
-            plan = plan_row(row, root, version, show_pattern, clf.shot_color(row))
+            plan = plan_row(row, root, resumed[code], show_pattern, clf.shot_color(row))
             waiting = {item.path for item in row.deliverables if item.status not in LANDED}
             plan.jobs = [job for job in plan.jobs if job.destination in waiting]
             _resume(row, plan)
             jobs.extend(plan.jobs)
             continue
 
-        code = identity.shot_code
         if code not in versions:
             versions[code] = resolve_version(naming.shot_dir(root, identity), show_pattern)
         version = versions[code]
@@ -409,6 +408,46 @@ def plan_batch(
     return jobs
 
 
+def _resumed_versions(planned: list[tuple[ShotRow, ShotIdentity, PriorState]]) -> dict[str, int]:
+    """The shots whose stopped rows finish at the version they have, and that version.
+
+    **One shot folder writes one version per run** (NAMING_SPEC section 4: "a shot's
+    deliverables never disagree"). A stopped row resumes at its own version only when
+    nothing else of its shot needs a new one: no row of it is new or Re-scanned, and every
+    stopped row of it stopped at the same version. Otherwise the whole shot, the stopped
+    rows included, is planned at the next version the folder allows, and what the stopped
+    run left at the old version stays where it is, as anything delivered before does
+    (review, 2026-11-08; OQ-95).
+    """
+    pending: dict[str, set[int]] = {}
+    fresh: set[str] = set()
+    for row, identity, state in planned:
+        if state == "pending":
+            pending.setdefault(identity.shot_code, set()).add(row.deliverables[0].version)
+        elif state == "new":
+            fresh.add(identity.shot_code)
+    return {code: found.pop() for code, found in pending.items() if code not in fresh and len(found) == 1}
+
+
+OBSOLETE_KINDS = frozenset({"hdri"})
+"""Deliverable kinds a saved batch may record and nothing plans any more.
+
+`hdri` is an HDRI's EXR, or an LDRI's image, copied byte for byte until 0.5.53 (user,
+2026-10-30: "Those exr files are delivered manually by Ben"). One that landed stays on the
+row, because the tracker still names it (`exports`); one that never landed would wait for a
+job no plan makes, and its row would never finish."""
+
+
+def _drop_obsolete(row: ShotRow) -> None:
+    """Forget what a saved batch planned that nothing plans now, unless it landed and is
+    still there. One stat per landed obsolete deliverable, which only an old batch has."""
+    row.deliverables = [
+        item
+        for item in row.deliverables
+        if item.kind not in OBSOLETE_KINDS or (item.status in LANDED and item.path.exists())
+    ]
+
+
 LANDED = frozenset({"done", "exists"})
 """A deliverable that is on disk, verified, under its final name."""
 
@@ -424,14 +463,19 @@ def _prior_state(row: ShotRow) -> PriorState:
     Re-scan. **pending**: some of it never ran, from a stopped run: finish it at the same
     version.
 
-    One stat per landed deliverable, so a file deleted since is rendered again rather
-    than reported as delivered.
+    One stat per deliverable, so a file deleted since is rendered again rather than
+    reported as delivered, and one that landed after the batch was last saved is not
+    rendered again (review, 2026-11-08): the version is then not free and the render
+    refused it (QC-100), the row stuck until a Re-scan.
     """
     if row.rerun or not row.deliverables:
         return "new"
     for item in row.deliverables:
-        if item.status in LANDED and not item.path.exists():
-            item.status = "planned"
+        if item.status in LANDED:
+            if not item.path.exists():
+                item.status = "planned"
+        elif item.status != "failed":
+            batchfile.landed_unrecorded(item)
     statuses = {item.status for item in row.deliverables}
     if "failed" in statuses:
         return "failed"
@@ -556,52 +600,69 @@ def _audio_job(shot: _Shot) -> DeliverableJob | None:
     )
 
 
-def _hdri_plan(shot: _Shot) -> RowPlan:
-    """An HDRI delivers its EXR, copied byte for byte (user, 2026-10-07), and an LDRI its JPG
-    or PNG, under the extension it came with (user, 2026-10-08). A copy has no frame range
-    and no colour."""
-    identity, source = shot.identity, shot.media.path
-    name = (
-        naming.ldri_image(identity, shot.version, source.suffix)
-        if identity.is_ldri
-        else naming.hdri_exr(identity, shot.version)
+def _shot(
+    row: ShotRow,
+    identity: ShotIdentity | None,
+    delivery_root: Path,
+    version: int,
+    shot_color: clf.ShotColor,
+) -> _Shot | None:
+    """The row narrowed to what the job builders read, or None when it owes nothing.
+
+    **An HDRI or LDRI is its pre-render** (user, 2026-10-30): the render is its media, the
+    render's whole length its range, and its color the one the stringout shows it in
+    (`prerender_color`, user, 2026-10-27), or the display alone, which labels an ungraded one
+    with no input transform and no cube. Everything else is its own media over its range.
+    """
+    if identity is None:
+        return None
+    if identity.is_hdri:
+        render = row.hdri_render
+        if render is None:
+            return None
+        media, current = render, InOut(render.start_frame, render.max_available_out)
+        shot_color = prerender_color(row, shot_color) or clf.ShotColor(display=shot_color.display)
+    else:
+        if row.media is None or row.current is None:
+            return None
+        media, current = row.media, row.current
+    return _Shot(
+        identity=identity,
+        media=media,
+        current=current,
+        directory=naming.shot_dir(delivery_root, identity),
+        version=version,
+        audio=_audio_source(row),
+        color=shot_color,
+        freeze=row.freeze,
     )
-    jobs = [
-        DeliverableJob(
-            kind="hdri",
-            source=source,
-            destination=shot.directory / name,
-            version=shot.version,
-            shot_code=shot.identity.shot_code,
-            elem=naming.HDRI_ELEMENT,
-        )
-    ]
-    if shot.prerender is not None:
-        jobs.append(_prerender_job(shot, shot.prerender))
-    return RowPlan(jobs=jobs)
 
 
-def _prerender_job(shot: _Shot, render: MediaInfo) -> DeliverableJob:
-    """Ben's pre-render as an mp4 (user, 2026-10-27): the whole of it, the size it is, silent,
-    coloured as the stringout shows it (`prerender_color`)."""
-    return DeliverableJob(
+def _hdri_plan(shot: _Shot) -> RowPlan:
+    """An HDRI or LDRI delivers its pre-render as an mp4, and only that (user, 2026-10-30:
+    "Those exr files are delivered manually by Ben ... The scan should only check for the
+    existance of the render files it needs to build the stringout and other mp4s"). The
+    EXR, JPG or PNG is Ben's to deliver, before the tool runs or after. With no pre-render
+    in the folder (QC-083) there is nothing to deliver, and `_shot` says so."""
+    render = shot.media
+    job = DeliverableJob(
         kind="hdri_ref",
         source=render.path,
         destination=shot.directory / naming.hdri_prerender_mp4(shot.identity, shot.version),
         version=shot.version,
         shot_code=shot.identity.shot_code,
         elem=naming.HDRI_ELEMENT,
-        in_frame=render.start_frame,
-        out_frame=render.max_available_out,
+        in_frame=shot.current.in_frame,
+        out_frame=shot.current.out_frame,
         source_is_sequence=render.is_sequence,
         source_size=render.resolution,
         rate=render.rate,
         source_color_space=render.color_space,
         source_color_range=render.color_range,
         source_start_frame=render.start_frame,
-        # The display alone labels an ungraded one; no input transform and no cube.
-        shot_color=shot.prerender_color or clf.ShotColor(display=shot.color.display),
+        shot_color=shot.color,
     )
+    return RowPlan(jobs=[job])
 
 
 def prerender_color(row: ShotRow, shot_color: clf.ShotColor) -> clf.ShotColor | None:
@@ -617,7 +678,7 @@ def prerender_color(row: ShotRow, shot_color: clf.ShotColor) -> clf.ShotColor | 
 
 def _avidref_plan(shot: _Shot) -> RowPlan:
     """An Avid reference, never an EXR (user, 2026-10-22), and a measurement or a recon the
-    same way (user, 2026-10-27). Its colour is baked in, or it is never colour corrected, so
+    same way (user, 2026-10-27). Its color is baked in, or it is never color corrected, so
     nothing is graded. A movie (an mp4, a `.mov` pre-render, or an image sequence) is encoded to an
     mp4 over its cut at 24, the size it is; a held still, one image file, is copied byte for
     byte when it is a JPG or PNG and otherwise becomes a JPG. No audio: only a plate

@@ -15,6 +15,7 @@ import pytest
 from proingest.core import clf, color, naming, planner
 from proingest.core.models import (
     Batch,
+    Deliverable,
     FrameRate,
     Grade,
     GradeLook,
@@ -88,29 +89,30 @@ def kinds(jobs: list[planner.DeliverableJob]) -> list[str]:
 
 
 class TestAnHdriPreRender:
-    """User, 2026-10-27: the HDRI's file is delivered, and its pre-render, which the stringout
-    shows, is delivered beside it as an mp4."""
+    """User, 2026-10-27: the HDRI's pre-render, which the stringout shows, is delivered as an
+    mp4. User, 2026-10-30: only that; the EXR (or an LDRI's image) is Ben's to deliver by hand."""
 
-    def hdri(self, kind: str, clip_name: str = "SECA0009_pl01_HDRI.exr", render: bool = True) -> ShotRow:
+    def hdri(
+        self, kind: str, clip_name: str = "SECA0009_pl01_HDRI.exr", render: bool = True, file: bool = True
+    ) -> ShotRow:
         graded = Grade(amf=Path("/t/x.amf"), input_transform="", looks=(GradeLook("clf", "/t/x.clf"),))
         return row(
             clip_name,
             identity=naming.ShotIdentity("SECA0009", kind, "02"),
             csv_shot_type=f"{kind}02",
             grade=graded,
-            media=media("/t/hdri.exr" if kind == naming.HDRI_KIND else "/t/ldri.jpg", is_sequence=False),
+            media=media("/t/hdri.exr" if kind == naming.HDRI_KIND else "/t/ldri.jpg", is_sequence=False)
+            if file
+            else None,
             hdri_render=replace(media("/t/hdri.mp4", is_sequence=False), start_frame=0, frame_count=48)
             if render
             else None,
         )
 
-    def test_an_hdri_delivers_its_exr_and_its_pre_render_graded(self) -> None:
+    def test_an_hdri_delivers_its_pre_render_graded_and_never_its_exr(self) -> None:
         jobs = planner.plan_row(self.hdri(naming.HDRI_KIND), ROOT, 1, shot_color=GRADE_COLOR).jobs
-        assert [(job.kind, job.name) for job in jobs] == [
-            ("hdri", "SECA0009_pl01_HDRI02_v01.exr"),
-            ("hdri_ref", "SECA0009_pl01_HDRI02_v01.mp4"),
-        ]
-        mp4 = jobs[1]
+        assert [(job.kind, job.name) for job in jobs] == [("hdri_ref", "SECA0009_pl01_HDRI02_v01.mp4")]
+        (mp4,) = jobs
         assert (mp4.source, mp4.in_frame, mp4.out_frame, mp4.audio_source, mp4.res) == (
             Path("/t/hdri.mp4"),
             0,
@@ -122,12 +124,16 @@ class TestAnHdriPreRender:
 
     def test_an_ldri_pre_render_is_delivered_as_it_is(self) -> None:
         jobs = planner.plan_row(self.hdri(naming.LDRI_KIND), ROOT, 1, shot_color=GRADE_COLOR).jobs
-        assert [job.name for job in jobs][1] == "SECA0009_pl01_LDRI02_v01.mp4"
-        assert jobs[1].shot_color == clf.ShotColor(display=GRADE_COLOR.display)
+        assert [job.name for job in jobs] == ["SECA0009_pl01_LDRI02_v01.mp4"]
+        assert jobs[0].shot_color == clf.ShotColor(display=GRADE_COLOR.display)
 
-    def test_no_pre_render_delivers_the_exr_alone(self) -> None:
-        jobs = planner.plan_row(self.hdri(naming.HDRI_KIND, render=False), ROOT, 1).jobs
-        assert [job.kind for job in jobs] == ["hdri"]
+    def test_no_pre_render_delivers_nothing(self) -> None:
+        assert planner.plan_row(self.hdri(naming.HDRI_KIND, render=False), ROOT, 1).jobs == []
+
+    def test_the_pre_render_is_delivered_with_no_exr_in_the_folder(self) -> None:
+        """Turnover150 (2026-10-30): Ben delivers the EXR later, so the scan never found one."""
+        jobs = planner.plan_row(self.hdri(naming.HDRI_KIND, file=False), ROOT, 1).jobs
+        assert [job.name for job in jobs] == ["SECA0009_pl01_HDRI02_v01.mp4"]
 
 
 class TestAnAvidRef:
@@ -182,7 +188,7 @@ class TestAnAvidRef:
     )
     def test_a_measurement_or_recon_is_delivered_the_same_way(self, kind: str, path: str, name: str) -> None:
         """User, 2026-10-27: "If the file on the timeline is a still, deliver a still, if the
-        file is a movie, deliver an mp4", never colour corrected."""
+        file is a movie, deliver an mp4", never color corrected."""
         shot = replace(self.avidref(path), identity=naming.ShotIdentity("MELT0001", kind, "02"))
         jobs = planner.plan_row(shot, ROOT, 1, shot_color=GRADE_COLOR).jobs
         assert names(jobs) == [name] and jobs[0].kind == "avidref"
@@ -440,6 +446,11 @@ class TestAnErrorHoldsOneShot:
         assert planner.holding_errors(held) == held.errors()
         assert planner.plan_batch(self.batch(held), tmp_path) == []
 
+    def test_a_red_warning_renders(self, tmp_path: Path) -> None:
+        long = row(qc=[QCResult("QC-089", "error", "row", "EXR shot was 260 frames on the timeline")])
+        assert planner.holding_errors(long) == []
+        assert planner.plan_batch(self.batch(long), tmp_path)
+
     def test_one_held_row_holds_back_no_other(self, tmp_path: Path) -> None:
         held = row(clip_name="MELT0002_pl01", qc=[QCResult("QC-012", "error", "row", "no file")])
         assert {job.shot_code for job in planner.plan_batch(self.batch(row(), held), tmp_path)} == {
@@ -538,13 +549,13 @@ class TestOutputNamesReadBack:
         assert parsed.kind == job.kind
 
 
-class TestShotColourOnJobs:
+class TestShotColorOnJobs:
     """Which chain each deliverable is rendered through. COLOR_AND_FORMAT section 1.
 
-    A job is self contained, so the colour rides on it. The one that matters here is
+    A job is self contained, so the color rides on it. The one that matters here is
     the aux still: `colorChart`, `mirrorBall`, `greyBall` and `sizeRef` are the
     references a comp matches lighting against, and a creative grade applied to a
-    colour chart destroys the only thing the chart is delivered for.
+    color chart destroys the only thing the chart is delivered for.
     """
 
     def ingest(self, batch: Batch, tmp_path: Path) -> None:
@@ -595,7 +606,7 @@ class TestShotColourOnJobs:
         assert {job.shot_color.source_encoding for job in jobs} == {"ACEScc"}
 
     def test_a_name_that_does_not_resolve_leaves_the_job_naming_none(self) -> None:
-        """`S-Log3` is not a colour space. QC-047 reports it; the chain carries nothing."""
+        """`S-Log3` is not a color space. QC-047 reports it; the chain carries nothing."""
         batch = Batch(name="b", rows=[row(source_encoding="S-Log3")], delivery_root=ROOT)
         jobs = planner.plan_batch(batch)
         assert {job.shot_color.source_encoding for job in jobs} == {None}
@@ -688,6 +699,33 @@ class TestTheNextRun:
         assert {job.version for job in jobs} == {1}
         assert [d.status for d in batch.rows[0].deliverables] == ["done", "done", "planned", "planned"]
 
+    def test_a_file_that_landed_under_a_stale_status_is_not_rendered_again(self, tmp_path: Path) -> None:
+        """Review, 2026-11-08 (E1), case B: a batch saved after planning still says planned
+        or skipped for files a run then landed, and re-planning them made `render._prepare`
+        refuse an occupied destination (QC-100) until a Re-scan. A final name only exists
+        after its checks (D11), so it landed."""
+        batch = self.planned(tmp_path)
+        items = batch.rows[0].deliverables
+        for item in items[:2]:
+            item.path.parent.mkdir(parents=True, exist_ok=True)
+            item.path.mkdir() if item.kind == "raw_dir" else item.path.touch()
+        items[1].status = "skipped"
+        jobs = planner.plan_batch(batch, tmp_path)
+        assert [job.destination for job in jobs] == [item.path for item in items[2:]]
+        assert {job.version for job in jobs} == {1}
+        assert [d.status for d in batch.rows[0].deliverables][:2] == ["done", "done"]
+
+    def test_a_resumed_run_that_died_resumes_again_at_the_same_version(self, tmp_path: Path) -> None:
+        """Review, 2026-11-08 (E1): run 1 stopped with two skipped; run 2 landed one of them
+        and the app died before anything was saved, so the batch still says skipped."""
+        batch = self.planned(tmp_path)
+        self.land(batch, "done", "done", "skipped", "skipped")
+        third = batch.rows[0].deliverables[2]
+        third.path.mkdir() if third.kind == "raw_dir" else third.path.touch()
+        jobs = planner.plan_batch(batch, tmp_path)
+        assert [job.destination for job in jobs] == [batch.rows[0].deliverables[3].path]
+        assert {job.version for job in jobs} == {1}
+
     def test_a_landed_file_deleted_since_is_rendered_again(self, tmp_path: Path) -> None:
         batch = self.planned(tmp_path)
         self.land(batch, "done", "done", "done", "done")
@@ -721,3 +759,82 @@ class TestTheNextRun:
         assert {job.version for job in jobs} == {2}
         assert not batch.rows[0].rerun
         assert batch.rows[0].delivered_range == batch.rows[0].current
+
+
+class TestOneVersionPerShotPerRun:
+    """NAMING_SPEC section 4: a shot's deliverables never disagree, a stopped run's rows
+    included (review, 2026-11-08; OQ-95)."""
+
+    def stopped_with_a_re_scanned_neighbor(self, tmp_path: Path) -> Batch:
+        """pl01 stopped part way through v01; cp01 landed whole at v01 and was Re-scanned."""
+        batch = Batch(rows=[row("MELT0001_pl01"), row("MELT0001_cp01")])
+        planner.plan_batch(batch, tmp_path)
+        for index, item in enumerate(batch.rows[0].deliverables + batch.rows[1].deliverables):
+            if index in (2, 3):
+                continue  # what pl01's stopped run never wrote
+            item.status = "done"
+            item.path.parent.mkdir(parents=True, exist_ok=True)
+            item.path.mkdir() if item.kind == "raw_dir" else item.path.touch()
+        batch.rows[1].rerun = True
+        return batch
+
+    def test_a_stopped_row_moves_with_its_shot_to_the_next_version(self, tmp_path: Path) -> None:
+        batch = self.stopped_with_a_re_scanned_neighbor(tmp_path)
+        jobs = planner.plan_batch(batch, tmp_path)
+        assert {job.version for job in jobs} == {2}
+        assert len(jobs) == 8, "both rows whole: what landed at v01 is a version the run does not finish"
+        assert {d.version for r in batch.rows for d in r.deliverables} == {2}
+
+    def test_a_stopped_row_alone_in_its_shot_still_finishes_where_it_stopped(self, tmp_path: Path) -> None:
+        batch = self.stopped_with_a_re_scanned_neighbor(tmp_path)
+        batch.rows[1].rerun = False  # cp01 complete: it is left alone and needs no version
+        jobs = planner.plan_batch(batch, tmp_path)
+        assert [job.version for job in jobs] == [1, 1]
+
+    def test_two_shots_do_not_pull_each_other(self, tmp_path: Path) -> None:
+        batch = self.stopped_with_a_re_scanned_neighbor(tmp_path)
+        batch.rows[1] = row("MELT0002_cp01")
+        jobs = planner.plan_batch(batch, tmp_path)
+        assert (
+            sorted((job.shot_code, job.version) for job in jobs)
+            == [("MELT0001", 1)] * 2 + [("MELT0002", 1)] * 4
+        )
+
+
+class TestAnOldBatchsHdriCopy:
+    """Before 0.5.53 an HDRI delivered its EXR as well as its pre-render's mp4 (kind `hdri`).
+    Nothing plans that copy now, so one that never landed must not hold its row open
+    (review, 2026-11-08)."""
+
+    def hdri_row(self, tmp_path: Path, copy: str, mp4: str) -> ShotRow:
+        built = TestAnHdriPreRender().hdri(naming.HDRI_KIND)
+        shot = tmp_path / "SECA" / "SECA0009"
+        shot.mkdir(parents=True)
+        recorded = [
+            Deliverable("hdri", "SECA0009_pl01_HDRI02_v01.exr", shot / "SECA0009_pl01_HDRI02_v01.exr", 1),
+            Deliverable("hdri_ref", "SECA0009_pl01_HDRI02_v01.mp4", shot / "SECA0009_pl01_HDRI02_v01.mp4", 1),
+        ]
+        for item, status in zip(recorded, (copy, mp4), strict=True):
+            item.status = status  # type: ignore[assignment]
+            if status == "done":
+                item.path.touch()
+        built.deliverables = recorded
+        return built
+
+    def test_an_unlanded_copy_beside_a_landed_mp4_leaves_the_row_complete(self, tmp_path: Path) -> None:
+        hdri = self.hdri_row(tmp_path, copy="planned", mp4="done")
+        assert planner.plan_batch(Batch(rows=[hdri]), tmp_path) == []
+        assert [d.kind for d in hdri.deliverables] == ["hdri_ref"]
+        assert [r.rule_id for r in hdri.qc] == ["QC-061"]
+
+    def test_an_unlanded_copy_beside_an_unlanded_mp4_runs_the_mp4_alone(self, tmp_path: Path) -> None:
+        hdri = self.hdri_row(tmp_path, copy="skipped", mp4="planned")
+        jobs = planner.plan_batch(Batch(rows=[hdri]), tmp_path)
+        assert [(job.kind, job.version) for job in jobs] == [("hdri_ref", 1)]
+        assert [d.kind for d in hdri.deliverables] == ["hdri_ref"]
+
+    def test_a_landed_copy_stays_on_the_row_for_the_tracker(self, tmp_path: Path) -> None:
+        hdri = self.hdri_row(tmp_path, copy="done", mp4="planned")
+        jobs = planner.plan_batch(Batch(rows=[hdri]), tmp_path)
+        assert [job.kind for job in jobs] == ["hdri_ref"]
+        assert [(d.kind, d.status) for d in hdri.deliverables] == [("hdri", "done"), ("hdri_ref", "planned")]
