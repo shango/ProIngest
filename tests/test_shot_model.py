@@ -51,7 +51,13 @@ from tests.fixtures.batches import batch, delivered, fail, row, turnover, warn, 
 @pytest.fixture
 def model(qt_app: QApplication) -> ShotListModel:
     built = ShotListModel()
-    built.set_batch(batch(with_sides(row()), row("MELT0002_pl01", record_in=224)))
+    # Record frames are the EDL's own, so a timeline starting at an hour starts at 86400.
+    built.set_batch(
+        batch(
+            with_sides(row(record_in=batches.ONE_HOUR)),
+            row("MELT0002_pl01", record_in=batches.ONE_HOUR + 224),
+        )
+    )
     return built
 
 
@@ -337,7 +343,7 @@ class TestTheInOutDisplay:
         assert text(model, 0, IN) == "01:00:00:08"
         assert cell(model, 0, IN, SECONDARY_ROLE) == "8"
 
-    def test_record_tc_is_read_against_the_timeline_s_own_start(self, model: ShotListModel) -> None:
+    def test_record_tc_is_the_edl_s_own_record_frame(self, model: ShotListModel) -> None:
         """The clip sits at the top of an edit starting at an hour, so its In is that hour.
 
         Source TC and record TC differ by eight frames here on purpose: the turnover
@@ -351,12 +357,13 @@ class TestTheInOutDisplay:
         model.set_display_mode(DisplayMode.RECORD_TC)
         assert text(model, 1, IN) == "01:00:09:08"
 
-    def test_a_timeline_starting_at_zero_says_so(self, qt_app: QApplication) -> None:
-        """A batch saved before turnovers remembered their start reads back as zero."""
+    def test_record_tc_adds_no_timeline_start(self, qt_app: QApplication) -> None:
+        """Review, 2026-11-08: `record_in` is the EDL's absolute record frame, and adding a
+        timeline start to it would put a shot at an hour an hour late."""
         built = ShotListModel()
-        built.set_batch(batch(row(), turnovers=[turnover(timeline_start=0)]))
+        built.set_batch(batch(row(record_in=batches.ONE_HOUR), turnovers=[turnover()]))
         built.set_display_mode(DisplayMode.RECORD_TC)
-        assert text(built, 0, IN) == "00:00:00:00"
+        assert text(built, 0, IN) == "01:00:00:00"
 
     def test_the_toggle_cycles_and_comes_round(self) -> None:
         mode = DisplayMode.FRAMES
@@ -545,9 +552,9 @@ class TestEditContext:
 
     def test_the_record_anchor_does_not_slide_when_the_editor_trims(self) -> None:
         trimmed = row()
-        context = trimmed.edit_context(batches.RATE_24, batches.ONE_HOUR, "record")
+        context = trimmed.edit_context(batches.RATE_24, "record")
         trimmed.current = InOut(0, 231)
-        after = trimmed.edit_context(batches.RATE_24, batches.ONE_HOUR, "record")
+        after = trimmed.edit_context(batches.RATE_24, "record")
         assert context.timecode_origin() == after.timecode_origin()
 
     def test_a_row_with_no_media_still_produces_one(self) -> None:
@@ -645,6 +652,47 @@ class TestCommittingAnEdit:
         assert self.commit(model, SHOT, "MELT0042")
         assert not model.batch.rows[0].rerun
 
+    def test_committing_the_shot_code_unchanged_is_not_a_change(self, qt_app: QApplication) -> None:
+        """Review, 2026-11-08: a Tab through the Shot cell commits what the editor opened
+        on. That used to pin the parsed code as an override and put a delivered shot back
+        for the next Run, which then rendered it again at v02."""
+        built = ShotListModel()
+        built.set_batch(batch(delivered(row())))
+        opened_on = self.index_of(built, SHOT).data(Qt.ItemDataRole.EditRole)
+        assert opened_on == "MELT0001"
+        assert not self.commit(built, SHOT, opened_on)
+        assert built.batch.rows[0].shot_code_override is None
+        assert not built.batch.rows[0].rerun
+
+    def test_typing_the_parsed_code_withdraws_the_correction(self, model: ShotListModel) -> None:
+        self.commit(model, SHOT, "MELT0009")
+        assert self.commit(model, SHOT, " MELT0001 ")
+        assert model.batch.rows[0].shot_code_override is None
+        assert text(model, 0, SHOT) == "MELT0001"
+
+    def test_a_correction_withdrawn_on_a_delivered_shot_puts_it_back(self, qt_app: QApplication) -> None:
+        """Its files carry the correction, so going back to the parsed code is a new name."""
+        built = ShotListModel()
+        corrected = delivered(row())
+        corrected.shot_code_override = "MELT0042"
+        built.set_batch(batch(corrected))
+        assert self.commit(built, SHOT, "MELT0001")
+        assert built.batch.rows[0].shot_code_override is None
+        assert built.batch.rows[0].rerun
+
+    def test_an_override_already_equal_to_the_parsed_code_clears_without_a_rerun(
+        self, qt_app: QApplication
+    ) -> None:
+        """A batch saved with the old behavior holds such an override. Clearing it changes
+        no name on disk, so the shot stays delivered."""
+        built = ShotListModel()
+        pinned = delivered(row())
+        pinned.shot_code_override = "MELT0001"
+        built.set_batch(batch(pinned))
+        assert self.commit(built, SHOT, "MELT0001")
+        assert built.batch.rows[0].shot_code_override is None
+        assert not built.batch.rows[0].rerun
+
     def test_emptying_the_shot_code_puts_the_parsed_one_back(self, model: ShotListModel) -> None:
         """Withdrawing a correction means the original stands, not that the row is nameless."""
         self.commit(model, SHOT, "MELT0009")
@@ -707,6 +755,26 @@ class TestCommittingAnEdit:
         model.set_display_mode(DisplayMode.SOURCE_TC)
         assert self.commit(model, IN, "-90000")
         assert str(cell(model, 0, IN, Qt.ItemDataRole.DisplayRole)).startswith("-")
+
+    @pytest.mark.parametrize("mode", [DisplayMode.FRAMES, DisplayMode.SOURCE_TC, DisplayMode.RECORD_TC])
+    @pytest.mark.parametrize("column", [IN, OUT])
+    def test_committing_what_a_cell_shows_changes_nothing(
+        self, qt_app: QApplication, mode: DisplayMode, column: int
+    ) -> None:
+        """Review, 2026-11-08: a clip starting 23:59:55:00 showed Out as 00:00:04:15 in
+        Source TC, and a Tab through that cell committed Out = -2073369, a day before the
+        clip, which on a delivered shot also sent it back for the next Run."""
+        day = 24 * 3600 * 24
+        near_midnight = delivered(row(media=batches.media(start_timecode=day - 24 * 5)))
+        built = ShotListModel()
+        built.set_batch(batch(near_midnight))
+        built.set_display_mode(mode)
+        index = self.index_of(built, column)
+        shown = index.data(Qt.ItemDataRole.EditRole)
+
+        assert not built.setData(index, shown)
+        assert near_midnight.current == InOut(8, 231)
+        assert not near_midnight.rerun
 
     def test_the_row_s_rules_re_run_on_commit(self, model: ShotListModel) -> None:
         assert not model.batch.rows[0].qc

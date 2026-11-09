@@ -550,6 +550,10 @@ class ShotRow:
     shows; QC-083 when it is missing. Additive, so the schema version does not move."""
 
     record_in: int = 0
+    """The EDL event's record In and Out, as the EDL writes them: absolute frames, so
+    `01:00:00:00` at 24 is 86400, not a count from the timeline's start. A batch saved
+    before 2026-11-08 may carry a turnover `timeline_start`, which nothing ever set and
+    which is ignored on load."""
     record_out: int = 0
     snapshot: InOut | None = None
     current: InOut | None = None
@@ -647,7 +651,6 @@ class ShotRow:
     def edit_context(
         self,
         project_rate: FrameRate,
-        timeline_start: int = 0,
         mode: frames.TimecodeMode = "source",
     ) -> frames.EditContext:
         """What this row's In and Out need to become timecode, and back again.
@@ -657,8 +660,10 @@ class ShotRow:
         (section 5). Building it in two places is how a display and its editor come to
         disagree about which frame an hour is.
 
-        `timeline_start` belongs to the turnover rather than the row, because it is a
-        fact about one timeline, so it is passed in. The record anchor is the clip's
+        `record_in` is the EDL's own record frame, `01:00:00:00` at 24 being 86400, so it
+        is the record timecode as it stands and nothing is added to it (review, 2026-11-08:
+        a `Turnover.timeline_start` that nothing set was added here, and would have put a
+        shot an hour late). The record anchor is the clip's
         record start paired with **the snapshot's** In: that pairing is where the
         turnover put this clip, and it does not move when the editor trims, which is
         what keeps the mapping linear rather than sliding with every edit.
@@ -670,7 +675,7 @@ class ShotRow:
             fps=rate.as_float(),
             source_start=source_start,
             source_start_timecode=media.start_timecode if media and media.start_timecode else 0,
-            record_start_timecode=timeline_start + self.record_in,
+            record_start_timecode=self.record_in,
             record_start_source_frame=snapshot.in_frame if snapshot else source_start,
             mode=mode,
         )
@@ -798,17 +803,6 @@ class Turnover:
     has been archived still says what it was scanned from.
     """
 
-    timeline_start: int = 0
-    """The timeline's own start, in frames. `01:00:00:00` at 24 is 86400.
-
-    Record timecode is only meaningful against it: `ShotRow.record_in` is measured from
-    the timeline's zero, and an edit that starts at an hour is the normal case, so a row
-    shown without this reads an hour early. Kept on the turnover because it is a fact
-    about one timeline and a batch holds several. Additive, so the schema version does
-    not move and a batch saved before this reads back as zero, which is what a timeline
-    starting at zero would say anyway.
-    """
-
     color_session_edl: Path | None = None
     """The final EDL of the color session ingested for this turnover, or None.
 
@@ -855,7 +849,6 @@ class Turnover:
             "folder": str(self.folder),
             "edl_path": str(self.edl_path) if self.edl_path else None,
             "csv_path": str(self.csv_path) if self.csv_path else None,
-            "timeline_start": self.timeline_start,
             "color_session_edl": str(self.color_session_edl) if self.color_session_edl else None,
             "ale_path": str(self.ale_path) if self.ale_path else None,
             "number": self.number,
@@ -876,7 +869,6 @@ class Turnover:
             folder=Path(data["folder"]),
             edl_path=_as_path(data.get("edl_path")),
             csv_path=_as_path(data.get("csv_path")),
-            timeline_start=int(data.get("timeline_start", 0)),
             color_session_edl=_as_path(data.get("color_session_edl")),
             ale_path=_as_path(data.get("ale_path")),
             number=data.get("number"),

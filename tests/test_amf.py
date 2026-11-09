@@ -119,6 +119,13 @@ class TestReading:
         assert not read.names("DALU0012_pl01_03_HDRI.exr"), "outside its range"
         assert not read.names("C4261.MP4")
 
+    def test_a_sequence_with_no_frame_run_is_not_an_amf(self, tmp_path: Path) -> None:
+        """Review, 2026-11-08: a `<sequence>` with no `#` raised `ValueError` the first time the
+        scan asked what it names, and took the turnover's scan with it; it is QC-075 now."""
+        sequence = '<aces:sequence min="2" max="2" idx="#">DALU0012_pl01_HDRI.exr</aces:sequence>'
+        with pytest.raises(amf.AmfError, match=f"{NAME}: .* has no #"):
+            amf.read(written(tmp_path, clip=sequence, source=""))
+
     def test_a_single_file_is_named_without_case(self, tmp_path: Path) -> None:
         read = amf.read(written(tmp_path))
         assert read.names("c4261.mp4") and not read.names("C4262.MP4")

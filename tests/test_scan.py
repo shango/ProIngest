@@ -1015,3 +1015,178 @@ class TestACutOutsideItsFile:
         assert "rendered the 4 frames the file has" in said.message
         assert row.current == InOut(row.media.start_frame, row.media.start_frame + 3)
         assert planner.plannable_identity(row) is not None
+
+
+def _with_start_tc(folder: Path, start_tc: str) -> None:
+    """Resolve's `Start TC` on every row of the folder's CSV."""
+    csv = folder / "metadata.csv"
+    lines = csv.read_bytes().decode("utf-16").splitlines()
+    lines = [f'{lines[0]},"Start TC"'] + [f'{line},"{start_tc}"' for line in lines[1:]]
+    csv.write_bytes(("\r\n".join(lines) + "\r\n").encode("utf-16"))
+
+
+class TestReviewFindings:
+    """Review, 2026-11-08: the ingest and matching findings."""
+
+    def scanned(self, folder: Path) -> tuple[Turnover, list[ShotRow]]:
+        return scan.scan_turnover(folder, "t1", scan.ScanSettings(rules=fixtures.SMALL_RULES))
+
+    def test_an_hdri_exr_on_the_timeline_needs_only_its_pre_render(self, tmp_path: Path) -> None:
+        """The EXR is Ben's to deliver by hand (user, 2026-10-30), so one cut on the timeline
+        and missing from the folder held the row on QC-012 and its mp4 was never planned."""
+        root = tmp_path / GOOD_FOLDER
+        exr = "MELT0001_pl01_HDRI_01.exr"
+        fixtures.make_mp4(root / "MELT0001_pl01_HDRI_01.mp4", count=4)
+        fixtures.make_meta_csv(root / "metadata.csv", [(exr, "MELT0001", "HDRI")])
+        fixtures.make_final_edl(root / "FINAL_v01.edl", [exr], duration=4)
+        _, (row,) = self.scanned(root)
+        assert row.hdri_render is not None and not row.errors()
+        assert not rules(row) & {"QC-012", "QC-013", "QC-083"}
+        (job,) = planner.plan_row(row, tmp_path / "out", 1).jobs
+        assert job.destination.name == "MELT0001_pl01_HDRI01_v01.mp4"
+
+    def test_an_hdri_exr_with_neither_file_still_says_qc_012(self, tmp_path: Path) -> None:
+        """With no pre-render the stringout holds the EXR, so its absence still wants saying."""
+        root = tmp_path / GOOD_FOLDER
+        exr = "MELT0001_pl01_HDRI_01.exr"
+        fixtures.make_meta_csv(root / "metadata.csv", [(exr, "MELT0001", "HDRI")])
+        fixtures.make_final_edl(root / "FINAL_v01.edl", [exr], duration=4)
+        _, (row,) = self.scanned(root)
+        assert {"QC-012", "QC-083"} <= rules(row)
+
+    def test_an_avid_reference_is_delivered_from_the_frames_the_stringout_shows(self, tmp_path: Path) -> None:
+        """Turnover150's C2098 case on a row no check runs on: its raw cut by the file's own
+        timecode was stored, while the stringout read it by Resolve's `Start TC`."""
+        folder = TestACutOutsideItsFile().folder(tmp_path, None)
+        fixtures.make_meta_csv(folder / "metadata.csv", [("MELT0001_pl01", "MELT0001", "avidRef01")])
+        _with_start_tc(folder, "00:59:50:00")
+        turnover, (row,) = self.scanned(folder)
+        assert row.media is not None and qc.is_stringout_only(row)
+        assert row.current == InOut(row.media.start_frame, row.media.start_frame + 3) == row.approved
+        (event,) = scan.read_session(turnover, FrameRate(24)).events
+        assert stringout._cut(event, row.media, row.resolve_start_tc) == row.current
+        assert "QC-029" not in rules(row)
+
+    def test_an_hdri_exr_row_no_event_cuts_is_no_row(self, tmp_path: Path) -> None:
+        """Turnover150 names its pre-render after nothing in the folder, so the CSV's EXR row,
+        which no EDL event cuts, became a second row held on QC-066 for a file the tool no
+        longer touches."""
+        root = tmp_path / GOOD_FOLDER
+        render, exr = "MELT0001_pl01_HDRI01_Render.mov", "SHOT0001_pl01_HDRI_01_v01.exr"
+        fixtures.make_mp4(root / render, count=4)
+        fixtures.make_meta_csv(
+            root / "metadata.csv", [(render, "MELT0001", "HDRI01"), (exr, "MELT0001", "HDRI01")]
+        )
+        fixtures.make_final_edl(root / "FINAL_v01.edl", [render], duration=4)
+        turnover, rows = self.scanned(root)
+        assert [row.clip_name for row in rows] == [render] and not rows[0].errors()
+        (note,) = [result for result in turnover.qc if result.rule_id == "QC-080"]
+        assert note.severity == "info" and exr in note.message
+
+    def test_a_pre_render_no_event_cuts_is_still_a_row(self, tmp_path: Path) -> None:
+        """It is the deliverable, and its QC-066 is Ben's to fix."""
+        root = tmp_path / GOOD_FOLDER
+        render = "MELT0001_pl01_HDRI01_Render.mov"
+        fixtures.make_mp4(root / render, count=4)
+        fixtures.make_meta_csv(root / "metadata.csv", [(render, "MELT0001", "HDRI01")])
+        fixtures.make_final_edl(root / "FINAL_v01.edl", ["SomethingElse.mov"], duration=4)
+        _, (row,) = self.scanned(root)
+        assert "QC-066" in rules(row)
+
+    def test_a_freeze_matched_by_timecode_is_a_freeze(self, tmp_path: Path) -> None:
+        """Only the by-name path set `row.freeze`, so a lone `M2 000.0` in an EDL that names no
+        clip was given sound (against QC-073) and its reference was not held."""
+        folder = fixtures.make_turnover(tmp_path / GOOD_FOLDER, shots=1, frames=4)
+        edl = folder / "FINAL_v01.edl"
+        held = "M2   MELT0001       000.0                01:00:00:00"
+        edl.write_text(edl.read_text().replace("* FROM CLIP NAME: MELT0001_pl01", held))
+        _, (row,) = self.scanned(folder)
+        assert row.freeze and row.current == InOut(1001, 1001)
+        assert row.audio_path is not None, "the wav is there, and still not delivered"
+        assert all(job.kind != "audio" for job in planner.plan_row(row, tmp_path / "out", 1).jobs)
+
+    def test_resolve_s_clock_is_read_at_the_timeline_rate(self) -> None:
+        """A 25 fps file's own rate read the CSV's `Start TC` 36000 frames an hour off the EDL,
+        whose frames and the file's timecode are both counted at 24."""
+        from proingest.core import clf
+        from proingest.core.models import MediaInfo
+
+        media = MediaInfo(
+            path=Path("C2098.MP4"),
+            codec="h264",
+            pixel_format="yuv420p",
+            width=64,
+            height=36,
+            rate=FrameRate(24),
+            stated_rate=FrameRate(25),
+            frame_count=100,
+            start_timecode=86400,
+        )
+        event = clf.ConformEvent("001", "AX", "C2098.MP4", 86160, 86163, 0, 3)
+        assert scan.cut_in_file(event, media, "00:59:49:14") == (InOut(10, 13), True)
+        row = ShotRow(turnover_id="t1", clip_name="C2098.MP4", media=media)
+        said = scan._outside(row, clf.ConformEvent("001", "AX", "", 0, 3, 0, 3), media, InOut(0, 3))
+        assert "runs 01:00:00:00 to 01:00:04:03" in said.message
+
+    def test_an_upper_case_amf_suffix_is_read(self, tmp_path: Path) -> None:
+        """F27: `glob("*.amf")` is case sensitive on the Mac and not on Windows."""
+        folder = fixtures.make_turnover(tmp_path / GOOD_FOLDER, shots=1, frames=4)
+        found = next(folder.glob("*.amf"))
+        found.rename(found.with_suffix(".AMF"))
+        _, (row,) = self.scanned(folder)
+        assert row.grade is not None and row.grade.amf.suffix == ".AMF"
+
+    def test_a_truncated_csv_is_qc_002_not_a_crash(self, tmp_path: Path) -> None:
+        folder = fixtures.make_turnover(tmp_path / GOOD_FOLDER, shots=1, frames=4)
+        csv = folder / "metadata.csv"
+        csv.write_bytes(csv.read_bytes()[:-1])
+        turnover, rows = self.scanned(folder)
+        assert rows == [] and "QC-002" in turnover_rules_of(turnover)
+
+    def test_a_truncated_ale_is_qc_071_not_a_crash(self, tmp_path: Path) -> None:
+        folder = overlapping_turnover(tmp_path / GOOD_FOLDER, ALE_ORDER)
+        found = folder / "T.ale"
+        found.write_bytes(found.read_text().encode("utf-16")[:-1])
+        turnover, rows = self.scanned(folder)
+        assert rows and "QC-071" in turnover_rules_of(turnover)
+
+    def test_an_amf_sequence_with_no_frame_run_is_qc_075_not_a_crash(self, tmp_path: Path) -> None:
+        folder = fixtures.make_turnover(tmp_path / GOOD_FOLDER, shots=1, frames=4)
+        found = next(folder.glob("*.amf"))
+        sequence = '<aces:sequence min="1" max="2">MELT0001_pl01.exr</aces:sequence>'
+        found.write_text(re.sub(r"<aces:file>[^<]*</aces:file>", sequence, found.read_text(), count=1))
+        turnover, (row,) = self.scanned(folder)
+        assert "QC-075" in turnover_rules_of(turnover) and row.grade is None
+
+    def test_a_folder_that_cannot_be_listed_is_qc_001_not_a_crash(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        folder = fixtures.make_turnover(tmp_path / GOOD_FOLDER, shots=1, frames=4)
+        real = Path.iterdir
+
+        def dropped(path: Path) -> object:
+            if path == folder:
+                raise OSError(5, "Input/output error")
+            return real(path)
+
+        monkeypatch.setattr(Path, "iterdir", dropped)
+        turnover, rows = self.scanned(folder)
+        assert rows == [] and "QC-001" in turnover_rules_of(turnover)
+
+    def test_a_media_folder_that_cannot_be_listed_is_qc_001_and_its_clips_are_missing(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import os
+
+        folder = fixtures.make_turnover(tmp_path / GOOD_FOLDER, shots=1, frames=4)
+        real = os.scandir
+
+        def listing(path: str) -> object:
+            if Path(path).name == "media":
+                raise OSError(5, "Input/output error")
+            return real(path)
+
+        monkeypatch.setattr(os, "scandir", listing)
+        turnover, (row,) = self.scanned(folder)
+        (said,) = [result for result in turnover.qc if result.rule_id == "QC-001"]
+        assert "media could not be listed" in said.message and "QC-012" in rules(row)

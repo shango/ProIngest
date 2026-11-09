@@ -13,6 +13,7 @@ point it is verified.
 from __future__ import annotations
 
 import multiprocessing
+import shutil
 import subprocess
 from collections.abc import Callable, Generator
 from dataclasses import replace
@@ -997,7 +998,7 @@ class TestAWorkerThatDies:
             def __exit__(self, *args: object) -> None:
                 pass
 
-            def submit(self, _fn: object, job: DeliverableJob) -> Future[Deliverable]:
+            def submit(self, _fn: object, job: DeliverableJob, *_args: object) -> Future[Deliverable]:
                 future: Future[Deliverable] = Future()
                 if dies(job, rounds[0]):
                     future.set_exception(BrokenProcessPool("a worker died abruptly"))
@@ -1242,3 +1243,255 @@ class TestAnAvidRef:
         before, after = first_frame(source), first_frame(job.destination)
         assert len(before) == len(after)
         assert max(abs(a - b) for a, b in zip(before, after, strict=True)) <= 1
+
+
+class TestAnOddSizedAvidRef:
+    """x264 refuses an odd 4:2:0 frame, and an Avid reference keeps its source's size, so a
+    1919x1080 screen recording failed (review, 2026-11-08). It is padded, never cropped."""
+
+    def test_an_odd_source_is_padded_to_the_next_even_size(self, tmp_path: Path) -> None:
+        source = fixtures.make_mov(tmp_path / "src" / "screen Render.mov", count=4, size=(63, 35))
+        job = replace(
+            sequence_job(
+                source,
+                tmp_path / "out" / "MELT0001_avidRef01_v01.mp4",
+                0,
+                3,
+                kind="avidref",
+                is_sequence=False,
+                start_frame=0,
+            ),
+            source_size=(63, 35),
+        )
+        deliverable = render.render_job(job)
+        assert deliverable.status == "done", deliverable.qc
+        video = video_stream(job.destination)
+        assert (video["width"], video["height"]) == (64, 36)
+
+    def test_an_even_source_is_not_padded(self) -> None:
+        job = sequence_job(Path("/s.mov"), Path("/o/x.mp4"), 0, 3, kind="avidref", is_sequence=False)
+        assert render._canvas(job) is None
+        assert render._canvas(replace(job, source_size=(1919, 1080))) == (1920, 1080)
+
+
+class TestALinearSourcesReference:
+    """A plate whose AMF reads it as scene linear gets the shaper a pre-render gets, or its
+    33 point cube puts one sample in the darkest 3% (review, 2026-11-08)."""
+
+    def handed(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, encoding: str) -> dict[str, object]:
+        seen: dict[str, object] = {}
+
+        def fake_encode(*args: object, **kwargs: object) -> None:
+            seen.update(kwargs)
+            Path(str(args[1])).write_bytes(b"")
+
+        monkeypatch.setattr(ffmpeg, "encode_reference", fake_encode)
+        monkeypatch.setattr(ffmpeg, "container_frame_count", lambda path: 4)
+        monkeypatch.setattr(qc, "run_phase_b", lambda _job, _deliverable: [])
+        source = fixtures.make_mov(tmp_path / "src" / "plate.mov", count=4)
+        job = ref_job(tmp_path, source, 0, 3)
+        render.render_job(replace(job, shot_color=replace(job.shot_color, source_encoding=encoding)))
+        return seen
+
+    @pytest.mark.parametrize("encoding", ["ACEScg", "ACES2065-1", "Linear Rec.709 (sRGB)"])
+    def test_a_linear_plate_goes_through_the_shaper(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, encoding: str
+    ) -> None:
+        assert self.handed(tmp_path, monkeypatch, encoding)["shaper"] is not None
+
+    @pytest.mark.parametrize("encoding", ["ACEScct", "S-Log3 S-Gamut3.Cine"])
+    def test_a_log_plate_does_not(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, encoding: str
+    ) -> None:
+        assert self.handed(tmp_path, monkeypatch, encoding)["shaper"] is None
+
+    def test_an_avid_reference_has_neither_cube(self) -> None:
+        job = sequence_job(Path("/s.mov"), Path("/o/x.mp4"), 0, 3, kind="avidref", is_sequence=False)
+        linear = replace(job, shot_color=clf.ShotColor(source_encoding="ACEScg"))
+        assert not render._graded(linear) and not render._shaped(linear)
+
+
+class TestACgPlateWithABoundingBox:
+    """A CG EXR storing only a data window inside its display window was stretched across
+    the frame, since the job is sized from the display window (review, 2026-11-08)."""
+
+    def test_the_box_stays_where_it_is_on_the_plate(self, tmp_path: Path) -> None:
+        source = tmp_path / "src" / "MELT0001_el01.1001.exr"
+        source.parent.mkdir(parents=True)
+        box = np.full((20, 40, 3), 0.6, dtype=np.float32)
+        header = {
+            "compression": OpenEXR.ZIP_COMPRESSION,
+            "type": OpenEXR.scanlineimage,
+            "dataWindow": ((30, 10), (69, 29)),
+            "displayWindow": ((0, 0), (99, 49)),
+        }
+        with OpenEXR.File(header, {"RGB": box}) as handle:
+            handle.write(str(source))
+        job = replace(
+            sequence_job(source, tmp_path / "out" / "MELT0001_el01_raw_4k_v01", 1001, 1001),
+            source_size=(100, 50),
+        )
+        assert render.render_job(job).status == "done"
+        written = exr.read_pixels(job.frame_path(1001))[..., 1]
+        assert written.shape == (50, 100)
+        # Away from the box's edges, which DWAA's 8 pixel blocks ring around.
+        outside, inside = written[0, 0], written[20, 50]
+        assert np.allclose(written[:2], outside, atol=0.01) and np.allclose(
+            written[:, :22], outside, atol=0.01
+        )
+        assert np.allclose(written[14:26, 38:62], inside, atol=0.01) and abs(inside - outside) > 0.1
+
+
+class TestTheProgressOfAFailedCheck:
+    def test_a_deliverable_that_failed_its_checks_is_published_as_failed(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """It read as written on the row until `apply_results` (review, 2026-11-08)."""
+        published: list[render.Progress] = []
+        monkeypatch.setattr(render, "_publish", published.append)
+        monkeypatch.setattr(
+            qc,
+            "run_phase_b",
+            lambda _job, _deliverable: [QCResult("QC-105", "error", "deliverable", "wrong")],
+        )
+        deliverable = render._worker(raw_job(tmp_path, count=2))
+        assert deliverable.status == "failed"
+        assert [(m.state, m.message) for m in published if m.state != "frame"] == [
+            ("started", ""),
+            ("failed", "wrong"),
+        ]
+
+
+class TestTheEnvelopeHoldsTheChecksAndTheRename:
+    """A check that raises, or a rename Windows refuses while Drive syncs, left a .part that
+    could be gigabytes; a leftover that would not go then failed as a bare FileExistsError
+    (review, 2026-11-08)."""
+
+    @pytest.fixture(autouse=True)
+    def no_waiting(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(render, "_PATIENCE", (0.0, 0.0))
+
+    def refuse(self, monkeypatch: pytest.MonkeyPatch, times: int) -> list[Path]:
+        """Path.replace raises PermissionError the first `times` calls, then works."""
+        real = Path.replace
+        calls: list[Path] = []
+
+        def replace_(self: Path, target: Path) -> Path:
+            calls.append(self)
+            if len(calls) <= times:
+                raise PermissionError(13, "Access is denied", str(self))
+            return real(self, target)
+
+        monkeypatch.setattr(Path, "replace", replace_)
+        return calls
+
+    def test_a_check_that_raises_leaves_no_part(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        job = raw_job(tmp_path, count=2)
+
+        def broken(_job: object, _deliverable: object) -> list[QCResult]:
+            raise OSError("the mount went away")
+
+        monkeypatch.setattr(qc, "run_phase_b", broken)
+        with pytest.raises(OSError, match="mount went away"):
+            render.render_job(job)
+        assert not job.temp.exists() and not job.destination.exists()
+
+    def test_a_rename_refused_for_good_leaves_no_part(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        job = raw_job(tmp_path, count=2)
+        self.refuse(monkeypatch, times=99)
+        with pytest.raises(PermissionError):
+            render.render_job(job)
+        assert not job.temp.exists() and not job.destination.exists()
+
+    def test_a_rename_refused_for_a_moment_lands(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        job = raw_job(tmp_path, count=2)
+        calls = self.refuse(monkeypatch, times=1)
+        assert render.render_job(job).status == "done"
+        assert len(calls) == 2 and job.destination.is_dir() and not job.temp.exists()
+
+    def test_a_leftover_that_will_not_go_is_a_render_error_that_says_so(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        job = raw_job(tmp_path, count=2)
+        job.temp.mkdir(parents=True)
+        (job.temp / "locked.exr").touch()
+
+        def locked(path: Path, *args: object, **kwargs: object) -> None:
+            raise PermissionError(13, "Access is denied", str(path))
+
+        monkeypatch.setattr(shutil, "rmtree", locked)
+        with pytest.raises(render.RenderError, match="left from an earlier run"):
+            render.render_job(job)
+        assert not job.destination.exists()
+
+
+class TestARetryFindsItsOwnDelivery:
+    """A worker killed with the pool after its rename lost the result, and the retry failed
+    the job with "already exists" (review, 2026-11-08)."""
+
+    def test_a_landed_sequence_that_passes_its_checks_is_kept(self, tmp_path: Path) -> None:
+        job = raw_job(tmp_path, count=3)
+        first = render.render_job(job)
+        again = render.render_job(job, landed_ok=True)
+        assert again.status == "done"
+        assert again.frame_checksums == first.frame_checksums and again.frame_count == 3
+        assert again.size == first.size
+
+    def test_a_landed_reference_is_kept_too(self, tmp_path: Path) -> None:
+        source = fixtures.make_mov(tmp_path / "src" / "plate.mov", count=4)
+        job = ref_job(tmp_path, source, 0, 3)
+        first = render.render_job(job)
+        again = render.render_job(job, landed_ok=True)
+        assert (again.status, again.checksum, again.frame_count) == ("done", first.checksum, 4)
+
+    def test_a_folder_that_is_not_the_delivery_is_refused_and_left_alone(self, tmp_path: Path) -> None:
+        job = raw_job(tmp_path, count=3)
+        job.destination.mkdir(parents=True)
+        stranger = job.destination / "notes.txt"
+        stranger.write_text("not a frame")
+        with pytest.raises(render.RenderError, match="not this job's finished delivery"):
+            render.render_job(job, landed_ok=True)
+        assert stranger.read_text() == "not a frame"
+
+    def test_without_the_retry_an_occupied_destination_is_still_refused(self, tmp_path: Path) -> None:
+        job = raw_job(tmp_path, count=2)
+        render.render_job(job)
+        with pytest.raises(render.RenderError, match="already exists"):
+            render.render_job(job)
+
+    def test_only_the_second_round_is_told_it_may_find_one(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from concurrent.futures import Future
+        from concurrent.futures.process import BrokenProcessPool
+
+        told: list[bool] = []
+
+        class Pool:
+            def __init__(self, *args: object, **kwargs: object) -> None:
+                pass
+
+            def __enter__(self) -> Pool:
+                return self
+
+            def __exit__(self, *args: object) -> None:
+                pass
+
+            def submit(self, _fn: object, job: DeliverableJob, landed_ok: bool) -> Future[Deliverable]:
+                told.append(landed_ok)
+                future: Future[Deliverable] = Future()
+                if not landed_ok:
+                    future.set_exception(BrokenProcessPool("a worker died abruptly"))
+                else:
+                    future.set_result(job.to_deliverable())
+                return future
+
+        monkeypatch.setattr(render, "ProcessPoolExecutor", Pool)
+        render.execute([raw_job(tmp_path, count=2)], workers=1)
+        assert told == [False, True]

@@ -58,6 +58,10 @@ Run it with a real turnover on a Windows 11 machine with Google Drive for deskto
       delivery root on `G:` finishes with every deliverable renamed from its `.part`. Drive
       for desktop can hold a file open while it uploads; a rename that fails shows as a
       render error naming the file, so note any.
+- [ ] Since the 2026-11-08 review a refused rename or removal is tried again for about four
+      seconds before it fails, and a failed one leaves no `.part` behind. Render to `G:`
+      while Drive is uploading the shot folder: no `.part` is left in it afterwards, and a
+      second Run does not fail with "left from an earlier run" unless a file really is held.
 - [ ] A turnover folder whose name has an apostrophe, a comma or brackets renders burn-ins
       and LUTs (the filter path escape, fixed 2026-10-28 on both platforms).
 - [ ] A delivery path longer than 260 characters: PyInstaller's manifest declares the app
@@ -65,3 +69,20 @@ Run it with a real turnover on a Windows 11 machine with Google Drive for deskto
       registry. Note whether a deep delivery root fails, and how.
 - [ ] Save logs to CSV from the File menu, and open it in Excel: the header block names
       Windows and ffmpeg `9.0.1-essentials_build-www.gyan.dev`.
+
+### Review fixes (2026-11-08)
+
+- [ ] Double-click a line in the Deliverables tab: **one** Explorer window opens on its
+      folder, not two. Double-click an Issues line: the list selects that shot once.
+- [ ] Bump the version with `python build/bump.py` and run `git diff --stat`: only the
+      version lines change, with no whole-file line ending churn.
+- [ ] A stringout with a missing media card whose path is long (a turnover on `G:` a few
+      folders deep): the path on the card breaks after a `\`, never mid-name (review,
+      2026-11-08; before that only `/` was a break).
+- [ ] Save a new batch as `melt_10.30` in the Save dialog: the file is `melt_10.30.pibatch`,
+      the batch bar names it `melt_10.30`, and no other batch in the folder is overwritten.
+- [ ] Stop and close during the stringout, and a crash mid run (review, 2026-11-08, OQ-96,
+      OQ-97): Stop during a run's stringout step stops it with nothing left behind and the
+      reports written; closing during it closes with no crash dialog; ending the task in Task
+      Manager mid render, then reopening the batch on `G:`, shows the landed files done and
+      Run finishes the rest at v01.

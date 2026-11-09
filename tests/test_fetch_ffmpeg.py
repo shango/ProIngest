@@ -13,6 +13,7 @@ which fetches the real pair on the macOS and Windows runners.
 from __future__ import annotations
 
 import hashlib
+import http.client
 import json
 import re
 import stat
@@ -296,3 +297,41 @@ class TestASharedArchive:
         assert fetched == [url]
         assert (dest_dir / "ffmpeg.exe").read_bytes() == tool
         assert (dest_dir / "ffprobe.exe").read_bytes() == probe
+
+
+class TestADownloadThatFails:
+    """Review, 2026-11-08: no timeout, so a stalled server hung CI forever, and only
+    `URLError` was caught, so a connection reset mid-read gave a traceback instead of the
+    advice to use `--from`."""
+
+    class _Response:
+        def __init__(self, error: BaseException) -> None:
+            self.error = error
+
+        def __enter__(self) -> TestADownloadThatFails._Response:
+            return self
+
+        def __exit__(self, *exc: object) -> None:
+            return None
+
+        def read(self, size: int) -> bytes:
+            raise self.error
+
+    @pytest.mark.parametrize(
+        "error",
+        [http.client.IncompleteRead(b"part"), ConnectionResetError("reset"), TimeoutError("timed out")],
+        ids=["incomplete-read", "reset", "timeout"],
+    )
+    def test_a_mid_read_failure_gives_the_from_advice(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, error: BaseException
+    ) -> None:
+        timeouts: list[object] = []
+
+        def urlopen(request: object, timeout: object = None) -> TestADownloadThatFails._Response:
+            timeouts.append(timeout)
+            return self._Response(error)
+
+        monkeypatch.setattr("urllib.request.urlopen", urlopen)
+        with pytest.raises(SystemExit, match="--from"):
+            fetch_ffmpeg.download("https://example.invalid/ffmpeg.zip", tmp_path / "ffmpeg.zip")
+        assert timeouts and isinstance(timeouts[0], int | float) and timeouts[0] > 0

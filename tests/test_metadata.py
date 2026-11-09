@@ -234,11 +234,12 @@ class TestTheEdgeStates:
         assert value(sections, "Turnover", "Date") == "02_23_26"
         assert value(sections, "Turnover", "Shooter") == "danielluckett"
 
-    def test_the_timeline_start_is_read_at_the_project_rate(self) -> None:
-        """90000 frames is an hour at 25 and an hour two and a half minutes at 24."""
-        held = turnover(timeline_start=90000)
-        sections = describe_turnover(held, FrameRate(25))
-        assert "(01:00:00:00)" in value(sections, "Turnover", "Timeline start")
+    def test_the_record_timecode_is_the_edl_s_own(self) -> None:
+        """Review, 2026-11-08: a row's record In is the EDL's absolute record frame, so
+        nothing is added to it; a timeline start would have doubled the hour."""
+        placed = row(record_in=86400)
+        sections = describe([placed], batch(placed))
+        assert value(sections, "Range", "Record timecode") == "01:00:00:00 - 01:00:09:07"
 
     def test_a_turnover_s_own_results_go_in_that_one_section(self) -> None:
         """Alone means alone: a QC section beside it would be a second section, and the

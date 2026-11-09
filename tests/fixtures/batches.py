@@ -111,7 +111,6 @@ def turnover(turnover_id: str = "turnover001", **kwargs: object) -> Turnover:
         folder=Path(f"/source/{turnover_id}_02_23_2026_danielluckett"),
         edl_path=Path(f"/source/{turnover_id}/FINAL_v01.edl"),
         csv_path=Path(f"/source/{turnover_id}/metadata.csv"),
-        timeline_start=ONE_HOUR,
     )
     for key, value in kwargs.items():
         setattr(built, key, value)

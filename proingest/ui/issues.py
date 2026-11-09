@@ -117,7 +117,6 @@ class IssuesDock(QTreeWidget):
             self.setColumnWidth(column, width)
         self.header().setSectionResizeMode(COLUMNS.index("Message"), QHeaderView.ResizeMode.Stretch)
         self.itemActivated.connect(self._activated)
-        self.itemDoubleClicked.connect(self._activated)
         self._rows: list[ShotRow | None] = []
 
     def show_batch(self, batch: Batch) -> None:
@@ -173,6 +172,19 @@ class IssuesDock(QTreeWidget):
         self.setCurrentItem(fallback)
         self.scrollToItem(fallback)
         return True
+
+    def select_row(self, row: ShotRow) -> bool:
+        """Select the first line about this shot: what clicking its status dot lands on
+        (UI_SPEC section 3). Identity, not equality, as in `_activated`. Selects nothing
+        when the shot has no line here."""
+        for position in range(self.topLevelItemCount()):
+            item = self.topLevelItem(position)
+            index = item.data(0, Qt.ItemDataRole.UserRole) if item is not None else None
+            if item is not None and index is not None and self._rows[index] is row:
+                self.setCurrentItem(item)
+                self.scrollToItem(item)
+                return True
+        return False
 
     def _activated(self, item: QTreeWidgetItem, _column: int = 0) -> None:
         """Ask for the shot this result is about, if it is about one."""

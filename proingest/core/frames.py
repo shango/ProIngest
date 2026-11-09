@@ -160,6 +160,13 @@ def parse_in_out(text: str, current: int, context: EditContext) -> ParsedInput:
         except ValueError as exc:
             return ParsedInput(None, str(exc))
         origin_timecode, origin_frame = context.timecode_origin()
+        # Timecode is shown wrapped at 24 hours, so a clip that runs past midnight shows
+        # 00:00:04:15 for a frame a day after its start. Read the typed time as the one
+        # nearest the value it replaces, which is what makes a shown timecode read back
+        # as the frame it shows (review, 2026-11-08).
+        day = HOURS_PER_DAY * MINUTES_PER_HOUR * SECONDS_PER_MINUTE * nominal_rate(context.fps)
+        held = origin_timecode + (current - origin_frame)
+        typed += (held - typed + day // 2) // day * day
         return ParsedInput(typed - origin_timecode + origin_frame)
 
     if _ABSOLUTE.match(stripped):

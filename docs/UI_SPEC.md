@@ -91,7 +91,7 @@ Scrolling: Source file, Res, FPS, In (editable), Out (editable), Duration, Max A
 - The editor reads frames and timecode at different moments, which is why frames is a first-class state of this control rather than only the secondary line: a frame number is what gets typed into the In/Out cells and what a VFX vendor quotes back, and a timecode is what the AD and the edit talk in. Section 5 accepts both as input whatever this is set to.
 - Turnover group headers are rows in the same view (QTreeView with a flat two-level model), collapsible, showing counts and aggregate status.
 - **The last line under each turnover is its stringout** (user, 2026-10-07): `Stringout` in the Shot column, the file's name under Source, its version, and the bar and percentage in Progress while it builds (frames encoded of the total, from `stringout.build`'s `progress`). Its ball: **green** once written, **red** when the build failed (QC-142) or an event had nothing to show and is black (QC-144), blue while building, none before it is built. An event cut from a stand-in (QC-143) stays green; hovering the ball names those events. Its right-click menu is Build Stringout alone. The search box hides it like any line that does not match.
-- Sorting is fixed to the metadata CSV's row order within a turnover. A search box filters rows by shot code substring.
+- Sorting is fixed to the metadata CSV's row order within a turnover. A search box filters rows by shot code substring, taken as typed: `.`, `-` and spaces are characters to match, not pattern syntax.
 
 ## 3. Row colors and status dot
 
@@ -105,11 +105,11 @@ Scrolling: Source file, Res, FPS, In (editable), Out (editable), Duration, Max A
 | done | green | none |
 | failed render | red | faint red |
 
-Hovering the dot or the row shows a tooltip listing rule IDs and messages. Clicking the dot focuses the Issues dock on that row.
+Hovering the dot or the row shows a tooltip listing rule IDs and messages. Clicking the dot focuses the Issues dock on that row: the dock comes forward on the shot's first line, or on none when the shot has no results. The click selects the row as any click does.
 
 ## 4. Keyboard model
 
-- Arrow Up/Down: move between shot rows (skips group headers).
+- Arrow Up/Down: move between shot rows (skips group headers and stringout lines, keeps the column; stops at the first and last shot). A heading or a stringout line is reached with the mouse.
 - Tab / Shift+Tab: move between editable cells in the current row (Shot Code, In, Out, Notes), wrapping to next row's first editable cell.
 - Enter: commit edit and stay. Escape: revert cell.
 - Ctrl+K: toggle skip on current row (prompts for reason on first skip; Escape cancels).
@@ -137,11 +137,13 @@ Auto-detected in this order:
 3. `^\d+$` absolute source frame
 4. Anything else: cell shows inline red text "unrecognized" and reverts on Escape
 
+Timecode is shown wrapped at 24 hours, so a clip that runs past midnight shows `00:00:04:15` for a frame after its `23:59:55:00` start. **A typed timecode is read as the time nearest the value it replaces**, across midnight either way, so a cell's own timecode always reads back as the frame it shows and a Tab through it changes nothing (review, 2026-11-08: it used to commit a frame a day before the clip).
+
 After commit, Duration and Max Avail recompute, validation reruns for the row only, autosave fires.
 
 ## 6. Issues dock
 
-Table: row, rule ID, severity, message, "Fix" hint where applicable (e.g. "Rename shot code", "Locate media" opens a file picker and writes a path override into the batch). Double-click selects the row in the list.
+Table: row, rule ID, severity, message, "Fix" hint where applicable (e.g. "Rename shot code", "Locate media" opens a file picker and writes a path override into the batch). Double-click (or Enter) selects the row in the list, once: the dock listens to activation alone, since a double-click on the default styles is also an activation and listening to both acted twice (review, 2026-11-08).
 
 ## 6.1 Log tab
 
@@ -202,6 +204,9 @@ system, and loads nothing from the network.
 - Each row shows a slim progress bar in the Progress column with job count (e.g. 3/5). The stringout line under each turnover shows its own, in percent, while the stringout builds (section 2), and its Notes cell says the time left ("About 2m 10s left"; "Estimating time left" before the first event is encoded). The estimate is made at each event from the build's average rate so far, and counts down each second between events (user, 2026-10-07).
 - Status bar shows overall percent, jobs running, throughput (frames/s), and ETA.
 - Stop finishes in-flight frames, discards `.part` outputs, and leaves rows in their previous state.
+- **Stop also reaches the stringouts** (review, 2026-11-08, OQ-97): live while a run builds its turnovers' stringouts and during a heading's Build Stringout. The build in hand stops at its next frame or segment and writes nothing, the ones after it are skipped, and the QC log and the tracker are still written; the status bar says "Stopping the stringout; the QC log and the tracker are still written...". Writing the two spreadsheets is not a step Stop reaches. Closing the window during the stringouts stops them and closes once the reports are written.
+- **A crash during a run is recovered from the disk** (review, 2026-11-08, OQ-96): the batch file is written before the first job starts with what is about to render marked rendering, and reopening it, or the next Run, takes every file that landed under its final name as done. The next Run finishes the rest at the same version.
+- **Opening a batch reads the disk off the UI thread** (review, 2026-11-08): the run strip and the status bar say "Opening <file>: checking what is on disk" while every deliverable, turnover folder and root is checked, and the window is locked as during a scan. A drop of folders is checked the same way.
 - On completion a non-modal banner above the list reads "Batch complete: 27 done, 1 failed, 2 skipped. Exports written to ...". Click opens the folder.
 - **Nothing stops a run but the delivery root** (user, 2026-10-07). A shot with an error is held back and every other shot renders. A delivery root that is not writable or has too little space (QC-062, QC-063) opens a popup, "The run cannot start", and nothing is rendered. From 2026-09-23 (D8) to 2026-10-07 any must-fix anywhere stopped the run.
 
@@ -304,6 +309,7 @@ Built in M5.7.2. What that settled, beyond the layout:
 - **Settings opens with no batch**, because it is where the thresholds a *new* batch starts from are set. It is the one toolbar action that does not wait for one.
 - **The thresholds live in two places on purpose.** The app settings hold the defaults and a batch takes its own copy the moment it is created, for the reason section 13 gives for the two roots: what a delivery was checked against is a record of that work, so changing the defaults next month must not silently re-judge a batch that shipped last week. Apply writes both when a batch is open.
 - **A value that will not parse changes nothing**, rather than being corrected to something plausible. Same rule as section 5's In and Out: a resolution typed as `3840` is somebody part way through typing.
+- **The show prefix pattern is checked as it is typed** (review, 2026-11-08). It must compile on its own and inside every name pattern `core/naming.py` builds around it, so `[A-Z`, `SEC(A` or one that names a `(?P<show>...)` group of its own are refused: the reason shows in red under the field, and Apply keeps the pattern in use. One already in the settings file that fails the same check (a hand edit) is read as the default, so a bad pattern can never reach the scan, the planner or the exports.
 - **A section with nothing behind it yet is listed and disabled**, and its page says what it is waiting on. Same rule as the toolbar in section 1. **Every section is live as of M5.12**; the rule stays because it is how the page was built and how the next section will arrive.
 - **Advanced went live in M5.8.3**: the log level, the ffmpeg override, and a read-only line naming the log file. Both editable values are process wide rather than per batch, both take effect the moment they are applied, and both reach a render's worker processes when the next run starts them - a worker is told at its initialiser (`core/render.execute`), so a change made mid-run applies from the run after. The ffmpeg override takes the folder or the binary, and **a path that is not there is an error rather than a fallback**: an override quietly ignored is a render done with the wrong build of ffmpeg.
 - **Output went live in M5.12**, last, because both its values are applied inside a render's worker processes and had to be able to get there first. They travel on the channel Advanced built, at the worker's initialiser, so a change reaches the next run rather than one already going. Reference quality is the x264 rate factor, bounded 0 to 51 by what the encoder accepts; the preset stays at `slow` and is not editable. EXR compression level is the DWAA level. **Both are pinned by the spec** (`COLOR_AND_FORMAT.md` section 3: CRF 18, DWAA 45) and the page opens on those values, read from `core/ffmpeg.py` and `core/exr.py` rather than typed in a second time: moving either is a decision about a delivery rather than a preference, and each field's help says what the spec is so the person moving it knows what they are leaving.

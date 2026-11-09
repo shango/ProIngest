@@ -5,7 +5,11 @@ The window tests use `Inline`, so these are the ones that exercise the thread.
 
 from __future__ import annotations
 
+import os
+import subprocess
+import sys
 import threading
+from pathlib import Path
 
 from PySide6.QtWidgets import QApplication
 
@@ -56,3 +60,45 @@ class TestBackground:
         background.run(lambda: 1, lambda first: background.run(lambda: 2, answers.append))
         assert pump_until(lambda: bool(answers))
         assert answers == [2]
+
+
+ABANDONED_SCRIPT = """
+import time
+from PySide6.QtCore import QObject
+from PySide6.QtWidgets import QApplication
+from proingest.ui import background
+
+app = QApplication([])
+owner = QObject()
+work = background.Background(owner)
+answers = []
+work.run(lambda: time.sleep(2), answers.append)
+time.sleep(0.2)
+background.SHUTDOWN_WAIT_MS = 100
+work.shutdown()
+assert not work.busy
+del work, owner
+assert background.still_running()
+while background.still_running():
+    time.sleep(0.05)
+app.processEvents()
+assert answers == [], "nobody is left to hand the answer to"
+print("clean")
+"""
+
+
+class TestClosingOnAHungCall:
+    def test_a_call_that_will_not_stop_is_left_to_run_out_rather_than_destroyed(self) -> None:
+        """Review, 2026-11-08 (E2): after its wait `shutdown` returned with the thread still
+        running, the window went, and Qt aborted the process ("QThread: Destroyed while
+        thread is still running", exit 134). In a child process, since that is a crash."""
+        result = subprocess.run(
+            [sys.executable, "-c", ABANDONED_SCRIPT],
+            cwd=Path(__file__).resolve().parents[1],
+            env={**os.environ, "QT_QPA_PLATFORM": "offscreen"},
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        assert result.returncode == 0, result.stderr
+        assert result.stdout.strip() == "clean"

@@ -363,8 +363,27 @@ def show_pattern_of(app: AppSettings) -> str:
     One definition because four callers want it: the scan, the planner, the phase B name
     check and the CLF index all take a pattern, and a settings file that stored a copy of
     today's default would keep it after the default moved.
+
+    A stored pattern that does not compile (a hand edit, or one saved before the page
+    checked it) is the default too: every consumer would otherwise raise `re.error`,
+    and the scan would drop the turnover with nothing but a log line (review, 2026-11-08).
     """
-    return app.show_pattern or naming.DEFAULT_SHOW_PATTERN
+    if not app.show_pattern or show_pattern_problem(app.show_pattern) is not None:
+        return naming.DEFAULT_SHOW_PATTERN
+    return app.show_pattern
+
+
+def show_pattern_problem(pattern: str) -> str | None:
+    """Why this show prefix pattern cannot be used, or None when it can
+    (`naming.show_pattern_problem`, which the command line asks too)."""
+    return naming.show_pattern_problem(pattern)
+
+
+def text_problem(key: str, text: str) -> str | None:
+    """What is wrong with a typed text field, for the page to show under it."""
+    if key == "app.show_pattern":
+        return show_pattern_problem(text)
+    return None
 
 
 def apply_to_process(app: AppSettings) -> None:

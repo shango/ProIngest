@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import logging
 import re
+import threading
 from collections import Counter
 from collections.abc import Sequence
 from pathlib import Path
@@ -28,7 +29,7 @@ from typing import TYPE_CHECKING, cast
 
 from PySide6.QtCore import QObject, QTimer, Signal
 
-from proingest.core import clf, exports, planner, qc, render, stringout
+from proingest.core import batchfile, clf, exports, planner, qc, render, stringout
 from proingest.core.models import Batch, Deliverable, QCResult, Turnover
 from proingest.core.planner import DeliverableJob
 from proingest.ui import settings_form
@@ -43,6 +44,9 @@ log = logging.getLogger(__name__)
 
 NOTHING_TO_RENDER = "Nothing to render: every shot is complete, skipped or waiting for a Re-scan"
 CLOSING_AFTER_RUN = "Stopping the run, then closing..."
+STOPPING = "Stopping after the frames in flight..."
+STOPPING_STRINGOUT = "Stopping the stringout; the QC log and the tracker are still written..."
+STRINGOUT_STOPPED = "The stringout was stopped; nothing was written"
 
 MUST_FIX_TITLE = "The run cannot start"
 """The popup Run opens when the delivery root cannot take the delivery: not writable, or too
@@ -134,8 +138,17 @@ class RunController(QObject):
         self.runner.failed.connect(lambda text: window.report_problem("The run failed", text))
         self.background: Background = Background(self)
         """Where a run's disk work goes: the pre-flight, the plan and the reports (F17)."""
-        self._stop_requested = False
+        self._stopped = False
+        """Stop was pressed for the run, export or build now in hand. Reset as each starts
+        (review, 2026-11-08: the pool's own flag outlived its run and grayed Stop through
+        the next run's pre-flight)."""
         self._preparing = False
+        self._finishing = False
+        """Building stringouts, after a run or from a heading: the step Stop reaches through
+        `_stop_build` (review, 2026-11-08)."""
+        self._stop_build = threading.Event()
+        self._shut_down = False
+        """The window has closed: nothing that arrives after may start more work."""
 
         self.progress: RunProgress | None = None
         """Everything this run has said so far, or None when nothing is running.
@@ -176,14 +189,16 @@ class RunController(QObject):
     @property
     def cancelled(self) -> bool:
         """Whether the run now finishing was stopped. Read by the toolbar and the banner."""
-        return self.runner.cancelled or self._stop_requested
+        return self._stopped
 
     @property
     def stoppable(self) -> bool:
-        """Whether Stop means anything now: a run rendering, or about to."""
+        """Whether Stop means anything now: a run checking, planning, rendering, or
+        building its stringouts, and a heading's Build Stringout. Not the reports: they
+        are cheap and are what a stopped run is still owed."""
         if self.cancelled:
             return False
-        return self.runner.busy or self._preparing
+        return self.runner.busy or self._preparing or self._finishing
 
     # --- the run ----------------------------------------------------------------------
 
@@ -214,7 +229,7 @@ class RunController(QObject):
             if batch.delivery_root is None:
                 return
 
-        self._stop_requested = False
+        self._stopped = False
         self._preparing = True
         window.run_strip.start()
         window.run_strip.say(CHECKING_BATCH)
@@ -223,6 +238,8 @@ class RunController(QObject):
 
     def _checked(self, result: object) -> None:
         """The pre-flight is back: refuse, or plan."""
+        if self._shut_down:
+            return
         window = self._window
         batch = window.batch
         strip = window.run_strip
@@ -231,7 +248,7 @@ class RunController(QObject):
         if isinstance(result, Failure):
             self._refuse("The batch could not be checked", str(result.error))
             return
-        if self._stop_requested:
+        if self._stopped:
             self._refuse()
             return
         found = qc.must_fix(batch)
@@ -245,14 +262,40 @@ class RunController(QObject):
         root = batch.delivery_root
         assert root is not None
         pattern = settings_form.show_pattern_of(window.settings)
-        self.background.run(
-            lambda: planner.plan_batch(batch, root, pattern),
-            self._planned,
-        )
+        path = window.batch_path
+
+        def plan() -> list[DeliverableJob]:
+            jobs = planner.plan_batch(batch, root, pattern)
+            if jobs:
+                self._record_in_flight(batch, path, jobs)
+            return jobs
+
+        self.background.run(plan, self._planned)
         window.update_state()
+
+    @staticmethod
+    def _record_in_flight(batch: Batch, path: Path | None, jobs: list[DeliverableJob]) -> None:
+        """The batch file, before any job starts, with what is about to render marked so.
+
+        Review, 2026-11-08 (E1): nothing wrote the batch between the plan and the results,
+        so a crash mid run reopened as the batch before the plan, and the next Run saw the
+        new files in the delivery folder and rendered the shot again at the next version.
+        Off the UI thread, as the plan is, because the file may be on the mount. A write
+        that fails is logged and the run goes on: the next plan still takes a file that
+        landed as landed (`planner._prior_state`).
+        """
+        if path is None:
+            log.info("the batch was never saved, so a crash during this run leaves no file to recover from")
+            return
+        try:
+            batchfile.save_in_flight(batch, path, {job.destination for job in jobs})
+        except OSError as exc:
+            log.warning("the batch could not be saved before the run (%s); a crash would lose its state", exc)
 
     def _planned(self, result: object) -> None:
         """The plan is back: hand it to the pool, or say why there is nothing to hand."""
+        if self._shut_down:
+            return
         window = self._window
         self._preparing = False
         window.shot_model.refresh_rows()
@@ -263,7 +306,7 @@ class RunController(QObject):
                 self._refuse("The batch could not be planned", str(result.error))
             return
         jobs = cast("list[DeliverableJob]", result)
-        if self._stop_requested:
+        if self._stopped:
             self._refuse()
             return
         if not jobs:
@@ -312,11 +355,17 @@ class RunController(QObject):
             if batch.delivery_root is None:
                 return
 
+        # The names were planned under the Settings pattern, so they are read back under it:
+        # the default would call every name a custom show writes a QC-151.
+        pattern = settings_form.show_pattern_of(window.settings)
+
+        self._stopped = False
+
         def work() -> Path:
             qc.apply_batch_rules(batch, qc.settings_for(batch))
             qc.preflight(batch)
-            qc.apply_phase_b(batch)
-            return self._write_reports(batch)
+            qc.apply_phase_b(batch, pattern)
+            return self._write_reports(batch, pattern)
 
         window.run_strip.start()
         window.run_strip.say(WRITING_REPORTS)
@@ -347,16 +396,24 @@ class RunController(QObject):
         its `.part`, so a stopped run leaves the delivery folder holding finished files
         only (UI_SPEC section 7). The results still come back and are still applied,
         because a job that finished before Stop was pressed is a real deliverable.
+
+        **A stringout stops too** (review, 2026-11-08), at its next frame or segment, and
+        writes nothing; the QC log and the tracker are still written after it.
         """
+        if not self.stoppable:
+            return
+        self._stopped = True
         if self.runner.busy:
             self.runner.cancel()
-        elif self.preparing:
+            message = STOPPING
+        elif self._finishing:
+            self._stop_build.set()
+            message = STOPPING_STRINGOUT
+        else:
             # Checking or planning: nothing has reached a worker, so the run just does
             # not start when the step in hand comes back.
-            self._stop_requested = True
-        else:
-            return
-        self._window.statusBar().showMessage("Stopping after the frames in flight...")
+            message = STOPPING
+        self._window.statusBar().showMessage(message)
         self._window.update_state()
 
     def progressed(self, message: render.Progress) -> None:
@@ -392,8 +449,13 @@ class RunController(QObject):
         off this thread, because they report what the QC just decided, and the banner
         last because it says where they went.
         """
+        if self._shut_down:
+            # Review, 2026-11-08 (E6): the pool's answer can still be queued after a close
+            # that stopped waiting for it, and nothing may start once the window has gone.
+            return
         self._timer.stop()
         self.progress = None
+        self._stopped = self._stopped or cancelled
         window = self._window
         window.shot_model.set_run(None)
         window.progress.setVisible(False)
@@ -407,23 +469,34 @@ class RunController(QObject):
 
         # The stringout of every turnover this run delivered to, before the reports, so the
         # tracker can name it (OQ-38, 2026-09-25). A cancelled run leaves them as they were.
-        touched = [] if cancelled else turnovers_written(batch, written)
+        touched = [] if self._stopped else turnovers_written(batch, written)
         pattern = settings_form.show_pattern_of(window.settings)
         window.run_strip.say(BUILDING_STRINGOUT if touched else WRITING_REPORTS)
+        self._begin_building(bool(touched))
         self.background.run(
             lambda: self._stringouts_then_reports(batch, touched, pattern),
-            lambda result: self._reported(result, written, cancelled),
+            lambda result: self._reported(result, written),
         )
         window.update_state()
 
+    def _begin_building(self, building: bool) -> None:
+        self._finishing = building
+        self._stop_build.clear()
+
     def _stringouts_then_reports(self, batch: Batch, touched: list[Turnover], pattern: str) -> Path:
-        """Off the UI thread. A stringout that fails is QC-142 on its turnover, never a raise."""
+        """Off the UI thread. A stringout that fails is QC-142 on its turnover, never a raise.
+
+        A Stop skips the stringouts left and still writes the reports, which are cheap
+        and are the record of what the run delivered.
+        """
         if batch.delivery_root is not None:
             if touched:
                 render.make_user_folders(batch.delivery_root)
             for turnover in touched:
+                if self._stop_build.is_set():
+                    break
                 self._build_one(batch, turnover, batch.delivery_root, pattern)
-        return self._write_reports(batch)
+        return self._write_reports(batch, pattern)
 
     def _build_one(self, batch: Batch, turnover: Turnover, root: Path, pattern: str) -> Deliverable | None:
         """One stringout, its progress on its line in the list (user, 2026-10-07)."""
@@ -436,6 +509,7 @@ class RunController(QObject):
                 pattern,
                 progress=lambda done, total: self.stringout_progressed.emit(turnover, done / max(total, 1)),
                 workers=self._window.settings.workers,
+                cancel=self._stop_build.is_set,
             )
         finally:
             self.stringout_progressed.emit(turnover, None)
@@ -451,12 +525,15 @@ class RunController(QObject):
             if batch.delivery_root is None:
                 return
         root, pattern = batch.delivery_root, settings_form.show_pattern_of(window.settings)
+        self._stopped = False
+        self._begin_building(True)
         window.run_strip.start()
         window.run_strip.say(BUILDING_STRINGOUT)
         self.background.run(lambda: self._build_one(batch, turnover, root, pattern), self._stringout_built)
         window.update_state()
 
     def _stringout_built(self, result: object) -> None:
+        self._finishing = False
         window = self._window
         window.run_strip.clear()
         window.show_results()
@@ -465,12 +542,16 @@ class RunController(QObject):
             window.report_problem("The stringout could not be built", str(result.error))
         elif isinstance(result, Deliverable):
             window.statusBar().showMessage(f"Wrote {result.name}")
+        elif self._stopped:
+            window.statusBar().showMessage(STRINGOUT_STOPPED)
         else:
             window.statusBar().showMessage("The stringout was not written; the Issues dock says why (QC-142)")
         window.update_state()
         self._idle()
 
-    def _reported(self, result: object, written: list[Deliverable], cancelled: bool) -> None:
+    def _reported(self, result: object, written: list[Deliverable]) -> None:
+        self._finishing = False
+        cancelled = self._stopped
         window = self._window
         window.show_results()  # a stringout's QC-142 or QC-143 is on its turnover now
         window.autosave.schedule()
@@ -487,7 +568,7 @@ class RunController(QObject):
         self._idle()
 
     @staticmethod
-    def _write_reports(batch: Batch) -> Path:
+    def _write_reports(batch: Batch, pattern: str) -> Path:
         """The two spreadsheets, into the delivery root (FR-10). Off the UI thread.
 
         Written by the run rather than by a button, because section 7's banner says
@@ -498,7 +579,7 @@ class RunController(QObject):
         """
         if batch.delivery_root is None:
             raise ValueError("the batch has no delivery root")
-        log_path, tracker_path = exports.report_paths(batch, batch.delivery_root)
+        log_path, tracker_path = exports.report_paths(batch, batch.delivery_root, show_pattern=pattern)
         exports.write_qc_log(batch, log_path)
         exports.write_shot_tracker(batch, tracker_path)
         return log_path.parent
@@ -539,12 +620,26 @@ class RunController(QObject):
         self._window.close()
 
     def _close_without_results(self) -> None:
-        """The bounded wait ran out: close the way it used to, dropping the results."""
+        """The bounded wait ran out: close the way it used to, dropping the results.
+
+        A close refused here, at the unsaved batch question, is a window staying open,
+        so the wait is over and forgotten (review, 2026-11-08): the window must not close
+        itself when the run ends, and a later close waits for the run again.
+        """
         log.warning("the run did not stop within %d ms; closing without its results", SHUTDOWN_WAIT_MS)
         self.wait_expired = True
-        self._window.close()
+        if not self._window.close():
+            self.wait_expired = False
+            self._closing_after_run = False
 
     def shutdown(self) -> None:
-        """Stop and wait for the pool and any step in hand. What closing the window calls."""
+        """Stop and wait for the pool and any step in hand. What closing the window calls.
+
+        Whatever answer comes back after this is dropped (`_shut_down`), and a thread
+        that would not stop is left to run out rather than destroyed while it runs
+        (`background.abandon`).
+        """
+        self._shut_down = True
+        self._stop_build.set()
         self.runner.shutdown()
         self.background.shutdown()

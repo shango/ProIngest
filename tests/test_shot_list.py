@@ -12,6 +12,7 @@ from collections.abc import Iterator
 import pytest
 from PySide6.QtCore import QEvent, QModelIndex, QRect, Qt
 from PySide6.QtGui import QAction, QImage, QKeyEvent, QPainter, QPixmap
+from PySide6.QtTest import QTest
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
@@ -615,6 +616,32 @@ class TestEditingAcrossTheSeam:
         assert tall.currentIndex().column() == IN
         assert len(self.editors(tall)) == 1
 
+    def test_tabbing_through_a_delivered_shot_s_code_leaves_it_delivered(self, qt_app: QApplication) -> None:
+        """Review, 2026-11-08, as the editor does it: an editor opens on Shot and Tab
+        commits it untouched. That used to pin the code as an override and send the shot
+        back for the next Run, so a trim pass with Tab re-rendered every shot it crossed."""
+        model = ShotListModel()
+        model.set_batch(batch(delivered(row("MELT0001_pl01")), turnovers=[turnover()]))
+        view = ShotListView(model)
+        view.resize(500, 200)
+        view.show()
+        qt_app.processEvents()
+        try:
+            shot = view.proxy.index(0, SHOT, view.proxy.index(0, 0))
+            view.setCurrentIndex(shot)
+            self.open_editor(view, shot)
+            editor = self.editors(view.frozen)[0]
+            assert editor.text() == "MELT0001"
+            QApplication.sendEvent(
+                editor, QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_Tab, Qt.KeyboardModifier.NoModifier)
+            )
+            assert view.currentIndex().column() == IN, "the Tab did go through"
+            shot_row = model.batch.rows[0]
+            assert shot_row.shot_code_override is None
+            assert not shot_row.rerun
+        finally:
+            view.close()
+
     def test_and_shift_tab_comes_back_into_the_overlay(self, tall: ShotListView) -> None:
         in_cell = tall.proxy.index(0, IN, tall.proxy.index(0, 0))
         tall.setCurrentIndex(in_cell)
@@ -733,3 +760,90 @@ class TestTheStatusDotHasRoomToBeDrawn:
         width away again."""
         assert tall.indentation() == tall.frozen.indentation() == INDENT
         assert COLUMNS[STATUS].width >= INDENT * 2 + DOT_SIZE
+
+
+class TestTheSearchBoxTakesTextAsTyped:
+    """Review, 2026-11-08: `setFilterFixedString` stores a regex-escaped pattern and the
+    filter compared the pattern as plain text, so "A001.C" looked for "A001\\.C" and a
+    search with ".", "-" or a space never matched anything."""
+
+    @pytest.mark.parametrize("typed", ["A001.C", "C003-take", "take 2"])
+    def test_punctuation_and_spaces_match(self, qt_app: QApplication, typed: str) -> None:
+        model = ShotListModel()
+        model.set_batch(batch(row("A001.C003-take 2"), turnovers=[turnover()]))
+        view = ShotListView(model)
+        view.filter_by(typed)
+        assert shown(view) == ["A001.C003-take 2"]
+
+
+class TestArrowsMoveBetweenShots:
+    """Section 4: "Arrow Up/Down: move between shot rows (skips group headers)". Review,
+    2026-11-08: they landed on turnover headings and stringout lines."""
+
+    def press(self, view: ShotListView, key: Qt.Key) -> None:
+        view.keyPressEvent(QKeyEvent(QEvent.Type.KeyPress, key, Qt.KeyboardModifier.NoModifier))
+
+    def at(self, view: ShotListView, group: int, shot: int, column: int = IN) -> QModelIndex:
+        return view.proxy.index(shot, column, view.proxy.index(group, 0))
+
+    def current_shot(self, view: ShotListView) -> str:
+        current = view.currentIndex()
+        return str(current.siblingAtColumn(SHOT).data(Qt.ItemDataRole.DisplayRole))
+
+    def test_down_from_a_turnover_s_last_shot_lands_on_the_next_turnover_s_first(
+        self, view: ShotListView
+    ) -> None:
+        view.setCurrentIndex(self.at(view, 0, 1))
+        self.press(view, Qt.Key.Key_Down)
+        assert self.current_shot(view) == "BRIK0007"
+        assert view.currentIndex().column() == IN
+
+    def test_up_skips_the_heading_and_the_stringout_line_too(self, view: ShotListView) -> None:
+        view.setCurrentIndex(self.at(view, 1, 0))
+        self.press(view, Qt.Key.Key_Up)
+        assert self.current_shot(view) == "MELT0002"
+
+    def test_up_from_the_first_shot_stays_put(self, view: ShotListView) -> None:
+        first = self.at(view, 0, 0)
+        view.setCurrentIndex(first)
+        self.press(view, Qt.Key.Key_Up)
+        assert view.currentIndex() == first
+
+    def test_down_from_the_last_shot_stays_put(self, view: ShotListView) -> None:
+        last = self.at(view, 1, 0)
+        view.setCurrentIndex(last)
+        self.press(view, Qt.Key.Key_Down)
+        assert view.currentIndex() == last
+
+    def test_down_from_a_heading_lands_on_its_first_shot(self, view: ShotListView) -> None:
+        view.setCurrentIndex(view.proxy.index(1, 0))
+        self.press(view, Qt.Key.Key_Down)
+        assert self.current_shot(view) == "BRIK0007"
+
+
+class TestClickingTheStatusDot:
+    """Section 3: "Clicking the dot focuses the Issues dock on that row". Review,
+    2026-11-08: nothing was wired to it."""
+
+    def click(self, view: ShotListView, index: QModelIndex) -> None:
+        QTest.mouseClick(
+            view.frozen.viewport(), Qt.MouseButton.LeftButton, pos=view.frozen.visualRect(index).center()
+        )
+
+    def test_a_shot_s_dot_asks_for_that_shot(self, tall: ShotListView) -> None:
+        asked: list[object] = []
+        tall.status_clicked.connect(asked.append)
+        self.click(tall, tall.proxy.index(1, STATUS, tall.proxy.index(0, 0)))
+        assert asked == [tall.shot_model.batch.rows[1]]
+
+    def test_the_shot_cell_asks_for_nothing(self, tall: ShotListView) -> None:
+        asked: list[object] = []
+        tall.status_clicked.connect(asked.append)
+        self.click(tall, tall.proxy.index(1, SHOT, tall.proxy.index(0, 0)))
+        assert asked == []
+
+    def test_a_heading_asks_for_nothing(self, tall: ShotListView) -> None:
+        asked: list[object] = []
+        tall.status_clicked.connect(asked.append)
+        self.click(tall, tall.proxy.index(0, 0))
+        assert asked == []

@@ -145,7 +145,10 @@ def read(path: Path) -> Amf:
     pipeline = _child(root, "pipeline")
     if pipeline is None:
         raise AmfError(f"{path.name} has no pipeline")
-    clip_file, sequence_range = _clip(clip)
+    try:
+        clip_file, sequence_range = _clip(clip)
+    except AmfError as exc:
+        raise AmfError(f"{path.name}: {exc}") from exc
     source = _child(pipeline, "inputTransform")
     inverse = _child(source, "inverseOutputTransform")
     output = _child(pipeline, "outputTransform")
@@ -178,6 +181,9 @@ def _clip(clip: ET.Element | None) -> tuple[str, tuple[int, int] | None]:
         return "", None
     sequence = _child(clip, "sequence")
     if sequence is not None and sequence.text:
+        if "#" not in sequence.text:
+            # Nothing to stand for a frame number, so nothing it could name (review, 2026-11-08).
+            raise AmfError(f"its clipId sequence {sequence.text.strip()!r} has no # for the frame number")
         first, last = sequence.get("min"), sequence.get("max")
         span = (int(first), int(last)) if first and last and first.isdigit() and last.isdigit() else None
         return sequence.text.strip(), span

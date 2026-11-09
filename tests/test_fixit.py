@@ -147,6 +147,8 @@ class TestTheReport:
         item = titled(only(scanned(folder)), fixit.ADVICE["QC-046"].title)
         assert "no AMF" not in item.advice.explain and "It has no AMF" not in item.advice.explain
         assert item.clips[0].detail == f"{amf.name} names no input transform"
+        # Review, 2026-11-08: it said "no AMF, and no Input Color Space" of a clip whose AMF matched.
+        assert item.clips[0].named_by == f"the AMF ({amf.name})"
 
     @pytest.mark.parametrize(
         "rule",
@@ -291,3 +293,46 @@ class TestThePage:
         """Opened from disk and sent on as a file, so it must work offline."""
         page = fixit.render(scanned(turnover(tmp_path)), DAY)
         assert "http" not in page and "<script" not in page
+
+
+class TestWhatHolds:
+    """The labels say what actually holds (review, 2026-11-08): a turnover error that holds no
+    clip does not say it stops clips, and a turnover that delivers nothing does not say
+    "Nothing held back"."""
+
+    def test_a_turnover_qc_071_does_not_stop_the_delivery(self, tmp_path: Path) -> None:
+        batch = scanned(turnover(tmp_path))
+        batch.turnovers[0].qc.append(QCResult("QC-071", "error", "turnover", "two ALEs"))
+        report = only(batch)
+        item = titled(report, fixit.ADVICE["QC-071"].title)
+        assert not item.blocks
+        assert report.blocked == 0 and fixit._status(report) == "Nothing held back"
+        assert "Does not stop the delivery." in fixit._item_html(item)
+
+    def test_a_turnover_with_no_edl_delivers_nothing(self, tmp_path: Path) -> None:
+        found = Turnover(turnover_id="t1", folder=tmp_path / FOLDER)
+        found.qc.append(QCResult("QC-001", "error", "turnover", "Ben's EDL is missing"))
+        report = only(Batch(name="b", turnovers=[found]))
+        item = titled(report, fixit.ADVICE["QC-001"].title)
+        assert item.blocks
+        assert "Stops this turnover from being delivered." in fixit._item_html(item)
+        assert "Stops these clips" not in fixit._item_html(item)
+        assert fixit._status(report) == "Nothing can be delivered"
+        assert 'class="blocks">Nothing can be delivered' in fixit.render(
+            Batch(name="b", turnovers=[found]), DAY
+        )
+
+    def test_a_moved_turnover_holds_every_clip(self, tmp_path: Path) -> None:
+        batch = scanned(turnover(tmp_path))
+        batch.turnovers[0].qc.append(QCResult("QC-069", "error", "turnover", "not there any more"))
+        report = only(batch)
+        assert report.whole and report.blocked == report.clips == 2
+        assert fixit._status(report) == "Every clip held back"
+        page = fixit.render(batch, DAY)
+        assert fixit.FOLDER_MOVED in page and fixit.NOTHING_TO_FIX not in page
+
+    def test_a_row_error_still_stops_its_clip(self, tmp_path: Path) -> None:
+        batch = scanned(turnover(tmp_path))
+        batch.rows[0].qc.append(QCResult("QC-066", "error", "row", "no event"))
+        item = titled(only(batch), fixit.ADVICE["QC-066"].title)
+        assert item.blocks and "Stops these clips from being delivered." in fixit._item_html(item)

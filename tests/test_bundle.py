@@ -18,7 +18,7 @@ from pathlib import Path
 
 import pytest
 
-from build import build, bundle
+from build import build, bundle, fetch_ffmpeg
 from proingest import __version__
 from proingest.core import expiry, ffmpeg, stringout
 
@@ -168,6 +168,18 @@ class TestTheInstaller:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setattr(build, "REPO_ROOT", tmp_path)
-        with pytest.raises(build.BuildError, match=r"ffmpeg\.exe, ffprobe\.exe missing"):
+        with pytest.raises(build.BuildError, match=r"ffprobe\.exe, LICENSE\.ffmpeg\.txt missing"):
             build.check_ffmpeg(WINDOWS)
         build.check_ffmpeg(LINUX)
+
+    def test_a_stale_ffmpeg_stops_a_build(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Review, 2026-11-08: the check tested only that the files existed, so a manual
+        build could package binaries from an older lock. They must hash as the lock says."""
+        monkeypatch.setattr(build, "REPO_ROOT", tmp_path)
+        spec = fetch_ffmpeg.load_spec(WINDOWS)
+        folder = tmp_path / bundle.FFMPEG_DIR
+        folder.mkdir(parents=True)
+        for entry in spec["downloads"]:
+            (folder / entry["dest_name"]).write_bytes(b"an older build")
+        with pytest.raises(build.BuildError, match="not the pinned build"):
+            build.check_ffmpeg(WINDOWS)

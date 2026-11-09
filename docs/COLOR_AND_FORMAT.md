@@ -137,7 +137,12 @@ source encoding  ->  ACES2065-1  ->  the AMF's looks, in order  ->  linear ACESc
   stringout reads it as `Linear Rec.709 (sRGB)` in place of an input transform (turnover097's and
   turnover134's HDRI AMFs name none), then the AMF's CLF and output transform. A linear source
   gets a 1D shaper (`x ** (1/2.4)`) ahead of its 33 point cube, which would otherwise put one
-  sample in the darkest 3% (`color.shaper_lut`, ffmpeg `lut1d`).
+  sample in the darkest 3% (`color.shaper_lut`, ffmpeg `lut1d`). **So does a plate's reference
+  whose AMF reads the plate as scene linear** (ACES2065-1, ACEScg, Linear Rec.709: whatever the
+  config's `encoding` calls `scene-linear`, `color.is_scene_linear`; review, 2026-11-08). The
+  shaper's domain ends at linear 1.0, and ffmpeg's scaler clamps float there too (section 7),
+  so a reference from a linear source clips what is above 1.0; the plate, read with OpenEXR,
+  keeps it.
 
 **What a grade may contain** (user, 2026-09-28): **primaries plus simple sky secondaries**, in as
 many corrector nodes as the shot needs. Anything a CLF or an AMF look cannot carry - a look ID the
@@ -829,7 +834,7 @@ look very nearly right.
 | output | spec |
 |---|---|
 | raw EXR | OpenEXR 2 scanline, DWAA compression level 45, half float RGB (alpha dropped unless source has real alpha, then RGBA), data window = display window, frame numbers start 1001 (OQ-35). **Display referred through the AMF's output transform, Rec.709 chromaticities, graded with the looks of the clip's AMF** (2026-11-06), with the source encoding, the AMF's file name and the looks applied carried in the header (section 1) |
-| ref mp4 4k | 3840x2160, H.264 High, yuv420p, CRF 18 (x264 `-preset slow`) or `h264_videotoolbox` when hardware encoding is enabled, keyint 24, `-movflags +faststart`, AAC 192k if audio associated. **Only a plate's reference carries sound** (2026-09-23): a cp or el is delivered silent even when its own file has a track |
+| ref mp4 4k | 3840x2160, H.264 High, yuv420p, CRF 18 (x264 `-preset slow`, always software: there is no hardware encoding setting, see below), keyint 24, `-movflags +faststart`, AAC 192k if audio associated. **Only a plate's reference carries sound** (2026-09-23): a cp or el is delivered silent even when its own file has a track |
 | ref mp4 HD | same, 1920x1080 |
 | audio | PCM 16 bit, same sample rate and channel count, no resampling. Cut to the delivered range and sped up with the picture (1.001 for a 24000/1001 source, D2 of `docs/REVIEW_2026-09-23.md`), padded with silence where the range runs past the recorded sound. Only a row with no range is delivered as-is: a wav source byte for byte, audio in a container extracted whole. QC-044 if the source was not 16 bit |
 | HDRI | **not delivered by the tool** since 2026-10-30 (Ben delivers the EXR by hand); its pre-render is delivered as an mp4 and shown on the stringout, graded (QC-080, QC-083) |
@@ -851,9 +856,11 @@ editable and is not meant to be.
 NVENC was the Windows hardware encoder and **does not exist on macOS**. The macOS equivalent is
 `h264_videotoolbox`, which the bundled build carries (PROVENANCE.md).
 
-- **The default is software x264 at CRF 18.** It is deterministic, it is what this spec pins,
-  and it is what every QC threshold was written against. Hardware encoding is opt-in in
-  Settings, exactly as NVENC was.
+- **Every reference is software x264 at CRF 18** (`ffmpeg._x264`). It is deterministic, it is
+  what this spec pins, and it is what every QC threshold was written against. **Hardware
+  encoding is not built**: there is no Settings toggle and nothing calls `h264_videotoolbox`
+  (review, 2026-11-08; nobody has asked for it). The rest of this section is what building it
+  would have to respect, should it ever be asked for.
 - VideoToolbox has no CRF. On Apple Silicon it takes a constant-quality `-q:v` on a 1 to 100
   scale where higher is better, which is **not** convertible to a CRF number by any published
   formula. `-q:v 65` is the starting point, not a specification.
@@ -916,6 +923,7 @@ ffmpeg -i <src> -f rawvideo -pix_fmt gbrpf32le - | numpy frames
 - **The frame range is a frame seek, never a time seek.** A container seeks with the `trim` filter, `trim=start_frame=<in>:end_frame=<out+1>`, whose end is exclusive; it counts frames after the decoder has put them back in display order, so a long GOP source lands exactly. A sequence seeks with `-start_number <in>`, which never opens the frames before the range. `-ss` takes a float number of seconds and would land on the wrong frame at 23.976.
 - `gbrpf32le` is planar and stores G, then B, then R, so RGB is planes 2, 0 and 1. It carries no alpha, which is OQ-21: the EXR source path preserves a source alpha and the container path cannot yet, because nothing records whether a container has a real one.
 - EXR source sequences skip ffmpeg and are read with OpenEXR directly, then downscaled by `core/resize.py`, an antialiased Lanczos-3 in numpy. They have to: ffmpeg's `scale` accepts a float pixel format but **clamps the values to 0-1**, so routing a scene linear EXR through it would flatten every highlight above 1.0 to white without a word. The container path is unaffected because every container format section 2 accepts is integer and already bounded. That is the same filter the container path gets from `flags=lanczos`, so the two paths do not disagree: on a hard edge they are identical, and on smooth content they are within one 8 bit level. OQ-7, resolved.
+- **A source EXR is read as its display window**, the size ffprobe reports and every job is sized from. A CG render that stores only a bounding box of its data (a data window smaller than the display window, offset inside it) has the box placed where it belongs, zero around it, and anything outside the display window cut off (`exr.read_pixels`; review, 2026-11-08). Read as the data window alone, it was stretched across the whole frame.
 - **DWAA is lossy.** At level 45 a written frame comes back about a tenth of a percent off the value that went in, proportionally, at every brightness. The plate carries a color transform by design (section 1), so a delivered frame was never going to equal its source; DWAA means it does not even equal the float that was handed to the writer. QC therefore never compares a rendered frame to its source by equality.
 - The encoder is deterministic: the same pixels and header produce the same bytes, which is what makes the QC-106 per-frame hash meaningful across a re-render.
 - `framesPerSecond` is **not** written on output. The OpenEXR Python bindings cannot write a `Rational` attribute, and writing an int or a string under that name would be the wrong attribute type for any reader expecting a rate. Delivered frames carry a per-frame `timeCode` instead, which the bindings do write correctly.

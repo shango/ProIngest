@@ -336,3 +336,45 @@ class TestFind:
         (tmp_path / "nested").mkdir()
         (tmp_path / "nested" / "c.csv").touch()
         assert [p.name for p in metacsv.find(tmp_path)] == ["a.csv", "b.csv"]
+
+
+class TestReviewFindings:
+    """Review, 2026-11-08."""
+
+    @pytest.mark.parametrize("custom", ["meas01", "HDRI", "LDRI02", "styleFrame", "avidRef01", "recon01"])
+    def test_a_built_in_plate_and_a_custom_type_of_another_kind_is_qc_065(
+        self, tmp_path: Path, custom: str
+    ) -> None:
+        """`parse_shot_type` names none of these, so `pl01` and `meas01` read as a plate with
+        nothing said. QC_RULES QC-065: the custom field wins and the disagreement is an error."""
+        result = read(tmp_path, REAL_HEADER, [["C1.MP4", "MELT0001", "pl01", "", "", "MELT0001", custom]])
+        (row,) = result.rows
+        assert row.shot_type == custom
+        assert ("QC-065", "error") in [(q.rule_id, q.severity) for q in row.qc]
+
+    @pytest.mark.parametrize(
+        ("builtin", "custom"), [("HDRI", "hdri01"), ("meas", "MEAS01"), ("Wide", "HDRI")]
+    )
+    def test_two_spellings_of_one_type_or_a_framing_value_are_not_qc_065(
+        self, tmp_path: Path, builtin: str, custom: str
+    ) -> None:
+        result = read(tmp_path, REAL_HEADER, [["C1.MP4", "MELT0001", builtin, "", "", "MELT0001", custom]])
+        assert "QC-065" not in [q.rule_id for q in result.rows[0].qc]
+
+    @pytest.mark.parametrize("shot_type", ["HDRI", "styleFrame", "avidRef01", "meas01", "recon01"])
+    def test_every_kind_keeps_resolve_s_start_tc_and_its_take(self, tmp_path: Path, shot_type: str) -> None:
+        """Only a plate kept them, so the others' cut could not be read by Resolve's clock."""
+        header = ["File Name", "Shot", "Shot Type", "Start TC", "Take"]
+        result = read(tmp_path, header, [["C1.MP4", "MELT0001", shot_type, "01:00:00:00", "2"]])
+        (row,) = result.rows
+        assert (row.start_tc, row.take) == ("01:00:00:00", "2")
+
+    def test_a_truncated_utf16_file_is_not_a_csv(self, tmp_path: Path) -> None:
+        """A copy cut short on the mount, half a character at the end: it raised
+        `UnicodeDecodeError` and took the turnover's scan with it."""
+        path = write_csv(
+            tmp_path / "m.csv", ["File Name", "Shot", "Shot Type"], [["C1.MP4", "MELT0001", "pl01"]]
+        )
+        path.write_bytes(path.read_bytes()[:-1])
+        with pytest.raises(MetaCsvError, match="not UTF-16"):
+            metacsv.read(path)

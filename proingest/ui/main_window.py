@@ -26,6 +26,7 @@ import platform
 from base64 import b64decode, b64encode
 from datetime import date, datetime
 from pathlib import Path
+from typing import cast
 
 from PySide6.QtCore import QByteArray, QMimeData, Qt, QUrl
 from PySide6.QtGui import (
@@ -65,6 +66,7 @@ from proingest.core.models import (
 )
 from proingest.ui import metadata, paths, settings_form, toolbar_help
 from proingest.ui.autosave import AutoSaver
+from proingest.ui.background import Background, Failure
 from proingest.ui.batch_bar import BatchBar
 from proingest.ui.deliverables import DeliverablesDock
 from proingest.ui.issues import IssuesDock
@@ -105,6 +107,13 @@ BOTTOM_TABS = ("Issues", "Log", "Deliverables")
 
 SETTINGS_APPLIED = "Settings applied; the batch has been re-checked"
 
+OPENING = "Opening {name}: checking what is on disk"
+"""The strip and the status bar while a batch's deliverables, turnover folders and roots
+are checked, off the UI thread (review, 2026-11-08: about 500 stats on a Drive mount
+froze the window)."""
+
+CHECKING_DROP = "Checking the dropped folders"
+
 
 METADATA_WIDTH = 360
 """What the pane opens at on a window that has never been arranged."""
@@ -128,6 +137,17 @@ def unsaved_question(path: Path | None) -> str:
 def dropped_paths(mime: QMimeData) -> list[Path]:
     """The local files and folders in a drop, in the order they came."""
     return [Path(url.toLocalFile()) for url in mime.urls() if url.isLocalFile()]
+
+
+def missing_roots(batch: Batch) -> list[str]:
+    """Which of the two roots a batch names are not there: a stat each, so off the UI thread."""
+    roots = (("Source root", batch.source_root), ("Delivery root", batch.delivery_root))
+    return [label for label, root in roots if root is not None and not root.is_dir()]
+
+
+class _BackupFailed(OSError):
+    """Opening a batch could not take its `.bak`, so the open stops (the next autosave
+    would overwrite the only copy)."""
 
 
 class MainWindow(QMainWindow):
@@ -335,6 +355,9 @@ class MainWindow(QMainWindow):
         self.batch_bar.delivery_root_clicked.connect(self.choose_delivery_root)
 
         self.scanner = Scanner(self)
+        self.disk: Background = Background(self)
+        """The window's own disk steps, off the UI thread: opening a batch, and checking
+        what was dropped on it. Locks the batch like a scan (D15)."""
         self.scanner.scanned.connect(self._take_scanned)
         self.scanner.started_folder.connect(self._say_scanning)
         self.scanner.finished.connect(self._scan_finished)
@@ -433,30 +456,58 @@ class MainWindow(QMainWindow):
         self.add_turnover()
 
     def open_batch(self) -> None:
-        """Read a `.pibatch`, back it up, and check that its two roots are still there."""
+        """Read a `.pibatch`, back it up, and check that its two roots are still there.
+
+        **The disk work runs off the UI thread** (review, 2026-11-08): reconciling every
+        deliverable against the delivery folder, the turnover folders and the two roots
+        are a stat each, and on a Drive mount several hundred of them froze the window.
+        Only the questions it leads to are asked here, once it is back.
+        """
         if self._expired() or self._busy() or not self._may_abandon_current():
             return
         path = self.ask_open_path()
         if path is None:
             return
-        try:
+
+        def work() -> tuple[Batch, list[str]]:
             loaded = batchfile.load(path)
-        except batchfile.BatchFileError as exc:
-            self.report_problem("Could not open batch", str(exc))
+            # The copy is taken on open rather than on save, so the file being backed up
+            # is the last one the editor saw whole rather than the one a bad save just
+            # wrote. Without it the next autosave overwrites the only copy, so the open
+            # waits.
+            try:
+                batchfile.backup(path)
+            except OSError as exc:
+                raise _BackupFailed(f"{path.name} was not opened: {exc}") from exc
+            # A moved turnover says so on its heading before anything else is asked (D16).
+            qc.check_folders(loaded)
+            return loaded, missing_roots(loaded)
+
+        text = OPENING.format(name=path.name)
+        self.run_strip.start()
+        self.run_strip.say(text)
+        self.statusBar().showMessage(text)
+        self.disk.run(work, lambda result: self._opened(result, path))
+        self.update_state()
+
+    def _opened(self, result: object, path: Path) -> None:
+        """The batch is read and checked: show it, then ask about a root that has gone."""
+        self.run_strip.clear()
+        self.statusBar().clearMessage()
+        if isinstance(result, Failure):
+            error = result.error
+            if isinstance(error, _BackupFailed):
+                self.report_problem("Could not back up batch", str(error))
+            elif isinstance(error, batchfile.BatchFileError):
+                self.report_problem("Could not open batch", str(error))
+            else:
+                self.report_problem("Could not open batch", f"{path.name}: {error}")
+            self.update_state()
             return
-        # The copy is taken on open rather than on save, so the file being backed up is
-        # the last one the editor saw whole rather than the one a bad save just wrote.
-        # Without it the next autosave overwrites the only copy, so the open waits.
-        try:
-            batchfile.backup(path)
-        except OSError as exc:
-            self.report_problem("Could not back up batch", f"{path.name} was not opened: {exc}")
-            return
-        # A moved turnover says so on its heading before anything else is asked (D16).
-        qc.check_folders(loaded)
+        loaded, missing = cast("tuple[Batch, list[str]]", result)
         self.set_batch(loaded, path)
         qc.log_results(loaded, f"on opening {path.name}")
-        self._check_roots(loaded)
+        self._check_roots(loaded, missing)
 
     def save_batch(self) -> bool:
         """Write the batch, asking where the first time. True when something was written.
@@ -474,7 +525,7 @@ class MainWindow(QMainWindow):
             # The file the editor just named is the only name this batch has been given,
             # and the name is not decoration: the QC log and the tracker are named from
             # it, so a batch saved as `melt_day1` must not export as `untitled`.
-            self.batch.name = path.stem
+            self.batch.name = batchfile.batch_path(path).stem
             self.batch_bar.set_batch_name(self.batch.name)
         try:
             written = batchfile.save(self.batch, path)
@@ -544,8 +595,8 @@ class MainWindow(QMainWindow):
         self.autosave.schedule()
 
     def _busy(self) -> bool:
-        """A scan or a run in hand: the batch is locked until it ends (D15)."""
-        return self.scanner.busy or self.run.busy
+        """A scan, a run or a disk step in hand: the batch is locked until it ends (D15)."""
+        return self.scanner.busy or self.run.busy or self.disk.busy
 
     def _may_abandon_current(self) -> bool:
         """Write or discard what the open batch still owes, and say whether to go on."""
@@ -559,15 +610,16 @@ class MainWindow(QMainWindow):
             return True
         return self.save_batch()
 
-    def _check_roots(self, batch: Batch) -> None:
+    def _check_roots(self, batch: Batch, missing: list[str]) -> None:
         """A root that has gone missing is reported and the chooser reopens (section 13).
 
         Never silently recreated: writing a delivery tree into a stale path is how
         deliverables get lost, and a source root that is not there is a mount that has
-        not come up rather than a folder to make.
+        not come up rather than a folder to make. `missing` is `missing_roots`, asked
+        off the UI thread.
         """
         for label, root in (("Source root", batch.source_root), ("Delivery root", batch.delivery_root)):
-            if root is None or root.is_dir():
+            if root is None or label not in missing:
                 continue
             self.report_problem(f"{label} is missing", f"{root} is not there any more.")
             chosen = self.ask_folder(label, None)
@@ -616,16 +668,33 @@ class MainWindow(QMainWindow):
         """
         if not self._batch_open or self._busy() or self._expired():
             return
+        # Each folder is listed to see whether it is a turnover, which on a Drive mount is
+        # not a thing to do on this thread (review, 2026-11-08).
+        self.statusBar().showMessage(CHECKING_DROP)
+        self.disk.run(
+            lambda: [scan.is_turnover_folder(path) for path in paths],
+            lambda result: self._drop_checked(paths, result),
+        )
+        self.update_state()
+
+    def _drop_checked(self, paths: list[Path], result: object) -> None:
+        self.statusBar().clearMessage()
+        if isinstance(result, Failure):
+            self.report_problem("Could not read the dropped folders", str(result.error))
+            self.update_state()
+            return
+        turnovers = cast("list[bool]", result)
         present = {turnover.folder for turnover in self.batch.turnovers}
         added: list[Path] = []
         skipped: list[str] = []
-        for path in paths:
+        for path, is_turnover in zip(paths, turnovers, strict=True):
             if path in present or path in added:
                 skipped.append(f"{path.name}: already in this batch")
-            elif not scan.is_turnover_folder(path):
+            elif not is_turnover:
                 skipped.append(f"{path.name}: not a folder holding an EDL and a metadata CSV")
             else:
                 added.append(path)
+        self.update_state()
         if added:
             self._take_roots_from(added[0])
             self._scan(list(zip(added, scan.next_turnover_ids(self.batch, len(added)), strict=True)))
@@ -729,7 +798,7 @@ class MainWindow(QMainWindow):
         From the QC results as the Issues dock shows them, so no rule re-runs and it is
         quick enough for the UI thread: it reads the batch and writes one small file.
         """
-        if not self._batch_open or self.scanner.busy or self._expired():
+        if not self._batch_open or self._busy() or self._expired():
             return
         batch = self.batch
         if batch.delivery_root is None:
@@ -737,7 +806,8 @@ class MainWindow(QMainWindow):
             if batch.delivery_root is None:
                 return
         try:
-            path = fixit.write(batch, fixit.report_path(batch, batch.delivery_root))
+            pattern = settings_form.show_pattern_of(self._settings)
+            path = fixit.write(batch, fixit.report_path(batch, batch.delivery_root, show_pattern=pattern))
         except (OSError, ValueError) as exc:
             self.report_problem("Fix-it report not written", str(exc))
             return
@@ -884,7 +954,7 @@ class MainWindow(QMainWindow):
         open_batch = self._batch_open
         scanning = self.scanner.busy
         running = self.run.busy
-        busy = scanning or running
+        busy = scanning or running or self.disk.busy
         # D15: nothing that changes the batch while a scan or a run has it in hand. A
         # trim or a delivery root changed during a run changes the reports and not the
         # render (F14); New or Open during a scan took its result into another batch (F13).
@@ -901,7 +971,9 @@ class MainWindow(QMainWindow):
         self.batch_bar.delivery_root.setEnabled(not busy)
         self.action_run.setEnabled(open_batch and not busy and bool(self.batch.rows))
         self.action_export.setEnabled(open_batch and not busy and bool(self.batch.rows))
-        self.fixit_link.setEnabled(open_batch and not scanning and bool(self.batch.rows))
+        # Locked with the rest (review, 2026-11-08): it reads the batch while a run's steps
+        # on another thread write it.
+        self.fixit_link.setEnabled(open_batch and not busy and bool(self.batch.rows))
         self.action_stop.setEnabled(self.run.stoppable)
         self._refresh_expiry_warning()
         self._refresh_tooltips(open_batch=open_batch, scanning=scanning, running=running)
@@ -1168,6 +1240,11 @@ class MainWindow(QMainWindow):
         self.show_issues()
         self.issues.select_result(rule_id, self.shot_list.selected_rows())
 
+    def _show_row_issues(self, row: ShotRow) -> None:
+        """A status dot clicked: the Issues dock, on that shot's first line (section 3)."""
+        self.show_issues()
+        self.issues.select_row(row)
+
     def show_results(self) -> None:
         """The Issues dock and the metadata pane, which read the same QC results.
 
@@ -1188,6 +1265,7 @@ class MainWindow(QMainWindow):
         tabs.setObjectName("bottom_tabs")
         self.issues = IssuesDock(tabs)
         self.issues.row_activated.connect(self.shot_list.select_row)
+        self.shot_list.status_clicked.connect(self._show_row_issues)
         self.log_view = LogView(tabs)
         self.log_view.save_requested.connect(self.save_logs)
         self.deliverables = DeliverablesDock(tabs)
@@ -1289,6 +1367,7 @@ class MainWindow(QMainWindow):
             event.ignore()
             return
         self.scanner.shutdown()
+        self.disk.shutdown()
         self.run.shutdown()
         self.log_view.detach()
         self.save_window_state()

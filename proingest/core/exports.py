@@ -60,15 +60,25 @@ def report_names(batch: Batch, when: date | None = None) -> tuple[str, str]:
     )
 
 
-def report_paths(batch: Batch, delivery_root: Path, when: date | None = None) -> tuple[Path, Path]:
+def report_paths(
+    batch: Batch,
+    delivery_root: Path,
+    when: date | None = None,
+    show_pattern: str = naming.DEFAULT_SHOW_PATTERN,
+) -> tuple[Path, Path]:
     """Those two files under `<delivery_root>/<show>/_reports/`.
 
     The show comes from the first row that has a shot code, because NAMING_SPEC section
     5 puts `_reports/` under the show and a batch is one turnover set. A batch that
     spans two shows writes both reports under the first, which is visible in the path
     rather than silent, and is a one line change if it ever happens.
+
+    **The code is the one the deliverables are named for** (`planner.effective_identity`):
+    an editor's correction from `MLET0001` to `MELT0001` sends the plates to `MELT/`, so
+    the reports go there too, under the same show pattern the names were built with.
     """
-    show = next((row.identity.show for row in batch.rows if row.identity), None)
+    identities = (planner.effective_identity(row, show_pattern) for row in batch.rows)
+    show = next((identity.show for identity in identities if identity is not None), None)
     if show is None:
         raise ValueError("no row in the batch has a shot code, so there is no show to file under")
     folder = naming.reports_dir(delivery_root, show)
@@ -113,7 +123,7 @@ def _rule_ids(results: list[QCResult], severity: str) -> str:
 
 SHOTS_HEADERS = (
     "Turnover", "Clip name", "Shot code", "Elem", "Source", "FPS", "Res",
-    "Delivered In", "Delivered Out", "Delivered In TC", "Delivered Out TC",
+    "Turnover In", "Turnover Out", "Turnover In TC", "Turnover Out TC",
     "Final In", "Final Out", "Duration", "Max available", "Audio", "Edited",
     "Source encoding",
     "Source codec", "Source pixel format", "Source bit depth", "Source chroma",
@@ -121,6 +131,10 @@ SHOTS_HEADERS = (
     "Skip reason", "Notes", "Warnings", "Errors",
 )  # fmt: skip
 """The QC log's own columns, QC_RULES "QC log structure".
+
+The four **Turnover** columns are the range the turnover arrived with (`ShotRow.snapshot`),
+and Final In/Out the range as the editor left it, which is what a run delivers. They
+were headed "Delivered" until 2026-11-08 (review), which a trim made untrue.
 
 Source encoding is the color space the clip's AMF input transform resolved to in the
 pinned config (user, 2026-09-28); empty means the AMF named none the config has, which
@@ -157,6 +171,7 @@ def _write_summary(book: Workbook, batch: Batch, when: date) -> None:
         ("Rows skipped", sum(1 for row in batch.rows if _row_state(row) == "skipped")),
         ("Rows held back", sum(1 for row in batch.rows if _row_state(row) == "held")),
         ("Rows failed", sum(1 for row in batch.rows if _row_state(row) == "failed")),
+        ("Rows not rendered", sum(1 for row in batch.rows if _row_state(row) == "not rendered")),
         ("Deliverables", sum(len(row.deliverables) for row in batch.rows)),
         ("Errors", counts["error"]),
         ("Warnings", counts["warning"]),
@@ -184,11 +199,14 @@ def _every_result(batch: Batch) -> list[list[QCResult]]:
 
 
 def _row_state(row: ShotRow) -> str:
-    """`skipped`, `held`, `failed` or `delivered`, which is what the Summary counts.
+    """`skipped`, `held`, `failed`, `delivered` or `not rendered`, which is what the Summary counts.
 
     Held is a row an error kept back until it is fixed and re-scanned (missing media, or
-    color the tool cannot recreate). A row with nothing planned counts as delivered: the
-    planner had nothing to do for it, which is not a render that did not finish.
+    color the tool cannot recreate). **Delivered is a row whose deliverables all landed**,
+    the tracker's own test (`_landed`). Everything else is not rendered: deliverables still
+    planned or rendering when a run was stopped, a batch that has not run, or a row with
+    nothing to deliver, such as a style frame (review, 2026-11-08: these all counted as
+    delivered).
     """
     if row.skipped:
         return "skipped"
@@ -196,7 +214,7 @@ def _row_state(row: ShotRow) -> str:
         return "held"
     if any(item.status == "failed" for item in row.deliverables):
         return "failed"
-    return "delivered"
+    return "delivered" if _landed(row) else "not rendered"
 
 
 def _write_shots(book: Workbook, batch: Batch) -> None:
@@ -221,7 +239,7 @@ def _write_shots(book: Workbook, batch: Batch) -> None:
                 current.in_frame if current else "",
                 current.out_frame if current else "",
                 row.duration or "",
-                row.max_available_out or "",
+                "" if row.max_available_out is None else row.max_available_out,
                 str(row.audio_path) if row.audio_path else "",
                 "yes" if row.was_edited else "",
                 row.source_encoding or "",
@@ -294,8 +312,9 @@ chain, the version, an HDRI or style frame being what it is. Kept off the Issues
 def issue_lines(batch: Batch) -> list[list[str]]:
     """Every finding with its words, one line each (user, 2026-10-07: "expand the qc list
     that gets exported afterward to pick up non-blocker issues"). The Effect says what it
-    did: an error at batch scope stopped the run, a row's error held that shot back, and
-    everything else rendered."""
+    did: an error about the delivery root stopped the run (`qc.RUN_STOPPING_RULES`), a row's
+    error held that shot back, and everything else rendered. A batch scope QC-151 stops
+    nothing, since 2026-11-08: it reports on names already delivered."""
     names = {t.turnover_id: t.folder.name for t in batch.turnovers}
     lines: list[list[str]] = []
 
@@ -307,7 +326,8 @@ def issue_lines(batch: Batch) -> list[list[str]]:
         lines.append([turnover, code, clip, result.rule_id, result.severity, effect, result.message])
 
     for result in batch.qc:
-        add("", None, result, "stopped the run" if result.severity == "error" else "")
+        stopped = result.severity == "error" and result.rule_id in qc.RUN_STOPPING_RULES
+        add("", None, result, "stopped the run" if stopped else "")
     for turnover in batch.turnovers:
         for result in turnover.qc:
             add(turnover.folder.name, None, result, "")

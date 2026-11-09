@@ -32,6 +32,7 @@ from PySide6.QtCore import QObject, QThread, Signal
 from proingest.core import render
 from proingest.core.models import DEFAULT_WORKERS, Deliverable
 from proingest.core.planner import DeliverableJob
+from proingest.ui.background import abandon
 
 log = logging.getLogger(__name__)
 
@@ -366,8 +367,14 @@ class Runner(QObject):
         log.warning("the render pool did not stop; ending its workers")
         for child in multiprocessing.active_children():
             child.terminate()
-        if not thread.wait(SHUTDOWN_GRACE_MS):
-            log.warning("the render thread did not stop within %d ms", 2 * SHUTDOWN_GRACE_MS)
+        if thread.wait(SHUTDOWN_GRACE_MS):
+            return
+        # Destroying it running would abort the process (review, 2026-11-08), so it is left
+        # to run out, and the results it brings back reach nobody.
+        log.warning("the render thread did not stop within %d ms", 2 * SHUTDOWN_GRACE_MS)
+        assert self._job is not None
+        abandon(thread, self._job)
+        self._thread, self._job, self._cancel = None, None, None
 
     def _collect(self, written: object) -> None:
         """The worker's answer, on the UI thread. The thread is asked to stop after it."""

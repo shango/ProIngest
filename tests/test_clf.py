@@ -270,6 +270,27 @@ class TestEdlLayouts:
         events = clf.read_final_edl(edl(tmp_path, text), RATE_24)
         assert [(event.event_id, event.position) for event in events] == [("001", 0), ("003", 1)]
 
+    def test_the_incoming_side_of_a_dissolve_is_its_to_clip(self, tmp_path: Path) -> None:
+        """Review, 2026-11-08: a CMX dissolve writes event 002 twice, the outgoing clip held
+        for no frames and then the incoming one, followed by `FROM CLIP NAME` (the outgoing
+        clip) and `TO CLIP NAME` (the incoming one). The incoming event was named after the
+        outgoing clip, so both clips' rows claimed one event (QC-066 and QC-067)."""
+        text = (
+            "TITLE: MELT_FINAL_v03\nFCM: NON-DROP FRAME\n\n"
+            "001  MELT0001 V     C        01:00:00:08 01:00:09:08 01:00:00:00 01:00:09:00\n"
+            "* FROM CLIP NAME: MELT0001_pl01.mov\n\n"
+            "002  MELT0001 V     C        01:00:09:08 01:00:09:08 01:00:09:00 01:00:09:00\n"
+            "002  MELT0002 V     D    024 02:00:00:00 02:00:04:00 01:00:09:00 01:00:13:00\n"
+            "* FROM CLIP NAME: MELT0001_pl01.mov\n"
+            "* TO CLIP NAME: MELT0002_pl01.mov\n"
+        )
+        events = clf.read_final_edl(edl(tmp_path, text), RATE_24)
+        assert [(event.event_id, event.clip_name, event.position) for event in events] == [
+            ("001", "MELT0001_pl01.mov", 0),
+            ("002", "MELT0002_pl01.mov", 1),
+        ]
+        assert events[1].source_in == 172800
+
     def test_a_zero_length_event_conforms_nothing(self, tmp_path: Path) -> None:
         """The outgoing side of a dissolve is written as a cut covering no frames."""
         text = FINAL_EDL.replace("02:00:00:00 02:00:04:00", "02:00:00:00 02:00:00:00")

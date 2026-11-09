@@ -25,6 +25,15 @@ EXPIRED_EXIT = 3
 """A packaged build a calendar month past its release refuses every subcommand (`core/expiry.py`)."""
 
 
+def _show_pattern(text: str) -> str:
+    """`--show-pattern` refused at the prompt when it cannot be used, rather than as an
+    `re.error` out of the scan or plan (review, 2026-11-08; `naming.show_pattern_problem`)."""
+    problem = naming.show_pattern_problem(text)
+    if problem is not None:
+        raise argparse.ArgumentTypeError(problem)
+    return text
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="proingest", description=__doc__)
     parser.add_argument("--version", action="version", version=f"proingest {__version__}")
@@ -44,7 +53,9 @@ def main(argv: list[str] | None = None) -> int:
     scan_parser.add_argument("folders", nargs="+", type=Path)
     scan_parser.add_argument("--save", type=Path, help="write the result to a .pibatch file")
     scan_parser.add_argument("--name", default="untitled", help="batch name")
-    scan_parser.add_argument("--show-pattern", default=naming.DEFAULT_SHOW_PATTERN, help=pattern_help)
+    scan_parser.add_argument(
+        "--show-pattern", default=naming.DEFAULT_SHOW_PATTERN, type=_show_pattern, help=pattern_help
+    )
     scan_parser.add_argument(
         "--rules",
         type=Path,
@@ -61,7 +72,9 @@ def main(argv: list[str] | None = None) -> int:
         help=f"worker processes (default {DEFAULT_WORKERS})",
     )
     run_parser.add_argument("--dry-run", action="store_true", help="print the plan and write nothing")
-    run_parser.add_argument("--show-pattern", default=naming.DEFAULT_SHOW_PATTERN, help=pattern_help)
+    run_parser.add_argument(
+        "--show-pattern", default=naming.DEFAULT_SHOW_PATTERN, type=_show_pattern, help=pattern_help
+    )
 
     qc_parser = subparsers.add_parser("qc", help="write the QC log and shot tracker for a batch")
     qc_parser.add_argument("batch", type=Path, help="a .pibatch file")
@@ -69,7 +82,9 @@ def main(argv: list[str] | None = None) -> int:
     qc_parser.add_argument(
         "--out", type=Path, help="write both files here instead of the show's _reports folder"
     )
-    qc_parser.add_argument("--show-pattern", default=naming.DEFAULT_SHOW_PATTERN, help=pattern_help)
+    qc_parser.add_argument(
+        "--show-pattern", default=naming.DEFAULT_SHOW_PATTERN, type=_show_pattern, help=pattern_help
+    )
 
     args = parser.parse_args(argv)
     # Console only: the log file lives in a folder `ui/paths.py` asks Qt for, and the
@@ -265,7 +280,7 @@ def _qc(
     qc.apply_phase_b(batch, show_pattern)
 
     try:
-        log_path, tracker_path = _report_destinations(batch, out)
+        log_path, tracker_path = _report_destinations(batch, out, show_pattern)
     except ValueError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
@@ -284,12 +299,12 @@ def _qc(
     return 1 if counts["error"] else 0
 
 
-def _report_destinations(batch: Batch, out: Path | None) -> tuple[Path, Path]:
+def _report_destinations(batch: Batch, out: Path | None, show_pattern: str) -> tuple[Path, Path]:
     """Where the two files go: `--out`, or the show's `_reports` folder."""
     if out is None:
         if batch.delivery_root is None:
             raise ValueError("the batch has no delivery root; pass --delivery-root or --out")
-        return exports.report_paths(batch, batch.delivery_root)
+        return exports.report_paths(batch, batch.delivery_root, show_pattern=show_pattern)
     log_name, tracker_name = exports.report_names(batch)
     return out / log_name, out / tracker_name
 
@@ -363,7 +378,7 @@ def _report_run(written: list[Deliverable], batch_path: Path) -> int:
     for deliverable in written:
         for result in deliverable.qc:
             print(f"  {result.severity.upper():7} {result.rule_id}  {result.message}")
-    print(f"wrote {batch_path.with_suffix(batchfile.SUFFIX)}")
+    print(f"wrote {batchfile.batch_path(batch_path)}")
     return 1 if failed else 0
 
 

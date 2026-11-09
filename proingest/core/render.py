@@ -38,6 +38,7 @@ import multiprocessing
 import shutil
 import tempfile
 import threading
+import time
 from collections.abc import Callable, Generator, Sequence
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass, replace
@@ -82,6 +83,7 @@ def render_job(
     job: DeliverableJob,
     on_frame: Callable[[int], None] | None = None,
     cancelled: Callable[[], bool] | None = None,
+    landed_ok: bool = False,
 ) -> Deliverable:
     """Produce one deliverable and return the record of what was written.
 
@@ -96,51 +98,67 @@ def render_job(
     `execute` is what wraps the real queue and event around them.
 
     On any failure the temp is discarded and the exception propagates, so the caller
-    sees the real reason and the destination stays absent.
+    sees the real reason and the destination stays absent. That includes the checks and
+    the rename: a rename refused while Drive syncs (Windows' "Access is denied") is a
+    failure like any other, not a multi-gigabyte `.part` left behind (review, 2026-11-08).
+
+    `landed_ok` is for a job run again after its worker died (`execute`): a destination
+    already there may be this job's own, renamed before the worker was killed and its
+    result lost with it. It is accepted when it passes the same checks, and refused as
+    before when it does not (`_accept_landed`).
     """
     deliverable = job.to_deliverable()
     if cancelled is not None and cancelled():
         raise RenderCancelled(f"{job.name} was cancelled before it started")
+    if landed_ok and job.destination.exists():
+        return _accept_landed(job, deliverable)
     _prepare(job)
     try:
-        if job.kind == "raw_dir":
-            _render_sequence(job, deliverable, on_frame, cancelled)
-        elif job.kind == "aux_still":
-            _render_still(job, deliverable)
-        elif job.kind == "audio":
-            _render_audio(job, deliverable)
-        elif job.kind in ("ref_mp4", "hdri_ref"):
-            _render_reference(job, deliverable)
-        elif job.kind == "hdri":
-            _copy_hdri(job, deliverable)
-        elif job.kind == "avidref":
-            _deliver_avidref(job, deliverable)
-        else:
-            raise RenderError(f"no renderer for a {job.kind} job")
+        _produce(job, deliverable, on_frame, cancelled)
+        # Verified where it was written, under the name it will have: a deliverable that
+        # fails a check never takes its final name, even for the moment between the rename
+        # and the check (F11).
+        at_temp = replace(job, destination=job.temp, display_name=job.name)
+        deliverable.qc.extend(qc.run_phase_b(at_temp, deliverable))
+        if any(result.severity == "error" for result in deliverable.qc):
+            _discard_quietly(job.temp)
+            deliverable.status = "failed"
+            log.warning("%s failed post-render QC and was not delivered", job.name)
+            return deliverable
+        _patiently(lambda: job.temp.replace(job.destination))
     except ffmpeg.FFmpegError as exc:
         # One exception type out of here, so a worker pool has one thing to catch.
-        _discard(job.temp)
+        _discard_quietly(job.temp)
         raise RenderError(f"{job.name}: {exc}") from exc
     except BaseException:
         # BaseException, not Exception: a cancelled worker must still clean up.
-        _discard(job.temp)
+        _discard_quietly(job.temp)
         raise
 
-    # Verified where it was written, under the name it will have: a deliverable that
-    # fails a check never takes its final name, even for the moment between the rename
-    # and the check (F11).
-    at_temp = replace(job, destination=job.temp, display_name=job.name)
-    deliverable.qc.extend(qc.run_phase_b(at_temp, deliverable))
-    if any(result.severity == "error" for result in deliverable.qc):
-        _discard(job.temp)
-        deliverable.status = "failed"
-        log.warning("%s failed post-render QC and was not delivered", job.name)
-        return deliverable
-
-    job.temp.replace(job.destination)
     deliverable.status = "done"
     log.info("wrote %s", job.destination)
     return deliverable
+
+
+def _produce(
+    job: DeliverableJob,
+    deliverable: Deliverable,
+    on_frame: Callable[[int], None] | None,
+    cancelled: Callable[[], bool] | None,
+) -> None:
+    """Write the job to its temp, by kind."""
+    if job.kind == "raw_dir":
+        _render_sequence(job, deliverable, on_frame, cancelled)
+    elif job.kind == "aux_still":
+        _render_still(job, deliverable)
+    elif job.kind == "audio":
+        _render_audio(job, deliverable)
+    elif job.kind in ("ref_mp4", "hdri_ref"):
+        _render_reference(job, deliverable)
+    elif job.kind == "avidref":
+        _deliver_avidref(job, deliverable)
+    else:
+        raise RenderError(f"no renderer for a {job.kind} job")
 
 
 # --- The atomic envelope every kind shares. ---
@@ -152,19 +170,77 @@ def _prepare(job: DeliverableJob) -> None:
     A destination that already exists means the version the planner resolved is not
     actually free, which is a bug or a concurrent run rather than something to
     overwrite: a delivered frame is not ours to replace.
+
+    A stale temp that will not go (a file Drive or a virus scanner holds open) is a
+    failure that says so, rather than the bare `FileExistsError` the sequence's `mkdir`
+    would raise over the leftover.
     """
     job.destination.parent.mkdir(parents=True, exist_ok=True)
     if job.destination.exists():
         raise RenderError(f"{job.destination} already exists; the planned version is not free")
-    _discard(job.temp)
+    try:
+        _discard(job.temp)
+    except OSError as exc:
+        raise RenderError(f"{job.temp} is left from an earlier run and could not be removed: {exc}") from exc
+
+
+def _accept_landed(job: DeliverableJob, deliverable: Deliverable) -> Deliverable:
+    """A destination this job's first attempt may have renamed into place before its worker
+    died. Recorded from the file and put through the checks a fresh render would get; one
+    that fails them is not ours to take, nor to delete, and is refused as `_prepare` would."""
+    if job.kind == "raw_dir":
+        frames_on_disk = sorted(job.destination.glob(f"*{EXR_SUFFIX}"))
+        deliverable.frame_checksums = [file_digest(path) for path in frames_on_disk]
+        deliverable.size = sum(path.stat().st_size for path in frames_on_disk)
+        deliverable.frame_count = len(frames_on_disk)
+    else:
+        _record_file(deliverable, job.destination)
+        still = job.kind == "aux_still" or (
+            job.kind == "avidref" and job.destination.suffix.lower() != ".mp4"
+        )
+        deliverable.frame_count = 1 if still else job.written_frames
+    deliverable.qc.extend(qc.run_phase_b(job, deliverable))
+    if any(result.severity == "error" for result in deliverable.qc):
+        raise RenderError(f"{job.destination} already exists and is not this job's finished delivery")
+    deliverable.status = "done"
+    log.info("%s was already delivered before its worker stopped; kept", job.destination)
+    return deliverable
+
+
+_PATIENCE = (0.25, 0.5, 1.0, 2.0)
+"""Seconds to wait between attempts at a rename or a removal that was refused.
+
+On Windows a file Drive, a virus scanner or the indexer has open cannot be renamed or
+deleted, and the hold is usually gone within a second or two."""
+
+
+def _patiently(action: Callable[[], object]) -> None:
+    """Run a rename or a removal, trying again a few times when it is refused."""
+    for delay in _PATIENCE:
+        try:
+            action()
+            return
+        except PermissionError:
+            time.sleep(delay)
+    action()
 
 
 def _discard(temp: Path) -> None:
-    """Remove a temp, file or folder, whether it is finished or half written."""
+    """Remove a temp, file or folder, whether it is finished or half written. Raises
+    `OSError` when it cannot, so a leftover is never mistaken for a clean slate."""
     if temp.is_dir():
-        shutil.rmtree(temp, ignore_errors=True)
+        _patiently(lambda: shutil.rmtree(temp))
     elif temp.exists():
-        temp.unlink(missing_ok=True)
+        _patiently(lambda: temp.unlink(missing_ok=True))
+
+
+def _discard_quietly(temp: Path) -> None:
+    """`_discard` on the way out of a failure, which must not hide the failure's own reason.
+    What it cannot remove is logged, and the next attempt's `_prepare` tries again."""
+    try:
+        _discard(temp)
+    except OSError as exc:
+        log.warning("could not remove %s: %s", temp, exc)
 
 
 def _record_file(deliverable: Deliverable, path: Path) -> None:
@@ -172,9 +248,9 @@ def _record_file(deliverable: Deliverable, path: Path) -> None:
     deliverable.size = path.stat().st_size
 
 
-def _copy_hdri(job: DeliverableJob, deliverable: Deliverable) -> None:
-    """The HDRI or LDRI as it is, byte for byte, to the temp the envelope renames (user, 2026-10-07).
-    An Avid reference's JPG or PNG too (user, 2026-10-22)."""
+def _copy_file(job: DeliverableJob, deliverable: Deliverable) -> None:
+    """An Avid reference's JPG or PNG as it is, byte for byte, to the temp the envelope renames
+    (user, 2026-10-22)."""
     shutil.copyfile(job.source, job.temp)
     _record_file(deliverable, job.temp)
     deliverable.frame_count = 1
@@ -187,7 +263,7 @@ def _deliver_avidref(job: DeliverableJob, deliverable: Deliverable) -> None:
     if suffix == ".mp4":
         _render_reference(job, deliverable)
     elif suffix == job.source.suffix.lower():
-        _copy_hdri(job, deliverable)
+        _copy_file(job, deliverable)
     else:
         source = media.printf_pattern_for(job.source) if job.source_is_sequence else str(job.source)
         frame = job.in_frame if job.in_frame is not None else job.source_start_frame
@@ -400,7 +476,7 @@ def _render_reference(job: DeliverableJob, deliverable: Deliverable) -> None:
             rate=f"{job.rate.numerator}/{job.rate.denominator}",
             target_size=scale,
             # An Avid reference's color is baked in (user, 2026-10-22): no cube at all. A
-            # pre-render is linear, so its cube goes behind a shaper, as on the stringout.
+            # linear source, a pre-render or a CG plate, has its cube behind a shaper.
             lut=_view_lut(job, Path(folder)) if _graded(job) else None,
             shaper=color.shaper_lut(Path(folder) / f"shaper{LUT_SUFFIX}") if _shaped(job) else None,
             audio=job.audio_source,
@@ -409,7 +485,7 @@ def _render_reference(job: DeliverableJob, deliverable: Deliverable) -> None:
             timecode=_start_timecode(job),
             color_space=job.source_color_space,
             color_range=job.source_color_range,
-            canvas=job.target_size if job.fitted_size != job.target_size else None,
+            canvas=_canvas(job),
             hold=job.hold_frames,
             display=job.shot_color.display or ffmpeg.DEFAULT_DISPLAY,
         )
@@ -427,13 +503,35 @@ def _render_reference(job: DeliverableJob, deliverable: Deliverable) -> None:
     deliverable.frame_count = written
 
 
+def _canvas(job: DeliverableJob) -> tuple[int, int] | None:
+    """The size the picture is padded onto, or None when it already fills the frame.
+
+    A deliverable size letterboxes a source of another shape (F9). A reference kept at its
+    source's size, an Avid reference or a pre-render, is padded to the next even size, one
+    black column or row on the right or bottom: x264 refuses an odd 4:2:0 frame, and a
+    1919x1080 screen recording is an Avid reference that failed (review, 2026-11-08).
+    Padded rather than cropped, because no picture is ever cropped (section 4).
+    """
+    if job.target_size is not None:
+        return job.target_size if job.fitted_size != job.target_size else None
+    if job.source_size is None:
+        return None
+    width, height = job.source_size
+    even = (width + width % 2, height + height % 2)
+    return even if even != job.source_size else None
+
+
 def _graded(job: DeliverableJob) -> bool:
     """A reference, or a pre-render the HDRI's grade is seen through (`planner.prerender_color`)."""
-    return job.kind == "ref_mp4" or _shaped(job)
+    return job.kind == "ref_mp4" or (job.kind == "hdri_ref" and job.shot_color.source_encoding is not None)
 
 
 def _shaped(job: DeliverableJob) -> bool:
-    return job.kind == "hdri_ref" and job.shot_color.source_encoding is not None
+    """A graded reference from a scene linear source: a pre-render, or a plate whose AMF reads
+    it as ACES2065-1, ACEScg or Linear Rec.709. A 33 point cube spread over linear 0..1 puts one
+    sample in the darkest 3%, so its cube goes behind the shaper (review, 2026-11-08)."""
+    encoding = job.shot_color.source_encoding
+    return _graded(job) and encoding is not None and color.is_scene_linear(encoding)
 
 
 def _view_lut(job: DeliverableJob, folder: Path) -> Path:
@@ -607,11 +705,13 @@ def _publish(message: Progress) -> None:
         _QUEUE.put(message)
 
 
-def _worker(job: DeliverableJob) -> Deliverable:
+def _worker(job: DeliverableJob, landed_ok: bool = False) -> Deliverable:
     """Run one job in a worker process. Always returns a record, never raises.
 
     A failure comes back as a `failed` Deliverable carrying QC-100, so one job going
     wrong is a result the run reports rather than an exception that stops the rest.
+    One that failed its own checks is published as failed too, not as done: the row shows
+    the message until `apply_results`, and it must not read as written (review, 2026-11-08).
     """
 
     def on_frame(done: int) -> None:
@@ -624,7 +724,7 @@ def _worker(job: DeliverableJob) -> Deliverable:
     _JOB_SHOT = job.shot_code
     _publish(Progress(job.name, "started", 0, job.frame_count))
     try:
-        deliverable = render_job(job, on_frame=on_frame, cancelled=cancelled)
+        deliverable = render_job(job, on_frame=on_frame, cancelled=cancelled, landed_ok=landed_ok)
     except RenderCancelled:
         skipped = job.to_deliverable()
         skipped.status = "skipped"
@@ -638,7 +738,11 @@ def _worker(job: DeliverableJob) -> Deliverable:
         _publish(Progress(job.name, "failed", 0, job.frame_count, str(exc)))
         return failed
 
-    _publish(Progress(job.name, "done", deliverable.frame_count, job.frame_count))
+    if deliverable.status == "failed":
+        reason = next((result.message for result in deliverable.qc if result.severity == "error"), "")
+        _publish(Progress(job.name, "failed", 0, job.frame_count, reason))
+    else:
+        _publish(Progress(job.name, "done", deliverable.frame_count, job.frame_count))
     return deliverable
 
 
@@ -649,9 +753,14 @@ def _run_pool(
     context: Any,
     initargs: tuple[Any, ...],
     results: dict[int, Deliverable],
+    retry: bool = False,
 ) -> list[int]:
     """Render the jobs at `indices` in one pool, into `results`. Returns the ones lost to a
-    worker that died, each already recorded as failed in case there is no second round."""
+    worker that died, each already recorded as failed in case there is no second round.
+
+    On the `retry` round a job whose file is already delivered keeps it once it passes its
+    checks: a worker killed with the pool may have renamed it into place and died before
+    it could say so (review, 2026-11-08)."""
     lost: list[int] = []
     with ProcessPoolExecutor(
         max_workers=max(1, workers),
@@ -659,7 +768,7 @@ def _run_pool(
         initializer=_worker_init,
         initargs=initargs,
     ) as pool:
-        futures = {pool.submit(_worker, jobs[index]): index for index in indices}
+        futures = {pool.submit(_worker, jobs[index], retry): index for index in indices}
         for future in as_completed(futures):
             index = futures[future]
             try:
@@ -760,8 +869,8 @@ def execute(
         # flight on the others is lost with it, not only the one that died (measured on
         # the real turnover). The lost ones get one more pool; what finished keeps what
         # it wrote (F12). A job that kills its worker twice is failed.
-        for _round in range(2):
-            lost = _run_pool(jobs, waiting, workers, context, initargs, results)
+        for round_ in range(2):
+            lost = _run_pool(jobs, waiting, workers, context, initargs, results, retry=round_ > 0)
             if not lost or cancel.is_set():
                 break
             log.warning("a render worker died; running the %d jobs it took with it again", len(lost))

@@ -45,3 +45,16 @@ def test_a_stale_place_writes_nothing(tree: Path) -> None:
     with pytest.raises(SystemExit, match=r"uv\.lock"):
         bump.bump("9.9.9", tree)
     assert (tree / "pyproject.toml").read_text(encoding="utf-8") == before
+
+
+def test_line_endings_survive_a_bump(tree: Path) -> None:
+    """Review, 2026-11-08: `write_text` without `newline=""` turned every LF into CRLF on
+    Windows, and reading without it turned a CRLF file into LF everywhere. Every byte
+    but the version itself must come back as it went in, whichever ending a file has."""
+    crlf = tree / "pyproject.toml"
+    crlf.write_bytes(crlf.read_bytes().replace(b"\r\n", b"\n").replace(b"\n", b"\r\n"))
+    old = bump.current(tree)
+    before = {name: (tree / name).read_bytes() for name in {place[0] for place in bump.PLACES}}
+    bump.bump("9.9.9", tree)
+    for name, data in before.items():
+        assert (tree / name).read_bytes() == data.replace(old.encode(), b"9.9.9"), name

@@ -314,6 +314,49 @@ class TestRoundTrip:
         )
 
 
+class TestPastTheUsualDigits:
+    """Review, 2026-11-08: `v100` and a frame above 9999 were written and then not read back,
+    so `next_version` ignored them and QC-151 failed. Two digits and four are the least."""
+
+    HDRI = ShotIdentity(shot_code="SECA0009", kind="HDRI", index="01")
+    AVID = ShotIdentity(shot_code="INCA5002", kind="avidRef", index="01")
+
+    @pytest.mark.parametrize("version", [100, 123])
+    def test_every_name_reads_back_its_three_digit_version(self, version: int) -> None:
+        built = [
+            naming.raw_sequence_dir(PLATE, "4k", version),
+            naming.raw_frame(PLATE, "HD", version, 1001),
+            naming.ref_mp4(PLATE, "HD", version),
+            naming.audio_wav(PLATE, version),
+            naming.aux_still_exr(CHART, version),
+            # An HDRI's or LDRI's own copy is no longer written (review, 2026-11-08), but one
+            # delivered before 0.5.53 still counts toward the shot's version.
+            f"SECA0009_pl01_HDRI01_v{version}.exr",
+            f"SECA0009_pl01_LDRI01_v{version}.jpg",
+            naming.hdri_prerender_mp4(self.HDRI, version),
+            naming.as_is_file(self.AVID, version, ".mp4"),
+        ]
+        versions = [parsed.version if (parsed := naming.parse_output_name(name)) else None for name in built]
+        assert versions == [version] * len(built)
+        assert naming.next_version(built) == version + 1
+
+    def test_a_version_under_100_keeps_two_digits(self) -> None:
+        assert naming.ref_mp4(PLATE, "HD", 7) == "MELT0001_pl01_ref_HD_v07.mp4"
+        assert naming.ref_mp4(PLATE, "HD", 100) == "MELT0001_pl01_ref_HD_v100.mp4"
+
+    def test_a_frame_past_9999_reads_back(self) -> None:
+        assert naming.raw_frame(PLATE, "4k", 1, 1001) == "MELT0001_pl01_raw_4k_v01.1001.exr"
+        parsed = naming.parse_output_name(naming.raw_frame(PLATE, "4k", 1, 10000))
+        assert parsed is not None and parsed.frame == 10000
+
+    def test_a_stringout_s_three_digit_version_reads_back(self) -> None:
+        name = naming.stringout_mp4(121, 9, 23, 2026, "danielluckett", 100)
+        assert naming.stringout_version(name, 121, 9, 23, 2026, "danielluckett") == 100
+
+    def test_one_digit_is_still_not_a_name_the_tool_wrote(self) -> None:
+        assert naming.parse_output_name("MELT0001_pl01_ref_HD_v7.mp4") is None
+
+
 class TestNextVersion:
     def test_empty_destination_starts_at_one(self) -> None:
         assert naming.next_version([]) == 1
@@ -339,11 +382,12 @@ class TestDeliveryLayout:
     def test_reports_sit_beside_shots(self) -> None:
         assert naming.reports_dir(Path("/d"), "MELT") == Path("/d/MELT/_reports")
 
-    def test_an_hdri_has_no_underscore_before_its_number_and_reads_back(self) -> None:
-        """User, 2026-10-27: "Lose the underscore. For consistency with all other numbering"."""
+    def test_an_hdri_copied_before_0_5_53_reads_back_and_counts_as_a_version(self) -> None:
+        """User, 2026-10-27: "Lose the underscore. For consistency with all other numbering".
+        Nothing writes the copy since 2026-10-30, but one delivered still versions the shot
+        (review, 2026-11-08)."""
         hdri = naming.ShotIdentity("SECA0009", naming.HDRI_KIND, "01")
-        name = naming.hdri_exr(hdri, 2)
-        assert name == "SECA0009_pl01_HDRI01_v02.exr"
+        name = "SECA0009_pl01_HDRI01_v02.exr"
         parsed = naming.parse_output_name(name)
         assert parsed is not None and (parsed.kind, parsed.version, parsed.shot_code) == (
             "hdri",
@@ -367,12 +411,11 @@ class TestDeliveryLayout:
         with pytest.raises(ValueError):
             naming.hdri_prerender_mp4(PLATE, 1)
 
-    @pytest.mark.parametrize("suffix", [".jpg", ".JPEG", ".png"])
-    def test_an_ldri_mirrors_the_hdri_under_its_own_extension(self, suffix: str) -> None:
-        """User, 2026-10-08: an LDRI is named as the HDRI is, its file copied as it came."""
+    @pytest.mark.parametrize("suffix", [".jpg", ".jpeg", ".png"])
+    def test_an_ldri_copied_before_0_5_53_reads_back_under_its_own_extension(self, suffix: str) -> None:
+        """User, 2026-10-08: an LDRI was named as the HDRI is, its file copied as it came."""
         ldri = naming.ShotIdentity("SECA0009", naming.LDRI_KIND, "01")
-        name = naming.ldri_image(ldri, 2, suffix)
-        assert name == f"SECA0009_pl01_LDRI01_v02{suffix.lower()}"
+        name = f"SECA0009_pl01_LDRI01_v02{suffix}"
         parsed = naming.parse_output_name(name)
         assert parsed is not None and (parsed.kind, parsed.aux, parsed.version) == ("hdri", "LDRI", 2)
         assert naming.shot_label(ldri) == "SECA0009_pl01_LDRI01"
@@ -380,15 +423,7 @@ class TestDeliveryLayout:
         with pytest.raises(ValueError):
             _ = ldri.stem
 
-    def test_an_ldri_is_never_an_exr_and_an_hdri_never_a_jpg(self) -> None:
-        hdri = naming.ShotIdentity("SECA0009", naming.HDRI_KIND, "01")
-        ldri = naming.ShotIdentity("SECA0009", naming.LDRI_KIND, "01")
-        with pytest.raises(ValueError):
-            naming.hdri_exr(ldri, 1)
-        with pytest.raises(ValueError):
-            naming.ldri_image(hdri, 1, ".jpg")
-        with pytest.raises(ValueError):
-            naming.ldri_image(ldri, 1, ".exr")
+    def test_an_ldri_was_never_an_exr(self) -> None:
         assert naming.parse_output_name("SECA0009_pl01_LDRI01_v01.exr") is None
 
     @pytest.mark.parametrize(
@@ -446,3 +481,15 @@ class TestDeliveryLayout:
 
     def test_the_user_folders_never_count_as_a_version(self) -> None:
         assert naming.next_version(list(naming.USER_FOLDERS)) == 1
+
+
+class TestShowPatternProblem:
+    """Review, 2026-11-08: one check for Settings and the command line alike."""
+
+    @pytest.mark.parametrize("pattern", ["[A-Z", "SEC(A", "(?P<show>[A-Z]{4})", "a)b"])
+    def test_an_unusable_pattern_says_why(self, pattern: str) -> None:
+        assert naming.show_pattern_problem(pattern)
+
+    @pytest.mark.parametrize("pattern", ["", "[A-Z]{2,6}", "[a-z]{2}", "MELT|BRIK"])
+    def test_a_usable_one_is_none(self, pattern: str) -> None:
+        assert naming.show_pattern_problem(pattern) is None

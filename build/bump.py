@@ -41,6 +41,17 @@ def next_patch(version: str) -> str:
     return f"{major}.{minor}.{int(patch) + 1}"
 
 
+def _read(path: Path) -> str:
+    """The file's text with its line endings as they are on disk.
+
+    `newline=""` on the read and the write both: without it a CRLF file comes back LF,
+    and on Windows every LF file is written back CRLF (review, 2026-11-08).
+    `Path.read_text` takes no `newline` before Python 3.13, hence `open`.
+    """
+    with path.open(encoding="utf-8", newline="") as handle:
+        return handle.read()
+
+
 def bump(new: str, root: Path = ROOT) -> list[str]:
     """Rewrite every place from the current version to `new`; returns the files changed."""
     if not re.fullmatch(r"\d+\.\d+\.\d+", new):
@@ -48,13 +59,13 @@ def bump(new: str, root: Path = ROOT) -> list[str]:
     old = current(root)
     texts: dict[str, str] = {}
     for name, pattern, times in PLACES:
-        text = texts.get(name) or (root / name).read_text(encoding="utf-8")
+        text = texts.get(name) or _read(root / name)
         before, after = pattern.format(v=old), pattern.format(v=new)
         if text.count(before) != times:
             raise SystemExit(f"{name}: expected {before!r} {times} time(s), found {text.count(before)}")
         texts[name] = text.replace(before, after)
     for name, text in texts.items():
-        (root / name).write_text(text, encoding="utf-8")
+        (root / name).write_text(text, encoding="utf-8", newline="")
     return sorted(texts)
 
 

@@ -307,6 +307,23 @@ class TestViewLut:
         red = float(cube.read_text().splitlines()[2].split()[0])
         assert red == pytest.approx((1 / 32) ** color.SHAPER_GAMMA, abs=1e-6)
 
+    @pytest.mark.parametrize(
+        ("name", "linear"),
+        [
+            ("ACES2065-1", True),
+            ("ACEScg", True),
+            ("Linear Rec.709 (sRGB)", True),
+            ("ACEScct", False),
+            ("S-Log3 S-Gamut3.Cine", False),
+            ("Gamma 2.2 Rec.709 - Display", False),
+            ("no such space", False),
+        ],
+    )
+    def test_which_sources_are_scene_linear_is_the_config_s_answer(self, name: str, linear: bool) -> None:
+        """Review, 2026-11-08: a linear plate's reference takes the shaper too."""
+        assert color.is_scene_linear(name) is linear
+        assert not color.is_scene_linear(color.inverse_view(*color.DEFAULT_VIEW))
+
     def test_the_shaper_undoes_the_cube_s_sampling(self, tmp_path: Path) -> None:
         lines = color.shaper_lut(tmp_path / "shaper.cube", size=5).read_text().splitlines()
         assert lines[0] == "LUT_1D_SIZE 5"

@@ -7,6 +7,7 @@ at the point it is written, not only at the point it is verified.
 
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 
 import numpy as np
@@ -294,6 +295,51 @@ class TestReadPixels:
         pixels = exr.read_pixels(path)
         assert pixels.shape == (8, 8, 3)
         assert pixels[0, 0].tolist() == pytest.approx([0.25, 0.5, 0.75])
+
+
+def windowed(path: Path, data: tuple[tuple[int, int], tuple[int, int]], value: float = 0.5) -> Path:
+    """A CG style frame: 100x50 display window, pixels only inside `data` (min, max corners)."""
+    (x0, y0), (x1, y1) = data
+    pixels = np.full((y1 - y0 + 1, x1 - x0 + 1, 3), value, dtype=np.float32)
+    header = {
+        "compression": OpenEXR.ZIP_COMPRESSION,
+        "type": OpenEXR.scanlineimage,
+        "dataWindow": data,
+        "displayWindow": ((0, 0), (99, 49)),
+    }
+    with OpenEXR.File(header, {"RGB": pixels}) as handle:
+        handle.write(str(path))
+    return path
+
+
+class TestADataWindowInsideTheDisplayWindow:
+    """A CG render storing only a bounding box was read as the box and stretched across the
+    frame ffprobe sized the job from (review, 2026-11-08)."""
+
+    def test_the_box_lands_where_it_belongs_on_the_display_window(self, tmp_path: Path) -> None:
+        pixels = exr.read_pixels(windowed(tmp_path / "cg.exr", ((30, 10), (69, 29))))
+        assert pixels.shape == (50, 100, 3)
+        ys, xs = np.nonzero(pixels[..., 0] > 0)
+        assert [int(v) for v in (xs.min(), xs.max(), ys.min(), ys.max())] == [30, 69, 10, 29]
+        assert pixels[10:30, 30:70].min() == pytest.approx(0.5)
+        assert pixels.sum() == pytest.approx(0.5 * 40 * 20 * 3)
+
+    def test_it_lands_where_ffmpeg_puts_it(self, tmp_path: Path) -> None:
+        """A plate's EXRs and its reference's mp4 read the same file two ways (section 7)."""
+        path = windowed(tmp_path / "cg.exr", ((30, 10), (69, 29)))
+        command = ["ffmpeg", "-v", "error", "-i", str(path), "-f", "rawvideo", "-pix_fmt", "gbrpf32le", "-"]
+        raw = subprocess.run(command, capture_output=True, check=True).stdout
+        green = np.frombuffer(raw, dtype=np.float32).reshape(3, 50, 100)[0]
+        assert np.array_equal(green > 0.25, exr.read_pixels(path)[..., 1] > 0.25)
+
+    def test_what_lies_outside_the_display_window_is_cut_off(self, tmp_path: Path) -> None:
+        pixels = exr.read_pixels(windowed(tmp_path / "overscan.exr", ((-10, -5), (109, 54))))
+        assert pixels.shape == (50, 100, 3)
+        assert pixels.min() == pytest.approx(0.5)
+
+    def test_a_box_wholly_outside_is_an_empty_frame(self, tmp_path: Path) -> None:
+        pixels = exr.read_pixels(windowed(tmp_path / "off.exr", ((200, 200), (209, 209))))
+        assert pixels.shape == (50, 100, 3) and not pixels.any()
 
 
 class TestDwaaIsLossy:

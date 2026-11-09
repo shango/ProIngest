@@ -10,10 +10,12 @@ from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
+import PyOpenColorIO as ocio
 import pytest
 
 from proingest.core import clf, color, exr, ffmpeg, naming, planner, qc, render, scan, stringout
-from proingest.core.models import Batch, Deliverable, FrameRate, InOut, MediaInfo
+from proingest.core.models import Batch, Deliverable, FrameRate, InOut, MediaInfo, QCResult, Turnover
+from tests.fixtures import batches
 from tests.fixtures import color as color_fixtures
 from tests.fixtures import media as fixtures
 
@@ -100,6 +102,45 @@ class TestPlan:
         plate = planned(batch).segments[1]
         assert plate.exr is None and plate.path is not None and plate.path.name.endswith("_ref_HD_v01.mp4")
         assert plate.audio and plate.wav is None, "its sound comes with the reference"
+
+    def test_a_delivered_sequence_whose_first_frame_will_not_open_stands_in(self, batch: Batch) -> None:
+        """Review, 2026-11-08: the header read on the first HD frame raised out of the plan, so
+        one truncated frame cost the whole stringout. The reference stands in for it instead."""
+        hd = next(i for i in batch.rows[1].deliverables if i.kind == "raw_dir" and i.res == "HD")
+        first = min(hd.path.glob("*.exr"))
+        whole = first.read_bytes()
+        first.write_bytes(whole[:64])
+        try:
+            plate = planned(batch).segments[1]
+        finally:
+            first.write_bytes(whole)  # the delivery is the module's, shared with every test
+        assert plate.exr is None and plate.path is not None and plate.path.name.endswith("_ref_HD_v01.mp4")
+
+    def test_each_delivered_folder_s_header_is_read_once(
+        self, batch: Batch, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Review, 2026-11-08: each claimed row's EXR was asked for twice per event, every
+        asking a listing and a header read on the delivery mount (CLAUDE.md, "scan once")."""
+        read: list[Path] = []
+        real = exr.is_display_referred
+
+        def counted(path: Path) -> bool:
+            read.append(path.parent)
+            return real(path)
+
+        monkeypatch.setattr(exr, "is_display_referred", counted)
+        made = planned(batch)
+        shown = {s.exr.source for s in made.segments if s.exr is not None}
+        assert len(shown) == 2 and sorted(read) == sorted(shown)
+
+    def test_a_corrected_shot_code_files_it_under_the_corrected_show(self, batch: Batch) -> None:
+        """Review, 2026-11-08: the plates go under the corrected code's show, and so does the
+        stringout beside the reports, rather than under the show the CSV gave."""
+        for index, row in enumerate(batch.rows, start=1):
+            row.shot_code_override = f"ABCD{index:04d}"
+        assert batch.delivery_root is not None
+        made = planned(batch)
+        assert made.destination.parent == naming.reports_dir(batch.delivery_root, "ABCD")
 
     def test_a_held_reference_clip_is_cut_from_its_delivered_exr(self, batch: Batch) -> None:
         """Held (an `M2` freeze), a chart is its one delivered EXR frame, graded, for a second."""
@@ -280,12 +321,44 @@ class TestBuild:
         assert not list(made.path.parent.glob(".*.parts"))
         made.path.unlink()
 
+    @pytest.mark.parametrize("workers", [2, 1])
+    def test_a_stop_part_way_writes_nothing_and_changes_nothing(self, batch: Batch, workers: int) -> None:
+        """Review, 2026-11-08 (E2): Stop, or closing the window, reaches a build in flight.
+        Two workers stop in the pool's processes, one stops in this one; a stopped build is
+        not a failure, so no QC-142 and the turnover's last results stay."""
+        assert batch.delivery_root is not None
+        turnover = batch.turnovers[0]
+        earlier = QCResult("QC-143", "info", "turnover", "from the last build")
+        turnover.qc = [earlier]
+        seen: list[int] = []
+        made = stringout.build(
+            batch,
+            turnover,
+            batch.delivery_root,
+            progress=lambda done, total: seen.append(done),
+            workers=workers,
+            cancel=lambda: bool(seen),
+        )
+        assert made is None and seen
+        assert turnover.qc == [earlier] and turnover.stringout is None
+        assert list(batch.delivery_root.rglob("*_SO_v*")) == [], "not the file, not its .part"
+
     def test_one_that_cannot_be_made_is_qc_142_and_raises_nothing(self, batch: Batch) -> None:
         batch.turnovers[0] = replace(batch.turnovers[0], shooter="")
         assert batch.delivery_root is not None
         assert stringout.build(batch, batch.turnovers[0], batch.delivery_root) is None
         assert [r.rule_id for r in batch.turnovers[0].qc] == ["QC-142"]
         assert not qc.must_fix(batch), "phase B: it reports, it does not block the next run"
+
+
+class TestStopping:
+    def test_a_build_stopped_before_it_starts_touches_nothing(self, tmp_path: Path) -> None:
+        """Review, 2026-11-08 (E2): asked first, before the plan reads anything."""
+        turnover = batches.turnover(folder=tmp_path)
+        earlier = QCResult("QC-142", "error", "turnover", "from the last build")
+        turnover.qc = [earlier]
+        assert stringout.build(Batch(), turnover, tmp_path, cancel=lambda: True) is None
+        assert turnover.qc == [earlier]
 
 
 class TestBurnIns:
@@ -306,6 +379,49 @@ class TestBurnIns:
             )
             == 1
         )
+
+
+class TestFailures:
+    """Review, 2026-11-08: anything a stringout's plan or render raises is QC-142 on its
+    turnover. One that escaped stopped the later turnovers' stringouts and the run's QC log,
+    tracker and Fix-it report (`ui/run_controller.py`)."""
+
+    @pytest.mark.parametrize(
+        "failure",
+        [
+            exr.ExrError("frame 1003 is truncated"),
+            clf.ClfError("the CLF has moved"),
+            color.ColorError("no such color space"),
+            ocio.Exception("the config refused it"),
+            subprocess.TimeoutExpired(["ffmpeg"], 600),
+        ],
+        ids=lambda failure: type(failure).__name__,
+    )
+    def test_it_is_qc_142_and_raises_nothing(
+        self, failure: BaseException, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        def fails(*_args: object) -> stringout.Plan:
+            raise failure
+
+        monkeypatch.setattr(stringout, "plan", fails)
+        turnover = Turnover(turnover_id="t1", folder=tmp_path / FOLDER)
+        assert stringout.build(Batch(turnovers=[turnover]), turnover, tmp_path) is None
+        assert [r.rule_id for r in turnover.qc] == ["QC-142"]
+
+    def test_a_first_frame_that_will_not_open_is_no_answer(self, tmp_path: Path) -> None:
+        (tmp_path / "MELT0001_pl01_raw_HD_v01.1001.exr").write_bytes(b"not an exr")
+        assert stringout._display_referred(tmp_path) is None
+
+    def test_an_empty_folder_is_not_display_referred(self, tmp_path: Path) -> None:
+        assert stringout._display_referred(tmp_path) is False
+
+    def test_a_windows_path_on_the_card_breaks_at_a_backslash(self) -> None:
+        """Review, 2026-11-08: only `/` was a break, so a Windows path was cut mid-name."""
+        path = "G:\\Shared drives\\VFX_Ingest\\turnover144\\" + "INCA5002_pl01_folder\\" * 8 + "pl01.mp4"
+        lines = stringout._wrapped(path)
+        assert "".join(lines) == path and len(lines) > 1
+        assert all(line.endswith("\\") for line in lines[:-1]), "each line ends at a separator"
+        assert all(len(line) <= stringout.CARD_LINE for line in lines)
 
 
 class TestFfmpeg:

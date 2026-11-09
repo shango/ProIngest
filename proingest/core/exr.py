@@ -229,19 +229,53 @@ def read_pixels(path: Path) -> npt.NDArray[np.float32]:
     resample in particular, works in float and half would lose precision twice.
     Any extra channel the file carries is dropped: a plate delivers RGB, or RGBA
     when the source has a real alpha.
+
+    **The frame is the display window**, which is what ffprobe reports as the source's
+    size and so what a job is sized from. A CG render often stores only its data window, a
+    bounding box of what is not empty; that is placed where it belongs, zero outside it, and
+    anything outside the display window is cut off (review, 2026-11-08). Returned as it was
+    read when the two windows agree, which is every frame this tool writes.
     """
     try:
         with OpenEXR.File(str(path)) as handle:
+            header = handle.header()
+            data_window = _window(header["dataWindow"])
+            display_window = _window(header["displayWindow"])
             channels = handle.parts[0].channels
             for grouped in (RGBA_CHANNELS, RGB_CHANNELS):
                 if grouped in channels:
-                    return np.array(channels[grouped].pixels, dtype=np.float32)
-            names = _color_channel_names(channels, path)
-            return np.stack([np.asarray(channels[name].pixels, dtype=np.float32) for name in names], axis=-1)
+                    pixels = np.array(channels[grouped].pixels, dtype=np.float32)
+                    break
+            else:
+                names = _color_channel_names(channels, path)
+                pixels = np.stack(
+                    [np.asarray(channels[name].pixels, dtype=np.float32) for name in names], axis=-1
+                )
     except ExrError:
         raise
     except Exception as exc:  # the bindings raise several unrelated types
         raise ExrError(f"could not read pixels from {path}: {exc}") from exc
+    return _in_display_window(pixels, data_window, display_window)
+
+
+def _in_display_window(
+    pixels: npt.NDArray[np.float32],
+    data_window: tuple[int, int, int, int],
+    display_window: tuple[int, int, int, int],
+) -> npt.NDArray[np.float32]:
+    """The data window's pixels on a canvas the size of the display window, zero elsewhere."""
+    if data_window == display_window:
+        return pixels
+    left, top, right, bottom = display_window
+    canvas = np.zeros((bottom - top + 1, right - left + 1, pixels.shape[2]), dtype=np.float32)
+    # Both windows in canvas coordinates, then their overlap: the part of the data that shows.
+    x0, y0 = data_window[0] - left, data_window[1] - top
+    x1, y1 = x0 + pixels.shape[1], y0 + pixels.shape[0]
+    cx0, cy0 = max(x0, 0), max(y0, 0)
+    cx1, cy1 = min(x1, canvas.shape[1]), min(y1, canvas.shape[0])
+    if cx0 < cx1 and cy0 < cy1:
+        canvas[cy0:cy1, cx0:cx1] = pixels[cy0 - y0 : cy1 - y0, cx0 - x0 : cx1 - x0]
+    return canvas
 
 
 def _color_channel_names(channels: Any, path: Path) -> tuple[str, ...]:

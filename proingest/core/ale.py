@@ -28,7 +28,8 @@ class AleError(Exception):
 
 
 def find(folder: Path) -> list[Path]:
-    """Every ALE directly in the turnover folder, in any case."""
+    """Every ALE directly in the turnover folder, in any case. Raises `OSError` for a folder
+    that cannot be listed, which the scan reports (QC-071)."""
     return sorted(p for p in folder.iterdir() if p.is_file() and p.suffix.lower() == ALE_SUFFIX)
 
 
@@ -38,11 +39,15 @@ def read_names(path: Path) -> list[str]:
         raw = path.read_bytes()
     except OSError as exc:
         raise AleError(f"could not read {path.name}: {exc}") from exc
-    text = (
-        raw.decode("utf-16")
-        if raw.startswith((b"\xff\xfe", b"\xfe\xff"))
-        else raw.decode("utf-8-sig", "replace")
-    )
+    try:
+        text = (
+            raw.decode("utf-16")
+            if raw.startswith((b"\xff\xfe", b"\xfe\xff"))
+            else raw.decode("utf-8-sig", "replace")
+        )
+    except UnicodeDecodeError as exc:
+        # A copy cut short on the mount leaves half a character (review, 2026-11-08).
+        raise AleError(f"{path.name} is not readable UTF-16: {exc}") from exc
 
     lines = text.splitlines()
     headers = _section(lines, "Column")

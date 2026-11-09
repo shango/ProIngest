@@ -494,3 +494,16 @@ Treat it as a working session with the editor rather than a delivery.
   Ben's EXR of the same frame, both shown with no view transform. They should match closely; the
   tool was about 5/255 darker on `C2103` (OQ-91). Note how long the plate takes: the exact chain
   was 3.4 s a 4k frame on Linux, and this Mac's figure decides whether it needs baking.
+- [ ] **Shot list keys and the dot (review, 2026-11-08).** Arrow Down from a turnover's last shot
+  lands on the next turnover's first shot, past the stringout line and the heading. Click a row's
+  status dot: the Details dock comes up on Issues with that shot's first line selected. Type
+  `[A-Z` into Settings, Naming: a red line under the field says why, and Apply keeps the old pattern.
+- [ ] **A batch name with a dot (review, 2026-11-08).** Save a new batch as `melt_10.30` in the
+  Save dialog: the file is `melt_10.30.pibatch`, the batch bar names it `melt_10.30`, and no
+  other batch in the folder is overwritten.
+- [ ] **Stop and close during the stringout, and a crash mid run (review, 2026-11-08, OQ-96,
+  OQ-97).** Run a turnover to the stringout step and press Stop: the stringout line stops within a
+  few seconds, no `_SO_` file or `.part` is left, and the banner says Run stopped with the exports
+  written. Run again and close the window during the stringout: it closes once the reports are
+  written, with no crash report. Then force quit (Activity Monitor) mid render, reopen the batch:
+  the files that landed show done, and Run finishes the rest at v01, not v02.

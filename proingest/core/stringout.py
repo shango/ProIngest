@@ -67,6 +67,7 @@ from __future__ import annotations
 import logging
 import multiprocessing
 import shutil
+import subprocess
 import tempfile
 from collections.abc import Callable, Iterable
 from concurrent.futures import FIRST_EXCEPTION, ProcessPoolExecutor, ThreadPoolExecutor, as_completed, wait
@@ -143,6 +144,14 @@ SegmentKind = Literal["reference", "source", "black"]
 
 class StringoutError(RuntimeError):
     """A stringout that cannot be planned or did not come out right. Reported as QC-142."""
+
+
+class StringoutStopped(Exception):
+    """The build was asked to stop (review, 2026-11-08). Not a failure, so not QC-142."""
+
+
+Cancel = Callable[[], bool]
+"""Asked between frames and between segments: True when the build should stop."""
 
 
 @dataclass(frozen=True)
@@ -258,7 +267,9 @@ def plan(
         raise StringoutError(f"{turnover.folder.name}'s EDL cuts nothing")
 
     rows = batch.rows_for(turnover.turnover_id)
-    show = next((row.identity.show for row in rows if row.identity), None)
+    # The show the deliverables went under, a corrected shot code's (`effective_identity`).
+    identities = (effective_identity(row, show_pattern) for row in rows)
+    show = next((identity.show for identity in identities if identity is not None), None)
     if show is None:
         raise StringoutError(
             f"no row of {turnover.folder.name} has a shot code, so there is no show to file under"
@@ -278,10 +289,11 @@ def plan(
         ),
     )
     cursor = events[0].record_in
+    referred: dict[Path, bool | None] = {}
     for event in events:
         if event.record_in > cursor:
             result.segments.append(Segment(kind="black", length=event.record_in - cursor, gap=True))
-        result.segments.append(_segment(event, session, rows, show_pattern, turnover.folder))
+        result.segments.append(_segment(event, session, rows, show_pattern, turnover.folder, referred))
         cursor = max(cursor, event.record_out + 1)
     result.segments = _with_insets(result.segments)
     return result
@@ -327,8 +339,15 @@ def _next_version(folder: Path, number: int, month: int, day: int, year: int, sh
 
 
 def _segment(
-    event: clf.ConformEvent, session: clf.ColorSession, rows: list[ShotRow], show_pattern: str, folder: Path
+    event: clf.ConformEvent,
+    session: clf.ColorSession,
+    rows: list[ShotRow],
+    show_pattern: str,
+    folder: Path,
+    referred: dict[Path, bool | None],
 ) -> Segment:
+    """`referred` is the plan's answer, per delivered HD folder, to whether its frames are
+    display referred, so each folder is listed and its first header read once per plan."""
     length = frames.duration(event.record_in, event.record_out)
     claimed = [row for row in rows if event in session.candidates(row)]
     hdri = next((row for row in claimed if qc.is_hdri(row) and row.hdri_render is not None), None)
@@ -355,7 +374,10 @@ def _segment(
             label=event.clip_stem or event.reel or f"event {event.event_id}",
         )
 
-    exr = next((row for row in claimed if _exr(row, cut, event) is not None), None)
+    # Each claimed row's delivered EXR asked once: each asking lists a folder and opens a
+    # header on the delivery mount (CLAUDE.md, "scan once, cache").
+    found = ((row, _exr(row, cut, event, referred)) for row in claimed)
+    exr, view = next(((row, view) for row, view in found if view is not None), (None, None))
     delivering = exr or next((row for row in claimed if _reference(row, cut) is not None), None)
     row = delivering or next((row for row in claimed if row.approved == cut), known)
     identity = effective_identity(row, show_pattern)
@@ -364,9 +386,7 @@ def _segment(
     held = _held(event, cut)
     # A held HDRI keeps the EDL's length (user, 2026-09-30); every other held frame is a second.
     shown = STILL_LENGTH if held and not qc.is_hdri(row) else length
-    if exr is not None and exr.delivered_range is not None:
-        view = _exr(exr, cut, event)
-        assert view is not None
+    if exr is not None and view is not None and exr.delivered_range is not None:
         still = identity is not None and identity.is_still
         offset = 0 if still else cut.in_frame - exr.delivered_range.in_frame
         return Segment(
@@ -538,11 +558,17 @@ def _held(event: clf.ConformEvent, cut: InOut) -> bool:
     return event.freeze or cut.duration == 1
 
 
-def _exr(row: ShotRow, cut: InOut, event: clf.ConformEvent) -> ExrView | None:
+def _exr(
+    row: ShotRow, cut: InOut, event: clf.ConformEvent, referred: dict[Path, bool | None]
+) -> ExrView | None:
     """The row's delivered EXR and the chain it is seen through: its HD sequence when that
     holds the cut, which is graded already, or a reference clip's one frame, which takes its
     clip's looks, when the event holds one frame. None without an output transform to see it
-    through, or for a reference clip that plays, which leaves the event to its source."""
+    through, or for a reference clip that plays, which leaves the event to its source.
+
+    None too when the sequence's first frame will not open, so the event stands in from its
+    HD reference or source (QC-143) rather than failing the whole stringout. `referred`
+    caches that read per folder."""
     shot = clf.shot_color(row)
     if row.skipped or row.identity is None or row.delivered_range is None or not (shot.display and shot.view):
         return None
@@ -554,15 +580,27 @@ def _exr(row: ShotRow, cut: InOut, event: clf.ConformEvent) -> ExrView | None:
         inside = held.in_frame <= cut.in_frame and cut.out_frame <= held.out_frame
         path = _landed(row, "raw_dir", "HD") if inside else None
         chain = clf.ShotColor(source_encoding=color.PLATE_SPACE, display=shot.display, view=shot.view)
-        if path is not None and _display_referred(path):
-            return ExrView(path, chain, as_is=True)
+        if path is not None:
+            if path not in referred:
+                referred[path] = _display_referred(path)
+            if referred[path] is None:
+                return None
+            if referred[path]:
+                return ExrView(path, chain, as_is=True)
     return ExrView(path, chain) if path is not None else None
 
 
-def _display_referred(folder: Path) -> bool:
-    """Whether a delivered sequence has its output transform in it, read off its first frame."""
+def _display_referred(folder: Path) -> bool | None:
+    """Whether a delivered sequence has its output transform in it, read off its first frame.
+    None when that frame will not open: truncated, or gone since the run."""
     first = min(folder.glob("*.exr"), default=None)
-    return first is not None and exr_module.is_display_referred(first)
+    if first is None:
+        return False
+    try:
+        return exr_module.is_display_referred(first)
+    except (exr_module.ExrError, OSError) as exc:
+        log.warning("%s is not shown on the stringout: %s will not open (%s)", folder.name, first.name, exc)
+        return None
 
 
 def _landed(row: ShotRow, kind: str, res: str | None = None) -> Path | None:
@@ -596,6 +634,23 @@ def _reference(row: ShotRow, cut: InOut) -> Path | None:
     return None
 
 
+BUILD_FAILURES: tuple[type[BaseException], ...] = (
+    StringoutError,
+    ffmpeg.FFmpegError,
+    ffmpeg.FFprobeError,
+    OSError,
+    exr_module.ExrError,
+    clf.ClfError,
+    color.ColorError,
+    ocio.Exception,
+    subprocess.TimeoutExpired,
+)
+"""What a stringout's plan and render can raise, each one QC-142 (review, 2026-11-08): a
+delivered frame truncated since the run (`exr.read_pixels`), a still's CLF moved since the
+scan (`_view_processor`), and an ffmpeg or ffprobe that outran its timeout, which
+`subprocess` raises rather than returning. `_still_lut` catches the color ones itself."""
+
+
 def build(
     batch: Batch,
     turnover: Turnover,
@@ -603,17 +658,31 @@ def build(
     show_pattern: str = naming.DEFAULT_SHOW_PATTERN,
     progress: Progress | None = None,
     workers: int = DEFAULT_WORKERS,
+    cancel: Cancel | None = None,
 ) -> Deliverable | None:
     """Plan, render and check one turnover's stringout, and record the outcome on it.
 
     Never raises: a stringout that could not be made is QC-142 on the turnover, which
     does not block a run (it is phase B), and the delivery it describes is unaffected.
+    `BUILD_FAILURES` is everything planning and rendering one can raise: the next
+    turnover's stringout and the run's reports come after it (`ui/run_controller.py`).
+
+    **`cancel` stops it** at the next frame or segment (review, 2026-11-08): Stop, or a
+    window closing. A stopped build writes nothing, returns None and leaves the
+    turnover's stringout and its results as they were, since nothing was found wrong.
     """
+    if cancel is not None and cancel():
+        return None
+    before = list(turnover.qc)
     turnover.qc = [result for result in turnover.qc if result.rule_id not in STRINGOUT_RULES]
     try:
         made = plan(batch, turnover, delivery_root, show_pattern)
-        deliverable = render(made, progress, workers)
-    except (StringoutError, ffmpeg.FFmpegError, ffmpeg.FFprobeError, OSError) as exc:
+        deliverable = render(made, progress, workers, cancel)
+    except StringoutStopped:
+        log.info("the stringout of %s was stopped before it was written", turnover.folder.name)
+        turnover.qc = before
+        return None
+    except BUILD_FAILURES as exc:
         turnover.qc.append(QCResult("QC-142", "error", "turnover", f"the stringout was not written: {exc}"))
         return None
     turnover.stringout = deliverable
@@ -663,8 +732,13 @@ Progress = Callable[[int, int], None]
 frames converted from the delivered EXRs (`_make_views`) and then the frames encoded."""
 
 
-def render(made: Plan, progress: Progress | None = None, workers: int = DEFAULT_WORKERS) -> Deliverable:
-    """Convert the EXRs, encode every segment, join them, check the join, and name it."""
+def render(
+    made: Plan, progress: Progress | None = None, workers: int = DEFAULT_WORKERS, cancel: Cancel | None = None
+) -> Deliverable:
+    """Convert the EXRs, encode every segment, join them, check the join, and name it.
+
+    Raises `StringoutStopped` when `cancel` says so, with nothing left behind."""
+    stop = cancel or _never
     folder = made.destination.parent
     folder.mkdir(parents=True, exist_ok=True)
     # The pictures and segments on this machine's own disk, not beside the stringout: the
@@ -677,10 +751,16 @@ def render(made: Plan, progress: Progress | None = None, workers: int = DEFAULT_
         wanted = _views_wanted(made, parts)
         converted = sum(len(files) for _, files in wanted.values())
         total = converted + made.total
-        views = _make_views(wanted, workers, lambda done: progress(done, total) if progress else None)
+        views = _make_views(wanted, workers, lambda done: progress(done, total) if progress else None, stop)
         encoded = _encode_all(
-            made, views, parts, workers, lambda done: progress(converted + done, total) if progress else None
+            made,
+            views,
+            parts,
+            workers,
+            lambda done: progress(converted + done, total) if progress else None,
+            stop,
         )
+        _check_stop(stop)
         listing = parts / "segments.txt"
         listing.write_text(
             "".join(f"file '{_quoted(path)}'\n" for path in encoded), encoding="utf-8", newline="\n"
@@ -704,8 +784,22 @@ def render(made: Plan, progress: Progress | None = None, workers: int = DEFAULT_
     )
 
 
+def _never() -> bool:
+    return False
+
+
+def _check_stop(stop: Cancel) -> None:
+    if stop():
+        raise StringoutStopped("stopped")
+
+
 def _encode_all(
-    made: Plan, views: dict[ExrView, Path], parts: Path, workers: int, progress: Callable[[int], None]
+    made: Plan,
+    views: dict[ExrView, Path],
+    parts: Path,
+    workers: int,
+    progress: Callable[[int], None],
+    stop: Cancel = _never,
 ) -> list[Path]:
     """Every segment encoded, `workers` at a time, in the timeline's order for the join.
 
@@ -715,6 +809,9 @@ def _encode_all(
     single threaded filters (2026-10-08, turnover135: the 21 events were most of what was
     left once the pictures were fast). Progress is reported here, on the calling thread,
     as each finishes.
+
+    A stop is asked as each finishes: the segments not started are canceled and the
+    ones in flight, one ffmpeg each, are let finish rather than killed.
     """
     encoded: list[Path | None] = [None] * len(made.segments)
     done = 0
@@ -724,6 +821,10 @@ def _encode_all(
             for index, segment in enumerate(made.segments)
         }
         for future in as_completed(futures):
+            if stop():
+                for waiting in futures:
+                    waiting.cancel()
+                raise StringoutStopped("stopped")
             index = futures[future]
             encoded[index] = future.result()
             done += made.segments[index].length
@@ -756,7 +857,10 @@ def _views_wanted(made: Plan, parts: Path) -> dict[ExrView, tuple[Path, list[Pat
 
 
 def _make_views(
-    wanted: dict[ExrView, tuple[Path, list[Path]]], workers: int, progress: Callable[[int], None]
+    wanted: dict[ExrView, tuple[Path, list[Path]]],
+    workers: int,
+    progress: Callable[[int], None],
+    stop: Cancel = _never,
 ) -> dict[ExrView, Path]:
     """Every EXR made into its picture, **several at once** (user, 2026-10-07: "convert
     the plates in parallel"). Measured on turnover135 before: about 3 minutes per 240
@@ -767,6 +871,9 @@ def _make_views(
     counter that is read every second, so the stringout line's bar and time left move
     while the long part runs. One picture, or one worker, is made in this process: a
     spawned interpreter costs a second or two to start and buys nothing then.
+
+    A stop is asked at every frame: here directly, and in the workers through an Event
+    set from the once a second loop, so a plate several minutes long does not hold it.
     """
     if not wanted:
         return {}
@@ -774,6 +881,7 @@ def _make_views(
         done = [0]
 
         def tick() -> None:
+            _check_stop(stop)
             done[0] += 1
             progress(done[0])
 
@@ -783,9 +891,16 @@ def _make_views(
 
     context = multiprocessing.get_context("spawn")
     counter = context.Value("q", 0)
+    stopping = context.Event()
     log_queue: Any = context.Queue()
     listener = logsetup.start_listener(log_queue)
-    initargs = (counter, log_queue, logging.getLogger().getEffectiveLevel(), ffmpeg.current_override())
+    initargs = (
+        counter,
+        stopping,
+        log_queue,
+        logging.getLogger().getEffectiveLevel(),
+        ffmpeg.current_override(),
+    )
     try:
         with ProcessPoolExecutor(
             max_workers=min(workers, len(wanted)),
@@ -800,6 +915,10 @@ def _make_views(
             pending = set(futures)
             while pending:
                 finished, pending = wait(pending, timeout=1.0, return_when=FIRST_EXCEPTION)
+                if stop():
+                    stopping.set()
+                    for waiting in pending:
+                        waiting.cancel()
                 progress(int(counter.value))
                 for future in finished:
                     future.result()  # a picture that failed fails the stringout (QC-142)
@@ -814,12 +933,18 @@ _COUNTER: Any = None
 """This worker's frame counter, shared with the parent. Handed over at process creation,
 the only way a `multiprocessing.Value` crosses a spawn."""
 
+_STOPPING: Any = None
+"""Set by the parent when the build is stopped. Handed over the same way."""
 
-def _view_worker_init(counter: Any, log_queue: Any, log_level: int, ffmpeg_override: Path | None) -> None:
-    """A spawned worker knows nothing the parent was told: the counter, where its log
-    records go (every ffmpeg command is logged, FR-13), and which ffmpeg to run."""
-    global _COUNTER
+
+def _view_worker_init(
+    counter: Any, stopping: Any, log_queue: Any, log_level: int, ffmpeg_override: Path | None
+) -> None:
+    """A spawned worker knows nothing the parent was told: the counter, the stop, where
+    its log records go (every ffmpeg command is logged, FR-13), and which ffmpeg to run."""
+    global _COUNTER, _STOPPING
     _COUNTER = counter
+    _STOPPING = stopping
     logsetup.install_worker_handler(log_queue, log_level)
     ffmpeg.set_override(ffmpeg_override)
 
@@ -829,6 +954,8 @@ def _pooled_view(exr: ExrView, files: list[Path], destination: Path) -> None:
 
 
 def _count_frame() -> None:
+    if _STOPPING is not None and _STOPPING.is_set():
+        raise StringoutStopped("stopped")
     with _COUNTER.get_lock():
         _COUNTER.value += 1
 
@@ -1012,10 +1139,11 @@ def _burn_ins(stem: str, segment: Segment, base: Path) -> list[str]:
 
 
 def _wrapped(path: str) -> list[str]:
-    """The card's path in lines of at most `CARD_LINE`, each broken after a `/` where it can be."""
+    """The card's path in lines of at most `CARD_LINE`, each broken after a separator where it
+    can be: `/`, or the `\\` of a Windows path."""
     lines: list[str] = []
     while len(path) > CARD_LINE:
-        cut = path.rfind("/", 0, CARD_LINE) + 1 or CARD_LINE
+        cut = max(path.rfind("/", 0, CARD_LINE), path.rfind("\\", 0, CARD_LINE)) + 1 or CARD_LINE
         lines.append(path[:cut])
         path = path[cut:]
     return [*lines, path]

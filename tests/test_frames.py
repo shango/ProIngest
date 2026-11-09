@@ -158,3 +158,28 @@ class TestSourceFrameToTimecode:
         for source_frame in (0, 1, 120, 239, 1000):
             text = frames.source_frame_to_timecode(source_frame, CONTEXT)
             assert frames.parse_in_out(text, 0, CONTEXT).frame == source_frame
+
+
+class TestTimecodeAcrossMidnight:
+    """Review, 2026-11-08: `frames_to_timecode` wraps at 24 hours and `parse_in_out` did
+    not undo it, so a clip starting 23:59:55:00 showed its Out as 00:00:04:15 and reading
+    that back gave a frame a day before the clip (QC-031, QC-032)."""
+
+    DAY = 24 * 60 * 60 * FPS
+    NEAR_MIDNIGHT = EditContext(**{**CONTEXT.__dict__, "source_start_timecode": DAY - 5 * FPS})
+
+    def test_a_shown_timecode_reads_back_as_the_frame_it_shows(self) -> None:
+        for source_frame in (0, 119, 120, 231, 239):
+            text = frames.source_frame_to_timecode(source_frame, self.NEAR_MIDNIGHT)
+            assert frames.parse_in_out(text, source_frame, self.NEAR_MIDNIGHT).frame == source_frame
+
+    def test_a_typed_timecode_past_midnight_lands_after_the_start(self) -> None:
+        """Typed with the cursor still on a frame before midnight."""
+        assert frames.parse_in_out("00:00:01:00", 8, self.NEAR_MIDNIGHT).frame == 6 * FPS
+
+    def test_a_typed_timecode_before_midnight_from_a_frame_after_it(self) -> None:
+        assert frames.parse_in_out("23:59:56:00", 231, self.NEAR_MIDNIGHT).frame == FPS
+
+    def test_in_record_mode_too(self) -> None:
+        context = EditContext(**{**RECORD_CONTEXT.__dict__, "record_start_timecode": self.DAY - FPS})
+        assert frames.parse_in_out("00:00:00:00", 120, context).frame == 120 + FPS

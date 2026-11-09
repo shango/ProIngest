@@ -251,6 +251,18 @@ HDRI_RENDER_ENCODING = "Linear Rec.709 (sRGB)"
 """What Ben renders an HDRI's timeline event in: sRGB Linear (user, 2026-10-07). The
 pre-render is not on the timeline, so no AMF or CSV row names it."""
 
+
+def is_scene_linear(name: str) -> bool:
+    """Whether a source encoding is scene linear, by the config's own `encoding` attribute:
+    ACES2065-1, ACEScg, Linear Rec.709 and the rest. Such a source reaches its reference's
+    cube through `shaper_lut`, as a pre-render does (review, 2026-11-08). False for a name
+    the config does not know, and for a display referred render's inverse view."""
+    if _inverse_parts(name) is not None:
+        return False
+    known = config().getColorSpace(" ".join(name.split()))
+    return known is not None and known.getEncoding() == "scene-linear"
+
+
 SHAPER_GAMMA = 2.4
 """A linear source reaches the cube through `x ** (1 / SHAPER_GAMMA)`, so the cube's
 samples crowd into the shadows where linear values do."""
@@ -281,8 +293,10 @@ def view_lut(
     source encoding and the samples land where the code values are, which is the whole
     reason the view branch stays in log until the output transform.
 
-    `shaped` is for the one linear source, an HDRI's pre-render: its cube is sampled in the
-    domain `shaper_lut` leaves it in, and applied after that shaper.
+    `shaped` is for a scene linear source (`is_scene_linear`), an HDRI's pre-render or a CG
+    plate in ACEScg: its cube is sampled in the domain `shaper_lut` leaves it in, and applied
+    after that shaper. The shaper's domain ends at linear 1.0, so a highlight above that is
+    clipped in the reference, as it is on the stringout; the plate keeps it.
 
     Written to a temporary name in the same folder and renamed, so a cancelled bake
     cannot leave a short file that ffmpeg would read as a LUT.

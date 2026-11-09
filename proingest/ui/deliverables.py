@@ -84,7 +84,6 @@ class DeliverablesDock(QTreeWidget):
             self.setColumnWidth(column, width)
         self.header().setSectionResizeMode(COLUMNS.index("Path"), QHeaderView.ResizeMode.Stretch)
         self.itemActivated.connect(self._activated)
-        self.itemDoubleClicked.connect(self._activated)
         self._paths: list[Path | None] = []
 
     def show_rows(self, rows: Sequence[ShotRow]) -> None:

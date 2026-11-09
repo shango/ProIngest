@@ -117,6 +117,17 @@ class TestScanCommand:
 
 
 class TestTopLevel:
+    @pytest.mark.parametrize("command", ["scan", "run", "qc"])
+    def test_an_unusable_show_pattern_is_refused_at_the_prompt(
+        self, command: str, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Review, 2026-11-08: `[A-Z` raised `re.error` out of the scan or plan. It is
+        refused before anything is read, as Settings refuses it."""
+        with pytest.raises(SystemExit) as exit_info:
+            main([command, str(tmp_path / "x"), "--show-pattern", "[A-Z"])
+        assert exit_info.value.code == 2
+        assert "not a usable pattern" in capsys.readouterr().err
+
     def test_no_command_launches_the_ui(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """M5.1: that is what `proingest` with no subcommand is for.
 

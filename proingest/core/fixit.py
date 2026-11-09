@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import Literal, NamedTuple
 
 from proingest import __version__
-from proingest.core import exports, frames, models, naming, qc
+from proingest.core import exports, frames, models, naming, planner, qc
 from proingest.core.models import Batch, QCResult, ShotRow, Turnover
 
 Where = Literal["resolve", "folder", "look"]
@@ -352,6 +352,16 @@ class TurnoverReport:
     clips: int
     blocked: int
     items: list[Item]
+    whole: bool = False
+    """Nothing in this turnover is delivered: it read no rows (QC-001, QC-002, QC-004) or its
+    folder has moved (QC-069). `blocked` alone said "Nothing held back" then (review,
+    2026-11-08)."""
+
+
+TURNOVER_STOPPING_RULES = frozenset({"QC-001", "QC-002", "QC-004"})
+"""The turnover errors that leave it nothing to deliver: no EDL or CSV, one that will not
+parse, or one that is empty (`scan.scan_turnover` returns no rows, or rows with no cut).
+Every other turnover error, such as QC-071, holds no clip on its own."""
 
 
 def report_name(batch: Batch, when: date | None = None) -> str:
@@ -359,9 +369,14 @@ def report_name(batch: Batch, when: date | None = None) -> str:
     return f"fixit_report_{batch.name}_{(when or date.today()):%Y%m%d}.html"
 
 
-def report_path(batch: Batch, delivery_root: Path, when: date | None = None) -> Path:
+def report_path(
+    batch: Batch,
+    delivery_root: Path,
+    when: date | None = None,
+    show_pattern: str = naming.DEFAULT_SHOW_PATTERN,
+) -> Path:
     """Beside the two spreadsheets, under `<delivery_root>/<show>/_reports/`."""
-    qc_log, _ = exports.report_paths(batch, delivery_root, when)
+    qc_log, _ = exports.report_paths(batch, delivery_root, when, show_pattern)
     return qc_log.parent / report_name(batch, when)
 
 
@@ -385,10 +400,13 @@ def _turnover_report(batch: Batch, turnover: Turnover) -> TurnoverReport:
     # clip of a shot nor its plate.
     delivered = [row for row in rows if not qc.is_hdri(row) and not qc.is_stringout_only(row)]
     items: dict[str, Item] = {}
+    whole = turnover.turnover_id in planner.held_turnovers(batch)
     for result in turnover.qc:
+        stops = result.holds and result.rule_id in TURNOVER_STOPPING_RULES
+        whole |= stops
         if result.rule_id not in ADVICE or result.severity == "info":
             continue  # not Ben's, or a note for the QC log rather than something to fix
-        _add(items, result.rule_id, ADVICE[result.rule_id], result, _turnover_clips(result, delivered))
+        _add(items, result.rule_id, ADVICE[result.rule_id], result, _turnover_clips(result, delivered), stops)
     blocked = 0
     rate = batch.project_rate.nominal()
     for row in rows:
@@ -396,21 +414,31 @@ def _turnover_report(batch: Batch, turnover: Turnover) -> TurnoverReport:
         for result in row.qc:
             if result.rule_id in ADVICE and result.severity != "info":
                 clip = _clip(row, result, turnover, rate)
-                _add(items, result.rule_id, ADVICE[result.rule_id], result, [clip])
+                _add(items, result.rule_id, ADVICE[result.rule_id], result, [clip], result.holds)
                 row_blocks |= result.holds
         blocked += row_blocks
+    if whole:
+        blocked = len(delivered)
     if orphans := _without_a_plate(delivered):
         _add(items, "NO_PLATE", NO_PLATE, None, orphans)
     order = list(SECTIONS)
     ranked = sorted(items.items(), key=lambda kv: (order.index(kv[1].advice.where), not kv[1].blocks, kv[0]))
-    return TurnoverReport(turnover, len(delivered), blocked, [item for _, item in ranked])
+    return TurnoverReport(turnover, len(delivered), blocked, [item for _, item in ranked], whole)
 
 
 def _add(
-    items: dict[str, Item], key: str, advice: Advice, result: QCResult | None, clips: list[Clip]
+    items: dict[str, Item],
+    key: str,
+    advice: Advice,
+    result: QCResult | None,
+    clips: list[Clip],
+    blocks: bool = False,
 ) -> None:
+    """`blocks` is whether this finding keeps something from being delivered: a row's error
+    that holds it, or a turnover error that leaves the turnover nothing (review, 2026-11-08:
+    a turnover's QC-071 holds no row and was labelled as stopping clips)."""
     item = items.setdefault(key, Item(advice))
-    if result is not None and result.holds:
+    if result is not None and blocks:
         item.blocks = True
     item.clips.extend(clip for clip in clips if clip not in item.clips)
 
@@ -489,6 +517,8 @@ def _named_by(row: ShotRow, result: QCResult, turnover: Turnover, rate: int) -> 
         return f"{csv} lists it; {edl} has no event that cuts it"
     if rule == "QC-067":
         return f"{edl} and {csv}"
+    if rule == "QC-046" and row.grade is not None:
+        return amf  # it matched and names no input transform (review, 2026-11-08)
     if rule == "QC-046":
         return f"no AMF, and no Input Color Space in {csv}"
     if rule == "QC-047" and row.grade is None and row.source_encoding_origin == "CSV":
@@ -590,6 +620,8 @@ def _turnover_name(turnover: Turnover) -> str:
 
 
 def _status(report: TurnoverReport) -> str:
+    if report.whole and report.clips == 0:
+        return "Nothing can be delivered"
     if report.blocked == 0:
         return "Nothing held back"
     if report.blocked >= report.clips:
@@ -597,14 +629,18 @@ def _status(report: TurnoverReport) -> str:
     return f"{report.blocked} of {report.clips} clips held back"
 
 
+def _holds(report: TurnoverReport) -> bool:
+    return report.whole or report.blocked > 0
+
+
 def _summary(found: list[TurnoverReport]) -> str:
     if len(found) < 2:
         return ""
     lines = ""
     for r in found:
-        name, marker = _e(_turnover_name(r.turnover)), "blocks" if r.blocked else "ok"
+        name, marker = _e(_turnover_name(r.turnover)), "blocks" if _holds(r) else "ok"
         lines += (
-            f'<li class="{"resolve" if r.blocked else "note"}"><span class="name">{name}</span>'
+            f'<li class="{"resolve" if _holds(r) else "note"}"><span class="name">{name}</span>'
             f'<span class="{marker}">{_status(r)}</span></li>'
         )
     return f'<ol class="summary">{lines}</ol>'
@@ -615,10 +651,11 @@ def _turnover_html(report: TurnoverReport) -> str:
     head = (
         f'<section class="turnover"><h2>{_e(_turnover_name(turnover))}</h2>'
         f'<p class="folder-name"><code>{_e(turnover.folder.name)}</code> &middot; '
-        f'<span class="{"blocks" if report.blocked else "ok"}">{_status(report)}</span></p>'
+        f'<span class="{"blocks" if _holds(report) else "ok"}">{_status(report)}</span></p>'
     )
     if not report.items:
-        return head + f'<p class="clean">{NOTHING_TO_FIX}</p></section>'
+        clean = FOLDER_MOVED if report.whole else NOTHING_TO_FIX
+        return head + f'<p class="clean">{clean}</p></section>'
     groups = ""
     for where, heading in SECTIONS.items():
         items = [item for item in report.items if item.advice.where == where]
@@ -628,6 +665,12 @@ def _turnover_html(report: TurnoverReport) -> str:
 
 
 NOTHING_TO_FIX = "Nothing to fix. Every clip in this turnover is ready to deliver."
+
+FOLDER_MOVED = (
+    "Nothing to fix in Resolve. The turnover folder is not where the editor's batch last found it, "
+    "so nothing in it is delivered until the editor points the batch at it again."
+)
+"""A turnover held whole with nothing of Ben's to fix, which is QC-069, the editor's to fix."""
 
 _CLASSES: dict[Where, str] = {"resolve": "resolve", "folder": "folder", "look": "note"}
 _TAGS: dict[Where, str] = {
@@ -640,11 +683,13 @@ _TAGS: dict[Where, str] = {
 def _item_html(item: Item) -> str:
     advice = item.advice
     listed = "".join(_group_html(detail, clips) for detail, clips in clip_groups(item.clips))
-    effect = (
-        '<p class="blocks">Stops these clips from being delivered.</p>'
-        if item.blocks
-        else '<p class="ok">Does not stop the delivery.</p>'
-    )
+    if not item.blocks:
+        effect = '<p class="ok">Does not stop the delivery.</p>'
+    elif any(clip.who or clip.name for clip in item.clips):
+        effect = '<p class="blocks">Stops these clips from being delivered.</p>'
+    else:
+        # A turnover's own error names no clip: the turnover delivers nothing (review, 2026-11-08).
+        effect = '<p class="blocks">Stops this turnover from being delivered.</p>'
     return (
         f'<li class="{_CLASSES[advice.where]}"><p><span class="tag">{_TAGS[advice.where]}</span> '
         f'<span class="what">{_e(advice.title)}</span></p><p>{_e(advice.explain)}</p>{listed}{effect}</li>'

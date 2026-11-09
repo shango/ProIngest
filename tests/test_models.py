@@ -307,6 +307,14 @@ class TestTurnover:
         loaded = Turnover.from_dict(data)
         assert loaded.qc == [] and loaded == Turnover("t1", Path("/t"))
 
+    def test_a_batch_that_saved_a_timeline_start_still_loads(self) -> None:
+        """Review, 2026-11-08: `timeline_start` went, since nothing set it and a row's record
+        In is already the EDL's own record frame. A batch saved with the key reads as before."""
+        data = Turnover("t1", Path("/t")).to_dict()
+        data["timeline_start"] = 86400
+        assert Turnover.from_dict(data) == Turnover("t1", Path("/t"))
+        assert "timeline_start" not in Turnover("t1", Path("/t")).to_dict()
+
     def test_a_turnover_saved_before_the_session_existed_has_ingested_nothing(self) -> None:
         """Additive, so the schema version does not move (M5.7.1)."""
         data = Turnover("t1", Path("/t")).to_dict()

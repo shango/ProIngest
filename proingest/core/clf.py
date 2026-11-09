@@ -327,6 +327,9 @@ _EVENT_HEAD = re.compile(
 )
 _TIMECODE = re.compile(r"\d{1,2}:\d{2}:\d{2}[:;]\d{2}")
 _FROM_CLIP = re.compile(r"^\*\s*FROM CLIP NAME:\s*(?P<name>.+?)\s*$", re.IGNORECASE)
+_TO_CLIP = re.compile(r"^\*\s*TO CLIP NAME:\s*(?P<name>.+?)\s*$", re.IGNORECASE)
+"""The incoming clip of a transition. Under a dissolve's incoming event `FROM CLIP NAME` names
+the outgoing clip, so this one names the event (review, 2026-11-08)."""
 _MOTION = re.compile(r"^M2\s+\S+\s+(?P<speed>-?\d+(?:\.\d+)?)\s+")
 """A motion effect: `M2   AX   000.0   00:00:40:10`, reel, speed in frames a second, entry."""
 
@@ -347,14 +350,18 @@ class _Event:
     def __init__(self, head: re.Match[str]) -> None:
         self.head = head
         self.clip_name = ""
+        self.named_by_to = False
         self.speed: float | None = None
 
     def comment(self, line: str) -> None:
         from_clip = _FROM_CLIP.match(line)
+        to_clip = _TO_CLIP.match(line)
         motion = _MOTION.match(line)
         if motion is not None:
             self.speed = float(motion["speed"])
-        elif from_clip is not None:
+        elif to_clip is not None:
+            self.clip_name, self.named_by_to = to_clip["name"], True
+        elif from_clip is not None and not self.named_by_to:
             self.clip_name = from_clip["name"]
 
     def build(self, path: Path, rate: FrameRate) -> list[ConformEvent]:

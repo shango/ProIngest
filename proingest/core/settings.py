@@ -19,9 +19,10 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass, field, fields
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeVar
 
 from proingest.core import logsetup
 from proingest.core.exr import DWA_COMPRESSION_LEVEL
@@ -29,6 +30,8 @@ from proingest.core.ffmpeg import REFERENCE_CRF
 from proingest.core.models import DEFAULT_WORKERS
 
 log = logging.getLogger(__name__)
+
+T = TypeVar("T")
 
 SCHEMA_VERSION = 1
 
@@ -163,20 +166,36 @@ class AppSettings:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> AppSettings:
+        """The settings in `data`, **field by field**: a value of the wrong type reads back as
+        that field's default and the rest still load (review, 2026-11-08). Reading the whole
+        file as defaults over one bad field let the next save write away the path map, the
+        rules, the show pattern, the ffmpeg override and the keys a newer build wrote."""
         known = {f.name for f in fields(cls)} - {"unknown"} | {"schema_version"}
+        defaults = cls()
+
+        def read(key: str, convert: Callable[[Any], T]) -> T:
+            default: T = getattr(defaults, key)
+            if key not in data:
+                return default
+            try:
+                return convert(data[key])
+            except (TypeError, ValueError, AttributeError) as exc:
+                log.warning("settings field %r holds %r (%s); using its default", key, data[key], exc)
+                return default
+
         return cls(
-            window_geometry=str(data.get("window_geometry", "")),
-            window_state=str(data.get("window_state", "")),
-            last_folder=str(data.get("last_folder", "")),
-            workers=int(data.get("workers", DEFAULT_WORKERS)),
-            show_pattern=str(data.get("show_pattern", "")),
-            path_map={str(k): str(v) for k, v in dict(data.get("path_map", {})).items()},
-            rules=dict(data.get("rules", {})),
-            log_level=logsetup.name_of(logsetup.level_of(str(data.get("log_level", "")))),
-            ffmpeg_path=str(data.get("ffmpeg_path", "")),
-            reference_crf=int(data.get("reference_crf", REFERENCE_CRF)),
-            exr_compression_level=int(data.get("exr_compression_level", DWA_COMPRESSION_LEVEL)),
-            metadata_collapsed=[str(item) for item in data.get("metadata_collapsed", [])],
+            window_geometry=read("window_geometry", str),
+            window_state=read("window_state", str),
+            last_folder=read("last_folder", str),
+            workers=read("workers", int),
+            show_pattern=read("show_pattern", str),
+            path_map=read("path_map", lambda value: {str(k): str(v) for k, v in dict(value).items()}),
+            rules=read("rules", dict),
+            log_level=read("log_level", lambda value: logsetup.name_of(logsetup.level_of(str(value)))),
+            ffmpeg_path=read("ffmpeg_path", str),
+            reference_crf=read("reference_crf", int),
+            exr_compression_level=read("exr_compression_level", int),
+            metadata_collapsed=read("metadata_collapsed", lambda value: [str(item) for item in value]),
             unknown={key: value for key, value in data.items() if key not in known},
         )
 
@@ -186,7 +205,8 @@ def load(path: Path) -> AppSettings:
 
     A missing file is the first run. A corrupt one is a crash mid-write or a hand edit,
     and it is logged and replaced rather than raised: refusing to launch over a
-    preferences file would be a worse failure than losing a window position.
+    preferences file would be a worse failure than losing a window position. One field
+    of the wrong type costs only that field (`AppSettings.from_dict`).
     """
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
@@ -198,11 +218,7 @@ def load(path: Path) -> AppSettings:
     if not isinstance(data, dict):
         log.warning("settings at %s are not an object; using defaults", path)
         return AppSettings()
-    try:
-        return AppSettings.from_dict(data)
-    except (TypeError, ValueError) as exc:
-        log.warning("settings at %s hold a value of the wrong type (%s); using defaults", path, exc)
-        return AppSettings()
+    return AppSettings.from_dict(data)
 
 
 def save(settings: AppSettings, path: Path) -> None:

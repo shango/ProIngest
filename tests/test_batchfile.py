@@ -28,8 +28,19 @@ class TestSaveAndLoad:
         assert saved.suffix == ".pibatch"
         assert batchfile.load(saved) == batch
 
-    def test_suffix_is_forced(self, tmp_path: Path) -> None:
-        assert batchfile.save(Batch(), tmp_path / "b.json").name == "b.pibatch"
+    def test_suffix_is_appended(self, tmp_path: Path) -> None:
+        """Appended rather than swapped for whatever follows the last dot (review, 2026-11-08):
+        `b.json` was written as `b.pibatch`, and so was any name with a dot in it."""
+        assert batchfile.save(Batch(), tmp_path / "b.json").name == "b.json.pibatch"
+        assert batchfile.save(Batch(), tmp_path / "b.pibatch").name == "b.pibatch"
+
+    def test_a_name_with_a_dot_is_its_own_batch(self, tmp_path: Path) -> None:
+        """Review, 2026-11-08: `melt_10.30` was saved as `melt_10.pibatch`, over another batch."""
+        other = batchfile.save(Batch(name="melt_10"), tmp_path / "melt_10")
+        saved = batchfile.save(Batch(name="melt_10.30"), tmp_path / "melt_10.30")
+        assert saved.name == "melt_10.30.pibatch"
+        assert batchfile.load(other).name == "melt_10", "the other batch is untouched"
+        assert batchfile.batch_path(tmp_path / "melt_10.30").stem == "melt_10.30"
 
     def test_creates_parent_directories(self, tmp_path: Path) -> None:
         saved = batchfile.save(Batch(), tmp_path / "deep" / "nested" / "b")
@@ -144,12 +155,70 @@ class TestReconciliation:
         saved = batchfile.save(batch, tmp_path / "b")
         assert batchfile.load(saved).rows[0].deliverables[0].status == "planned"
 
+    @pytest.mark.parametrize("status", ["planned", "skipped"])
+    def test_a_file_that_landed_under_a_stale_status_is_done(self, tmp_path: Path, status: str) -> None:
+        """Review, 2026-11-08 (E1): a batch saved mid run still says planned or skipped for
+        a file that landed later. A final name only exists after its checks (D11)."""
+        present = tmp_path / "MELT0001_pl01_ref_HD_v01.mp4"
+        present.write_bytes(b"x")
+        batch = batch_with_deliverable(present, status)
+        saved = batchfile.save(batch, tmp_path / "b")
+        assert batchfile.load(saved).rows[0].deliverables[0].status == "done"
+
+    def test_a_failed_deliverable_is_left_failed(self, tmp_path: Path) -> None:
+        """A failed check waits for the editor's Re-scan (D11), whatever is on disk."""
+        present = tmp_path / "MELT0001_pl01_ref_HD_v01.mp4"
+        present.write_bytes(b"x")
+        batch = batch_with_deliverable(present, "failed")
+        saved = batchfile.save(batch, tmp_path / "b")
+        assert batchfile.load(saved).rows[0].deliverables[0].status == "failed"
+
     def test_reconciliation_can_be_skipped(self, tmp_path: Path) -> None:
         missing = tmp_path / "MELT0001_pl01_ref_HD_v01.mp4"
         batch = batch_with_deliverable(missing, "done")
         saved = batchfile.save(batch, tmp_path / "b")
         loaded = batchfile.load(saved, reconcile=False)
         assert loaded.rows[0].deliverables[0].status == "done"
+
+
+class TestSavingARunInFlight:
+    """Review, 2026-11-08 (E1): nothing ever wrote `rendering`, so a crash mid run left the
+    batch on disk saying what it said before the plan, and the next Run's version check saw
+    the new files and rendered the shot again at the next version."""
+
+    def test_what_is_in_flight_is_saved_as_rendering(self, tmp_path: Path) -> None:
+        target = tmp_path / "MELT0001_pl01_ref_HD_v01.mp4"
+        batch = batch_with_deliverable(target, "planned")
+        saved = batchfile.save_in_flight(batch, tmp_path / "b", {target})
+        on_disk = batchfile.load(saved, reconcile=False)
+        assert on_disk.rows[0].deliverables[0].status == "rendering"
+        assert batch.rows[0].deliverables[0].status == "planned", "the open batch is unchanged"
+
+    def test_what_is_not_in_flight_keeps_its_status(self, tmp_path: Path) -> None:
+        target = tmp_path / "MELT0001_pl01_ref_HD_v01.mp4"
+        batch = batch_with_deliverable(target, "done")
+        saved = batchfile.save_in_flight(batch, tmp_path / "b", set())
+        assert batchfile.load(saved, reconcile=False).rows[0].deliverables[0].status == "done"
+
+    def test_the_status_is_put_back_when_the_write_fails(self, tmp_path: Path) -> None:
+        target = tmp_path / "MELT0001_pl01_ref_HD_v01.mp4"
+        batch = batch_with_deliverable(target, "planned")
+        blocker = tmp_path / "file"
+        blocker.write_text("")
+        with pytest.raises(OSError):
+            batchfile.save_in_flight(batch, blocker / "b", {target})
+        assert batch.rows[0].deliverables[0].status == "planned"
+
+    def test_a_crash_after_it_reopens_as_what_landed(self, tmp_path: Path) -> None:
+        landed = tmp_path / "MELT0001_pl01_ref_HD_v01.mp4"
+        unfinished = tmp_path / "MELT0001_pl01_ref_4k_v01.mp4"
+        batch = batch_with_deliverable(landed, "planned")
+        batch.rows[0].deliverables.append(
+            Deliverable(kind="ref", name=unfinished.name, path=unfinished, version=1, res="4k")
+        )
+        saved = batchfile.save_in_flight(batch, tmp_path / "b", {landed, unfinished})
+        landed.write_bytes(b"x")
+        assert [d.status for d in batchfile.load(saved).rows[0].deliverables] == ["done", "planned"]
 
 
 class TestTurnoverPersistence:
