@@ -60,7 +60,11 @@ def bump(new: str, root: Path = ROOT) -> list[str]:
     texts: dict[str, str] = {}
     for name, pattern, times in PLACES:
         text = texts.get(name) or _read(root / name)
-        before, after = pattern.format(v=old), pattern.format(v=new)
+        # A Windows checkout gives uv.lock CRLF endings, so a two-line place must use
+        # the file's own ending (CI, 0.5.56).
+        eol = "\r\n" if "\r\n" in text else "\n"
+        before = pattern.format(v=old).replace("\n", eol)
+        after = pattern.format(v=new).replace("\n", eol)
         if text.count(before) != times:
             raise SystemExit(f"{name}: expected {before!r} {times} time(s), found {text.count(before)}")
         texts[name] = text.replace(before, after)

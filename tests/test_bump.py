@@ -51,8 +51,10 @@ def test_line_endings_survive_a_bump(tree: Path) -> None:
     """Review, 2026-11-08: `write_text` without `newline=""` turned every LF into CRLF on
     Windows, and reading without it turned a CRLF file into LF everywhere. Every byte
     but the version itself must come back as it went in, whichever ending a file has."""
-    crlf = tree / "pyproject.toml"
-    crlf.write_bytes(crlf.read_bytes().replace(b"\r\n", b"\n").replace(b"\n", b"\r\n"))
+    # uv.lock too: a Windows checkout gives it CRLF, and its place spans two lines.
+    for name in ("pyproject.toml", "uv.lock"):
+        crlf = tree / name
+        crlf.write_bytes(crlf.read_bytes().replace(b"\r\n", b"\n").replace(b"\n", b"\r\n"))
     old = bump.current(tree)
     before = {name: (tree / name).read_bytes() for name in {place[0] for place in bump.PLACES}}
     bump.bump("9.9.9", tree)
